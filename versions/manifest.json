@@ -1,0 +1,18 @@
+{
+  "unreleased": {
+    "note": "Chưa có thay đổi sau v1.",
+    "changes": []
+  },
+  "versions": [
+    {
+      "id": "v1",
+      "date": "Aug 18, 2026",
+      "note": "Bản đầu tiên của prototype RFQ × B2B, chạy trong khung Shopify admin mô phỏng.",
+      "changes": [
+        "Sync dữ liệu giữa RFQ và B2B: resolve company từ quote theo từng case (SPF member / new buyer × company đã hoặc chưa có trong B2B), sync cả company, add buyer vào location, hoặc tạo mới company/location.",
+        "B2B app: Company section — quản lý company, locations, buyers và trạng thái pricing của từng company.",
+        "B2B app: Pricing được hợp nhất thành Base pricing — một adjustment apply universally cho toàn bộ scope sản phẩm, đồng thời có thể pick explicit price cho các sản phẩm cụ thể."
+      ]
+    }
+  ]
+}
