@@ -1333,7 +1333,7 @@ const state = {
   selectedQuote:null, quoteFilter:'all',
   listFilter:'all',
   selectedCompany:'c1', companyTab:'pricing',
-  selectedLocation:null, locationFormId:null, orderLocationSort:null, locationEditSection:null,
+  selectedLocation:null, locationFormId:null, orderLocationSort:null,
   locAssignKind:'base', locAssignPolicyId:'',
   orderFilter:'all',
   builder:null,
@@ -3004,22 +3004,14 @@ function renderLocation(){
   const skv = rows => rows.map(([k,v]) =>
     `<div class="summary-item" style="padding:5px 0"><span>${k}</span><b>${v}</b></div>`).join('');
 
-  /* Location details + Shipping vẫn edit tại chỗ theo section (form nhiều field
-     text); các control một-lựa-chọn ở Commerce settings là live (data-loc-live). */
-  const editing = s => state.locationEditSection===s;
-  const subHead = (title, s, label) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 8px">
-    <div class="loc-sub" style="margin:0">${title}</div>
-    <div>${editing(s)
-      ? `<button class="btn small" data-action="cancel-loc-section">Cancel</button>
-         <button class="btn small primary" data-action="save-loc-section" data-loc-section="${s}">Save</button>`
-      : `<button class="btn small" data-action="edit-loc-section" data-loc-section="${s}">${label||'Edit ✎'}</button>`}</div></div>`;
+  /* General + Shipping đều edit qua modal (openGeneralForm / openShippingForm);
+     các control một-lựa-chọn ở Commerce settings là live (data-loc-live). */
   const ship = l.shipping || {};
   // Country luôn có sẵn nên không tính vào việc "đã có địa chỉ hay chưa".
   const shipName = [ship.firstName, ship.lastName].map(x=>String(x||'').trim()).filter(Boolean).join(' ');
   const shipCore = [shipName, ship.company, ship.address1, ship.address2, ship.city, ship.postal].map(x=>String(x||'').trim()).filter(Boolean);
   const shipParts = shipCore.length ? [...shipCore, SHIP_COUNTRY_NAMES[ship.country]||''].filter(Boolean) : [];
   const shipPreview = shipParts.length ? shipParts.map(esc).join('<br>') : '<span class="dim">No shipping address provided.</span>';
-  const field = (label, inner) => `<div class="form-field">${label?`<label>${label}</label>`:''}${inner}</div>`;
   const sideCtrl = (label, control) => `<div style="margin-bottom:12px"><div class="dim" style="font-size:12px;margin-bottom:4px">${label}</div>${control}</div>`;
 
   const totalSales = locOrders.reduce((s,o)=>s+(o.amount||0),0);
@@ -3110,11 +3102,11 @@ function renderLocation(){
   /* ── RIGHT: location details (identity + shipping) + commerce settings ── */
   const detailsCard = `<div class="card"><div class="card-head"><h2>Location details</h2></div>
     <div class="card-body">
-      ${subHead('General','details')}
-      ${editing('details') ? `
-        ${field('Location name', `<input id="locEdName" type="text" value="${esc(l.name)}" placeholder="Enter location name">`)}
-        ${field('Location ID', `<input id="locEdExternalId" type="text" value="${esc(l.externalId||'')}" placeholder="ERP / external ID">`)}
-      ` : skv([
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 8px">
+        <div class="loc-sub" style="margin:0">General</div>
+        <div><button class="btn small" data-action="open-general-form">Edit ✎</button></div>
+      </div>
+      ${skv([
         ['Name', esc(l.name)],
         ['Location ID', l.externalId ? esc(l.externalId) : '<span class="dim">Not set</span>'],
         ['Status', `<span class="badge ${l.status==='Active'?'success':'neutral'}"><span class="dot"></span>${esc(l.status)}</span>`]
@@ -3185,6 +3177,21 @@ function openLocationForm(locId){
     ${l?'':`<div class="inline-note">Pricing is not configured here — the location automatically inherits the company pricing.</div>`}`,
     `<button class="btn" data-close-modal>Cancel</button>
      <button class="btn primary" data-action="save-location">${l?'Save changes':'Create location'}</button>`);
+}
+
+/* General information — modal editor. Location name + external ID (Status hiển
+   thị read-only ở card). Tách khỏi edit inline để đồng nhất với Shipping address. */
+function openGeneralForm(){
+  const c = companyById(state.selectedCompany);
+  const l = c && locationById(c, state.selectedLocation);
+  if(!c || !l) return;
+  openModal('General information', `
+    <div class="form-field"><label>Location name</label>
+      <input id="genFormName" type="text" value="${esc(l.name)}" placeholder="Enter location name"></div>
+    <div class="form-field"><label>Location ID</label>
+      <input id="genFormExternalId" type="text" value="${esc(l.externalId||'')}" placeholder="ERP / external ID"></div>`,
+    `<button class="btn" data-close-modal>Cancel</button>
+     <button class="btn primary" data-action="save-general-form">Save changes</button>`);
 }
 
 /* Shipping address — modal editor. Cùng bộ field với form address khi Add
@@ -5238,7 +5245,7 @@ document.addEventListener('click', e => {
 
   if(t.dataset.view){ state.view=t.dataset.view; state.listFilter='all'; return render(); }
   if(t.dataset.company){ state.selectedCompany=t.dataset.company; state.companyTab='pricing'; state.view='company'; return render(); }
-  if(t.dataset.location){ state.selectedLocation=t.dataset.location; state.view='location'; state.locationEditSection=null; return render(); }
+  if(t.dataset.location){ state.selectedLocation=t.dataset.location; state.view='location'; return render(); }
   if(t.dataset.sloc){
     const id=t.dataset.sloc;
     const i=state.selectedShopifyLocations.indexOf(id);
@@ -5942,20 +5949,16 @@ document.addEventListener('click', e => {
     return render();
   }
   /* ── Location resource actions ── */
-  if(a==='open-company-locations'){ state.view='company'; state.companyTab='locations'; state.locationEditSection=null; return render(); }
-  if(a==='edit-loc-section'){ state.locationEditSection=t.dataset.locSection; return render(); }
-  if(a==='cancel-loc-section'){ state.locationEditSection=null; return render(); }
-  if(a==='save-loc-section'){
+  if(a==='open-company-locations'){ state.view='company'; state.companyTab='locations'; return render(); }
+  if(a==='open-general-form') return openGeneralForm();
+  if(a==='save-general-form'){
     const c=companyById(state.selectedCompany); const l=c&&locationById(c,state.selectedLocation);
     if(!c||!l) return;
-    const s=t.dataset.locSection;
-    if(s==='details'){
-      const name=document.getElementById('locEdName').value.trim();
-      if(!name) return toast('Enter a location name');
-      l.name=name;
-      l.externalId=document.getElementById('locEdExternalId').value.trim();
-    }
-    state.locationEditSection=null;
+    const name=document.getElementById('genFormName').value.trim();
+    if(!name) return toast('Enter a location name');
+    l.name=name;
+    l.externalId=document.getElementById('genFormExternalId').value.trim();
+    closeModal();
     toast('Location updated');
     return render();
   }
