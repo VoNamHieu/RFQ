@@ -3031,7 +3031,7 @@ function renderLocation(){
     ${buyers.length ? `<table><thead><tr><th>Name</th><th>Role</th><th class="num"></th></tr></thead><tbody>
       ${buyers.map(b=>`<tr>
         <td><div class="cell-main">${esc(b.name)}</div><div class="cell-sub">${esc(b.email)}</div></td>
-        <td>${b.name===c.mainContact?'Primary buyer':'Buyer'}</td>
+        <td>${esc(b.role||'Ordering only')}</td>
         <td class="num"><button class="btn small" data-action="unassign-buyer" data-buyer-email="${esc(b.email)}">Remove</button></td>
       </tr>`).join('')}
       </tbody></table>`
@@ -3250,6 +3250,9 @@ function openShippingForm(){
 
 /* Assign buyer — Location ↔ Contact là relationship thật: contact có một
    locationId; assign từ location khác nghĩa là chuyển buyer sang đây. */
+/* Vai trò buyer ở một Location (Shopify B2B). "Ordering only" ít quyền nhất nên
+   là mặc định an toàn khi assign. */
+const BUYER_ROLES = ['Location admin', 'Ordering only'];
 function openAssignBuyer(locId){
   const c = companyById(state.selectedCompany);
   const l = c && locationById(c, locId);
@@ -3261,6 +3264,9 @@ function openAssignBuyer(locId){
       return `<tr>
         <td><div class="cell-main">${esc(ct.name)}</div><div class="cell-sub">${esc(ct.email)}</div></td>
         <td class="dim">${from?`Currently at ${esc(from.name)}`:'Unassigned'}</td>
+        <td><select data-buyer-role aria-label="Role for ${esc(ct.name)}" style="min-width:150px">
+          ${BUYER_ROLES.map(r=>`<option value="${esc(r)}"${(ct.role||'Ordering only')===r?' selected':''}>${esc(r)}</option>`).join('')}
+        </select></td>
         <td class="num"><button class="btn small primary" data-action="confirm-assign-buyer"
           data-buyer-email="${esc(ct.email)}" data-location-id="${l.id}">Assign</button></td>
       </tr>`;}).join('')}</tbody></table>`
@@ -6065,6 +6071,8 @@ document.addEventListener('click', e => {
     const c=companyById(state.selectedCompany); if(!c) return;
     const ct=(c.contacts||[]).find(x=>x.email===t.dataset.buyerEmail); if(!ct) return;
     ct.locationId=t.dataset.locationId;
+    const roleSel=t.closest('tr')?.querySelector('[data-buyer-role]');
+    if(roleSel && roleSel.value) ct.role=roleSel.value;
     closeModal(); toast('Buyer assigned'); return render();
   }
   if(a==='unassign-buyer'){
