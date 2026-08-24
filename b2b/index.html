@@ -3988,22 +3988,16 @@ function openCompanyPicker(){
         <span class="badge ${badge[0]}">${badge[1]}</span>
       </label>`;
     }
-    /* Chọn Company KHÔNG tạo assignment cho từng Location — location vẫn INHERIT.
-       Nếu company cha đang được tick, location con hiện "Covered by company" và
-       khoá lại: gán cùng một profile xuống location vừa thừa vừa phá inheritance
-       (đổi profile của company sau này thì location không theo nữa). Muốn một
-       location đi giá KHÁC thì bỏ tick company, tick riêng location đó. */
-    const covered = cChosen.includes(n.companyId);
-    const chosen=lChosen.includes(n.id), st=locRowState(b,n.id);
-    if(covered){
-      return `<label class="multi-row" style="padding-left:30px;opacity:.6;cursor:default">
-        <input type="checkbox" checked disabled>
-        <span class="grow"><span class="m-name" style="font-weight:500">↳ ${esc(n.title)}</span>
-          <span class="m-meta">${esc(n.meta||'')}</span></span>
-        <span class="badge">Covered by company</span>
-      </label>`;
-    }
-    const badge = st.holdsThis && chosen ? ['success','Assigned']
+    /* Company cha đang tick thì location con được PHỦ theo: hiện checked + badge
+       "Covered by company" nhưng KHÔNG khoá — vẫn bỏ tick lẻ được. Bỏ tick một
+       location sẽ "nổ" cụm ra (company off, các location còn lại thành override
+       riêng) nên location đó không đi theo giá của company nữa. */
+    const coveredByCompany = cChosen.includes(n.companyId) && !lChosen.includes(n.id);
+    const ownOverride = lChosen.includes(n.id);
+    const chosen = coveredByCompany || ownOverride;
+    const st=locRowState(b,n.id);
+    const badge = coveredByCompany ? ['','Covered by company']
+      : st.holdsThis && chosen ? ['success','Assigned']
       : st.holdsThis ? ['critical','Will be removed']
       : st.other && chosen ? ['warning','Replaces override']
       : chosen ? ['success','Location override'] : ['','Location'];
@@ -5283,12 +5277,31 @@ document.addEventListener('click', e => {
   if(t.dataset.locPick){
     if(assignmentLocked()) return;
     const id=t.dataset.locPick;
-    /* Location đang được company cha phủ thì không tick lẻ được (nó inherit, không
-       cần override cùng profile). */
-    const f=findLocation(id);
-    if(f && (state.companyPickerIds||[]).includes(f.company.id)) return;
-    const list=state.locationPickerIds||[];
-    state.locationPickerIds = list.includes(id) ? list.filter(x=>x!==id) : [...list, id];
+    const f=findLocation(id); if(!f) return;
+    const co=f.company, sibIds=(co.locations||[]).map(l=>l.id);
+    const lset=new Set(state.locationPickerIds||[]);
+    const cset=new Set(state.companyPickerIds||[]);
+    const coveredByCompany = cset.has(co.id) && !lset.has(id);
+    const checked = coveredByCompany || lset.has(id);
+    if(checked){
+      /* Bỏ tick một location: nếu company cha đang phủ cả cụm thì "nổ" cụm ra —
+         company off, các location anh em CÒN LẠI thành override riêng, mình off. */
+      if(cset.has(co.id)){
+        cset.delete(co.id);
+        sibIds.forEach(sid=>{ if(sid!==id) lset.add(sid); });
+      }
+      lset.delete(id);
+    } else {
+      /* Tick một location: nếu cả cụm đã đủ mặt thì gộp lên company cho gọn
+         (company checked = mọi location của nó được chọn, hiện "Covered by company"). */
+      lset.add(id);
+      if(sibIds.length && sibIds.every(sid=>lset.has(sid))){
+        sibIds.forEach(sid=>lset.delete(sid));
+        cset.add(co.id);
+      }
+    }
+    state.locationPickerIds=[...lset];
+    state.companyPickerIds=[...cset];
     return openCompanyPicker();
   }
   if(t.dataset.companyPick){
@@ -5296,9 +5309,10 @@ document.addEventListener('click', e => {
     const id=t.dataset.companyPick, list=state.companyPickerIds||[];
     const on = !list.includes(id);
     state.companyPickerIds = on ? [...list, id] : list.filter(x=>x!==id);
-    /* Chọn Company KHÔNG gán xuống từng Location — các location INHERIT từ company,
-       không tạo override. Chỉ dọn các location con ra khỏi danh sách override khi
-       tick company (chúng chuyển sang "Covered by company"); untick thì để nguyên. */
+    /* Tick company = phủ mọi location của nó (chúng hiện "Covered by company",
+       vẫn bỏ tick lẻ được — xử lý ở nhánh locPick). Dọn location con khỏi danh
+       sách override để chúng phủ-qua-company chứ không nhân đôi override; untick
+       company thì các location covered tự bỏ theo. */
     const co=companyById(id);
     if(co && on){
       const locIds=new Set((co.locations||[]).map(l=>l.id));
