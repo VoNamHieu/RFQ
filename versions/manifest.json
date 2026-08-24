@@ -1,17 +1,28 @@
 {
   "unreleased": {
-    "note": "Chưa có thay đổi sau v1.",
+    "note": "Chưa có thay đổi mới sau v1 (v1 đang bằng bản Latest).",
     "changes": []
   },
   "versions": [
     {
       "id": "v1",
-      "date": "Aug 18, 2026",
-      "note": "Bản đầu tiên của prototype RFQ × B2B, chạy trong khung Shopify admin mô phỏng.",
+      "date": "Aug 21, 2026",
+      "note": "Bản hiện tại của prototype RFQ × B2B, chạy trong khung Shopify admin mô phỏng. (Cập nhật Aug 24, 2026: gộp Default price vào Pricing rules.)",
       "changes": [
         "Sync dữ liệu giữa RFQ và B2B: resolve company từ quote theo từng case (SPF member / new buyer × company đã hoặc chưa có trong B2B), sync cả company, add buyer vào location, hoặc tạo mới company/location.",
         "B2B app: Company section — quản lý company, locations, buyers và trạng thái pricing của từng company.",
-        "B2B app: Pricing được hợp nhất thành Base pricing — một adjustment apply universally cho toàn bộ scope sản phẩm, đồng thời có thể pick explicit price cho các sản phẩm cụ thể."
+        "Location thành resource thật của Company: detail page 2 cột kiểu Shopify (Location overview · Buyers · Pricing · Quotes · Order history + sidebar Location details & Commerce settings), index table row clickable, Add/Edit location, assign buyer, edit tại chỗ từng section.",
+        "Purchasing tách 2 dimension độc lập: payment terms và purchasing mode (Buy directly / Require merchant approval); Commerce settings là control live (đổi là lưu).",
+        "Flow Add company from Shopify có bước Locations (chọn location nào đi vào app, contacts đi theo location).",
+        "Order history + tab Orders ở Company; View all từ location filter theo location nguồn. Quotes lọc RFQ theo location, click mở quote detail.",
+        "Per-location pricing: mỗi Location có thể override Pricing Profile riêng (resolution Location → Company); card Pricing copy đúng hành vi company (edit ✎ / swap ⇄ / unassign ⊖). Edit/fork pricing từ Location scope theo location; policyUsage đếm cả location override.",
+        "Pricing builder picker 'Select companies or locations': chọn cả Company lẫn từng Location (location con thụt lề); tick Company tự tick sẵn location nhưng vẫn untick/tick lẻ được. Modal assign pricing ở Location khớp hẳn modal ở Company (select + Use company pricing + preview 'What this location will get').",
+        "Base pricing 2 tầng: Pricing rules → Product override. Bỏ card 'Default price' riêng — 'giá cho mọi sản phẩm' giờ cũng là một rule (loại 'All products') trong Pricing rules; base pricing cũ tự migrate thành rule 'All products' catch-all ở CUỐI danh sách nên rule cụ thể vẫn thắng theo first-match, giá không đổi. Base mặc định = giữ giá Shopify. Bỏ scope radio (dùng override thay thế); Quantity vẫn giữ scope.",
+        "Pricing rules engine (nâng từ Collection overrides): Collection / Vendor / Product tag / Product type là các loại rule của cùng một engine — backend generic (dễ thêm loại mới), UI task-specific. Mỗi rule là MỘT dimension độc lập + nhiều value (chip, 'is any of'). Entry: chọn LOẠI ở '+ Add rule ▾', rồi cấu hình bằng chip trong editor gọn (Apply to… + Price + Done) — không IF/THEN, không Match all/any, không dropdown field. '+ Add rule' không âm thầm tạo rule 'Collection đầu tiên → 10% off' — rule rỗng không đổi giá cho tới khi Done. (Đã cân nhắc Advanced combine AND/OR nhưng bỏ: OR = tách thành rule độc lập là đủ; giữ rule độc lập cho dễ đọc.)",
+        "Resolve rule đổi sang KHỚP-ĐẦU-TIÊN (trên→dưới): thứ tự là priority thật, kéo ↑↓ để đổi. Bỏ 'nhiều condition = specific hơn = thắng'. Product override vẫn thắng mọi rule. Mọi rule validate qua cùng một cửa: không tăng trên Shopify price, không giảm quá 100% (input % chặn max 100); pricing chỉ cần một rule thật (vd 'All products' 20% off) là hợp lệ, không còn bị chặn nhầm.",
+        "Rule dở dang không bị mất im lặng: rule đã đặt % nhưng CHƯA chọn value (vd 'Vendor 15%' mà chưa chọn vendor) không còn bị xoá lén khi Done/Save (trước đây gây 'thêm 2 rule chỉ còn 1'). Giờ Done/Save chặn lại, giữ rule, mở đúng nó lên và báo 'Pick at least one … or delete it'; muốn bỏ thì bấm thùng rác.",
+        "Product overrides: bỏ toggle bật/tắt — có product trong danh sách tức là có giá riêng (override cả default lẫn rule), không product thì không có lớp này. Search toàn store.",
+        "Một pricing resolver duy nhất (resolvePricing): Location override → Company → All-Companies default, bỏ qua Inactive ở mọi nơi. Sửa lỗi Company báo 'Needs a price' dù các Location đã có override riêng. Picker assign: tick Company KHÔNG tạo override cho từng Location (giữ inheritance) — location con hiện 'Covered by company'; muốn location đi giá khác thì tick riêng location đó."
       ]
     }
   ]

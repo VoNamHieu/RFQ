@@ -3553,15 +3553,6 @@ renderQuote(currentQuoteId);
             : sel.value === 'latest' ? '/' : `/versions/${sel.value}/`;
         });
       }
-      if(match){
-        const v = versions.find(x => x.id === current) || {};
-        const bar = document.createElement('div');
-        bar.style.cssText = 'background:#4b2e83;color:#fff;font-size:12.5px;padding:8px 16px;display:flex;gap:10px;align-items:center';
-        bar.innerHTML = `<strong>Archived prototype — ${current}</strong>`
-          + `<span style="opacity:.85">${[v.date, v.note].filter(Boolean).join(' · ')}</span>`
-          + `<a href="/" style="margin-left:auto;color:#fff;font-weight:650">Open latest ↗</a>`;
-        document.body.prepend(bar);
-      }
     })
     .catch(() => {});
 })();
