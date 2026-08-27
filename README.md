@@ -1,7 +1,27 @@
 # RFQ × B2B
 
-QuoteSnap RFQ × Shopify B2B — the *create-company* flow prototype. A single, self-contained
-static page (`index.html`): no build step, no dependencies, no backend.
+QuoteSnap RFQ × Shopify B2B — the *create-company* flow prototype. A self-contained
+static page (`index.html`): no build step, no backend.
+
+## Design tokens (Shopify Polaris)
+
+The stylesheets are driven by the real Polaris design system. `vendor/polaris-tokens.css`
+is the vendored `@shopify/polaris-tokens@9.4.2` CSS build (the `--p-*` custom properties)
+and serves as the **source of record**. Both `index.html` and `b2b/index.html` **inline a
+copy** of that file in a `<style>` block at the top of their `<head>`, then reference the
+`--p-*` tokens for colors, spacing and radii. `b2b/index.html` additionally keeps the two
+tokens that intentionally differ from the library (`--p-color-input-border-top`, and
+`--p-font-family-mono` for IBM Plex Mono).
+
+Tokens are **inlined, not `<link>`ed on purpose**: these pages are opened straight from
+`file://` (and embedded in other contexts), where an external stylesheet at a relative path
+often doesn't load — which would leave every `--p-*` undefined and collapse the whole layout.
+Inlining keeps each page fully self-contained.
+
+To update the tokens: refresh `vendor/polaris-tokens.css` (bump the version in its header
+URL and re-download), then re-inline it into both HTML files (replace the contents of each
+page's first `<style>` block). Full Polaris *components* (`@shopify/polaris`) are React-only
+and intentionally not used here.
 
 ## Local preview
 
