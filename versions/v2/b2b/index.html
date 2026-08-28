@@ -402,6 +402,7 @@
   .add-rule-wrap{position:relative;display:inline-block}
   .add-rule-menu.up{top:auto;bottom:100%;left:0;right:auto;margin-top:0;margin-bottom:var(--p-space-100)}
   .add-rule-bar{display:flex;justify-content:flex-start;margin-top:var(--p-space-300)}
+  .rules-scroll{max-height:334px;overflow-y:auto;overflow-x:hidden;margin:0 -4px;padding:2px 4px;border-radius:var(--p-border-radius-200)}
   .add-rule-empty{margin-top:14px;text-align:center}
   .rule-row .cell-main{font-size:13px;font-weight:var(--p-font-weight-semibold);color:var(--text-strong)}
   .rule-row .cell-sub{font-size:12px;color:var(--text-sub);margin-top:var(--p-space-025);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -5950,7 +5951,7 @@ function ruleBuilderCard(b){
     <div class="muted" style="margin:-2px 0 10px">Price all products or a set by collection, vendor, tag or type. When several rules match one product, the higher rule wins — drag the handle to reorder.</div>
     ${errorLine('rule')}
     ${rows
-      ? `${rows}<div class="add-rule-bar">${addRuleControl}</div>`
+      ? `<div class="${(rules.length>5&&state.ruleEdit==null)?'rules-scroll':''}">${rows}</div><div class="add-rule-bar">${addRuleControl}</div>`
       : `<div class="pl-empty" style="margin:0"><b>No pricing rules</b><span>Every product keeps its Shopify price. Add an “All products” rule to price the whole catalog, or a narrower rule for a subset.</span><div class="add-rule-empty">${addRuleControl}</div></div>`}
   </div>`;
 }
