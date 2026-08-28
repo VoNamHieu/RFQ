@@ -420,16 +420,6 @@
   th{text-align:left;font-size:var(--p-font-size-300);font-weight:var(--p-font-weight-medium);
     color:var(--text-sub);padding:var(--p-space-200) var(--p-space-300);
     border-bottom:0.0625rem solid var(--p-color-border);background:var(--sunken)}
-  /* Polaris-style dinh nghia cot: dotted underline + tooltip bubble khi hover.
-     Bubble dat DUOI header vi .card overflow:hidden se cat bubble dat tren. */
-  .th-hint{position:relative;border-bottom:1px dotted var(--text-sub,#8a8a8a);cursor:default}
-  .th-hint::after{
-    content:attr(data-tip);position:absolute;top:calc(100% + 8px);right:0;
-    background:#fff;color:#303030;font-size:12px;font-weight:400;line-height:1.45;text-align:left;
-    padding:8px 12px;border-radius:8px;width:max-content;max-width:230px;white-space:normal;
-    box-shadow:0 4px 12px rgba(26,26,26,.22),0 0 0 1px rgba(0,0,0,.06);
-    opacity:0;pointer-events:none;transition:opacity .12s ease .05s;z-index:60}
-  .th-hint:hover::after{opacity:1}
   td{padding:var(--p-space-300);border-bottom:0.0625rem solid var(--p-color-border-secondary);
     vertical-align:middle}
   tr:last-child td{border-bottom:0}
@@ -447,54 +437,6 @@
   .segment.active{background:var(--p-color-bg-surface-inverse);color:var(--p-color-bg-surface)}
   .segment .n{font-family:var(--mono);font-size:11px;background:var(--p-color-border-secondary);border-radius:8px;padding:0 4px;color:var(--text-sub)}
   .segment.active .n{background:rgba(255,255,255,.22);color:var(--p-color-bg-surface)}
-
-  /* Pricing-rules entry UI — typed rows, add-rule menu, multi-value chips */
-  .add-rule-menu{position:absolute;top:100%;right:0;margin-top:4px;z-index:20;min-width:190px;
-    background:var(--p-color-bg-surface);border:1px solid var(--border-strong);border-radius:10px;
-    box-shadow:0 8px 24px rgba(0,0,0,.14);padding:4px;display:flex;flex-direction:column}
-  .add-rule-menu button{background:none;border:0;text-align:left;padding:8px 10px;border-radius:7px;
-    font-size:13px;color:var(--text-strong);cursor:pointer;display:flex;align-items:center;gap:8px}
-  .add-rule-menu button:hover{background:var(--p-color-bg-surface-hover)}
-  .add-rule-menu button:disabled{color:var(--text-sub);cursor:default;opacity:.55}
-  .add-rule-menu button:disabled:hover{background:none}
-  .add-rule-menu .menu-added{margin-left:auto;font-size:11px;color:var(--text-sub)}
-  .add-rule-menu .menu-sep{height:1px;background:var(--border);margin:4px 6px}
-  /* Nút "+ Add rule" nằm ở đáy card, nên menu phải mở LÊN TRÊN để không bị tràn ra ngoài. */
-  .add-rule-wrap{position:relative;display:inline-block}
-  .add-rule-menu.up{top:auto;bottom:100%;left:0;right:auto;margin-top:0;margin-bottom:4px}
-  .add-rule-bar{display:flex;justify-content:flex-start;margin-top:12px}
-  .add-rule-empty{margin-top:14px;text-align:center}
-  .rule-row .cell-main{font-size:13px;font-weight:var(--p-font-weight-semibold);color:var(--text-strong)}
-  .rule-row .cell-sub{font-size:12px;color:var(--text-sub);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .loc-block.editing{border-color:var(--border-strong);box-shadow:0 0 0 3px var(--sunken)}
-  .cond-line{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;flex-wrap:wrap}
-  .cond-line .op{font-family:var(--mono);font-size:12px;color:var(--text-sub);flex:none;padding-top:7px}
-  .chip-wrap{display:flex;flex-wrap:wrap;gap:6px;align-items:center;flex:1;min-width:160px}
-  .chip{display:inline-flex;align-items:center;gap:5px;background:var(--sunken);border:1px solid var(--border);
-    border-radius:20px;padding:2px 5px 2px 10px;font-size:12px;color:var(--text-strong)}
-  .chip-x{background:none;border:0;cursor:pointer;color:var(--text-sub);font-size:15px;line-height:1;
-    width:17px;height:17px;border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0}
-  .chip-x:hover{background:var(--p-color-border-secondary);color:var(--text-strong)}
-  .chip-add{flex:0 0 auto;min-width:130px;font-size:12px;padding:4px 6px}
-  .rule-mono{font-family:var(--mono);font-size:11px;color:var(--text-sub);letter-spacing:.06em}
-  .editor-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:16px;
-    padding-top:12px;border-top:1px solid var(--border)}
-  .field-suffix{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--text-sub)}
-  /* Price fields carry a $/% suffix — drop the native number spinner so its arrows don't collide with the symbol. */
-  input[type=number]:has(+ .field-suffix){-moz-appearance:textfield;appearance:textfield}
-  input[type=number]:has(+ .field-suffix)::-webkit-outer-spin-button,
-  input[type=number]:has(+ .field-suffix)::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-  .rule-edit-head{display:flex;align-items:center;gap:8px;margin-bottom:14px}
-  .rule-type-tag{font-size:13px;font-weight:var(--p-font-weight-semibold);color:var(--text-strong);
-    background:var(--sunken);border:1px solid var(--border);border-radius:7px;padding:3px 10px}
-  .rule-edit-head .hint{margin:0;flex:1}
-  .rule-edit .form-field > label{display:block;font-size:12px;color:var(--text-sub);margin-bottom:6px;font-weight:var(--p-font-weight-medium)}
-  .chip-field{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid var(--border-strong);
-    border-radius:8px;padding:7px 8px;background:var(--p-color-bg-surface);min-height:38px}
-  .chip-field .chip-add{border:0;background:none;min-width:150px;flex:1;padding:2px 4px;font-size:12.5px;color:var(--text-sub);cursor:pointer}
-  .chip-field .chip-add:focus{outline:none}
-  .price-row{display:flex;gap:10px;align-items:center}
-  .price-row > select{flex:0 0 168px}
 
   .tabs{display:flex;gap:0;border-bottom:1px solid var(--border);padding:0 12px;background:var(--surface)}
   .tab{background:none;border:0;border-bottom:2px solid transparent;padding:8px 12px;cursor:pointer;
@@ -539,13 +481,6 @@
   .form-field.has-error input,.form-field.has-error select{border-color:var(--p-color-text-critical)}
   .form-field.has-error > label{color:var(--p-color-text-critical)}
   .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  /* Location detail: main (trái) + sidebar cố định (phải) — kiểu detail page Shopify. */
-  .loc-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
-  .loc-col{display:flex;flex-direction:column;gap:16px}
-  .loc-col>*{margin-bottom:0}
-  .loc-sub{font-size:12px;font-weight:600;color:var(--text-sub);text-transform:uppercase;letter-spacing:.04em;margin:0 0 8px}
-  .loc-hr{height:1px;background:var(--border);margin:14px 0}
-  @media(max-width:900px){.loc-layout{grid-template-columns:1fr}}
   .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 
   .banner{display:flex;gap:8px;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;line-height:1.5}
@@ -1015,11 +950,11 @@ const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const db = {
   defaults:{b2bPolicyId:null,wholesalePolicyId:null},
   products:[
-    {sku:'FIL-XL', title:'Industrial filter, XL', list:96, stock:840,  vendor:'FilterCo', productType:'Filters',  tags:['industrial']},
-    {sku:'FIL-STD',title:'Industrial filter, standard', list:62, stock:1200, vendor:'FilterCo', productType:'Filters',  tags:['industrial','clearance']},
-    {sku:'SEA-30', title:'Sealant cartridge 300ml', list:8, stock:2600, vendor:'SealPro',  productType:'Sealants', tags:['consumable']},
-    {sku:'HOS-12', title:'Reinforced hose, 12m', list:145, stock:210,  vendor:'HydroMax', productType:'Hoses',    tags:['industrial','premium']},
-    {sku:'VLV-40', title:'Ball valve 40mm', list:52, stock:670,  vendor:'HydroMax', productType:'Valves',   tags:['premium','clearance']}
+    {sku:'FIL-XL', title:'Industrial filter, XL', list:96, stock:840},
+    {sku:'FIL-STD',title:'Industrial filter, standard', list:62, stock:1200},
+    {sku:'SEA-30', title:'Sealant cartridge 300ml', list:8, stock:2600},
+    {sku:'HOS-12', title:'Reinforced hose, 12m', list:145, stock:210},
+    {sku:'VLV-40', title:'Ball valve 40mm', list:52, stock:670}
   ],
   companies:[
     {id:'c1',name:'ABC Construction',mainContact:'John Nguyen',source:'QuoteSnap RFQ',
@@ -1091,14 +1026,6 @@ const db = {
     {id:'p1',name:'Distributor Tier 2',type:'Reusable',status:'Active',audienceType:'b2b',
       priceKind:'base',scopeType:'all',collection:'All B2B products',selectedProducts:['FIL-XL','FIL-STD','SEA-30','HOS-12','VLV-40'],
       pricingRule:'decrease',valueType:'percentage',value:25,productAdjustments:{},explicitEnabled:false,
-      /* Rule độc lập, mỗi rule một dimension. First-match trên→dưới: rule muốn ưu
-         tiên đặt lên trên. Tag clearance đứng trên Vendor để VLV-40 (HydroMax +
-         clearance) ăn giá clearance 30%, HydroMax còn lại 15%. */
-      conditionalRules:[
-        {id:'cr1',conditions:[{field:'collection',operator:'is',values:['Contractor assortment']}],match:'ALL',rule:'decrease',valueType:'percentage',value:35},
-        {id:'cr2',conditions:[{field:'tag',operator:'contains',values:['clearance']}],match:'ALL',rule:'decrease',valueType:'percentage',value:30},
-        {id:'cr3',conditions:[{field:'vendor',operator:'is',values:['HydroMax']}],match:'ALL',rule:'decrease',valueType:'percentage',value:15}
-      ],
       fallback:'hide',
       validityType:'evergreen',startDate:'',endDate:''},
     {id:'p2',name:'Contractor Standard',type:'Reusable',status:'Active',audienceType:'d2c',
@@ -1333,13 +1260,11 @@ const state = {
   selectedQuote:null, quoteFilter:'all',
   listFilter:'all',
   selectedCompany:'c1', companyTab:'pricing',
-  selectedLocation:null, locationFormId:null, orderLocationSort:null,
-  locAssignKind:'base', locAssignPolicyId:'',
   orderFilter:'all',
   builder:null,
   openSections:{1:true,2:true,3:false,4:false},   // F-05: 3 & 4 collapsed
   assign:null, assignSearch:'',
-  editScopeCompanyId:null, editScopeLocationId:null, forkToLocation:null,
+  editScopeCompanyId:null,
   companySource:null,
   shopifyCompanySearch:'',
   selectedShopifyCompany:null,
@@ -1369,12 +1294,8 @@ const state = {
   pricingKind:'', pricingKindMenu:false, pricingStatus:'', pricingStatusMenu:false,
   pricingTool:'',
   customerPickerIds:[], customerPickerSearch:'',
-  companyPickerIds:[], locationPickerIds:[], companyPickerSearch:'',
+  companyPickerIds:[], companyPickerSearch:'',
   setupTermsExpanded:false,
-  /* Pricing-rule entry UI: which rule row is expanded for editing (index or null),
-     whether the "+ Add rule" type menu is open, and whether the open editor failed
-     its "pick at least one value" check (so the hint shows). */
-  ruleEdit:null, addRuleMenu:false, ruleEditError:false,
   errors:{}
 };
 
@@ -1397,71 +1318,6 @@ const buyersAt = (source,locationName) => (source.contacts||[]).filter(c=>c.loca
    owner" to type in: the app does not own buyer accounts, so a field for one
    only created something that could disagree with Shopify. */
 const mainContactOf = source => (source?.contacts||[])[0] || null;
-
-/* ============================================================
-   LOCATION MODEL — Location là resource thật của Company.
-   Identity (name/address/status) + Purchasing (paymentTerms,
-   purchasingMode) + Buyers (contacts với locationId). Pricing KHÔNG
-   lưu trên Location — luôn resolve từ Company qua effectivePricing(),
-   nên Location không bao giờ thành pricing engine thứ hai.
-   purchasingMode và paymentTerms là hai dimension độc lập.
-   ============================================================ */
-const PURCHASING_LABEL = {DIRECT:'Buys directly', REQUIRE_APPROVAL:'Requires approval'};
-function purchasingLabel(mode){ return PURCHASING_LABEL[mode] || PURCHASING_LABEL.DIRECT; }
-
-/* Canonical hoá mọi company object (seed data, Shopify link, RFQ inject):
-   legacy fields (terms/ordering/buyers trên location, locations/location trên
-   contact) được map sang model mới rồi xoá, để không còn hai nguồn số liệu. */
-function normalizeCompany(c){
-  (c.locations||[]).forEach((l,i)=>{
-    l.id = l.id || (c.id+'-l'+(i+1));
-    l.status = l.status || 'Active';
-    if(!l.paymentTerms) l.paymentTerms = (l.terms && l.terms!=='Not set') ? l.terms : 'No payment terms';
-    if(!l.purchasingMode) l.purchasingMode = l.ordering==='You approve first' ? 'REQUIRE_APPROVAL' : 'DIRECT';
-    if(l.address===undefined) l.address = '';
-    /* Các field cùng cấu trúc với form Create location bên RFQ (shipping,
-       external ID, checkout, tax) — để hai app mô tả cùng một Location. */
-    if(l.externalId===undefined) l.externalId = '';
-    if(!l.shipping) l.shipping = {country:'VN', address1:l.address||'', address2:'', city:'', postal:'', phone:''};
-    if(l.billingSameAsShipping===undefined) l.billingSameAsShipping = true;
-    if(l.editableShipping===undefined) l.editableShipping = false;
-    if(l.taxId===undefined) l.taxId = '';
-    if(!l.taxSettings) l.taxSettings = 'collect';
-    // Per-location pricing override: chỉ giữ REFERENCE tới Pricing Profile
-    // (policyId), không lưu rule. Rỗng → inherit từ Company.
-    if(!l.pricing) l.pricing = {base:null, quantity:null};
-    delete l.terms; delete l.ordering; delete l.buyers;
-  });
-  (c.contacts||[]).forEach(ct=>{
-    if(!ct.locationId){
-      const name = ct.locations || ct.location || '';
-      const loc = (c.locations||[]).find(l=>l.name===name);
-      ct.locationId = loc ? loc.id : null;
-    }
-    delete ct.locations; delete ct.location;
-  });
-  // Orders (orderSeed) tham chiếu location bằng tên — map sang locationId,
-  // giữ o.location làm tên hiển thị dự phòng.
-  (c.orders||[]).forEach(o=>{
-    if(!o.locationId){
-      const loc = (c.locations||[]).find(l=>l.name===o.location);
-      o.locationId = loc ? loc.id : null;
-    }
-  });
-  return c;
-}
-const locationById = (c,id) => (c?.locations||[]).find(l=>l.id===id) || null;
-/* Buyer count luôn derive từ contact assignment — số và tên không thể lệch nhau. */
-const locationBuyers = (c,l) => (c?.contacts||[]).filter(ct=>ct.locationId===(l&&l.id));
-const contactLocationName = (c,ct) => (locationById(c, ct.locationId)||{}).name || 'Unassigned';
-
-/* Pricing resolution — chuỗi Location → Company. Với mỗi pricing kind:
-   Location override (nếu có) thắng, không thì Company assignment. UI chỉ render
-   kết quả resolve + source; rule nằm ở Pricing Profile, không ở Location. */
-/* Back-compat alias — every caller now goes through the single resolvePricing()
-   below so precedence and Inactive-handling can never drift between screens. */
-function effectivePricing(company, location){ return resolvePricing(company, location); }
-db.companies.forEach(normalizeCompany);
 function kindSelPrimary(sel){ if(!sel) return null; for(const k of KIND_ORDER){ if(sel[k]) return sel[k]; } return null; }
 function kindSelPolicies(sel){ return KIND_ORDER.map(k=>sel&&sel[k]).filter(Boolean).map(id=>policyById(id)).filter(Boolean); }
 function syncSetupPolicySelections(){
@@ -1510,7 +1366,7 @@ const policiesFor = (audience, kind) =>
 function applyAudience(b, want){
   if(!b) return;
   b.audienceType = want==='d2c' ? 'd2c' : 'b2b';
-  if(want==='d2c'){ b.b2bCompanyIds=[]; b.b2bLocationIds=[]; }
+  if(want==='d2c'){ b.b2bCompanyIds=[]; }
   else { b.customerTarget='none'; b.assignmentTargetIds=[]; }
 }
 
@@ -1521,12 +1377,6 @@ function policyUsage(id){
   const companies=db.companies.filter(c=>KIND_ORDER.some(k=>companyPricing(c)[k]===id));
   const tags=db.tagPricing.filter(t=>t.defaultPolicyId===id);
   const customers=db.customers.filter(c=>c.policyId===id);
-  /* Location override cũng là một assignee thật: một profile chỉ được location
-     override tới vẫn đang "được dùng" (Active), và edit từ nơi khác phải fork. */
-  const locations=[];
-  db.companies.forEach(c=>c.locations.forEach(l=>{
-    if(KIND_ORDER.some(k=>(l.pricing||{})[k]===id)) locations.push({companyId:c.id, id:l.id, name:l.name});
-  }));
   /* Một global default vẫn là Companies hoặc Customers, không phải một loại buyer
      thứ ba. Nó tự gọi tên đúng cái đã chọn trong picker (All customers, Logged-in
      customers, Non logged-in customers), thay vì đặt ra một tên riêng. */
@@ -1537,8 +1387,8 @@ function policyUsage(id){
     globals.push({side:'customers',
       label:customerTargetLabel(AUDIENCE_TARGETS.includes(p&&p.audience)?p.audience:'all')});
   }
-  return {companies,tags,customers,locations,globals,
-    count:companies.length+tags.length+customers.length+locations.length+globals.length};
+  return {companies,tags,customers,globals,
+    count:companies.length+tags.length+customers.length+globals.length};
 }
 const policyUsageCount = id => policyUsage(id).count;
 /* The library list is for finding a profile, so both of these answer at the
@@ -1552,7 +1402,6 @@ const policyUsageCount = id => policyUsage(id).count;
    lại đúng câu nó trả lời được: loại phạm vi, không phải số lượng. */
 function scopeTypeLabel(p){
   if(!p) return 'None';
-  if(kindOf(p)==='base') return 'All products';
   if(p.scopeType==='all') return 'All products';
   if(p.scopeType==='collection') return 'Collections';
   if(p.scopeType==='tags') return 'Product tags';
@@ -1569,7 +1418,6 @@ function policyUsageTypes(id){
   const g = side => u.globals.some(x=>x.side===side);
   const parts=[];
   if(u.companies.length || g('companies')) parts.push('Companies');
-  if(u.locations && u.locations.length) parts.push('Locations');
   if(u.tags.length) parts.push('Customer tags');
   if(u.customers.length || g('customers')) parts.push('Customers');
   return `<span title="${esc(policyUsagePlain(id))}">${parts.join(', ')}
@@ -1581,7 +1429,6 @@ function policyUsagePlain(id){
   if(!u.count) return 'Not assigned';
   const parts=[];
   if(u.companies.length) parts.push(`${u.companies.length} Compan${u.companies.length===1?'y':'ies'}`);
-  if(u.locations && u.locations.length) parts.push(`${u.locations.length} Location${u.locations.length===1?'':'s'}`);
   if(u.tags.length) parts.push(`${u.tags.length} customer tag${u.tags.length===1?'':'s'}`);
   if(u.customers.length) parts.push(`${u.customers.length} customer${u.customers.length===1?'':'s'}`);
   u.globals.forEach(g=>parts.push(g.label));
@@ -1592,7 +1439,6 @@ function policyUsageLabel(id){
   if(!u.count) return '<span class="dim">Not assigned</span>';
   const parts=[];
   if(u.companies.length) parts.push(`${u.companies.length} Compan${u.companies.length===1?'y':'ies'}`);
-  if(u.locations && u.locations.length) parts.push(`${u.locations.length} Location${u.locations.length===1?'':'s'}`);
   if(u.tags.length) parts.push(`${u.tags.length} tag${u.tags.length===1?'':'s'}`);
   if(u.customers.length) parts.push(`${u.customers.length} customer${u.customers.length===1?'':'s'}`);
   u.globals.forEach(g=>parts.push(g.label));
@@ -1641,46 +1487,24 @@ function tagPolicyFor(cust){
 }
 const productBySku = sku => db.products.find(p=>p.sku===sku) || null;
 
-/* ── ONE pricing resolver ─────────────────────────────────────────────────
-   Precedence per pricing type: Location override → Company assignment. A
-   turned-off (Inactive) profile does not apply, so it is skipped here exactly
-   as it is in policyStatus — the on/off control is never decoration. If nothing
-   is assigned at either level, the store-wide All-Companies default (if any, and
-   active) is the last resort. Company status, the Location table, the Location
-   pricing card and any order preview all read this one function, so precedence
-   can never drift between them. */
-const activePolicy = p => (p && p.status!=='Inactive') ? p : null;
-function resolveKind(company, location, kind){
-  const locP = activePolicy(policyById(((location&&location.pricing)||{})[kind]));
-  if(locP) return {kind, policy:locP, source:'LOCATION'};
-  const compP = activePolicy(policyById(companyPricing(company)[kind]));
-  if(compP) return {kind, policy:compP, source:'COMPANY'};
-  return {kind, policy:null, source:null};
-}
-function resolvePricing(company, location){
-  const entries = KIND_ORDER.map(k=>resolveKind(company, location, k));
-  const set = entries.filter(e=>e.policy);
-  let profiles = set.map(e=>e.policy), source;
-  if(profiles.length){
-    const lead = set[0].source==='LOCATION' ? 'Location pricing' : 'Company pricing';
-    source = profiles.length>1 ? `${lead} · ${profiles.length} types`
-                               : `${lead} · ${kindName(kindOf(set[0].policy))}`;
-  } else {
-    const def = activePolicy(policyById(db.defaults.b2bPolicyId));
-    if(def){ profiles=[def]; source='All Companies default'; }
-    else source='No pricing';
+/* Pricing is Company-level in this version: every Location of a Company
+   resolves to the same profiles, so there is no Location step here. A Company
+   can hold one profile per type; the most specific type wins per product
+   (Price list → Volume pricing → Price rule). */
+function resolveCompany(company, location){
+  /* Turned off means it stops applying. It stays assigned — the Company page
+     still shows it in its slot — but a buyer does not get it, otherwise the
+     on/off control would be decoration. */
+  const list=companyPolicies(company).filter(p=>p.status!=='Inactive');
+  if(list.length) return {profile:list[0], profiles:list,
+    source: list.length>1 ? `Company pricing · ${list.length} types`
+                          : `Company pricing · ${kindName(kindOf(list[0]))}`};
+  if(db.defaults.b2bPolicyId){
+    const p=policyById(db.defaults.b2bPolicyId);
+    return {profile:p, profiles:p?[p]:[], source:'All Companies default'};
   }
-  return {
-    entries,                              // per-kind {kind, policy, source}
-    profiles,                             // resolved policies (assigned, else default)
-    profile: profiles[0] || null,
-    source,
-    hasLocationOverride: KIND_ORDER.some(k=>policyById(((location&&location.pricing)||{})[k])),
-    sourceName: company.name
-  };
+  return {profile:null, profiles:[], source:'No pricing'};
 }
-/* Back-compat alias for the Company-status path. */
-function resolveCompany(company, location){ return resolvePricing(company, location); }
 function resolveCustomer(cust){
   /* Shopify tính giá theo email: email đã gắn vào một Company location luôn được
      hưởng trải nghiệm B2B, nên không pricing mức customer nào với tới được — kể cả
@@ -1694,192 +1518,33 @@ function resolveCustomer(cust){
 }
 function inScope(profile, sku){
   if(!profile) return false;
-  /* Base pricing (3 tầng) luôn phủ toàn bộ sản phẩm — muốn hẹp thì dùng
-     Collection/Product overrides. Chỉ Quantity pricing mới còn scope theo sản phẩm. */
-  if(kindOf(profile)==='base') return true;
   if(profile.scopeType==='all') return true;
   return (profile.selectedProducts||[]).includes(sku);
 }
-/* Không còn toggle bật/tắt: một product có mặt trong danh sách override tức là nó
-   đang có giá riêng. Không product thì không có lớp override. Bỏ được cả một trạng
-   thái "có data nhưng không áp". */
-const explicitOn = p => !!(p && Object.keys(p.productAdjustments||{}).length);
-
-/* Danh mục (Collection) mô hình hoá bằng tập SKU — app không có membership riêng. */
-const COLLECTIONS = {
-  'Wholesale assortment':  ['FIL-XL','FIL-STD','SEA-30','HOS-12','VLV-40'],
-  'Contractor assortment': ['FIL-XL','FIL-STD','SEA-30'],
-  'Distributor assortment':['HOS-12','VLV-40'],
-  'Project assortment':    ['SEA-30','HOS-12']
-};
-const collectionNames = () => Object.keys(COLLECTIONS);
-const collectionHas = (name, sku) => (COLLECTIONS[name]||[]).includes(sku);
-const vendorNames = () => [...new Set(db.products.map(p=>p.vendor).filter(Boolean))];
-const productTypeNames = () => [...new Set(db.products.map(p=>p.productType).filter(Boolean))];
-const tagNames = () => [...new Set(db.products.flatMap(p=>p.tags||[]))];
-
-/* Conditional rule engine — Collection / Vendor / Tag / Product type chỉ là các
-   CONDITION FIELD của cùng một engine, không phải pricing type riêng. Thêm field
-   mới (SKU, Category, Metafield…) sau này không cần redesign. */
-const COND_FIELDS = [
-  {key:'collection',  label:'Collection',   op:'is',       values:collectionNames},
-  {key:'vendor',      label:'Vendor',       op:'is',       values:vendorNames},
-  {key:'productType', label:'Product type', op:'is',       values:productTypeNames},
-  {key:'tag',         label:'Product tag',  op:'contains', values:tagNames},
-  {key:'all',         label:'All products', op:'is',       values:()=>[]}
-];
-const condField = key => COND_FIELDS.find(f=>f.key===key) || COND_FIELDS[0];
-/* Một condition giữ NHIỀU value: "Collection is any of Summer, Accessories" là một
-   condition, không phải nhiều rule. AND/OR (match) chỉ để nối các DIMENSION khác
-   nhau (Vendor AND Tag), không phải để chọn nhiều value trong cùng một field.
-   Tolerant với data cũ dạng single `value`. */
-const condValues = c => !c ? [] : (Array.isArray(c.values) ? c.values.filter(Boolean) : (c.value!=null&&c.value!=='' ? [c.value] : []));
-function conditionMatches(cond, product){
-  const vals=condValues(cond);
-  if(!vals.length) return false;
-  switch(cond.field){
-    case 'all':         return true;
-    case 'collection':  return vals.some(v=>collectionHas(v, product.sku));
-    case 'vendor':      return vals.includes(product.vendor);
-    case 'productType': return vals.includes(product.productType);
-    case 'tag':         return (product.tags||[]).some(tg=>vals.includes(tg));
-    default: return false;
-  }
-}
-function ruleMatches(rule, product){
-  const conds=(rule.conditions||[]).filter(c=>condValues(c).length);
-  if(!conds.length) return false;
-  return rule.match==='ANY' ? conds.some(c=>conditionMatches(c,product))
-                            : conds.every(c=>conditionMatches(c,product));
-}
-/* Rule thắng = rule KHỚP đầu tiên tính từ trên xuống. Thứ tự chính là priority
-   (kéo ↑↓ để đổi). KHÔNG suy ra "specific hơn" từ số condition nữa: với Match any,
-   nhiều condition lại nghĩa là RỘNG hơn chứ không hẹp hơn, nên đếm condition là
-   sai. First-match giải thích được cho merchant và làm nút ↑↓ có nghĩa thật. */
-function matchConditionalRule(profile, product){
-  return (profile.conditionalRules||[]).find(r=>ruleMatches(r,product)) || null;
-}
-/* Một rule có ít nhất một condition đã chọn value và một adjustment thật (không
-   phải 'keep') mới thực sự đổi giá — dùng cho cả validate lẫn prune. */
-const validConditionalRule = r => (r.conditions||[]).some(c=>condValues(c).length) && r.rule && r.rule!=='keep';
-/* Áp một adjustment {rule,valueType,value} lên giá gốc. */
-function applyAdjustment(rule, vt, val, base){
+/* Mặc định là bật với profile đã có giá riêng, để những profile viết trước khi có
+   toggle không im lặng mất lớp explicit. */
+const explicitOn = p => p ? (p.explicitEnabled ?? Object.keys(p.productAdjustments||{}).length>0) : false;
+function priceFor(profile, product){
+  if(!profile || !product) return null;
+  if(!inScope(profile, product.sku)) return null;
+  /* Tắt lớp explicit thì giá phải tính đúng như khi chưa từng có nó, chứ không phải
+     chỉ ẩn bảng đi. */
+  const adj = explicitOn(profile) ? (profile.productAdjustments||{})[product.sku] : null;
+  const useAdj = adj && adj.rule;
+  const rule = useAdj ? adj.rule : profile.pricingRule;
+  const vt   = useAdj ? (adj.valueType||'percentage') : profile.valueType;
+  const val  = Number(useAdj ? (adj.value ?? 0) : (profile.value ?? 0));
+  const base = product.list;
   const round = x => Math.round(x*100)/100;
-  val = Number(val ?? 0);
   if(rule==='keep') return base;
   if(rule==='set') return round(val);
   if(rule==='decrease') return round(vt==='percentage' ? base*(1-val/100) : base-val);
   if(rule==='increase') return round(vt==='percentage' ? base*(1+val/100) : base+val);
   return base;
 }
-/* Resolve 3 tầng, cụ thể nhất thắng: Product override → Conditional rule → Default. */
-function priceFor(profile, product){
-  if(!profile || !product) return null;
-  if(!inScope(profile, product.sku)) return null;
-  const base = product.list;
-  const adj = explicitOn(profile) ? (profile.productAdjustments||{})[product.sku] : null;
-  if(adj && adj.rule) return applyAdjustment(adj.rule, adj.valueType||'percentage', adj.value, base);
-  const cr = matchConditionalRule(profile, product);
-  if(cr && cr.rule) return applyAdjustment(cr.rule, cr.valueType||'percentage', cr.value, base);
-  return applyAdjustment(profile.pricingRule, profile.valueType, profile.value, base);
-}
-/* Tier mà một SKU rơi vào — dùng cho preview/nhãn. */
-function priceTierFor(profile, sku){
-  if(!profile) return null;
-  const product = db.products.find(p=>p.sku===sku);
-  if(explicitOn(profile) && (profile.productAdjustments||{})[sku]?.rule) return 'product';
-  if(product && matchConditionalRule(profile, product)) return 'rule';
-  return 'base';
-}
-/* Op hiển thị: một value thì "is"/"contains"; nhiều value thì "is any of" /
-   "has any of". */
-function condOpLabel(c){
-  const f=condField(c.field), multi=condValues(c).length>1;
-  return f.op==='contains' ? (multi?'has any of':'has') : (multi?'is any of':'is');
-}
-function condLabel(c){
-  if(c && c.field==='all') return 'All products';
-  const f=condField(c.field), vals=condValues(c);
-  if(!vals.length) return `${f.label} — not set`;
-  const shown = vals.length<=2 ? vals.join(', ') : `${vals.slice(0,2).join(', ')} +${vals.length-2}`;
-  return `${f.label} ${condOpLabel(c)} ${shown}`;
-}
-/* Nhãn một dòng cho resolution preview. */
-function ruleLabel(rule){
-  const conds=(rule.conditions||[]).filter(c=>condValues(c).length);
-  if(!conds.length) return 'Any product';
-  const join = rule.match==='ANY' ? ' or ' : ' and ';
-  return conds.map(condLabel).join(join);
-}
-/* Rule luôn một dimension → nhãn "type" là tên field, summary là các value. */
-const RULE_TYPE_LABEL = {collection:'Collection', vendor:'Vendor', productType:'Product type', tag:'Product tag', all:'All products'};
-function ruleTypeLabel(r){
-  const c=(r.conditions||[])[0];
-  return c ? (RULE_TYPE_LABEL[c.field]||'Rule') : 'Rule';
-}
-function ruleValuesSummary(r){
-  const c=(r.conditions||[])[0];
-  if(c && c.field==='all') return 'Every product';
-  const vals=condValues(c);
-  return vals.length ? vals.join(' · ') : 'Not configured yet';
-}
-function ruleAdjustmentLabel(r){
-  if(r.rule==='set') return `Fixed ${money(r.value||0)}`;
-  if(!r.value) return '—';
-  return r.valueType==='amount' ? `${money(r.value)} off` : `${r.value}% off`;
-}
-
-/* Migration: base về scope 'all'; collectionOverrides cũ → conditionalRules
-   (mỗi cái = 1 condition Collection is X); base scope collection hẹp có adjustment
-   thật → thành một conditional rule để giữ hành vi. */
-(function migrateBaseRules(){
-  let rid=1;
-  const allSkus=db.products.map(p=>p.sku);
-  db.policies.forEach(p=>{
-    if(kindOf(p)!=='base') return;
-    p.conditionalRules = p.conditionalRules || [];
-    // collectionOverrides (bản trước) → conditionalRules
-    (p.collectionOverrides||[]).forEach(co=>{
-      p.conditionalRules.push({id:co.id||'cr'+(rid++),
-        conditions:[{field:'collection',operator:'is',value:co.collection}], match:'ALL',
-        rule:co.rule, valueType:co.valueType, value:co.value});
-    });
-    delete p.collectionOverrides;
-    // base scope collection hẹp + adjustment thật → conditional rule
-    const scoped=p.selectedProducts||[];
-    const isAll=scoped.length && allSkus.every(s=>scoped.includes(s));
-    if(p.scopeType==='collection' && !isAll && p.pricingRule && p.pricingRule!=='keep' && COLLECTIONS[p.collection]){
-      p.conditionalRules.unshift({id:'cr'+(rid++),
-        conditions:[{field:'collection',operator:'is',value:p.collection}], match:'ALL',
-        rule:p.pricingRule, valueType:p.valueType, value:p.value});
-      p.pricingRule='keep'; p.value=0;
-    }
-    /* Default price (adjustment base cũ) → một rule "All products" ở CUỐI danh sách:
-       catch-all thua mọi rule cụ thể theo first-match. Không còn card Default price
-       riêng — "giá cho mọi sản phẩm" giờ cũng chỉ là một rule như các rule khác. */
-    if(p.pricingRule && p.pricingRule!=='keep'){
-      p.conditionalRules.push({id:'cr-all-'+p.id,
-        conditions:[{field:'all',operator:'is',values:['All products']}], match:'ALL',
-        rule:p.pricingRule, valueType:p.valueType, value:p.value});
-      p.pricingRule='keep'; p.value=0;
-    }
-    p.scopeType='all'; p.selectedProducts=allSkus;
-  });
-  /* Condition single-value (data cũ) → multi-value: một condition giữ mảng values.
-     Từ đây toàn app đọc/ghi qua condValues + c.values đồng nhất. */
-  db.policies.forEach(p=>{
-    (p.conditionalRules||[]).forEach(r=>{
-      (r.conditions||[]).forEach(c=>{
-        if(!Array.isArray(c.values)) c.values = (c.value!=null&&c.value!=='') ? [c.value] : [];
-        delete c.value;
-      });
-    });
-  });
-})();
 /* labels */
 function scopeLabel(p){
   if(!p) return 'None';
-  if(kindOf(p)==='base') return 'All products';   // base luôn phủ all trong mô hình 3 tầng
   if(p.scopeType==='all') return 'All products';
   /* Cùng lý do: app biết merchant chọn collection nào, không biết trong đó đang có
      bao nhiêu sản phẩm. */
@@ -1913,15 +1578,11 @@ function priceLabel(p){
     return `${span} off Shopify price from ${active[0].from}+ · ${count}`;
   }
 
-  /* "Giá cho mọi sản phẩm" giờ là một rule "All products" chứ không còn là base.
-     Nhấc nó lên làm headline; các rule hẹp hơn đếm vào phần " · N rules". */
-  const allRule = (p.conditionalRules||[]).find(r=>((r.conditions||[])[0]||{}).field==='all');
-  const cn = (p.conditionalRules||[]).length - (allRule?1:0);
-  const extra = `${cn>0?` · ${cn} rule${cn>1?'s':''}`:''}${n?` · ${n} product price${n>1?'s':''}`:''}`;
-  if(!allRule || allRule.rule==='keep') return `Shopify price${extra}`;
-  if(allRule.rule==='set') return `Fixed ${money(allRule.value)} per unit${extra}`;
-  const unit = allRule.valueType==='percentage' ? `${allRule.value||0}%` : `${money(allRule.value||0)} per unit`;
-  return `${unit} ${allRule.rule==='decrease'?'off':'above'} Shopify price${extra}`;
+  const extra = n ? ` · ${n} product price${n>1?'s':''}` : '';
+  if(p.pricingRule==='keep') return `Shopify price${extra}`;
+  if(p.pricingRule==='set') return `Fixed ${money(p.value)} per unit${extra}`;
+  const unit = p.valueType==='percentage' ? `${p.value||0}%` : `${money(p.value||0)} per unit`;
+  return `${unit} ${p.pricingRule==='decrease'?'off':'above'} Shopify price${extra}`;
 }
 const fallbackLabel = f => ({hide:'Hide them', store:'Show Shopify price', quote:'Require a quote', fallback:'Use another price'}[f] || 'None');
 /* Turned off is a choice the merchant made; scheduled is a fact about the
@@ -2130,7 +1791,7 @@ function openShopifyCompanyBrowser(){
     <div class="directory-list" id="shopifyCompanyDirectory" ${isEmpty?'style="border:0;background:transparent"':''}>${rows}</div>
     ${isEmpty?'':`<div class="hint" style="margin-top:8px">${selected
       ? `<b>${esc(selected.name)}</b> selected. Continue to review its Locations and set pricing.`
-      : 'Select a Company to link it to this app. You choose which of its Locations come along in the next step.'}</div>`}`,
+      : 'Select a Company to link it to this app. All of its Shopify Locations come with it.'}</div>`}`,
     `<button class="btn" data-close-modal>Cancel</button>
      ${isEmpty
        ? (shopifyCompanyDirectory.length
@@ -2139,12 +1800,13 @@ function openShopifyCompanyBrowser(){
        : `<button class="btn primary" data-action="continue-shopify-company" ${selected?'':'disabled'}>Continue</button>`}`);
 }
 
-/* Setup: Company → Locations → pricing → review. Bước Locations quay lại vì
-   Location giờ là resource thật — partial link không còn là ngõ cụt (location
-   thiếu thêm được sau từ tab Locations của Company). */
+/* The Locations step listed every Location that comes with the Company and
+   nothing else: no choice to make, since all of them come along and pricing is
+   Company-level. With its list gone it held one read-only contact line, which
+   is not a step. Setup is Company, then pricing, then review. */
 function companySetupSteps(){
   const current=Number(state.companySetupStep||3);
-  const steps=[[1,'Company'],[2,'Locations'],[3,'Assign pricing'],[4,'Review']];
+  const steps=[[1,'Company'],[3,'Assign pricing'],[4,'Review']];
   return `<div class="setup-steps">${steps.map((step,i)=>{
     const done=step[0]<current, active=step[0]===current;
     return `<div class="setup-step ${done?'done':''} ${active?'active':''}">
@@ -2163,9 +1825,10 @@ function openShopifyCompanySetup(step=null){
   const source=shopifyCompanyDirectory.find(c=>c.id===state.selectedShopifyCompany);
   if(!source) return openShopifyCompanyBrowser();
   if(step!==null) state.companySetupStep=Number(step);
-  /* selectedShopifyLocations được seed đủ khi Continue từ browser; merchant
-     tinh chỉnh ở bước Locations (step 2). */
-  if(!Array.isArray(state.selectedShopifyLocations)) state.selectedShopifyLocations=source.locations.map(l=>l.id);
+  /* No per-Location subset in this version: a partial link left the missing
+     Locations unreachable, because the Company then reads as already added
+     and there is no way to link the rest afterwards. */
+  state.selectedShopifyLocations=source.locations.map(l=>l.id);
   if(!state.companySetupPolicyByKind) state.companySetupPolicyByKind=emptyKindSel();
   if(!state.companySetupPolicySeeded){
     state.companySetupPolicySeeded=true;
@@ -2182,30 +1845,6 @@ function openShopifyCompanySetup(step=null){
     </div>`;
 
   let body='', foot='';
-
-  if(state.companySetupStep===2){
-    /* Location pick: chọn Location nào của Company đi vào app. Contact đi theo
-       Location được chọn; pricing vẫn là Company-level, không hỏi ở đây. */
-    body=`
-      ${companySetupSteps()}
-      ${selectedHeader}
-      <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
-        ${source.locations.map(l=>{
-          const on=state.selectedShopifyLocations.includes(l.id);
-          const nBuyers=buyersAt(source,l.name).length;
-          return `<label class="rule-card ${on?'selected':''}" data-sloc="${l.id}">
-            <input type="checkbox" ${on?'checked':''}>
-            <div><div class="rule-title">${esc(l.name)}</div>
-              <div class="rule-desc">${esc(l.terms)} · ${esc(l.ordering)} · ${nBuyers} buyer${nBuyers===1?'':'s'}</div></div>
-          </label>`;
-        }).join('')}
-      </div>
-      <div class="inline-note" style="margin-top:10px">${selectedLocations.length
-        ? `${selectedLocations.length} of ${source.locations.length} location${source.locations.length===1?'':'s'} will be added. Contacts follow their location.`
-        : 'Select at least one location to continue.'}</div>`;
-    foot=`<button class="btn" data-action="company-setup-back">Back</button>
-      <button class="btn primary" data-action="company-setup-next" ${selectedLocations.length?'':'disabled'}>Continue</button>`;
-  }
 
   if(state.companySetupStep===3){
     /* This version always prices the whole Company: every Location of the
@@ -2369,7 +2008,7 @@ function openShopifyCompanySetup(step=null){
         <div class="review-body"><dl class="kv">
           <dt>Company</dt><dd>${esc(source.name)}</dd>
           <dt>Locations</dt><dd>${selectedLocations.map(l=>esc(l.name)).join(', ')}</dd>
-          <dt>Contacts of company</dt><dd>${source.contacts.filter(ct=>selectedLocations.some(l=>l.name===ct.location)).length}</dd>
+          <dt>Contacts of company</dt><dd>${source.contacts.length}</dd>
           <dt>Main contact</dt><dd>${esc(mainContactOf(source)?.name||'None on this Company')}</dd>
         </dl></div></div>
 
@@ -2405,7 +2044,14 @@ function openShopifyCompanySetup(step=null){
             ${state.setupTermsExpanded?'Show fewer Locations':`Show ${termsHidden} more Location${termsHidden===1?'':'s'}`}
             <span class="n">${selectedLocations.length} total</span>
           </button>`:''}
-        </div></div>`;
+        </div></div>
+
+      <div class="banner ${picked.length?'success':'warning'}"><div>
+        <b>${picked.length?'Ready to add and apply':'Ready to add without pricing'}</b>
+        ${picked.length
+          ? `${picked.length} pricing profile${picked.length===1?'':'s'} will apply to all ${selectedLocations.length} Location${selectedLocations.length===1?'':'s'}.`
+          : 'The Company and its Locations are added now. Buyers cannot order until pricing is assigned from the Pricing page.'}
+      </div></div>`;
     foot=`<button class="btn" data-action="company-setup-back">Back</button>
       <button class="btn primary" data-action="add-selected-shopify-company">${picked.length?'Add company and apply pricing':'Add company without pricing'}</button>`;
   }
@@ -2468,7 +2114,7 @@ function renderSidebar(){
   const k = counts();
   const countFor = id => id==='customers' ? String(k.companies)
                     : id==='pricing' ? String(db.policies.length) : '';
-  const isActive = id => state.view===id || (id==='customers' && ['company','quote','location'].includes(state.view));
+  const isActive = id => state.view===id || (id==='customers' && ['company','quote'].includes(state.view));
   host.innerHTML =
     APP_SECTIONS.map(s=>{
       const count = countFor(s.id);
@@ -2831,12 +2477,6 @@ function searchField(placeholder, attrs, value=''){
 const kindPurpose = k => ({base:'What a product normally costs',
   quantity:'How the price changes with quantity'}[k]||'');
 
-function orderTone(status){
-  return (status==='Fulfilled'||status==='Paid') ? 'success'
-    : status==='Needs review' ? 'warning'
-    : status==='Blocked' ? 'critical' : 'neutral';
-}
-
 function renderCompany(){
   const c = companyById(state.selectedCompany);
   const assigned = companyPolicies(c);
@@ -2848,40 +2488,27 @@ function renderCompany(){
      own sub-line. One table, one tab. */
   const quotes = db.quotes.filter(q=>q.company===c.id);
   const waiting = quotes.filter(q=>['New Received','Read','Updated'].includes(q.status)).length;
-  const companyOrders = c.orders||[];
   const tabs = [['pricing','Pricing'],['quotes',`Quotes${quotes.length?` <span class="n">${quotes.length}</span>`:''}`],
-                ['orders',`Orders${companyOrders.length?` <span class="n">${companyOrders.length}</span>`:''}`],
                 ['locations','Locations'],['contacts','Contacts']];
 
   let body='';
 
   if(state.companyTab==='locations'){
-    /* Location là resource index: row nào cũng click được ra trang chi tiết.
-       Cột Pricing show kết quả resolve + source ngay trong bảng — merchant
-       scan là hiểu, không cần đọc câu giải thích. */
-    const pricingCellFor = l => {
-      const ep = effectivePricing(c, l);
-      return ep.profiles.length
-        ? `<div class="cell-main">${ep.profiles.map(p=>esc(p.name)).join(', ')}</div><div class="cell-sub">${ep.hasLocationOverride?'Location override':'Inherited from company'}</div>`
-        : `<div class="cell-main dim">No pricing</div><div class="cell-sub">Set on the location</div>`;
-    };
-    body = `<div class="card"><div class="card-head">
-      <div><h2>Locations</h2><div class="dim" style="font-weight:400;font-size:12.5px;margin-top:2px">Manage where this company buys and who can purchase.</div></div>
-      <div class="right"><button class="btn small primary" data-action="add-location">+ Add location</button></div></div>
-      ${c.locations.length?`
-      <table><thead><tr><th>Location</th><th>Payment terms</th><th>Purchasing</th><th>Pricing</th>
+    body = `<div class="card"><div class="card-head"><h2>Locations</h2>
+      <div class="right"><span class="dim">Pricing is set on the pricing profile, not here</span></div></div>
+      <table><thead><tr><th>Location</th><th>How they buy</th>
         <th class="num">Buyers</th></tr></thead><tbody>
-      ${c.locations.map(l=>`<tr class="clickable" data-location="${l.id}">
-          <td><div class="cell-main">${esc(l.name)}</div>${l.address?`<div class="cell-sub">${esc(l.address)}</div>`:''}</td>
-          <td>${esc(l.paymentTerms)}</td>
-          <td>${purchasingLabel(l.purchasingMode)}</td>
-          <td>${pricingCellFor(l)}</td>
-          <td class="num">${locationBuyers(c,l).length}</td>
+      ${c.locations.map(l=>`<tr>
+          <td><div class="cell-main">${esc(l.name)}</div><div class="cell-sub">${esc(l.terms)}</div></td>
+          <td>${esc(l.ordering)}</td>
+          <td class="num">${l.buyers}</td>
           </tr>`).join('')}
-      </tbody></table>`
-      :`<div class="empty"><div class="empty-title">No locations yet</div>
-          <p>Add a location to define where this company buys.</p></div>`}
-      </div>`;
+      </tbody></table>
+      <div class="card-body" style="border-top:1px solid var(--border)">
+        <div class="inline-note" style="margin:0">${assigned.length
+          ? `Every Location resolves to the Company pricing: ${assigned.map(p=>esc(p.name)).join(', ')}.`
+          : 'No pricing is assigned to this Company yet.'}</div>
+      </div></div>`;
   }
 
   else if(state.companyTab==='quotes'){
@@ -2932,42 +2559,13 @@ function renderCompany(){
       </div></div>`;
   }
 
-  else if(state.companyTab==='orders'){
-    /* Order history của Company. Đến từ "View all" của một Location thì gắn sẵn
-       filter theo location đó — chỉ order của nó hiển thị; bấm ✕ trên chip để
-       xem toàn bộ. */
-    const filterLoc = state.orderLocationSort ? locationById(c, state.orderLocationSort) : null;
-    const rows = companyOrders
-      .filter(o=>!filterLoc || o.locationId===filterLoc.id)
-      .slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));
-    body = `<div class="card"><div class="card-head"><h2>Orders${filterLoc&&rows.length?` <span class="n">${rows.length}</span>`:''}</h2>
-      <div class="right">${filterLoc
-        ? `<button class="btn small" data-action="clear-order-location-sort" title="Show all company orders">Location: ${esc(filterLoc.name)} ✕</button>`
-        : `<span class="dim">Placed by this company's buyers</span>`}</div></div>
-      ${rows.length?`<table><thead><tr><th>Order</th><th>Location</th><th>Buyer</th><th>Date</th>
-        <th class="num">Total</th><th>Status</th></tr></thead><tbody>
-      ${rows.map(o=>{
-        const ln=(locationById(c,o.locationId)||{}).name||o.location||'—';
-        return `<tr>
-          <td><div class="cell-main">${esc(o.id)}</div>${o.po&&o.po!=='None'?`<div class="cell-sub">${esc(o.po)}</div>`:''}</td>
-          <td>${esc(ln)}</td><td>${esc(o.buyer)}</td>
-          <td class="nowrap">${esc(o.date)}</td>
-          <td class="num">${money(o.amount)}</td>
-          <td><span class="badge ${orderTone(o.status)}"><span class="dot"></span>${esc(o.status)}</span></td>
-        </tr>`;}).join('')}
-      </tbody></table>`
-      :`<div class="empty"><div class="empty-title">${filterLoc?`No orders from ${esc(filterLoc.name)} yet`:'No orders yet'}</div>
-          <p>${filterLoc?'Clear the location filter to see all company orders.':'Orders placed by company buyers will appear here.'}</p></div>`}
-      </div>`;
-  }
-
   else if(state.companyTab==='contacts'){
     body = `<div class="card"><div class="card-head"><h2>Contacts</h2>
       <div class="right"><span class="dim">Managed on the Shopify company record</span>
         <button class="btn small" data-action="demo">Open in Shopify</button></div></div>
       <table><thead><tr><th>Name</th><th>Shopify role</th><th>How they buy</th><th>Location</th></tr></thead><tbody>
       ${c.contacts.map(p=>`<tr><td><div class="cell-main">${p.name}</div><div class="cell-sub">${p.email}</div></td>
-        <td>${p.role}</td><td>${p.access}</td><td>${esc(contactLocationName(c,p))}</td></tr>`).join('')}
+        <td>${p.role}</td><td>${p.access}</td><td>${p.locations}</td></tr>`).join('')}
       </tbody></table></div>`;
   }
 
@@ -2986,346 +2584,6 @@ function renderCompany(){
       <div class="tabs" style="overflow-x:auto">${tabs.map(t=>`<button class="tab ${state.companyTab===t[0]?'active':''}" data-ctab="${t[0]}">${t[1]}</button>`).join('')}</div>
     </div>
     ${body}`;
-}
-
-/* ============================================================
-   LOCATION DETAIL — full page resource (companies/:id/locations/:id).
-   Modal/drawer chỉ dùng cho interaction nhỏ (add/edit form, assign buyer).
-   ============================================================ */
-function renderLocation(){
-  const c = companyById(state.selectedCompany);
-  const l = c && locationById(c, state.selectedLocation);
-  if(!c || !l){ state.view='company'; return renderCompany(); }
-  const ep = effectivePricing(c, l);
-  const buyers = locationBuyers(c, l);
-  const locOrders = (c.orders||[]).filter(o=>o.locationId===l.id)
-    .slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));
-  const recentOrders = locOrders.slice(0,5);
-  const skv = rows => rows.map(([k,v]) =>
-    `<div class="summary-item" style="padding:5px 0"><span>${k}</span><b>${v}</b></div>`).join('');
-
-  /* General + Shipping đều edit qua modal (openGeneralForm / openShippingForm);
-     các control một-lựa-chọn ở Commerce settings là live (data-loc-live). */
-  const ship = l.shipping || {};
-  // Country luôn có sẵn nên không tính vào việc "đã có địa chỉ hay chưa".
-  const shipName = [ship.firstName, ship.lastName].map(x=>String(x||'').trim()).filter(Boolean).join(' ');
-  const shipCore = [shipName, ship.company, ship.address1, ship.address2, ship.city, ship.postal].map(x=>String(x||'').trim()).filter(Boolean);
-  const shipParts = shipCore.length ? [...shipCore, SHIP_COUNTRY_NAMES[ship.country]||''].filter(Boolean) : [];
-  const shipPreview = shipParts.length ? shipParts.map(esc).join('<br>') : '<span class="dim">No shipping address provided.</span>';
-  const sideCtrl = (label, control) => `<div style="margin-bottom:12px"><div class="dim" style="font-size:12px;margin-bottom:4px">${label}</div>${control}</div>`;
-
-  const totalSales = locOrders.reduce((s,o)=>s+(o.amount||0),0);
-  const locQuotes = db.quotes.filter(qq=>qq.company===c.id && qq.location===l.name)
-    .slice().sort((a,b)=>String(b.created).localeCompare(String(a.created)));
-
-  /* ── LEFT: overview → buyers → pricing → quotes → order history (activity) ── */
-  const overviewCard = `<div class="card"><div class="card-head"><h2>Location overview</h2></div>
-    <div class="stats" style="grid-template-columns:repeat(3,1fr);border:0;border-radius:0">
-      <div class="stat"><div class="stat-label">Sales</div><div class="stat-value">${money(totalSales)}</div><div class="stat-note">All-time from this location</div></div>
-      <div class="stat"><div class="stat-label">Orders</div><div class="stat-value">${locOrders.length}</div><div class="stat-note">Placed by its buyers</div></div>
-      <div class="stat"><div class="stat-label">Quotes</div><div class="stat-value">${locQuotes.length}</div><div class="stat-note">RFQ requests from this location</div></div>
-    </div></div>`;
-
-  const buyersCard = `<div class="card"><div class="card-head"><h2>Buyers${buyers.length?` <span class="n">${buyers.length}</span>`:''}</h2>
-      <div class="right"><button class="btn small primary" data-action="assign-buyer" data-location-id="${l.id}">Assign buyer</button></div></div>
-    ${buyers.length ? `<table><thead><tr><th>Name</th><th>Role</th><th class="num"></th></tr></thead><tbody>
-      ${buyers.map(b=>`<tr>
-        <td><div class="cell-main">${esc(b.name)}</div><div class="cell-sub">${esc(b.email)}</div></td>
-        <td>${esc(b.role||'Ordering only')}</td>
-        <td class="num"><button class="btn small" data-action="unassign-buyer" data-buyer-email="${esc(b.email)}">Remove</button></td>
-      </tr>`).join('')}
-      </tbody></table>`
-    : `<div class="empty"><div class="empty-title">No buyers assigned</div>
-        <p>Assign a buyer so someone can purchase under this location.</p></div>`}
-  </div>`;
-
-  /* Pricing card copy đúng hành vi của company Pricing (edit ✎ / swap ⇄ /
-     unassign ⊖ + "Assign per type on the row") nhưng gán ở cấp Location — chuẩn
-     bị sunset company pricing. Resolve theo chuỗi Location → Company: mỗi kind
-     hoặc là override riêng của location, hoặc inherit từ company. */
-  const pricingCard = `<div class="card"><div class="card-head"><h2>Pricing</h2>
-      <div class="right"><span class="dim">Assign per type on the row</span></div></div>
-    <table><thead><tr><th>Pricing type</th><th>Pricing</th><th>Products</th><th>Status</th><th></th></tr></thead><tbody>
-    ${ep.entries.map(e=>{
-      const p=e.policy, k=e.kind;
-      return `<tr>
-        <td title="${esc(KIND_TOOLTIP[k]||'')}"><div class="cell-main">${kindName(k)}</div><div class="cell-sub">${kindPurpose(k)}</div></td>
-        <td>${p?`<div class="cell-main">${esc(p.name)}</div><div class="cell-sub">${e.source==='LOCATION'?'<span class="badge info">Location override</span>':`Inherited from ${esc(c.name)}`}</div>`:'<span class="badge warning">Not set</span>'}</td>
-        <td class="nowrap">${p?scopeLabel(p):'<span class="dim">-</span>'}</td>
-        <td class="nowrap">${p?`<span class="badge ${policyStatus(p).tone}">${policyStatus(p).label}</span>`:'<span class="dim">-</span>'}</td>
-        <td class="num" style="white-space:nowrap">${p
-          ? `<button class="btn small icon" data-edit-policy="${p.id}" data-scope-location="1"
-               title="Edit pricing" aria-label="Edit pricing">${ICON.edit}</button>
-             <button class="btn small icon" data-action="set-loc-pricing" data-kind="${k}"
-               title="Change to another ${kindName(k).toLowerCase()}" aria-label="Change to another ${kindName(k).toLowerCase()}">${ICON.swap}</button>
-             ${e.source==='LOCATION'
-               ? `<button class="btn small icon critical" data-action="revert-loc-pricing" data-kind="${k}"
-                    title="Remove location override" aria-label="Remove location override">${ICON.unassign}</button>` : ''}`
-          : `<button class="btn small icon" data-action="set-loc-pricing" data-kind="${k}"
-               title="Assign a ${kindName(k).toLowerCase()}" aria-label="Assign a ${kindName(k).toLowerCase()}">${ICON.assign}</button>`}</td>
-      </tr>`;
-    }).join('')}
-    </tbody></table>
-  </div>`;
-
-  const quotesCard = `<div class="card"><div class="card-head"><h2>Quotes${locQuotes.length?` <span class="n">${locQuotes.length}</span>`:''}</h2>
-      <div class="right"><button class="btn small" data-action="open-company-quotes">View all company quotes</button></div></div>
-    ${locQuotes.length ? `<table><thead><tr><th>Quote</th><th>Buyer</th><th>Created</th><th>Status</th></tr></thead><tbody>
-      ${locQuotes.map(qq=>`<tr class="clickable" data-quote="${qq.id}">
-        <td><div class="cell-main">${qq.id}</div></td>
-        <td>${esc(qq.buyer)}</td>
-        <td class="nowrap">${esc(qq.created)}</td>
-        <td><span class="badge ${quoteTone(qq.status)}"><span class="dot"></span>${esc(qq.status)}</span></td>
-      </tr>`).join('')}
-      </tbody></table>`
-    : `<div class="empty"><div class="empty-title">No quotes from this location yet</div>
-        <p>RFQ requests from this location's buyers will appear here.</p></div>`}
-  </div>`;
-
-  const activityCard = `<div class="card"><div class="card-head"><h2>Order history${locOrders.length?` <span class="n">${locOrders.length}</span>`:''}</h2>
-      <div class="right"><button class="btn small" data-action="view-company-orders" data-location-id="${l.id}">View all company orders</button></div></div>
-    ${recentOrders.length ? `<table><thead><tr><th>Order</th><th>Buyer</th><th>Date</th>
-        <th class="num">Total</th><th>Status</th></tr></thead><tbody>
-      ${recentOrders.map(o=>`<tr>
-        <td><div class="cell-main">${esc(o.id)}</div>${o.po&&o.po!=='None'?`<div class="cell-sub">${esc(o.po)}</div>`:''}</td>
-        <td>${esc(o.buyer)}</td><td class="nowrap">${esc(o.date)}</td>
-        <td class="num">${money(o.amount)}</td>
-        <td><span class="badge ${orderTone(o.status)}"><span class="dot"></span>${esc(o.status)}</span></td>
-      </tr>`).join('')}
-      </tbody></table>
-      ${locOrders.length>recentOrders.length
-        ? `<div class="card-body" style="border-top:1px solid var(--border)"><span class="dim">Showing the ${recentOrders.length} most recent — View all company orders for the rest.</span></div>` : ''}`
-    : `<div class="empty"><div class="empty-title">No orders from this location yet</div>
-        <p>Orders placed by this location's buyers will appear here.</p></div>`}
-  </div>`;
-
-  /* ── RIGHT: location details (identity + shipping) + commerce settings ── */
-  const detailsCard = `<div class="card"><div class="card-head"><h2>Location details</h2></div>
-    <div class="card-body">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 8px">
-        <div class="loc-sub" style="margin:0">General</div>
-        <div><button class="btn small" data-action="open-general-form">Edit ✎</button></div>
-      </div>
-      ${skv([
-        ['Name', esc(l.name)],
-        ['Location ID', l.externalId ? esc(l.externalId) : '<span class="dim">Not set</span>'],
-        ['Status', `<span class="badge ${l.status==='Active'?'success':'neutral'}"><span class="dot"></span>${esc(l.status)}</span>`]
-      ])}
-      <div class="loc-hr"></div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 8px">
-        <div class="loc-sub" style="margin:0">Shipping address</div>
-        <div><button class="btn small" data-action="open-shipping-form">${shipParts.length?'Edit ✎':'Add +'}</button></div>
-      </div>
-      <div style="line-height:1.55">${shipPreview}</div>
-      <div class="dim" style="font-size:12.5px;margin-top:8px">${l.billingSameAsShipping?'Billing address is same as shipping.':'Billing address is set separately.'}</div>
-    </div>
-  </div>`;
-
-  const commerceCard = `<div class="card"><div class="card-head"><h2>Commerce settings</h2></div>
-    <div class="card-body">
-      <div class="loc-sub">Payment</div>
-      ${sideCtrl('Payment terms', `<select data-loc-live="paymentTerms" style="width:100%">${PAYMENT_TERM_OPTIONS.map(x=>`<option${l.paymentTerms===x?' selected':''}>${x}</option>`).join('')}</select>`)}
-      <div class="loc-hr"></div>
-      <div class="loc-sub">Checkout</div>
-      ${sideCtrl('Order submission', `<select data-loc-live="submission" style="width:100%">
-        <option value="direct" ${l.purchasingMode!=='REQUIRE_APPROVAL'?'selected':''}>Automatically submit orders</option>
-        <option value="draft" ${l.purchasingMode==='REQUIRE_APPROVAL'?'selected':''}>Submit all orders as drafts for review</option>
-      </select>`)}
-      <label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" data-loc-live="editableShipping" ${l.editableShipping?'checked':''} style="width:auto"> Allow any one-time address</label>
-      <div class="loc-hr"></div>
-      <div class="loc-sub">Tax</div>
-      ${sideCtrl('Tax ID', `<input data-loc-live="taxId" type="text" value="${esc(l.taxId||'')}" placeholder="Tax / VAT ID" style="width:100%">`)}
-      ${sideCtrl('Tax settings', `<select data-loc-live="taxSettings" style="width:100%">${Object.keys(TAX_SETTING_LABELS).map(k=>`<option value="${k}"${l.taxSettings===k?' selected':''}>${TAX_SETTING_LABELS[k]}</option>`).join('')}</select>`)}
-    </div>
-  </div>`;
-
-  return head(l.name, `${esc(c.name)} · Location`,
-    `<button class="btn" data-action="open-company-locations">Back</button>`) + `
-    <div class="loc-layout">
-      <div class="loc-col">${overviewCard}${buyersCard}${pricingCard}${quotesCard}${activityCard}</div>
-      <div class="loc-col">${detailsCard}${commerceCard}</div>
-    </div>`;
-}
-
-/* Add/Edit location — modal. Không hỏi pricing ở đây: location mặc định
-   pricingSource = COMPANY, merchant không phải cấu hình lại pricing mỗi lần
-   tạo warehouse/location. */
-const PAYMENT_TERM_OPTIONS = ['No payment terms','Due immediately','Due on receipt','Net 7','Net 15','Net 30','Net 45','Net 60','Net 90'];
-const TAX_SETTING_LABELS = {collect:'Collect tax', collect_unless_exempt:'Collect tax unless exemptions apply', exempt:'Do not collect tax'};
-const SHIP_COUNTRY_NAMES = {VN:'Vietnam', US:'United States', GB:'United Kingdom', SG:'Singapore', AU:'Australia'};
-function openLocationForm(locId){
-  const c = companyById(state.selectedCompany); if(!c) return;
-  const l = locId ? locationById(c, locId) : null;
-  state.locationFormId = l ? l.id : null;
-  const mode = l ? l.purchasingMode : 'DIRECT';
-  openModal(l ? `Edit ${l.name}` : 'Add location', `
-    <div class="form-field"><label>Location name</label>
-      <input id="locFormName" type="text" value="${l?esc(l.name):''}" placeholder="e.g. Hanoi warehouse"></div>
-    <div class="form-field"><label>Address</label>
-      <input id="locFormAddress" type="text" value="${l?esc(l.address||''):''}" placeholder="Street, city, country"></div>
-    <div class="form-field"><label>Payment terms</label>
-      <select id="locFormTerms">${PAYMENT_TERM_OPTIONS.map(t=>`<option${(l?l.paymentTerms:'No payment terms')===t?' selected':''}>${t}</option>`).join('')}</select></div>
-    <div class="form-field"><label>How can buyers purchase?</label>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <label class="rule-card ${mode==='DIRECT'?'selected':''}">
-          <input type="radio" name="locFormMode" value="DIRECT" ${mode==='DIRECT'?'checked':''}>
-          <div><div class="rule-title">Buy directly</div><div class="rule-desc">Orders go through checkout without review.</div></div></label>
-        <label class="rule-card ${mode==='REQUIRE_APPROVAL'?'selected':''}">
-          <input type="radio" name="locFormMode" value="REQUIRE_APPROVAL" ${mode==='REQUIRE_APPROVAL'?'checked':''}>
-          <div><div class="rule-title">Require merchant approval</div><div class="rule-desc">You review each order before it is placed.</div></div></label>
-      </div></div>
-    ${l?'':`<div class="inline-note">Pricing is not configured here — the location automatically inherits the company pricing.</div>`}`,
-    `<button class="btn" data-close-modal>Cancel</button>
-     <button class="btn primary" data-action="save-location">${l?'Save changes':'Create location'}</button>`);
-}
-
-/* General information — modal editor. Location name + external ID (Status hiển
-   thị read-only ở card). Tách khỏi edit inline để đồng nhất với Shipping address. */
-function openGeneralForm(){
-  const c = companyById(state.selectedCompany);
-  const l = c && locationById(c, state.selectedLocation);
-  if(!c || !l) return;
-  openModal('General information', `
-    <div class="form-field"><label>Location name</label>
-      <input id="genFormName" type="text" value="${esc(l.name)}" placeholder="Enter location name"></div>
-    <div class="form-field"><label>Location ID</label>
-      <input id="genFormExternalId" type="text" value="${esc(l.externalId||'')}" placeholder="ERP / external ID"></div>`,
-    `<button class="btn" data-close-modal>Cancel</button>
-     <button class="btn primary" data-action="save-general-form">Save changes</button>`);
-}
-
-/* Shipping address — modal editor. Cùng bộ field với form address khi Add
-   location ở bên RFQ (Country · First/Last name · Company/attention · Address ·
-   Apartment · City · Postal · Phone + Billing same). Trước đây edit inline ngay
-   trong sidebar; giờ tách ra modal để đủ chỗ cho form đầy đủ. */
-const SHIP_PHONE_FLAGS = {VN:'🇻🇳', US:'🇺🇸', GB:'🇬🇧', SG:'🇸🇬', AU:'🇦🇺'};
-function openShippingForm(){
-  const c = companyById(state.selectedCompany);
-  const l = c && locationById(c, state.selectedLocation);
-  if(!c || !l) return;
-  const s = l.shipping || {};
-  const country = s.country || 'VN';
-  const phoneCountry = s.phoneCountry || country;
-  const has = [s.firstName, s.lastName, s.company, s.address1, s.address2, s.city, s.postal]
-    .some(x => String(x||'').trim());
-  const countryOpts = Object.keys(SHIP_COUNTRY_NAMES)
-    .map(k=>`<option value="${k}"${country===k?' selected':''}>${SHIP_COUNTRY_NAMES[k]}</option>`).join('');
-  const flagOpts = Object.keys(SHIP_PHONE_FLAGS)
-    .map(k=>`<option value="${k}"${phoneCountry===k?' selected':''}>${SHIP_PHONE_FLAGS[k]}</option>`).join('');
-  const billingSame = l.billingSameAsShipping !== false;
-  openModal('Shipping address', `
-    <div class="form-field"><label>Country/region</label>
-      <select id="shipFormCountry">${countryOpts}</select></div>
-    <div class="grid-2">
-      <div class="form-field"><label>First name</label>
-        <input id="shipFormFirstName" type="text" value="${esc(s.firstName||'')}" placeholder="First name"></div>
-      <div class="form-field"><label>Last name</label>
-        <input id="shipFormLastName" type="text" value="${esc(s.lastName||'')}" placeholder="Last name"></div>
-    </div>
-    <div class="form-field"><label>Company/attention</label>
-      <input id="shipFormCompany" type="text" value="${esc(s.company||'')}" placeholder="Company or attention"></div>
-    <div class="form-field"><label>Address</label>
-      <div class="search-field">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-        <input id="shipFormAddress1" type="text" value="${esc(s.address1||'')}" placeholder="Street address">
-      </div></div>
-    <div class="form-field"><label>Apartment, suite, etc</label>
-      <input id="shipFormAddress2" type="text" value="${esc(s.address2||'')}" placeholder="Apartment, suite, unit, building"></div>
-    <div class="grid-2">
-      <div class="form-field"><label>City</label>
-        <input id="shipFormCity" type="text" value="${esc(s.city||'')}" placeholder="City"></div>
-      <div class="form-field"><label>Postal code</label>
-        <input id="shipFormPostal" type="text" value="${esc(s.postal||'')}" placeholder="Postal code"></div>
-    </div>
-    <div class="form-field"><label>Phone</label>
-      <div style="display:flex;gap:8px">
-        <select id="shipFormPhoneCountry" aria-label="Phone country" style="width:auto;flex:none">${flagOpts}</select>
-        <input id="shipFormPhone" type="text" value="${esc(s.phone||'')}" placeholder="Phone number">
-      </div></div>
-    <label style="display:flex;gap:8px;align-items:center;margin-top:4px;font-size:13px"><input type="checkbox" id="shipFormBillingSame" ${billingSame?'checked':''} style="width:auto"> Billing address same as shipping address</label>
-  `,
-    `<button class="btn" data-close-modal>Cancel</button>
-     <button class="btn primary" data-action="save-shipping-form">${has?'Save changes':'Add address'}</button>`);
-}
-
-/* Assign buyer — Location ↔ Contact là relationship thật: contact có một
-   locationId; assign từ location khác nghĩa là chuyển buyer sang đây. */
-/* Vai trò buyer ở một Location (Shopify B2B). "Ordering only" ít quyền nhất nên
-   là mặc định an toàn khi assign. */
-const BUYER_ROLES = ['Location admin', 'Ordering only'];
-function openAssignBuyer(locId){
-  const c = companyById(state.selectedCompany);
-  const l = c && locationById(c, locId);
-  if(!c || !l) return;
-  const candidates = (c.contacts||[]).filter(ct=>ct.locationId!==l.id);
-  openModal(`Assign buyer to ${l.name}`,
-    candidates.length ? `<table><tbody>${candidates.map(ct=>{
-      const from = locationById(c, ct.locationId);
-      return `<tr>
-        <td><div class="cell-main">${esc(ct.name)}</div><div class="cell-sub">${esc(ct.email)}</div></td>
-        <td class="dim">${from?`Currently at ${esc(from.name)}`:'Unassigned'}</td>
-        <td><select data-buyer-role aria-label="Role for ${esc(ct.name)}" style="min-width:150px">
-          ${BUYER_ROLES.map(r=>`<option value="${esc(r)}"${(ct.role||'Ordering only')===r?' selected':''}>${esc(r)}</option>`).join('')}
-        </select></td>
-        <td class="num"><button class="btn small primary" data-action="confirm-assign-buyer"
-          data-buyer-email="${esc(ct.email)}" data-location-id="${l.id}">Assign</button></td>
-      </tr>`;}).join('')}</tbody></table>`
-    : `<div class="empty"><div class="empty-title">No one left to assign</div>
-        <p>All of this company's contacts are already buyers at ${esc(l.name)}.</p></div>`,
-    `<button class="btn" data-close-modal>Close</button>`);
-}
-
-/* Assign/override pricing cho một Location — cùng cấu trúc với modal assign ở
-   Company (select + hint "Currently…" + Create new + preview "What … will get"),
-   thêm lựa chọn "Use company pricing" để inherit. Location chỉ giữ reference tới
-   Pricing Profile, không lưu rule. */
-function openLocationPricing(kind){
-  const c = companyById(state.selectedCompany);
-  const l = c && locationById(c, state.selectedLocation);
-  if(!c || !l) return;
-  const k = KIND_ORDER.includes(kind) ? kind : 'base';
-  state.locAssignKind = k;
-  const overrideP = policyById((l.pricing||{})[k]);
-  state.locAssignPolicyId = overrideP ? overrideP.id : '';
-  renderLocationPricing();
-}
-function renderLocationPricing(){
-  const c = companyById(state.selectedCompany);
-  const l = c && locationById(c, state.selectedLocation);
-  if(!c || !l) return;
-  const k = state.locAssignKind, label = kindName(k).toLowerCase();
-  const inheritedP = policyById(companyPricing(c)[k]);
-  const overrideP  = policyById((l.pricing||{})[k]);
-  const pool = policiesFor('b2b', k);
-  const sel = state.locAssignPolicyId;           // '' = inherit, or a policy id
-  const chosen = sel ? policyById(sel) : null;
-  const isChange = !!overrideP;
-  const body = `
-    <div class="form-field"><label>Pricing for this location</label>
-      <select data-loc-policy>
-        <option value="" ${sel===''?'selected':''}>Use company pricing${inheritedP?` (${esc(inheritedP.name)})`:''}</option>
-        ${pool.map(p=>`<option value="${p.id}" ${p.id===sel?'selected':''}>${esc(p.name)}</option>`).join('')}
-      </select>
-      <div class="hint">${overrideP?`Currently overriding with ${esc(overrideP.name)}. `:''}${sel===''
-        ? (inheritedP?`Inherits ${esc(inheritedP.name)} from ${esc(c.name)}.`:`${esc(c.name)} has no ${label}, so this location shows none.`)
-        : `Overrides the company ${label} for ${esc(l.name)} only.`}</div>
-      ${chosen?sharedProfileNote(chosen, c.id):''}
-    </div>
-
-    <div class="chooser-or">or</div>
-    <button class="btn-alt" data-action="create-loc-price"><span class="plus">+</span>Create a new ${label}</button>
-
-    ${chosen?`<div class="card plain" style="margin:12px 0 0"><div class="card-head"><h2>What this location will get</h2></div>
-      <div class="card-body"><div class="kv">
-        <dt>Products</dt><dd>${scopeLabel(chosen)}</dd>
-        <dt>Rule</dt><dd>${priceLabel(chosen)}</dd>
-        <dt>Outside those products</dt><dd>${fallbackLabel(chosen.fallback)}</dd>
-        <dt>When</dt><dd>${validityLabel(chosen)}</dd>
-      </div>${previewBlock(chosen)}</div>
-    </div>`:''}`;
-  openModal(`Assign ${label}: ${esc(l.name)}`, body,
-    `<button class="btn" data-close-modal>Cancel</button>
-     <button class="btn primary" data-action="save-loc-assign">${sel===''?(isChange?'Use company pricing':'Save'):(isChange?'Replace':'Assign')}</button>`);
 }
 
 /* ============================================================
@@ -3450,11 +2708,8 @@ function renderQuote(){
     <div class="card">
       <div class="card-head"><h2>Requested products</h2>
         <div class="right"><span class="badge ${quoteTone(q.status)}">${q.status}</span></div></div>
-      <table><thead><tr><th>Product</th><th class="num">Qty</th>
-        <th class="num"><span class="th-hint" data-tip="The original product price from Shopify, before any B2B pricing is applied.">Shopify price</span></th>
-        <th class="num"><span class="th-hint" data-tip="The price calculated from the B2B pricing currently assigned to this company.">B2B price</span></th>
-        <th class="num"><span class="th-hint" data-tip="The price offered for this specific quote. It does not automatically change the company’s B2B pricing.">Quoted price</span></th>
-        <th class="num">Line total</th></tr></thead>
+      <table><thead><tr><th>Product</th><th class="num">Qty</th><th class="num">Shopify price</th>
+        <th class="num">Their current price</th><th class="num">Quoted price</th><th class="num">Line total</th></tr></thead>
         <tbody>${rows}</tbody></table>
       <div class="card-body" style="border-top:1px solid var(--border)">
         <div class="summary-item" style="border:0;padding:0">
@@ -3482,9 +2737,20 @@ function renderQuote(){
     ${q.note?`<div class="card"><div class="card-head"><h2>Buyer note</h2></div>
       <div class="card-body"><div class="muted">${esc(q.note)}</div></div></div>`:''}
 
-    <div class="card"><div class="card-head"><h2>Timeline</h2></div>
-      ${q.timeline.map(t=>`<div class="row"><div class="grow"><div class="row-title">${esc(t.what)}</div>
-        <div class="row-meta">${esc(t.when)}</div></div></div>`).join('')}
+    <div class="grid-2">
+      <div class="card" style="margin:0"><div class="card-head"><h2>Their pricing today</h2>
+        <div class="right"><button class="btn small" data-company="${q.company}">Open Company</button></div></div>
+        <div class="card-body">
+          ${pricing.length
+            ? pricing.map(p=>`<div class="summary-item"><span>${kindName(kindOf(p))}</span><b>${esc(p.name)}</b></div>`).join('')
+            : `<div class="inline-note" style="margin:0">This Company has no pricing assigned, so the quote is being priced from scratch.</div>`}
+        </div>
+      </div>
+      <div class="card" style="margin:0"><div class="card-head"><h2>Timeline</h2></div>
+        ${q.timeline.map(t=>`<div class="row"><div class="grow"><div class="row-title">${esc(t.what)}</div>
+          <div class="row-meta">${esc(t.when)}</div></div></div>`).join('')}
+
+      </div>
     </div>`;
 }
 
@@ -3580,17 +2846,10 @@ function pricingRows(){
    BUILDER — F-04 (one price row) + F-05 (progressive disclosure)
    ============================================================ */
 function newBuilder(p){
-  /* Mở/đổi builder thì đóng mọi editor rule đang mở của builder trước. */
-  state.ruleEdit=null; state.addRuleMenu=false; state.ruleEditError=false;
-  /* ...và xoá lỗi validate còn sót từ lần Save trước. Không có dòng này thì lỗi kiểu
-     "One pricing rule has no products selected yet" bám lại dù out ra vào lại builder
-     mới (state.errors là global, exit không tự dọn). */
-  clearErrors();
   if(p){
     const copy=JSON.parse(JSON.stringify(p));
     if(!copy.priceKind) copy.priceKind='base';
     if(copy.explicitEnabled===undefined) copy.explicitEnabled=Object.keys(copy.productAdjustments||{}).length>0;
-    if(!Array.isArray(copy.conditionalRules)) copy.conditionalRules=[];
     if(copy.hasEndDate===undefined) copy.hasEndDate=copy.validityType==='dated';
     if(!copy.startTime) copy.startTime='12:00 AM';
     if(!copy.volumeRanges) copy.volumeRanges=[{id:'r1',from:1,to:9,valueType:'percentage',value:10},{id:'r2',from:10,to:49,valueType:'percentage',value:25}];
@@ -3614,11 +2873,8 @@ function newBuilder(p){
     if(copy.id && audienceOf(copy)==='b2b'){
       copy.b2bCompanyIds=companiesHolding(copy.id, kindOf(copy));
       copy.b2bBaselineCompanyIds=[...copy.b2bCompanyIds];
-      copy.b2bLocationIds=locationsHolding(copy.id, kindOf(copy));
-      copy.b2bBaselineLocationIds=[...copy.b2bLocationIds];
       copy.b2bBaselineFor=copy.id;
     }
-    if(!Array.isArray(copy.b2bLocationIds)) copy.b2bLocationIds=[];
     if(!Array.isArray(copy.assignmentTargetIds)) copy.assignmentTargetIds=[];
     /* Phía customer cũng phải mở ra với đúng những gì đang giữ nó, cùng lý do đã
        làm cho phía Company: mở ra trống thì lưu lại trông như chưa gán ai. */
@@ -3628,7 +2884,7 @@ function newBuilder(p){
       else if(u.customers.length){ copy.customerTarget='specific'; copy.assignmentTargetIds=u.customers.map(x=>x.id); }
     }
     /* Bên kia không được mang dữ liệu theo: profile chỉ phục vụ một phía. */
-    if(audienceOf(copy)==='d2c'){ copy.b2bCompanyIds=[]; copy.b2bBaselineCompanyIds=[]; copy.b2bLocationIds=[]; copy.b2bBaselineLocationIds=[]; copy.b2bBaselineFor=null; }
+    if(audienceOf(copy)==='d2c'){ copy.b2bCompanyIds=[]; copy.b2bBaselineCompanyIds=[]; copy.b2bBaselineFor=null; }
     else { copy.customerTarget='none'; copy.assignmentTargetIds=[]; }
     if(!copy.marketScope) copy.marketScope='all';
     if(!copy.selectedMarkets) copy.selectedMarkets=['US'];
@@ -3640,10 +2896,10 @@ function newBuilder(p){
      kind-specific default below unreachable (`b.name || ...` never fired). */
   const fresh = {id:null,name:'',type:'Reusable',status:'Active',audienceType:'b2b',
     priceKind:null,priority:0,scopeType:'collection',collection:'Wholesale assortment',
-    b2bCompanyIds:[],b2bLocationIds:[],customerTarget:'none',assignmentTargetIds:[],
+    b2bCompanyIds:[],customerTarget:'none',assignmentTargetIds:[],
     marketScope:'all',selectedMarkets:['US'],appearanceTitle:'Wholesale pricing',appearanceLabel:'Special price',
     selectedProducts:db.products.map(x=>x.sku),
-    pricingRule:'decrease',valueType:'percentage',value:20,productAdjustments:{},explicitEnabled:false,conditionalRules:[],
+    pricingRule:'decrease',valueType:'percentage',value:20,productAdjustments:{},explicitEnabled:false,
     fallback:'quote',validityType:'evergreen',startDate:'2026-07-17',endDate:'2026-12-31',hasEndDate:false,startTime:'12:00 AM',
     volumeRanges:[{id:'r1',from:1,to:9,valueType:'percentage',value:10},{id:'r2',from:10,to:49,valueType:'percentage',value:25}],
     quantityBasis:'all_selected'};
@@ -3657,7 +2913,7 @@ function newBuilder(p){
 /* Switching model must not destroy work. Each model keeps its own snapshot of
    the pricing fields, so Price list -> Volume -> Price list comes back intact. */
 const KIND_FIELDS = ['scopeType','collection','selectedProducts','pricingRule','valueType',
-  'value','productAdjustments','conditionalRules','volumeRanges','quantityBasis'];
+  'value','productAdjustments','volumeRanges','quantityBasis'];
 
 function switchKind(b, kind){
   if(b.priceKind === kind) return b;
@@ -3679,8 +2935,6 @@ function applyKindDefaults(b, kind){
   if(b && b.id && kind && b.priceKind!==kind){
     b.b2bCompanyIds=companiesHolding(b.id, kind);
     b.b2bBaselineCompanyIds=[...b.b2bCompanyIds];
-    b.b2bLocationIds=locationsHolding(b.id, kind);
-    b.b2bBaselineLocationIds=[...b.b2bLocationIds];
     b.b2bBaselineFor=b.id;
   }
   /* Each type owns pricingRule / valueType / scope. Switching type must reset
@@ -3690,12 +2944,8 @@ function applyKindDefaults(b, kind){
   b.priceKind = kind;
   if(kind==='base'){
     if(!b.name) b.name='New base pricing';
-    /* Không còn card Default price: base LUÔN giữ giá Shopify, mọi điều chỉnh giá đi
-       qua rule (kể cả rule "All products" cho toàn bộ catalog). */
-    b.pricingRule='keep'; b.valueType='percentage'; b.value=0;
-    /* Base luôn = All products (3 tầng); thu hẹp bằng Collection/Product overrides. */
-    b.scopeType='all'; b.selectedProducts=db.products.map(p=>p.sku);
-    if(!Array.isArray(b.conditionalRules)) b.conditionalRules=[];
+    if(switched || !b.pricingRule || b.pricingRule==='keep'){ b.pricingRule='decrease'; b.valueType='percentage'; b.value=20; }
+    if(switched || !b.scopeType) b.scopeType='all';
   }
   if(kind==='quantity'){
     if(!b.name) b.name='New quantity pricing';
@@ -3704,7 +2954,7 @@ function applyKindDefaults(b, kind){
   }
   return b;
 }
-const builderProducts = b => (kindOf(b)==='base' || b.scopeType==='all') ? db.products : db.products.filter(p=>(b.selectedProducts||[]).includes(p.sku));
+const builderProducts = b => b.scopeType==='all' ? db.products : db.products.filter(p=>(b.selectedProducts||[]).includes(p.sku));
 
 function previewBlock(b){
   const p = builderProducts(b)[0];
@@ -3826,18 +3076,11 @@ function b2bAssignmentTree(context, kind){
     const held = kind ? policyById(companyPricing(company)[kind]) : null;
     const locs = `${company.locations.length} Location${company.locations.length===1?'':'s'}`;
     nodes.push({
-      type:'company', id:company.id, title:company.name,
+      id:company.id,
+      title:company.name,
       meta: kind
         ? `${locs} · ${held ? held.name : `No ${kindName(kind).toLowerCase()}`}`
         : locs
-    });
-    /* Location con: gán per-location (override company slot). */
-    (company.locations||[]).forEach(l=>{
-      const lHeld = kind ? policyById((l.pricing||{})[kind]) : null;
-      nodes.push({
-        type:'location', id:l.id, companyId:company.id, title:l.name,
-        meta: kind ? (lHeld ? lHeld.name : `Inherits company`) : ''
-      });
     });
   });
   return nodes;
@@ -3846,7 +3089,6 @@ function prefillAssignmentFromContext(b,context){
   if(!context) return b;
   b.assignmentTargetIds=[];
   b.b2bCompanyIds=[];
-  b.b2bLocationIds=[];
   b.customerTarget='none';
 
   /* Luồng mở ra đã quyết định phía phục vụ, nên audience khoá theo nó. */
@@ -3929,39 +3171,29 @@ function customerAssignmentCount(b){
   return db.customers.length;
 }
 function b2bAssignmentCount(b){
-  return (b.b2bCompanyIds||[]).length + (b.b2bLocationIds||[]).length;
+  return (b.b2bCompanyIds||[]).length;
 }
 function b2bAssignmentSummary(b){
-  const companies=(b.b2bCompanyIds||[]).length, locations=(b.b2bLocationIds||[]).length;
-  if(!companies && !locations) return 'Select Companies';
-  const parts=[];
-  if(companies) parts.push(`${companies} Compan${companies===1?'y':'ies'}`);
-  if(locations) parts.push(`${locations} Location${locations===1?'':'s'}`);
-  return parts.join(' · ');
+  const companies=(b.b2bCompanyIds||[]).length;
+  if(!companies) return 'Select Companies';
+  return `${companies} Compan${companies===1?'y':'ies'}`;
 }
 /* Companies are picked the same way customers are: a field that says what is
    chosen and opens a picker. The dropdown tree it replaces put every Company in
    the store inline, which is fine for four and useless for four hundred. */
 function companyPickerField(b,context){
   const nodes = b2bAssignmentTree(context, builderKind(b));
-  const cSel = (b.b2bCompanyIds||[]);
-  const lSel = (b.b2bLocationIds||[]);
-  const nameOf = id => (nodes.find(n=>n.id===id)||{}).title || companyById(id)?.name || (findLocation(id)||{}).location?.name || id;
-  const total = cSel.length + lSel.length;
-  const parts=[];
-  if(cSel.length) parts.push(`${cSel.length} Compan${cSel.length===1?'y':'ies'}`);
-  if(lSel.length) parts.push(`${lSel.length} Location${lSel.length===1?'':'s'}`);
+  const selected = (b.b2bCompanyIds||[]);
+  const nameOf = id => (nodes.find(n=>n.id===id)||{}).title || companyById(id)?.name || id;
   return `<div class="tag-field">
-    ${total?`<div class="tag-tokens">
-      ${cSel.map(id=>`<span class="token">${esc(nameOf(id))}
-        <button class="token-x" data-b2b-remove="${id}" title="Remove" aria-label="Remove">${ICON.close}</button>
-      </span>`).join('')}
-      ${lSel.map(id=>`<span class="token">↳ ${esc(nameOf(id))}
-        <button class="token-x" data-loc-remove="${id}" title="Remove" aria-label="Remove">${ICON.close}</button>
+    ${selected.length?`<div class="tag-tokens">
+      ${selected.map(id=>`<span class="token">${esc(nameOf(id))}
+        <button class="token-x" data-b2b-remove="${id}"
+          title="Remove ${esc(nameOf(id))}" aria-label="Remove ${esc(nameOf(id))}">${ICON.close}</button>
       </span>`).join('')}
     </div>`:''}
     <button class="picker-field" data-action="open-company-picker">
-      ${ICON.search}${total?`${parts.join(' · ')} selected`:'Search companies or locations'}
+      ${ICON.search}${selected.length?`${selected.length} Compan${selected.length===1?'y':'ies'} selected`:'Search companies'}
     </button>
   </div>`;
 }
@@ -3969,63 +3201,27 @@ function companyPickerField(b,context){
 function openCompanyPicker(){
   const b = state.builder;
   const nodes = b2bAssignmentTree(state.priceCreateContext, builderKind(b));
-  const cChosen = state.companyPickerIds || [];
-  const lChosen = state.locationPickerIds || [];
+  const chosen = state.companyPickerIds || [];
   const q = (state.companyPickerSearch||'').trim().toLowerCase();
-  const hit = n => !q || n.title.toLowerCase().includes(q) || (n.meta||'').toLowerCase().includes(q);
-  /* Company hiện nếu chính nó khớp hoặc một location con khớp; location hiện nếu
-     chính nó khớp hoặc company cha khớp — để cây không đứt giữa chừng. */
-  const compMatch = {};
-  nodes.forEach(n=>{ if(n.type==='company') compMatch[n.id]=hit(n); });
-  nodes.forEach(n=>{ if(n.type==='location' && hit(n)) compMatch[n.companyId]=true; });
-  const rows = nodes.filter(n=> n.type==='company' ? compMatch[n.id] : (hit(n) || compMatch[n.companyId]));
-
-  const rowHtml = n => {
-    if(n.type==='company'){
-      const chosen=cChosen.includes(n.id), st=b2bRowState(b,n.id);
-      const badge = st.holdsThis && chosen ? ['success','Assigned']
-        : st.holdsThis ? ['critical','Will be removed']
-        : st.other && chosen ? ['warning','Replaces']
-        : chosen ? ['success','Selected'] : ['','Company'];
-      return `<label class="multi-row" data-company-pick="${n.id}">
-        <input type="checkbox" ${chosen?'checked':''}>
-        <span class="grow"><span class="m-name">${esc(n.title)}</span>
-          <span class="m-meta">${esc(n.meta||'')}</span></span>
-        <span class="badge ${badge[0]}">${badge[1]}</span>
-      </label>`;
-    }
-    /* Company cha đang tick thì location con được PHỦ theo: hiện checked + badge
-       "Covered by company" nhưng KHÔNG khoá — vẫn bỏ tick lẻ được. Bỏ tick một
-       location sẽ "nổ" cụm ra (company off, các location còn lại thành override
-       riêng) nên location đó không đi theo giá của company nữa. */
-    const coveredByCompany = cChosen.includes(n.companyId) && !lChosen.includes(n.id);
-    const ownOverride = lChosen.includes(n.id);
-    const chosen = coveredByCompany || ownOverride;
-    const st=locRowState(b,n.id);
-    const badge = coveredByCompany ? ['','Covered by company']
-      : st.holdsThis && chosen ? ['success','Assigned']
-      : st.holdsThis ? ['critical','Will be removed']
-      : st.other && chosen ? ['warning','Replaces override']
-      : chosen ? ['success','Location override'] : ['','Location'];
-    return `<label class="multi-row" data-loc-pick="${n.id}" style="padding-left:30px">
-      <input type="checkbox" ${chosen?'checked':''}>
-      <span class="grow"><span class="m-name" style="font-weight:500">↳ ${esc(n.title)}</span>
-        <span class="m-meta">${esc(n.meta||'')}</span></span>
-      <span class="badge ${badge[0]}">${badge[1]}</span>
-    </label>`;
-  };
-
-  const total = cChosen.length + lChosen.length;
-  const sumParts = [];
-  if(cChosen.length) sumParts.push(`${cChosen.length} Compan${cChosen.length===1?'y':'ies'}`);
-  if(lChosen.length) sumParts.push(`${lChosen.length} Location${lChosen.length===1?'':'s'}`);
-  openModal('Select companies or locations', `
-    <div class="pl-toolbar">${searchField('Search companies or locations','data-company-picker-search',state.companyPickerSearch)}</div>
-    <div class="multi-head"><span class="grow" style="font-size:12px;color:var(--text-sub)">${total?`Selecting ${sumParts.join(' · ')}`:'Selecting none'}</span>
-      ${total?`<button class="btn small" data-action="company-picker-clear">Clear</button>`:''}</div>
+  const rows = nodes.filter(n=>!q || n.title.toLowerCase().includes(q) || (n.meta||'').toLowerCase().includes(q));
+  openModal('Select companies', `
+    <div class="pl-toolbar">${searchField('Search companies','data-company-picker-search',state.companyPickerSearch)}</div>
+    <div class="multi-head"><span class="grow" style="font-size:12px;color:var(--text-sub)">Selecting ${chosen.length} Compan${chosen.length===1?'y':'ies'}</span>
+      ${chosen.length?`<button class="btn small" data-action="company-picker-clear">Clear</button>`:''}</div>
     <div class="multi-list">
-      ${rows.length?rows.map(rowHtml).join('')
-      :`<div class="pl-empty" style="border:0">Nothing matches that search.</div>`}
+      ${rows.length?rows.map(n=>{
+        const st=b2bRowState(b,n.id);
+        const badge = st.holdsThis && chosen.includes(n.id) ? ['success','Assigned']
+          : st.holdsThis ? ['critical','Will be removed']
+          : st.other && chosen.includes(n.id) ? ['warning','Replaces']
+          : chosen.includes(n.id) ? ['success','Selected'] : ['','Company'];
+        return `<label class="multi-row" data-company-pick="${n.id}">
+          <input type="checkbox" ${chosen.includes(n.id)?'checked':''}>
+          <span class="grow"><span class="m-name">${esc(n.title)}</span>
+            <span class="m-meta">${esc(n.meta||'')}</span></span>
+          <span class="badge ${badge[0]}">${badge[1]}</span>
+        </label>`;}).join('')
+      :`<div class="pl-empty" style="border:0">No companies match that search.</div>`}
     </div>`,
     `<button class="btn" data-close-modal>Cancel</button>
      <button class="btn primary" data-action="company-picker-done">Done</button>`);
@@ -4034,25 +3230,6 @@ function openCompanyPicker(){
 function companiesHolding(policyId, kind){
   if(!policyId || !kind) return [];
   return db.companies.filter(c=>companyPricing(c)[kind]===policyId).map(c=>c.id);
-}
-/* Locations đang override tới profile này (cho kind tương ứng). */
-function locationsHolding(policyId, kind){
-  if(!policyId || !kind) return [];
-  const ids=[];
-  db.companies.forEach(c=>c.locations.forEach(l=>{ if((l.pricing||{})[kind]===policyId) ids.push(l.id); }));
-  return ids;
-}
-/* Tìm location theo id trên toàn bộ companies. */
-function findLocation(id){
-  for(const c of db.companies){ const l=(c.locations||[]).find(x=>x.id===id); if(l) return {company:c, location:l}; }
-  return null;
-}
-/* Location row trong picker đang giữ gì cho kind này. */
-function locRowState(b, locId){
-  const kind=builderKind(b), f=findLocation(locId);
-  if(!kind || !f) return {holdsThis:false, other:null};
-  const held=(f.location.pricing||{})[kind];
-  return {holdsThis: !!b.id && held===b.id, other: (held && held!==b.id) ? policyById(held) : null};
 }
 const builderKind = b => b && b.priceKind ? kindOf(b) : null;
 
@@ -4072,17 +3249,6 @@ function otherAssigneeCount(b, company){
   return u.count - mine;
 }
 const editForksForCompany = (b, company) => !!(company && b && b.id && otherAssigneeCount(b, company) > 0);
-
-/* Fork từ một Location: sửa in-place chỉ an toàn khi profile CHỈ được location này
-   dùng (không company/customer/tag assignee nào, không location khác override tới).
-   Ngược lại (thường gặp: đang inherit từ company) → fork ra một profile riêng cho
-   location này, để không đổi giá của company/sibling locations/khách khác. */
-function editForksForLocation(b, company, location){
-  if(!b || !b.id || !company || !location) return false;
-  const u = policyUsage(b.id);
-  const mineLoc = u.locations.filter(x=>x.companyId===company.id && x.id===location.id).length;
-  return (u.count - mineLoc) > 0;   // profile còn ai khác dùng ngoài location này → fork
-}
 
 /* What ticking or unticking a row will actually do to that Company. */
 function b2bRowState(b, companyId){
@@ -4180,20 +3346,12 @@ function discountExecutionIssues(b){
   const validateRule=(rule,valueType,value,product,label)=>{
     const amount=Number(value||0);
     if(rule==='increase') issues.push(`${label} increases the Shopify price. This pricing cannot increase the Shopify price.`);
-    /* Giảm quá 100% → giá âm, không phụ thuộc product. */
-    if(rule==='decrease' && valueType==='percentage' && amount>100) issues.push(`${label} discount of ${amount}% is more than 100%, which would make the price negative.`);
     if(rule==='set' && product && amount>Number(product.list)) issues.push(`${label} sets ${money(amount)}, above Shopify price ${money(product.list)}.`);
     if(rule==='decrease' && valueType==='amount' && product && amount>Number(product.list)) issues.push(`${label} discount ${money(amount)} is greater than Shopify price ${money(product.list)}.`);
   };
 
   if(b.priceKind==='base'){
-    /* Mọi pricing đều là rule (kể cả "All products"): rule chạy qua cùng một cửa —
-       không được đẩy giá lên trên Shopify price, không giảm quá 100%. */
-    (b.conditionalRules||[]).forEach((r,ri)=>{
-      const base=`Rule ${ri+1} (${ruleTypeLabel(r)})`;
-      validateRule(r.rule, r.valueType, r.value, null, base);
-      products.filter(pr=>ruleMatches(r,pr)).forEach(pr=>validateRule(r.rule, r.valueType, r.value, pr, `${base} on ${pr.sku}`));
-    });
+    products.forEach(product=>validateRule(b.pricingRule,b.valueType,b.value,product,product.sku));
   }
   Object.entries(b.productAdjustments||{}).forEach(([sku,rule])=>{
     validateRule(rule.rule,rule.valueType,rule.value,productBySku(sku),sku);
@@ -4316,6 +3474,34 @@ function volumeRangesCard(b){
   </div>`;
 }
 
+/* Discount type as a radio list with the value field inline. */
+function discountTypeCard(b){
+  const opts=[
+    ['decrease_pct','Decrease the Shopify price by a percentage'],
+    ['decrease_amt','Decrease a fixed amount off the Shopify price'],
+    ['set','Apply one fixed price to every product in scope'],
+    ['keep','No adjustment, use the Shopify price']
+  ];
+  const current = b.pricingRule==='keep' ? 'keep'
+    : b.pricingRule==='set' ? 'set'
+    : (b.pricingRule==='decrease' && b.valueType==='amount') ? 'decrease_amt' : 'decrease_pct';
+  const field=(key,suffix)=>current===key && key!=='keep'
+    ? `<div class="form-field" style="margin:6px 0 4px 27px"><div style="position:relative">
+        <input type="number" step="0.01" min="0" data-bf="value" value="${b.value ?? ''}" placeholder="Enter a ${key==='decrease_pct'?'percentage':'value'}">
+        <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--text-sub)">${suffix}</span>
+      </div></div>` : '';
+  return `<div class="soft-card"><h3>Default adjustment</h3>
+    <div class="muted" style="margin:-4px 0 8px">Applies to every product in scope unless it has an explicit price below.</div>
+    <div class="radio-list">
+      ${opts.map(o=>`<label class="radio-row" data-dtype="${o[0]}">
+          <input type="radio" name="discount-type" ${current===o[0]?'checked':''}>
+          <span><span class="r-title">${o[1]}</span></span></label>
+        ${field(o[0], o[0]==='decrease_pct'?'%':'$')}`).join('')}
+    </div>
+    ${current==='keep'?`<div class="inline-note" style="margin-top:8px">Products in scope keep their Shopify price. Only the ones you give an explicit price below will change.</div>`:`<div class="inline-note" style="margin-top:8px">Pricing runs through the app discount, which cannot raise the Shopify price, so only decreases and fixed prices are offered.</div>`}
+  </div>`;
+}
+
 function appearanceEditor(b){
   return `<div class="builder-shell"><div class="builder-main"><div class="soft-card">
     <h3>Appearance</h3>
@@ -4341,10 +3527,9 @@ function asideSummary(b){
   </div></div>`;
 }
 
-/* Tầng 3 — Product overrides. Không còn toggle bật/tắt: có product trong danh sách
-   tức là product đó có giá riêng và override cả default lẫn mọi rule. Không product
-   → không có lớp này. Mỗi dòng cho biết giá-từ-rule tính ra bao nhiêu và merchant gõ
-   đè bao nhiêu, nên "cái nào thắng" đọc được ngay trên dòng đó. */
+/* Bảng explicit price là lớp ngoại lệ nằm ngay trong Base pricing, không còn là một
+   pricing type riêng. Mỗi dòng cho biết giá mặc định tính ra bao nhiêu và merchant gõ
+   đè lên bao nhiêu, nên "cái nào thắng" đọc được trên chính dòng đó. */
 function explicitPriceCard(b){
   const q=(state.productSearch||'').trim().toLowerCase();
   const scope=builderProducts(b);
@@ -4361,26 +3546,32 @@ function explicitPriceCard(b){
       <div class="form-field"><input type="number" step="0.01" min="0" data-adj-value="${p.sku}"
         value="${o.value ?? ''}" placeholder="Set price"></div>
       <button class="btn small icon critical" data-action="pl-remove-product" data-sku="${p.sku}"
-        title="Remove product override" aria-label="Remove product override">${ICON.unassign}</button>
+        title="Remove explicit price" aria-label="Remove explicit price">${ICON.unassign}</button>
     </div>`;
   }).join('');
 
-  const n = priced.length;
+  const on = explicitOn(b);
+  const n = Object.keys(b.productAdjustments||{}).length;
   return `<div class="soft-card">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <h3 style="margin:0;flex:1">Product overrides ${n?`<span class="badge">${n}</span>`:''}</h3>
-    </div>
-    <div class="muted" style="margin:-2px 0 10px">Give a specific product its own exact price. A product listed here overrides every rule above.</div>
+    <label class="switch" data-btoggle="explicitEnabled">
+      <input type="checkbox" ${on?'checked':''}>
+      <span class="track"></span>
+      <span class="lbl">Explicit product prices</span>
+      ${n?`<span class="badge">${n} product${n===1?'':'s'}</span>`:''}
+    </label>
+    <div class="switch-hint">Give named products an exact price instead of the default adjustment.${!on&&n?` Turning this off leaves the ${n} price${n===1?'':'s'} saved but stops ${n===1?'it':'them'} applying.`:''}</div>
     ${errorLine('products')}
-    <div class="pl-toolbar">
-      ${searchField('Search store products','data-product-search',state.productSearch)}
+    ${!on?'':`
+    <div class="pl-toolbar" style="margin-top:12px">
+      ${searchField('Search products in scope','data-product-search',state.productSearch)}
       <select data-bf="priceLevel">
         <option value="product" ${b.priceLevel!=='variant'?'selected':''}>Product level</option>
         <option value="variant" ${b.priceLevel==='variant'?'selected':''}>Variant level</option>
       </select>
     </div>
-    ${/* Danh sách chỉ mở ra khi merchant thực sự tìm — đổ sẵn cả store biến ô tìm
-          kiếm thành trang trí. */''}
+    ${/* Danh sách chỉ mở ra khi merchant thực sự tìm. Đổ sẵn mọi product trong scope
+          biến ô tìm kiếm thành trang trí, và với một scope thật thì đó là hàng trăm dòng
+          nằm giữa hai thứ merchant đang đọc. */''}
     ${q?(available.length?`<div class="pl-add">
       ${available.map(p=>`<div class="pl-add-row">
         <span class="grow"><span class="cell-main">${p.title}</span><span class="cell-sub mono">${p.sku}</span></span>
@@ -4390,162 +3581,38 @@ function explicitPriceCard(b){
     </div>`:`<div class="pl-empty" style="margin-bottom:8px"><b>No product matches</b><span>${priced.length?'Products that already have a price are not listed again':'Try a different name or SKU'}</span></div>`):''}
     ${priced.length
       ? `<div class="pl-row" style="font-size:11px;color:var(--text-sub);border-bottom:1px solid var(--border)">
-          <div>Product</div><div>Rule price</div><div>Override price</div><div></div></div>${rows}`
-      : (q?'':`<div class="pl-empty"><b>No product overrides yet</b><span>Search above to give a product its own price</span></div>`)}
-    ${b.priceLevel==='variant'?`<div class="inline-note" style="margin-top:8px">Variant-level pricing is not available in this version, so rows stay product-level.</div>`:''}
+          <div>Product</div><div>Default price</div><div>Explicit price</div><div></div></div>${rows}`
+      : (q?'':`<div class="pl-empty"><b>No exceptions yet</b><span>Search above to give a product its own price</span></div>`)}
+    ${b.priceLevel==='variant'?`<div class="inline-note" style="margin-top:8px">Variant-level pricing is not available in this version, so rows stay product-level.</div>`:''}`}
   </div>`;
 }
 
 /* Bảng resolve: Shopify price, adjustment, explicit price, giá cuối. Merchant đọc được
    giá cuối đến từ đâu mà không phải học thứ tự ưu tiên. */
 function resolutionPreview(b){
-  /* Ưu tiên một SKU minh hoạ được đủ 3 tầng nếu có, để merchant thấy cụ-thể-nhất-thắng. */
-  const scope = builderProducts(b);
-  if(!scope.length) return '';
-  const p = scope.find(x=>priceTierFor(b,x.sku)==='product')
-        || scope.find(x=>priceTierFor(b,x.sku)==='rule') || scope[0];
-  const tier = priceTierFor(b, p.sku);
-  const cr = matchConditionalRule(b, p);
-  const ex = explicitOn(b) ? (b.productAdjustments||{})[p.sku] : null;
-  const crPrice = cr ? applyAdjustment(cr.rule, cr.valueType||'percentage', cr.value, p.list) : null;
-  const exPrice = (ex&&ex.rule) ? applyAdjustment(ex.rule, ex.valueType||'amount', ex.value, p.list) : null;
-  const fin = priceFor(b,p);
-  const row=(k,v,active,dim)=>`<div class="summary-item"${active?' style="background:var(--sunken);margin:0 -8px;padding:6px 8px;border-radius:7px"':''}>
-    <span${active?' style="color:var(--text-strong)"':(dim?' style="color:var(--text-dim)"':'')}>${k}</span>
-    <b${active?'':' style="font-weight:450;color:var(--text-sub)"'}>${v}</b></div>`;
+  const p=builderProducts(b)[0];
+  if(!p) return '';
+  const adj=priceFor({...b, productAdjustments:{}}, p);
+  const ex=explicitOn(b) ? (b.productAdjustments||{})[p.sku] : null;
+  const fin=priceFor(b,p);
+  const row=(k,v,on)=>`<div class="summary-item"><span${on?' style="color:var(--text-strong)"':''}>${k}</span><b${on?'':' style="font-weight:450;color:var(--text-sub)"'}>${v}</b></div>`;
   return `<div class="soft-card"><h3>How the price resolves</h3>
-    <div class="muted" style="margin:-4px 0 8px">${esc(p.title)} <span class="mono">${p.sku}</span></div>
+    <div class="muted" style="margin:-4px 0 8px">${esc(p.title)}</div>
     <div class="summary-list">
-      ${row('Shopify price', money(p.list), false, tier!=='base')}
-      ${cr?row(`Rule · ${esc(ruleLabel(cr))}`, crPrice!=null?money(crPrice):'-', tier==='rule', tier==='product'):''}
-      ${ex?row('Product override', exPrice!=null?money(exPrice):'-', tier==='product', false):''}
+      ${row('Shopify price', money(p.list), false)}
+      ${row('Default adjustment', adj!=null?money(adj):'-', !ex)}
+      ${ex?row('Explicit price', money(ex.value||0), true):''}
       <div class="summary-item" style="border-top:1px solid var(--border);padding-top:8px">
         <span style="color:var(--text-strong)">Buyer pays</span><b>${fin!=null?money(fin):'-'}</b></div>
     </div>
   </div>`;
 }
 
-/* Tầng 2 — Pricing rules. Mỗi rule là MỘT dimension độc lập (Collection / Vendor /
-   Product tag / Product type) + nhiều value (chip, "is any of"). Không còn Advanced
-   / IF-THEN / Match all-any: muốn giao 2 thuộc tính thì... không — model cố tình
-   giữ rule độc lập cho dễ đọc. Chọn LOẠI từ "+ Add rule ▾", cấu hình bằng chip.
-   Rule KHỚP ĐẦU TIÊN (trên→dưới) thắng — thứ tự là priority, kéo ↑↓ để đổi. */
-function ruleBuilderCard(b){
-  const rules = b.conditionalRules = b.conditionalRules||[];
-  const editing = ri => state.ruleEdit===ri;
-  const APPLY = {
-    collection:'Apply to these collections',
-    vendor:'Apply to these vendors',
-    productType:'Apply to these product types',
-    tag:'Apply to products with any of these tags'
-  };
-  const NOUN = {collection:'collection', vendor:'vendor', productType:'product type', tag:'tag'};
-
-  /* Ô chip: value đã chọn + một select để thêm value còn lại. */
-  const chipField = (ri, c) => {
-    const f=condField(c.field), vals=condValues(c), noun=NOUN[c.field];
-    const remaining=(f.values()||[]).filter(v=>!vals.includes(v));
-    return `<div class="chip-field">
-      ${vals.map((v,vi)=>`<span class="chip">${esc(v)}<button class="chip-x" data-action="cr-remove-value" data-idx="${ri}.0.${vi}" aria-label="Remove ${esc(v)}">×</button></span>`).join('')}
-      ${remaining.length
-        ? `<select class="chip-add" data-cr-addval="${ri}.0">
-            <option value="">${vals.length?`+ Add ${noun}…`:`Select ${noun}…`}</option>
-            ${remaining.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('')}
-          </select>`
-        : `<span class="dim" style="font-size:12px;padding:2px 4px">All ${noun}s added</span>`}
-    </div>`;
-  };
-
-  const priceRow = (ri, r) => {
-    const rk = r.rule==='set' ? 'set' : (r.valueType==='amount' ? 'decrease_amt' : 'decrease_pct');
-    const suffix = rk==='decrease_pct'?'%':'$';
-    return `<div class="price-row">
-      <select data-cr-rule="${ri}">
-        <option value="decrease_pct" ${rk==='decrease_pct'?'selected':''}>Decrease by %</option>
-        <option value="decrease_amt" ${rk==='decrease_amt'?'selected':''}>Decrease by amount</option>
-        <option value="set" ${rk==='set'?'selected':''}>Fixed price</option>
-      </select>
-      <div style="position:relative;flex:1">
-        <input type="number" step="0.01" min="0" ${rk==='decrease_pct'?'max="100"':''} data-cr-adjval="${ri}" value="${r.value ?? ''}" placeholder="Value">
-        <span class="field-suffix">${suffix}</span>
-      </div>
-    </div>`;
-  };
-
-  /* Editor gọn: tên loại + ô chip "Apply to…" + Price + Done. Không jargon. */
-  const editor = (ri, r) => {
-    const c = (r.conditions=r.conditions||[])[0] || (r.conditions[0]={field:'collection',operator:'is',values:[]});
-    const nProd = db.products.filter(p=>ruleMatches(r,p)).length;
-    const isAll = c.field==='all';
-    return `<div class="loc-block editing"><div class="loc-body rule-edit" style="padding:16px">
-      <div class="rule-edit-head">
-        <span class="rule-type-tag">${RULE_TYPE_LABEL[c.field]||'Rule'}</span>
-        <span class="hint">${nProd} product${nProd===1?'':'s'} match</span>
-        <button class="btn small icon critical" data-action="remove-rule" data-idx="${ri}" title="Delete rule" aria-label="Delete rule">${ICON.del}</button>
-      </div>
-      ${isAll
-        ? `<div class="form-field"><label>Applies to</label>
-            <div class="hint" style="margin-top:0">Every product in this price list.</div></div>`
-        : `<div class="form-field"><label>${APPLY[c.field]}</label>${chipField(ri,c)}
-        ${state.ruleEditError && !condValues(c).length
-          ? `<div class="field-error" role="alert">Pick at least one ${NOUN[c.field]} for this rule, or delete it.</div>` : ''}</div>`}
-      <div class="form-field" style="margin-bottom:0"><label>Price</label>${priceRow(ri,r)}</div>
-      <div class="editor-footer">
-        <span></span>
-        <button class="btn small primary" data-action="rule-done" data-idx="${ri}">Done</button>
-      </div>
-    </div></div>`;
-  };
-
-  /* Hàng thu gọn — "Collection · Summer, Accessories · 20% off". */
-  const collapsed = (ri, r) => `<div class="loc-block"><div class="loc-body rule-row" style="display:flex;align-items:center;gap:12px;padding:12px">
-    <span class="badge">${ri+1}</span>
-    <div style="flex:1;min-width:0">
-      <div class="cell-main">${ruleTypeLabel(r)}</div>
-      <div class="cell-sub">${esc(ruleValuesSummary(r))}</div>
-    </div>
-    <span class="mono" style="font-size:12px;color:var(--text-strong);flex:none">${ruleAdjustmentLabel(r)}</span>
-    <button class="btn small" data-action="edit-rule" data-idx="${ri}">Edit</button>
-    <button class="btn small icon" data-action="move-rule" data-idx="${ri}" data-dir="up" ${ri===0?'disabled':''} title="Move up" aria-label="Move up">↑</button>
-    <button class="btn small icon" data-action="move-rule" data-idx="${ri}" data-dir="down" ${ri===rules.length-1?'disabled':''} title="Move down" aria-label="Move down">↓</button>
-    <button class="btn small icon critical" data-action="remove-rule" data-idx="${ri}" title="Remove rule" aria-label="Remove rule">${ICON.del}</button>
-  </div></div>`;
-
-  const rows = rules.map((r,ri)=> editing(ri) ? editor(ri,r) : collapsed(ri,r)).join('');
-
-  const TYPES = [['all','All products'],['collection','Collection'],['vendor','Vendor'],['tag','Product tag'],['productType','Product type']];
-  /* Menu mở LÊN TRÊN vì nút "+ Add rule" giờ nằm ở đáy card (trong empty state khi
-     chưa có rule, hoặc dưới danh sách khi đã có rule) — không còn ở góc trên nữa. */
-  /* "All products" phủ toàn bộ catalog nên chỉ có nghĩa MỘT lần — thêm lần hai cũng
-     bị first-match che, chỉ gây rối. Có rồi thì disable mục đó trong menu. */
-  const hasAll = rules.some(r=>((r.conditions||[])[0]||{}).field==='all');
-  const menu = state.addRuleMenu ? `<div class="add-rule-menu up">
-    ${TYPES.map(t=>{
-      const dis = t[0]==='all' && hasAll;
-      return `<button data-action="add-rule-type" data-field="${t[0]}" ${dis?'disabled':''}>${t[1]}${dis?'<span class="menu-added">Added</span>':''}</button>`;
-    }).join('')}
-  </div>` : '';
-  const addRuleControl = `<div class="add-rule-wrap">
-      <button class="btn small" data-action="toggle-add-rule-menu">+ Add rule ▾</button>
-      ${menu}
-    </div>`;
-
-  return `<div class="soft-card">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <h3 style="margin:0;flex:1">Pricing rules ${rules.length?`<span class="badge">${rules.length}</span>`:''}</h3>
-    </div>
-    <div class="muted" style="margin:-2px 0 10px">Price all products or a set by collection, vendor, tag or type. When several rules match one product, the higher rule wins, reorder with ↑↓.</div>
-    ${errorLine('rule')}
-    ${rows
-      ? `${rows}<div class="add-rule-bar">${addRuleControl}</div>`
-      : `<div class="pl-empty" style="margin:0"><b>No pricing rules</b><span>Every product keeps its Shopify price. Add an “All products” rule to price the whole catalog, or a narrower rule for a subset.</span><div class="add-rule-empty">${addRuleControl}</div></div>`}
-  </div>`;
-}
-
 function baseEditor(b){
   return `<div class="builder-shell"><div class="builder-main">
     ${ruleInfoCard(b,'Pricing details','Shown on cart and product pages when a discount applies.')}
-    ${ruleBuilderCard(b)}
+    ${discountTypeCard(b)}
+    ${productScopeCard(b)}
     ${explicitPriceCard(b)}
     ${assignmentAdapter(b,state.priceCreateContext)}
     ${marketsCard(b)}
@@ -4570,8 +3637,6 @@ function renderBuilder(){
   const context = state.priceCreateContext;
   const usage = b.id ? policyUsageCount(b.id) : 0;
   const scopeCompany = state.editScopeCompanyId ? companyById(state.editScopeCompanyId) : null;
-  const scopeLocation = state.editScopeLocationId && scopeCompany ? locationById(scopeCompany, state.editScopeLocationId) : null;
-  const scopeName = scopeLocation ? scopeLocation.name : (scopeCompany ? scopeCompany.name : '');
 
   const contextLabel=currentTargetLabel(context);
 
@@ -4586,13 +3651,11 @@ function renderBuilder(){
      at save time. From Pricing the pricing itself is the subject and the change
      is global. From a Company the subject is that Company, so a shared pricing
      forks instead of dragging everyone else along. */
-  const forksOnSave = scopeLocation
-    ? editForksForLocation(b, scopeCompany, scopeLocation)
-    : editForksForCompany(b, scopeCompany);
+  const forksOnSave = editForksForCompany(b, scopeCompany);
   const sharedNotice = forksOnSave
     ? `<div class="banner warning"><div>
-        <b>This change applies to ${esc(scopeName)} only</b>
-        ${esc(b.name)} is assigned to ${policyUsageLabel(b.id)}. Saving creates a separate pricing for ${esc(scopeName)} and leaves everyone else on ${esc(b.name)} unchanged. To change it for all of them, open it from Pricing instead.
+        <b>This change applies to ${esc(scopeCompany.name)} only</b>
+        ${esc(b.name)} is assigned to ${policyUsageLabel(b.id)}. Saving creates a separate pricing for ${esc(scopeCompany.name)} and leaves everyone else on ${esc(b.name)} unchanged. To change it for all of them, open it from Pricing instead.
       </div></div>`
     : (usage>1
       ? `<div class="banner warning"><div><b>${usage} assignments use this price</b>Saving updates all of them. Preview first if you're unsure.</div></div>`
@@ -4600,7 +3663,7 @@ function renderBuilder(){
 
   const body = `
     ${b.priceKind?`${usage>1?`<div class="switch-row" style="margin-bottom:8px"><span class="token">Used by ${usage} assignments</span>${
-        scopeName?`<span class="dim" style="font-size:12px">Opened from ${esc(scopeName)}</span>`:''}</div>`:''}
+        scopeCompany?`<span class="dim" style="font-size:12px">Opened from ${esc(scopeCompany.name)}</span>`:''}</div>`:''}
     <div class="builder-tabs"><button class="builder-tab ${state.pricingBuilderTab==='settings'?'active':''}" data-action="builder-tab-settings">Settings</button><button class="builder-tab ${state.pricingBuilderTab==='appearance'?'active':''}" data-action="builder-tab-appearance">Appearance</button></div>`:''}
     ${main}
     ${sharedNotice}`;
@@ -4631,25 +3694,14 @@ function runSavePrice(){
     /* Explicit price luôn là giá cuối theo product, nên chuẩn hoá về set/amount. */
     if(b.priceKind==='base'){
       Object.keys(b.productAdjustments||{}).forEach(sku=>{ b.productAdjustments[sku].rule='set'; b.productAdjustments[sku].valueType='amount'; });
-      state.addRuleMenu=false;
-      /* Rule chưa chọn value nào là rule dở dang. KHÔNG âm thầm xoá (user tưởng mình
-         đã thêm rule mà tự nhiên mất): chặn Save, mở đúng rule đó lên và báo lỗi. */
-      const incompleteIdx=(b.conditionalRules||[]).findIndex(r=>!condValues((r.conditions||[])[0]).length);
-      if(incompleteIdx>=0){
-        errs.rule='One pricing rule has no products selected yet. Pick at least one value for it, or remove the rule.';
-        state.ruleEdit=incompleteIdx; state.ruleEditError=true;
-      } else { state.ruleEdit=null; state.ruleEditError=false; }
       /* Không adjustment và cũng không product nào có giá riêng thì profile này
          không đổi giá của ai, dù nó đọc như một pricing. */
       const explicitCount = explicitOn(b) ? Object.keys(b.productAdjustments||{}).length : 0;
-      /* Không rule thật (kể cả "All products") và cũng không product nào có giá riêng
-         thì profile này không đổi giá của ai, dù nó đọc như một pricing. */
-      const activeConditionalCount = (b.conditionalRules||[]).filter(validConditionalRule).length;
-      if(!explicitCount && !activeConditionalCount)
-        errs.products='This pricing changes nothing yet. Add a pricing rule, or give at least one product its own price.';
+      if(b.pricingRule==='keep' && !explicitCount)
+        errs.products='Add an explicit price for at least one product, or choose an adjustment. This pricing changes nothing for the buyer as it stands.';
     }
     const executionIssues=discountExecutionIssues(b);
-    if(executionIssues.length && !errs.rule) errs.rule=executionIssues[0];
+    if(executionIssues.length) errs.rule=executionIssues[0];
     if(Object.keys(errs).length){
       setErrors(errs);
       state.openSections={...state.openSections,1:true,2:true};
@@ -4695,13 +3747,6 @@ function runSavePrice(){
     }
 
     const assignmentResult=executeBuilderAssignment(b,savedPolicy.id);
-    /* Location fork: gán profile mới vào slot pricing của đúng location (override). */
-    if(state.forkToLocation){
-      const {companyId, locationId, kind}=state.forkToLocation;
-      const fco=companyById(companyId), fl=fco&&locationById(fco, locationId);
-      if(fl){ if(!fl.pricing) fl.pricing={base:null,quantity:null}; fl.pricing[kind]=savedPolicy.id; }
-      state.forkToLocation=null;
-    }
     state.priceCreateContext=null;
     closeDrawer();
 
@@ -4730,9 +3775,6 @@ function runSavePrice(){
 
     if(back?.view==='company' && companyById(back.id)){
       state.selectedCompany=back.id; state.companyTab='pricing'; state.view='company';
-    } else if(back?.view==='location' && companyById(state.selectedCompany)
-              && locationById(companyById(state.selectedCompany), state.selectedLocation)){
-      state.view='location';
     } else state.view='pricing';
     toast(wasNew ? 'Pricing created' : 'Pricing saved');
     return render();
@@ -4757,13 +3799,10 @@ function renderForkConfirm(co){
   const b=state.builder, p=policyById(b.id);
   const all=!!state.forkApplyAll;
   const reach=policyUsageLabel(p.id);
-  /* Mở từ Location → fork về location; mở từ Company → fork về company. */
-  const loc = state.editScopeLocationId ? locationById(co, state.editScopeLocationId) : null;
-  const scopeName = loc ? loc.name : co.name;
 
   openModal(`Save changes to ${esc(p.name)}`, `
     <p class="modal-lead">Used by ${reach}. Your changes become a separate pricing for
-      <b>${esc(scopeName)}</b>. Other assignees keep ${esc(p.name)}.</p>
+      <b>${esc(co.name)}</b>. Other assignees keep ${esc(p.name)}.</p>
     <div class="check-block">
       <label class="check-row" data-action="toggle-fork-all">
         <input type="checkbox" ${all?'checked':''}>
@@ -4819,12 +3858,6 @@ function executeBuilderAssignment(b,policyId){
     (b.b2bCompanyIds||[]).filter(id=>id!=='__setup_company__').forEach(companyId=>{
       if(applyPricingAssignment({targetType:'company',companyId},policyId)) result.count++;
     });
-    /* Per-location assignment: set slot pricing của location (override). */
-    const kindNow=kindOf(policyById(policyId)||b);
-    (b.b2bLocationIds||[]).forEach(locId=>{
-      const f=findLocation(locId);
-      if(f){ if(!f.location.pricing) f.location.pricing={base:null,quantity:null}; f.location.pricing[kindNow]=policyId; result.count++; }
-    });
     /* Unticking a row that was ticked when the editor opened is a removal —
        the tree is the full list, not a queue of additions. Only for the same
        profile: saving a fork creates a new id and takes nothing away. */
@@ -4833,10 +3866,6 @@ function executeBuilderAssignment(b,policyId){
       (b.b2bBaselineCompanyIds||[]).filter(id=>!(b.b2bCompanyIds||[]).includes(id)).forEach(id=>{
         const c=companyById(id);
         if(c && companyPricing(c)[kind]===policyId){ companyPricing(c)[kind]=null; result.removed++; }
-      });
-      (b.b2bBaselineLocationIds||[]).filter(id=>!(b.b2bLocationIds||[]).includes(id)).forEach(id=>{
-        const f=findLocation(id);
-        if(f && (f.location.pricing||{})[kind]===policyId){ f.location.pricing[kind]=null; result.removed++; }
       });
     }
     /* Phía customer phải sạch: nếu profile này từng phục vụ customer, những chỗ đó
@@ -5199,13 +4228,13 @@ function render(){
     et.classList.toggle('on', !!state.emptyMode);
   }
   const v = {customers:renderCustomers, company:renderCompany,
-             location:renderLocation, quote:renderQuote,
+             quote:renderQuote,
              pricing:renderPricing, settings:renderSettings};
   /* Scroll to top only when the page itself changes. A re-render triggered by a
      filter, sort or search on the page we're already on should leave the scroll
      position where the merchant left it — jumping to the top on every toggle
      (e.g. switching pricing type) loses their place. */
-  const pageKey = state.view + '|' + (state.selectedCompany || '') + '|' + (state.selectedLocation || '');
+  const pageKey = state.view + '|' + (state.selectedCompany || '');
   const pageChanged = pageKey !== state._pageKey;
   state._pageKey = pageKey;
   document.getElementById('app').innerHTML =
@@ -5216,28 +4245,10 @@ function render(){
 /* ============================================================
    EVENTS
    ============================================================ */
-/* Live settings trên Location detail (Payment terms / Checkout / Tax):
-   control hiển thị mặc định, đổi là lưu ngay — không có bước Edit/Save. */
-document.addEventListener('change', e => {
-  const el = e.target.closest('[data-loc-live]');
-  if(!el) return;
-  const c = companyById(state.selectedCompany);
-  const l = c && locationById(c, state.selectedLocation);
-  if(!c || !l) return;
-  const k = el.dataset.locLive;
-  if(k==='paymentTerms') l.paymentTerms = el.value;
-  if(k==='editableShipping') l.editableShipping = el.checked;
-  if(k==='submission') l.purchasingMode = el.value==='draft' ? 'REQUIRE_APPROVAL' : 'DIRECT';
-  if(k==='taxId') l.taxId = el.value.trim();
-  if(k==='taxSettings') l.taxSettings = el.value;
-  toast('Location updated');
-  render();
-});
-
 document.addEventListener('click', e => {
   // a label wrapping an input fires twice (label click + forwarded input click)
-  if(e.target.tagName==='INPUT' && e.target.closest('[data-btoggle],[data-bchoice],[data-qt],[data-ar],[data-atarget],[data-acustomer],[data-customer-pick],[data-company-pick],[data-loc-pick],[data-assign-target],[data-company-sort-field],[data-pricing-sort-field],[data-sloc],[data-locpick]')) return;
-  const t = e.target.closest('[data-view],[data-company],[data-location],[data-ctab],[data-action],[data-edit-policy],[data-section],[data-bchoice],[data-btoggle],[data-list-tool],[data-company-filter],[data-company-sort-field],[data-company-sort-dir],[data-pricing-sort-field],[data-pricing-sort-dir],[data-pricing-audience],[data-pricing-kind],[data-pricing-status],[data-quote],[data-quote-filter],[data-atype],[data-acustomer],[data-tag-remove],[data-customer-remove],[data-customer-pick],[data-b2b-remove],[data-loc-remove],[data-company-pick],[data-loc-pick],[data-atarget],[data-assign-target],[data-product-search],[data-assign-search],[data-close-drawer],[data-close-modal],[data-qt],[data-ar],[data-shopify-company],[data-sloc],[data-market]');
+  if(e.target.tagName==='INPUT' && e.target.closest('[data-btoggle],[data-bchoice],[data-qt],[data-ar],[data-atarget],[data-acustomer],[data-customer-pick],[data-company-pick],[data-assign-target],[data-dtype],[data-company-sort-field],[data-pricing-sort-field]')) return;
+  const t = e.target.closest('[data-view],[data-company],[data-ctab],[data-action],[data-edit-policy],[data-section],[data-bchoice],[data-btoggle],[data-list-tool],[data-company-filter],[data-company-sort-field],[data-company-sort-dir],[data-pricing-sort-field],[data-pricing-sort-dir],[data-pricing-audience],[data-pricing-kind],[data-pricing-status],[data-quote],[data-quote-filter],[data-atype],[data-acustomer],[data-tag-remove],[data-customer-remove],[data-customer-pick],[data-b2b-remove],[data-company-pick],[data-atarget],[data-assign-target],[data-dtype],[data-product-search],[data-assign-search],[data-close-drawer],[data-close-modal],[data-qt],[data-ar],[data-shopify-company],[data-market]');
   if(!t) return;
 
   if(t.dataset.closeDrawer !== undefined) return closeDrawer();
@@ -5245,26 +4256,16 @@ document.addEventListener('click', e => {
 
   if(t.dataset.view){ state.view=t.dataset.view; state.listFilter='all'; return render(); }
   if(t.dataset.company){ state.selectedCompany=t.dataset.company; state.companyTab='pricing'; state.view='company'; return render(); }
-  if(t.dataset.location){ state.selectedLocation=t.dataset.location; state.view='location'; return render(); }
-  if(t.dataset.sloc){
-    const id=t.dataset.sloc;
-    const i=state.selectedShopifyLocations.indexOf(id);
-    if(i>=0) state.selectedShopifyLocations.splice(i,1); else state.selectedShopifyLocations.push(id);
-    return openShopifyCompanySetup();
-  }
-  if(t.dataset.ctab){ state.companyTab=t.dataset.ctab; state.orderFilter='all'; state.orderLocationSort=null; return render(); }
+  if(t.dataset.ctab){ state.companyTab=t.dataset.ctab; state.orderFilter='all'; return render(); }
   if(t.dataset.qt){ state.quoteTreatment=t.dataset.qt; return openQuoteTreatment(); }
   if(t.dataset.ar){ state.appRoute=t.dataset.ar; return openApplicationRoute(); }
   if(t.dataset.editPolicy){ state.builder=newBuilder(policyById(t.dataset.editPolicy));
     /* Opened from an account page: a change here probably means "change it for
        this account", not "change it for everyone sharing the template". */
-    state.editScopeCompanyId = t.dataset.scopeCompany
-      || (t.dataset.scopeLocation ? state.selectedCompany : null);
-    state.editScopeLocationId = t.dataset.scopeLocation ? state.selectedLocation : null;
+    state.editScopeCompanyId = t.dataset.scopeCompany || null;
     /* Đường về do nơi mở quyết định, không do Company nào tình cờ được gán. */
-    state.builder._returnTo = t.dataset.scopeLocation ? {view:'location'}
-      : t.dataset.scopeCompany ? {view:'company', id:t.dataset.scopeCompany}
-      : {view:'pricing'};
+    state.builder._returnTo = t.dataset.scopeCompany
+      ? {view:'company', id:t.dataset.scopeCompany} : {view:'pricing'};
     state.openSections={1:true,2:true,3:false,4:false};
     return renderBuilder(); }
   if(t.dataset.section){ const n=t.dataset.section; state.openSections[n]=!state.openSections[n]; return renderBuilder(); }
@@ -5280,58 +4281,14 @@ document.addEventListener('click', e => {
     state.assign.targetType=t.dataset.atype;
     state.assign.ids=[]; state.assignSearch='';
     return renderAssign(); }
-  if(t.dataset.locPick){
-    if(assignmentLocked()) return;
-    const id=t.dataset.locPick;
-    const f=findLocation(id); if(!f) return;
-    const co=f.company, sibIds=(co.locations||[]).map(l=>l.id);
-    const lset=new Set(state.locationPickerIds||[]);
-    const cset=new Set(state.companyPickerIds||[]);
-    const coveredByCompany = cset.has(co.id) && !lset.has(id);
-    const checked = coveredByCompany || lset.has(id);
-    if(checked){
-      /* Bỏ tick một location: nếu company cha đang phủ cả cụm thì "nổ" cụm ra —
-         company off, các location anh em CÒN LẠI thành override riêng, mình off. */
-      if(cset.has(co.id)){
-        cset.delete(co.id);
-        sibIds.forEach(sid=>{ if(sid!==id) lset.add(sid); });
-      }
-      lset.delete(id);
-    } else {
-      /* Tick một location: nếu cả cụm đã đủ mặt thì gộp lên company cho gọn
-         (company checked = mọi location của nó được chọn, hiện "Covered by company"). */
-      lset.add(id);
-      if(sibIds.length && sibIds.every(sid=>lset.has(sid))){
-        sibIds.forEach(sid=>lset.delete(sid));
-        cset.add(co.id);
-      }
-    }
-    state.locationPickerIds=[...lset];
-    state.companyPickerIds=[...cset];
-    return openCompanyPicker();
-  }
   if(t.dataset.companyPick){
     if(assignmentLocked()) return;
     const id=t.dataset.companyPick, list=state.companyPickerIds||[];
-    const on = !list.includes(id);
-    state.companyPickerIds = on ? [...list, id] : list.filter(x=>x!==id);
-    /* Tick company = phủ mọi location của nó (chúng hiện "Covered by company",
-       vẫn bỏ tick lẻ được — xử lý ở nhánh locPick). Dọn location con khỏi danh
-       sách override để chúng phủ-qua-company chứ không nhân đôi override; untick
-       company thì các location covered tự bỏ theo. */
-    const co=companyById(id);
-    if(co && on){
-      const locIds=new Set((co.locations||[]).map(l=>l.id));
-      state.locationPickerIds=(state.locationPickerIds||[]).filter(x=>!locIds.has(x));
-    }
+    state.companyPickerIds = list.includes(id) ? list.filter(x=>x!==id) : [...list, id];
     return openCompanyPicker();
   }
   if(t.dataset.b2bRemove){
     state.builder.b2bCompanyIds=(state.builder.b2bCompanyIds||[]).filter(x=>x!==t.dataset.b2bRemove);
-    return renderBuilder();
-  }
-  if(t.dataset.locRemove){
-    state.builder.b2bLocationIds=(state.builder.b2bLocationIds||[]).filter(x=>x!==t.dataset.locRemove);
     return renderBuilder();
   }
   if(t.dataset.customerPick){
@@ -5390,6 +4347,14 @@ document.addEventListener('click', e => {
     const id=t.dataset.assignTarget, list=state.assign.ids;
     state.assign.ids = list.includes(id) ? list.filter(x=>x!==id) : [...list, id];
     return renderAssign(); }
+  if(t.dataset.dtype){
+    const b=state.builder, v=t.dataset.dtype;
+    if(v==='keep'){ b.pricingRule='keep'; }
+    if(v==='set'){ b.pricingRule='set'; b.valueType='amount'; }
+    if(v==='decrease_pct'){ b.pricingRule='decrease'; b.valueType='percentage'; }
+    if(v==='decrease_amt'){ b.pricingRule='decrease'; b.valueType='amount'; }
+    return renderBuilder();
+  }
   if(t.dataset.atarget){
     if(assignmentLocked()) return;
     if(customerTargetOf(state.builder)===t.dataset.atarget) return;
@@ -5426,14 +4391,12 @@ document.addEventListener('click', e => {
   }
   if(a==='open-company-picker'){
     state.companyPickerIds=[...(state.builder.b2bCompanyIds||[])];
-    state.locationPickerIds=[...(state.builder.b2bLocationIds||[])];
     state.companyPickerSearch='';
     return openCompanyPicker();
   }
-  if(a==='company-picker-clear'){ state.companyPickerIds=[]; state.locationPickerIds=[]; return openCompanyPicker(); }
+  if(a==='company-picker-clear'){ state.companyPickerIds=[]; return openCompanyPicker(); }
   if(a==='company-picker-done'){
     state.builder.b2bCompanyIds=[...(state.companyPickerIds||[])];
-    state.builder.b2bLocationIds=[...(state.locationPickerIds||[])];
     closeModal();
     return renderBuilder();
   }
@@ -5484,7 +4447,7 @@ document.addEventListener('click', e => {
   if(a==='toggle-pricing-status-menu'){
     state.pricingStatusMenu=!state.pricingStatusMenu; state.pricingKindMenu=false; return render(); }
   if(a==='new-price'){ state.builder=newBuilder(null); state.builder._returnTo={view:'pricing'};
-    state.pricingBuilderTab='settings'; state.editScopeCompanyId=null; state.editScopeLocationId=null; state.forkToLocation=null;
+    state.pricingBuilderTab='settings'; state.editScopeCompanyId=null;
     state.openSections={1:true,2:true,3:false,4:false};
     return renderBuilder(); }
   if(a==='select-assignment-buyer-type'){
@@ -5528,51 +4491,6 @@ document.addEventListener('click', e => {
   if(a==='remove-volume-tier'){
     state.builder.volumeRanges=(state.builder.volumeRanges||[]).filter((_,i)=> String(i)!==String(t.dataset.idx));
     return renderBuilder(); }
-  if(a==='toggle-add-rule-menu'){ state.addRuleMenu=!state.addRuleMenu; return renderBuilder(); }
-  if(a==='add-rule-type'){
-    /* Chọn LOẠI từ menu → tạo rule một-dimension với value RỖNG. Rule rỗng không
-       match gì, không đổi giá của ai cho tới khi merchant chọn value và Done —
-       nên "+ Add rule" không âm thầm tạo "Collection đầu tiên → 10% off". */
-    const field=t.dataset.field, arr=state.builder.conditionalRules=state.builder.conditionalRules||[];
-    const f=condField(field);
-    /* Chặn thêm "All products" lần hai (nút đã disabled, đây là chốt chặn cuối). */
-    if(f.key==='all' && arr.some(r=>((r.conditions||[])[0]||{}).field==='all')){ state.addRuleMenu=false; return renderBuilder(); }
-    /* "All products" là rule không cần chọn value — gán sentinel để nó hợp lệ ngay,
-       không rơi vào lỗi "pick at least one" và không bị prune. */
-    const values = f.key==='all' ? ['All products'] : [];
-    /* Latest-add lên ĐẦU danh sách (index 0). Với first-match-wins, trên cùng = ưu
-       tiên cao nhất, nên rule vừa thêm mặc định thắng — kéo ↑↓ để đổi thứ tự. */
-    arr.unshift({id:'cr'+Date.now(),conditions:[{field:f.key,operator:f.op,values}],match:'ALL',rule:'decrease',valueType:'percentage',value:null});
-    state.ruleEdit=0; state.addRuleMenu=false; state.ruleEditError=false;
-    return renderBuilder(); }
-  if(a==='edit-rule'){
-    const i=Number(t.dataset.idx), r=(state.builder.conditionalRules||[])[i]; if(!r) return;
-    state.ruleEdit=i; state.addRuleMenu=false; state.ruleEditError=false;
-    return renderBuilder(); }
-  if(a==='rule-done'){
-    /* Rule phải chọn ít nhất một value mới là rule thật. Chưa có value mà bấm Done
-       thì KHÔNG âm thầm xoá (trước đây xoá → user tưởng mất rule): giữ editor mở +
-       báo lỗi. Muốn bỏ rule thì bấm nút thùng rác. */
-    const arr=state.builder.conditionalRules||[]; const i=Number(t.dataset.idx); const r=arr[i];
-    if(r && !condValues((r.conditions||[])[0]).length){ state.ruleEditError=true; return renderBuilder(); }
-    state.ruleEdit=null; state.ruleEditError=false;
-    return renderBuilder(); }
-  if(a==='remove-rule'){
-    const i=Number(t.dataset.idx);
-    state.builder.conditionalRules=(state.builder.conditionalRules||[]).filter((_,k)=>k!==i);
-    if(state.ruleEdit===i){ state.ruleEdit=null; state.ruleEditError=false; }
-    else if(state.ruleEdit!=null && state.ruleEdit>i) state.ruleEdit--;
-    return renderBuilder(); }
-  if(a==='move-rule'){
-    const arr=state.builder.conditionalRules||[]; const i=Number(t.dataset.idx); const j=t.dataset.dir==='up'?i-1:i+1;
-    if(j>=0 && j<arr.length){ const tmp=arr[i]; arr[i]=arr[j]; arr[j]=tmp;
-      if(state.ruleEdit===i) state.ruleEdit=j; else if(state.ruleEdit===j) state.ruleEdit=i; }
-    return renderBuilder(); }
-  if(a==='cr-remove-value'){
-    const [ri,ci,vi]=String(t.dataset.idx).split('.').map(Number);
-    const r=(state.builder.conditionalRules||[])[ri]; const c=r&&(r.conditions||[])[ci]; if(!c) return;
-    c.values=condValues(c).filter((_,i)=>i!==vi); delete c.value;
-    return renderBuilder(); }
   if(t.dataset.bchoice){ const k=t.dataset.bchoice;
     state.builder[k]=t.dataset.value; if(k==='scopeType' && t.dataset.value==='all') state.builder.selectedProducts=db.products.map(p=>p.sku); return renderBuilder(); }
   if(t.dataset.btoggle){ const k=t.dataset.btoggle; state.builder[k]=!state.builder[k]; return renderBuilder(); }
@@ -5582,11 +4500,6 @@ document.addEventListener('click', e => {
     /* Same predicate the editor's banner used, so what was promised is what
        happens. The modal confirms the fork; it never offers the global edit. */
     const scopeCo = state.editScopeCompanyId ? companyById(state.editScopeCompanyId) : null;
-    if(state.editScopeLocationId){
-      const scopeLoc = scopeCo && locationById(scopeCo, state.editScopeLocationId);
-      if(editForksForLocation(state.builder, scopeCo, scopeLoc)){ state.forkApplyAll=false; return renderForkConfirm(scopeCo); }
-      return runSavePrice();
-    }
     if(editForksForCompany(state.builder, scopeCo)){ state.forkApplyAll=false; return renderForkConfirm(scopeCo); }
     return runSavePrice();
   }
@@ -5599,7 +4512,7 @@ document.addEventListener('click', e => {
     /* The opt-in path: edit the shared pricing in place, exactly what opening
        it from Pricing would have done. */
     state.forkApplyAll=false;
-    state.editScopeCompanyId=null; state.editScopeLocationId=null; state.forkToLocation=null;
+    state.editScopeCompanyId=null;
     closeModal();
     return runSavePrice();
   }
@@ -5608,27 +4521,16 @@ document.addEventListener('click', e => {
     const co=companyById(state.editScopeCompanyId);
     const b=state.builder, source=policyById(b.id);
     if(!co||!source) return toast('That company no longer exists.');
-    const kind=builderKind(b);
     b.id=null; b.type='Account-specific';
-    b.audienceType='b2b'; b.customerTarget='none'; b.assignmentTargetIds=[];
-    if(state.editScopeLocationId){
-      /* Bản tách của riêng Location này: gán vào slot pricing của location, không
-         đụng tới company (executeBuilderAssignment bỏ qua vì b2bCompanyIds rỗng). */
-      const l=locationById(co, state.editScopeLocationId);
-      if(b.name===source.name) b.name=`${(l&&l.name)||co.name} pricing`;
-      b.b2bCompanyIds=[]; b.b2bLocationIds=[];
-      state.forkToLocation={companyId:co.id, locationId:state.editScopeLocationId, kind};
-    } else {
-      /* Bản tách của riêng Company này, nên nó phục vụ phía Company. */
-      if(b.name===source.name) b.name=`${co.name} pricing`;
-      b.b2bCompanyIds=[co.id]; b.b2bLocationIds=[];
-    }
-    state.editScopeCompanyId=null; state.editScopeLocationId=null;
-    closeModal();
+    if(b.name===source.name) b.name=`${co.name} pricing`;
+    /* Bản tách là của riêng Company này, nên nó phục vụ phía Company. */
+    b.audienceType='b2b';
+    b.b2bCompanyIds=[co.id]; b.customerTarget='none'; b.assignmentTargetIds=[];
+    state.editScopeCompanyId=null;
     return runSavePrice();
   }
   if(a==='save-price-discard'){
-    state.builder=null; state.editScopeCompanyId=null; state.editScopeLocationId=null; state.forkToLocation=null; state.priceCreateContext=null;
+    state.builder=null; state.editScopeCompanyId=null; state.priceCreateContext=null;
     closeModal(); closeDrawer(); toast('Changes discarded'); return render();
   }
   /* A slot must be emptiable, not only replaceable: a wrong assignment used to
@@ -5739,14 +4641,12 @@ document.addEventListener('click', e => {
   if(a==='add-account') return openAddAccount();
   if(a==='change-shopify-company') return openShopifyCompanyBrowser();
   if(a==='company-setup-back'){
-    if(state.companySetupStep<=2) return openShopifyCompanyBrowser();
-    state.companySetupStep=Math.max(2,state.companySetupStep-1);
+    if(state.companySetupStep<=3) return openShopifyCompanyBrowser();
+    state.companySetupStep=Math.max(3,state.companySetupStep-1);
     return openShopifyCompanySetup();
   }
   if(a==='company-setup-next'){
     clearErrors();
-    if(state.companySetupStep===2 && !state.selectedShopifyLocations.length)
-      return toast('Select at least one location.');
     if(state.companySetupStep===3 && state.companySetupAddKind && state.companySetupDraftPolicy)
       return toast(`Save or discard the ${kindName(state.companySetupAddKind).toLowerCase()} first.`);
     state.companySetupStep=Math.min(4,state.companySetupStep+1);
@@ -5791,7 +4691,7 @@ document.addEventListener('click', e => {
     /* Draft không có id, nên editor phải biết nó đang sửa draft nào để lưu đè
        đúng chỗ thay vì đẻ ra một draft thứ hai. */
     state.builder.draftKind = isDraftRef(ref) ? draftKindOf(ref) : null;
-    state.editScopeCompanyId=null; state.editScopeLocationId=null; state.forkToLocation=null;
+    state.editScopeCompanyId=null;
     /* The Company being set up does not exist yet, so the pre-ticked list from
        newBuilder would read as "remove this pricing from everyone else" on
        save. Setup targets the Company under construction and nothing else. */
@@ -5890,10 +4790,9 @@ document.addEventListener('click', e => {
   if(a==='continue-shopify-company'){
     if(!state.selectedShopifyCompany) return toast('Select a Shopify Company first.');
     const source=shopifyCompanyDirectory.find(c=>c.id===state.selectedShopifyCompany);
-    // Vào bước Locations với tất cả location được chọn sẵn — merchant bỏ bớt nếu cần.
-    if(source) state.selectedShopifyLocations=source.locations.map(l=>l.id);
-    state.companySetupStep=2;
-    return openShopifyCompanySetup(2);
+    if(source && !state.selectedShopifyLocations.length) state.selectedShopifyLocations=source.locations.map(l=>l.id);
+    state.companySetupStep=3;
+    return openShopifyCompanySetup(3);
   }
   if(a==='add-selected-shopify-company'){
     const source=shopifyCompanyDirectory.find(c=>c.id===state.selectedShopifyCompany);
@@ -5954,7 +4853,7 @@ document.addEventListener('click', e => {
       activity:[{when:'Now',what:'Existing Shopify Company linked to the app'}]
     };
 
-    db.companies.push(normalizeCompany(company));
+    db.companies.push(company);
 
     state.selectedCompany=companyId;
     state.companyTab='pricing';
@@ -5967,119 +4866,6 @@ document.addEventListener('click', e => {
     state.companySetupDrafts={};
     state.priceCreateContext=null;
     return render();
-  }
-  /* ── Location resource actions ── */
-  if(a==='open-company-locations'){ state.view='company'; state.companyTab='locations'; return render(); }
-  if(a==='open-general-form') return openGeneralForm();
-  if(a==='save-general-form'){
-    const c=companyById(state.selectedCompany); const l=c&&locationById(c,state.selectedLocation);
-    if(!c||!l) return;
-    const name=document.getElementById('genFormName').value.trim();
-    if(!name) return toast('Enter a location name');
-    l.name=name;
-    l.externalId=document.getElementById('genFormExternalId').value.trim();
-    closeModal();
-    toast('Location updated');
-    return render();
-  }
-  if(a==='open-shipping-form') return openShippingForm();
-  if(a==='save-shipping-form'){
-    const c=companyById(state.selectedCompany); const l=c&&locationById(c,state.selectedLocation);
-    if(!c||!l) return;
-    l.shipping={
-      country:document.getElementById('shipFormCountry').value,
-      firstName:document.getElementById('shipFormFirstName').value.trim(),
-      lastName:document.getElementById('shipFormLastName').value.trim(),
-      company:document.getElementById('shipFormCompany').value.trim(),
-      address1:document.getElementById('shipFormAddress1').value.trim(),
-      address2:document.getElementById('shipFormAddress2').value.trim(),
-      city:document.getElementById('shipFormCity').value.trim(),
-      postal:document.getElementById('shipFormPostal').value.trim(),
-      phoneCountry:document.getElementById('shipFormPhoneCountry').value,
-      phone:document.getElementById('shipFormPhone').value.trim()
-    };
-    l.billingSameAsShipping=document.getElementById('shipFormBillingSame').checked;
-    // Giữ dòng phụ ở Locations index khớp với shipping mới.
-    l.address=[l.shipping.address1,l.shipping.city].filter(Boolean).join(', ');
-    closeModal();
-    toast('Shipping address updated');
-    return render();
-  }
-  if(a==='set-loc-pricing') return openLocationPricing(t.dataset.kind);
-  if(a==='save-loc-assign'){
-    const c=companyById(state.selectedCompany); const l=c&&locationById(c,state.selectedLocation);
-    if(!c||!l) return;
-    const k=state.locAssignKind; if(!KIND_ORDER.includes(k)) return;
-    if(!l.pricing) l.pricing={base:null,quantity:null};
-    l.pricing[k]=state.locAssignPolicyId || null;
-    closeModal();
-    toast(l.pricing[k]?'Location pricing set':'Using company pricing');
-    return render();
-  }
-  if(a==='create-loc-price'){
-    const c=companyById(state.selectedCompany); const l=c&&locationById(c,state.selectedLocation);
-    if(!c||!l) return;
-    const k=state.locAssignKind;
-    closeModal();
-    state.builder=newBuilder(null);
-    applyKindDefaults(state.builder, k);
-    state.builder.audienceType='b2b';
-    state.builder.b2bCompanyIds=[]; state.builder.b2bLocationIds=[l.id];
-    state.builder._returnTo={view:'location'};
-    state.pricingBuilderTab='settings';
-    state.editScopeCompanyId=null; state.editScopeLocationId=null; state.forkToLocation=null;
-    state.openSections={1:true,2:true,3:false,4:false};
-    return renderBuilder();
-  }
-  if(a==='revert-loc-pricing'){
-    const c=companyById(state.selectedCompany); const l=c&&locationById(c,state.selectedLocation);
-    if(!c||!l||!l.pricing) return;
-    l.pricing[t.dataset.kind]=null;
-    toast('Reverted to company pricing');
-    return render();
-  }
-  if(a==='open-company-quotes'){ state.view='company'; state.companyTab='quotes'; state.quoteFilter='all'; return render(); }
-  if(a==='view-company-orders'){
-    // Full history xem ở tab Orders của cả Company, gắn sẵn sort theo location nguồn.
-    state.view='company'; state.companyTab='orders';
-    state.orderLocationSort=t.dataset.locationId||null;
-    return render();
-  }
-  if(a==='clear-order-location-sort'){ state.orderLocationSort=null; return render(); }
-  if(a==='add-location') return openLocationForm(null);
-  if(a==='save-location'){
-    const c=companyById(state.selectedCompany); if(!c) return;
-    const name=document.getElementById('locFormName').value.trim();
-    if(!name) return toast('Enter a location name');
-    const address=document.getElementById('locFormAddress').value.trim();
-    const paymentTerms=document.getElementById('locFormTerms').value;
-    const purchasingMode=document.querySelector('input[name="locFormMode"]:checked')?.value || 'DIRECT';
-    if(state.locationFormId){
-      const l=locationById(c, state.locationFormId); if(!l) return;
-      Object.assign(l,{name,address,paymentTerms,purchasingMode});
-      toast('Location updated');
-    } else {
-      const l={id:demoId('l'),name,address,status:'Active',paymentTerms,purchasingMode};
-      c.locations.push(l);
-      state.selectedLocation=l.id; state.view='location';
-      toast('Location created');
-    }
-    state.locationFormId=null; closeModal(); return render();
-  }
-  if(a==='assign-buyer') return openAssignBuyer(t.dataset.locationId || state.selectedLocation);
-  if(a==='confirm-assign-buyer'){
-    const c=companyById(state.selectedCompany); if(!c) return;
-    const ct=(c.contacts||[]).find(x=>x.email===t.dataset.buyerEmail); if(!ct) return;
-    ct.locationId=t.dataset.locationId;
-    const roleSel=t.closest('tr')?.querySelector('[data-buyer-role]');
-    if(roleSel && roleSel.value) ct.role=roleSel.value;
-    closeModal(); toast('Buyer assigned'); return render();
-  }
-  if(a==='unassign-buyer'){
-    const c=companyById(state.selectedCompany); if(!c) return;
-    const ct=(c.contacts||[]).find(x=>x.email===t.dataset.buyerEmail); if(!ct) return;
-    ct.locationId=null;
-    toast('Buyer removed from location'); return render();
   }
   if(a==='delete-company') return openDeleteAccount('company', t.dataset.deleteId || state.selectedCompany);
   if(a==='confirm-delete-company'){
@@ -6197,29 +4983,6 @@ document.addEventListener('change', e => {
     row[key]=['from','to','value'].includes(key)?Number(t.value||0):t.value;
     arr[idx]=row; return renderBuilder();
   }
-  if(t.dataset.crAddval!==undefined){
-    /* Thêm một value vào condition (multi-value). Select tự reset về option rỗng
-       sau khi render lại. */
-    const arr=state.builder.conditionalRules||[];
-    const [ri,ci]=String(t.dataset.crAddval).split('.').map(Number);
-    const r=arr[ri]; const c=r&&(r.conditions||[])[ci]; if(!c || !t.value) return;
-    const vals=condValues(c); if(!vals.includes(t.value)) vals.push(t.value);
-    c.values=vals; delete c.value; state.ruleEditError=false;
-    if(state.errors && state.errors.rule){ const e={...state.errors}; delete e.rule; setErrors(e); }
-    return renderBuilder();
-  }
-  if(t.dataset.crRule!==undefined || t.dataset.crAdjval!==undefined){
-    const arr=state.builder.conditionalRules||[];
-    const idx=Number(t.dataset.crRule ?? t.dataset.crAdjval);
-    const r=arr[idx]; if(!r) return;
-    if(t.dataset.crRule!==undefined){
-      if(t.value==='set'){ r.rule='set'; r.valueType='amount'; }
-      else if(t.value==='decrease_amt'){ r.rule='decrease'; r.valueType='amount'; }
-      else { r.rule='decrease'; r.valueType='percentage'; }
-    }
-    if(t.dataset.crAdjval!==undefined) r.value=t.value===''?null:Number(t.value);
-    return renderBuilder();
-  }
   if(t.dataset.bp){
     const b=state.builder, sku=t.dataset.bp;
     b.selectedProducts = t.checked ? [...new Set([...(b.selectedProducts||[]),sku])]
@@ -6238,8 +5001,6 @@ document.addEventListener('change', e => {
   }
   if(t.dataset.as){ state.assign[t.dataset.as] = t.value;
     return renderAssign(); }
-  if(t.dataset.locPolicy!==undefined){ state.locAssignPolicyId = t.value;
-    return renderLocationPricing(); }
 });
 
 document.querySelectorAll('.scrim').forEach(s => s.addEventListener('click', e => {
@@ -6308,7 +5069,6 @@ function injectRfqCompany(p){
       activity:[{when:'Today', what:'Created from QuoteSnap RFQ'}]
     });
   }
-  normalizeCompany(companyById(id));
   // Bring the originating RFQ quote across too, so the company's Quotes tab is the record.
   if(p.quote && p.quote.id && !db.quotes.some(q => q.id === p.quote.id && q.company === id)){
     db.quotes.push({
@@ -6376,6 +5136,15 @@ render();
           location.href = sel.value === 'changelog' ? '/versions/'
             : sel.value === 'latest' ? '/b2b/' : `/versions/${sel.value}/b2b/`;
         });
+      }
+      if(match){
+        const v = versions.find(x => x.id === current) || {};
+        const bar = document.createElement('div');
+        bar.style.cssText = 'background:#4b2e83;color:#fff;font-size:12.5px;padding:8px 16px;display:flex;gap:10px;align-items:center';
+        bar.innerHTML = `<strong>Archived prototype — ${current}</strong>`
+          + `<span style="opacity:.85">${[v.date, v.note].filter(Boolean).join(' · ')}</span>`
+          + `<a href="/" style="margin-left:auto;color:#fff;font-weight:650">Open latest ↗</a>`;
+        document.body.prepend(bar);
       }
     })
     .catch(() => {});

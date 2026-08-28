@@ -2131,19 +2131,16 @@ const productBySku = sku => db.products.find(p=>p.sku===sku) || null;
    can never drift between them. */
 const activePolicy = p => (p && p.status!=='Inactive') ? p : null;
 function resolveKind(company, location, kind){
-  const locP = activePolicy(policyById(((location&&location.pricing)||{})[kind]));
-  if(locP) return {kind, policy:locP, source:'LOCATION'};
+  /* Locations no longer hold their own pricing — always inherit the Company. */
   const compP = activePolicy(policyById(companyPricing(company)[kind]));
   if(compP) return {kind, policy:compP, source:'COMPANY'};
   return {kind, policy:null, source:null};
 }
 function resolvePricing(company, location){
-  /* Base: a Location override (single) replaces the whole company base list;
-     otherwise the company's Active, in-date bases in priority order. Quantity
-     keeps its single-slot Location→Company precedence. */
-  const locBase = activePolicy(policyById(((location&&location.pricing)||{}).base));
-  const baseSource = locBase ? 'LOCATION' : 'COMPANY';
-  const basePolicies = locBase ? [locBase] : companyActiveBasePolicies(company);
+  /* No per-Location override — pricing applies to the whole Company; every
+     Location inherits the Company's Active, in-date bases in priority order. */
+  const baseSource = 'COMPANY';
+  const basePolicies = companyActiveBasePolicies(company);
   const qEntry = resolveKind(company, location, 'quantity');
   const entries = [
     ...basePolicies.map(p=>({kind:'base', policy:p, source:baseSource})),
@@ -2165,7 +2162,7 @@ function resolvePricing(company, location){
     profiles,                             // resolved policies (assigned, else default)
     profile: profiles[0] || null,
     source,
-    hasLocationOverride: KIND_ORDER.some(k=>policyById(((location&&location.pricing)||{})[k])),
+    hasLocationOverride: false,
     sourceName: company.name
   };
 }
@@ -2642,7 +2639,7 @@ function openShopifyCompanyBrowser(){
     <div class="directory-list" id="shopifyCompanyDirectory" ${isEmpty?'style="border:0;background:transparent"':''}>${rows}</div>
     ${isEmpty?'':`<div class="hint" style="margin-top:8px">${selected
       ? `<b>${esc(selected.name)}</b> selected. Continue to review its Locations and set pricing.`
-      : 'Select a Company to link it to this app. You choose which of its Locations come along in the next step.'}</div>`}`,
+      : 'Select a Company to link it to this app. All of its Locations come along in the next step (you cannot pick a subset).'}</div>`}`,
     `<button class="btn" data-close-modal>Cancel</button>
      ${isEmpty
        ? (shopifyCompanyDirectory.length
@@ -2703,18 +2700,16 @@ function openShopifyCompanySetup(step=null){
       ${selectedHeader}
       <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
         ${source.locations.map(l=>{
-          const on=state.selectedShopifyLocations.includes(l.id);
           const nBuyers=buyersAt(source,l.name).length;
-          return `<label class="rule-card ${on?'selected':''}" data-sloc="${l.id}">
-            <input type="checkbox" ${on?'checked':''}>
+          /* Locations không chọn/untick riêng — mọi Location của Company đều được đưa vào (khoá). */
+          return `<label class="rule-card selected" style="cursor:default">
+            <input type="checkbox" checked disabled>
             <div><div class="rule-title">${esc(l.name)}</div>
               <div class="rule-desc">${esc(l.terms)} · ${esc(l.ordering)} · ${nBuyers} buyer${nBuyers===1?'':'s'}</div></div>
           </label>`;
         }).join('')}
       </div>
-      <div class="inline-note" style="margin-top:10px">${selectedLocations.length
-        ? `${selectedLocations.length} of ${source.locations.length} location${source.locations.length===1?'':'s'} will be added. Contacts follow their location.`
-        : 'Select at least one location to continue.'}</div>`;
+      <div class="inline-note" style="margin-top:10px">All ${source.locations.length} location${source.locations.length===1?'':'s'} will be added. Contacts follow their location.</div>`;
     foot=`<button class="btn" data-action="company-setup-back">Back</button>
       <button class="btn primary" data-action="company-setup-next" ${selectedLocations.length?'':'disabled'}>Continue</button>`;
   }
@@ -2970,7 +2965,6 @@ const APP_SECTIONS = [
   {id:'form',        label:'Form',         icon:'▤', external:true},
   {id:'customers',   label:'B2B Company',  icon:'▢', external:false},
   {id:'pricing',     label:'Pricing',      icon:'◫', external:false},
-  {id:'analytics',   label:'Analytics',    icon:'▥', external:false},
   {id:'manual-order',label:'Manual Order', icon:'▦', external:true},
   {id:'discount',    label:'Discount',     icon:'◈', external:true},
   {id:'others',      label:'Others',       icon:'⋯', external:true}
@@ -3400,7 +3394,7 @@ function renderCompany(){
   const quotes = db.quotes.filter(q=>q.company===c.id);
   const waiting = quotes.filter(q=>['New Received','Read','Updated'].includes(q.status)).length;
   const companyOrders = c.orders||[];
-  const tabs = [['pricing','Pricing'],['analytics','Analytics'],['quotes',`Quotes${quotes.length?` <span class="n">${quotes.length}</span>`:''}`],
+  const tabs = [['pricing','Pricing'],['quotes',`Quotes${quotes.length?` <span class="n">${quotes.length}</span>`:''}`],
                 ['orders',`Orders${companyOrders.length?` <span class="n">${companyOrders.length}</span>`:''}`],
                 ['locations','Locations'],['contacts','Contacts']];
 
@@ -3780,55 +3774,38 @@ function renderLocation(){
         <p>Assign a buyer so someone can purchase under this location.</p></div>`}
   </div>`;
 
-  /* Pricing card copy đúng hành vi của company Pricing (edit ✎ / swap ⇄ /
-     unassign ⊖ + "Assign per type on the row") nhưng gán ở cấp Location — chuẩn
-     bị sunset company pricing. Resolve theo chuỗi Location → Company: mỗi kind
-     hoặc là override riêng của location, hoặc inherit từ company. */
+  /* Location không còn giữ pricing riêng — card Pricing chỉ hiển thị, mọi kind
+     inherit từ Company (quản lý ở trang Company). Không nút assign/swap/override. */
   const pricingCard = `<div class="card"><div class="card-head"><h2>Pricing</h2>
-      <div class="right"><span class="dim">Assign per type on the row</span></div></div>
-    <table><thead><tr><th>Pricing type</th><th>Pricing</th><th>Products</th><th>Status</th><th></th></tr></thead><tbody>
+      <div class="right"><span class="dim">Inherited from the company · manage on the Company</span></div></div>
+    <table><thead><tr><th>Pricing type</th><th>Pricing</th><th>Products</th><th>Status</th></tr></thead><tbody>
     ${(()=>{
       let rows='';
-      /* Base: the resolved bases (a single Location override replaces the whole
-         inherited list; otherwise the company's bases, in priority order). The
-         Location override control sits on the first base row only. */
       const baseEntries = ep.entries.filter(e=>e.kind==='base');
       if(baseEntries.length){
         baseEntries.forEach((e,i)=>{
           const p=e.policy, first=i===0;
-          const sub = e.source==='LOCATION' ? '<span class="badge info">Location override</span>' : `Inherited from ${esc(c.name)}`;
           rows += `<tr>
             <td title="${esc(KIND_TOOLTIP.base||'')}"><div class="cell-main">${kindName('base')}</div>${first?`<div class="cell-sub">${kindPurpose('base')}</div>`:''}</td>
-            <td><div class="cell-main">${esc(p.name)}</div><div class="cell-sub">${sub}</div></td>
+            <td><div class="cell-main">${esc(p.name)}</div><div class="cell-sub">Inherited from ${esc(c.name)}</div></td>
             <td class="nowrap">${scopeLabel(p)}</td>
             <td class="nowrap"><span class="badge ${policyStatus(p).tone}">${policyStatus(p).label}</span></td>
-            <td class="num" style="white-space:nowrap">
-              <button class="btn small icon" data-edit-policy="${p.id}" data-scope-location="1" title="Edit pricing" aria-label="Edit pricing">${ICON.edit}</button>
-              ${first?`<button class="btn small icon" data-action="set-loc-pricing" data-kind="base" title="Override base for this location" aria-label="Override base for this location">${ICON.swap}</button>
-                ${e.source==='LOCATION'?`<button class="btn small icon critical" data-action="revert-loc-pricing" data-kind="base" title="Remove location override" aria-label="Remove location override">${ICON.unassign}</button>`:''}`:''}
-            </td>
           </tr>`;
         });
       } else {
         rows += `<tr>
           <td title="${esc(KIND_TOOLTIP.base||'')}"><div class="cell-main">${kindName('base')}</div><div class="cell-sub">${kindPurpose('base')}</div></td>
-          <td><span class="badge warning">Not set</span></td>
+          <td><span class="badge warning">Not set</span><div class="cell-sub">Set it on the Company</div></td>
           <td class="nowrap"><span class="dim">-</span></td><td class="nowrap"><span class="dim">-</span></td>
-          <td class="num" style="white-space:nowrap"><button class="btn small icon" data-action="set-loc-pricing" data-kind="base" title="Assign a base pricing" aria-label="Assign a base pricing">${ICON.assign}</button></td>
         </tr>`;
       }
       /* Quantity: single slot. */
       const qe = ep.entries.find(e=>e.kind==='quantity'), qp = qe&&qe.policy;
       rows += `<tr>
         <td title="${esc(KIND_TOOLTIP.quantity||'')}"><div class="cell-main">${kindName('quantity')}</div><div class="cell-sub">${kindPurpose('quantity')}</div></td>
-        <td>${qp?`<div class="cell-main">${esc(qp.name)}</div><div class="cell-sub">${qe.source==='LOCATION'?'<span class="badge info">Location override</span>':`Inherited from ${esc(c.name)}`}</div>`:'<span class="badge warning">Not set</span>'}</td>
+        <td>${qp?`<div class="cell-main">${esc(qp.name)}</div><div class="cell-sub">Inherited from ${esc(c.name)}</div>`:'<span class="badge warning">Not set</span>'}</td>
         <td class="nowrap">${qp?scopeLabel(qp):'<span class="dim">-</span>'}</td>
         <td class="nowrap">${qp?`<span class="badge ${policyStatus(qp).tone}">${policyStatus(qp).label}</span>`:'<span class="dim">-</span>'}</td>
-        <td class="num" style="white-space:nowrap">${qp
-          ? `<button class="btn small icon" data-edit-policy="${qp.id}" data-scope-location="1" title="Edit pricing" aria-label="Edit pricing">${ICON.edit}</button>
-             <button class="btn small icon" data-action="set-loc-pricing" data-kind="quantity" title="Change to another quantity pricing" aria-label="Change to another quantity pricing">${ICON.swap}</button>
-             ${qe.source==='LOCATION'?`<button class="btn small icon critical" data-action="revert-loc-pricing" data-kind="quantity" title="Remove location override" aria-label="Remove location override">${ICON.unassign}</button>`:''}`
-          : `<button class="btn small icon" data-action="set-loc-pricing" data-kind="quantity" title="Assign a quantity pricing" aria-label="Assign a quantity pricing">${ICON.assign}</button>`}</td>
       </tr>`;
       return rows;
     })()}
@@ -5410,24 +5387,14 @@ function openCompanyPicker(){
         <span class="badge ${badge[0]}">${badge[1]}</span>
       </label>`;
     }
-    /* Company cha đang tick thì location con được PHỦ theo: hiện checked + badge
-       "Covered by company" nhưng KHÔNG khoá — vẫn bỏ tick lẻ được. Bỏ tick một
-       location sẽ "nổ" cụm ra (company off, các location còn lại thành override
-       riêng) nên location đó không đi theo giá của company nữa. */
-    const coveredByCompany = cChosen.includes(n.companyId) && !lChosen.includes(n.id);
-    const ownOverride = lChosen.includes(n.id);
-    const chosen = coveredByCompany || ownOverride;
-    const st=locRowState(b,n.id);
-    const badge = coveredByCompany ? ['','Covered by company']
-      : st.holdsThis && chosen ? ['success','Assigned']
-      : st.holdsThis ? ['critical','Will be removed']
-      : st.other && chosen ? ['warning','Replaces override']
-      : chosen ? ['success','Location override'] : ['','Location'];
-    return `<label class="multi-row" data-loc-pick="${n.id}" style="padding-left:30px">
-      <input type="checkbox" ${chosen?'checked':''}>
+    /* Locations không còn chọn/bỏ tick riêng — pricing đi theo CẢ Company. Location
+       con chỉ hiển thị, luôn phủ theo Company (checkbox khoá), không có override lẻ. */
+    const coveredByCompany = cChosen.includes(n.companyId);
+    return `<label class="multi-row" style="padding-left:30px;cursor:default;opacity:${coveredByCompany?'1':'.85'}">
+      <input type="checkbox" ${coveredByCompany?'checked':''} disabled>
       <span class="grow"><span class="m-name" style="font-weight:500">↳ ${esc(n.title)}</span>
         <span class="m-meta">${esc(n.meta||'')}</span></span>
-      <span class="badge ${badge[0]}">${badge[1]}</span>
+      <span class="badge">${coveredByCompany?'Covered by company':'Location'}</span>
     </label>`;
   };
 

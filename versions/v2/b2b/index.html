@@ -1538,12 +1538,6 @@ db.quotes = [
    timeline:[{when:'Jul 14',what:'Buyer submitted an RFQ through the form'},
              {when:'Jul 18',what:'Quote sent, valid 30 days'},
              {when:'Jul 22',what:'Draft order created in Shopify'}]},
-  {id:'1030120', company:'c1', buyer:'John Nguyen', email:'john@abcconstruction.com', location:'Hanoi',
-   created:'2026-08-10 10:20:00', updated:'2026-08-12', leadScore:null,
-   progress:'Draft Order Created', status:'Deal Closed', assignee:'Vo Nam Hieu', expires:'2026-09-10', source:'RFQ form', note:'',
-   lines:[{sku:'FIL-XL',qty:60,quoted:70},{sku:'HOS-12',qty:20,quoted:118},{sku:'VLV-40',qty:50,quoted:39},{sku:'MCFC-TRAINING-JACKET',qty:30,quoted:980},{sku:'FIL-STD',qty:100,quoted:45}],
-   timeline:[{when:'Aug 10',what:'Buyer submitted an RFQ through the form'},
-             {when:'Aug 12',what:'Draft order created in Shopify'}]},
   {id:'1028785', company:'c1', buyer:'Pham Duc', email:'duc@abcconstruction.com', location:'Bac Ninh site',
    created:'2026-07-14 11:43:55', updated:'2026-07-14', leadScore:null,
    progress:'PDF Exported', status:'New Received', assignee:null, expires:null, source:'RFQ form', note:'',
@@ -2131,19 +2125,16 @@ const productBySku = sku => db.products.find(p=>p.sku===sku) || null;
    can never drift between them. */
 const activePolicy = p => (p && p.status!=='Inactive') ? p : null;
 function resolveKind(company, location, kind){
-  const locP = activePolicy(policyById(((location&&location.pricing)||{})[kind]));
-  if(locP) return {kind, policy:locP, source:'LOCATION'};
+  /* Locations no longer hold their own pricing — always inherit the Company. */
   const compP = activePolicy(policyById(companyPricing(company)[kind]));
   if(compP) return {kind, policy:compP, source:'COMPANY'};
   return {kind, policy:null, source:null};
 }
 function resolvePricing(company, location){
-  /* Base: a Location override (single) replaces the whole company base list;
-     otherwise the company's Active, in-date bases in priority order. Quantity
-     keeps its single-slot Location→Company precedence. */
-  const locBase = activePolicy(policyById(((location&&location.pricing)||{}).base));
-  const baseSource = locBase ? 'LOCATION' : 'COMPANY';
-  const basePolicies = locBase ? [locBase] : companyActiveBasePolicies(company);
+  /* No per-Location override — pricing applies to the whole Company; every
+     Location inherits the Company's Active, in-date bases in priority order. */
+  const baseSource = 'COMPANY';
+  const basePolicies = companyActiveBasePolicies(company);
   const qEntry = resolveKind(company, location, 'quantity');
   const entries = [
     ...basePolicies.map(p=>({kind:'base', policy:p, source:baseSource})),
@@ -2165,7 +2156,7 @@ function resolvePricing(company, location){
     profiles,                             // resolved policies (assigned, else default)
     profile: profiles[0] || null,
     source,
-    hasLocationOverride: KIND_ORDER.some(k=>policyById(((location&&location.pricing)||{})[k])),
+    hasLocationOverride: false,
     sourceName: company.name
   };
 }
@@ -2642,7 +2633,7 @@ function openShopifyCompanyBrowser(){
     <div class="directory-list" id="shopifyCompanyDirectory" ${isEmpty?'style="border:0;background:transparent"':''}>${rows}</div>
     ${isEmpty?'':`<div class="hint" style="margin-top:8px">${selected
       ? `<b>${esc(selected.name)}</b> selected. Continue to review its Locations and set pricing.`
-      : 'Select a Company to link it to this app. You choose which of its Locations come along in the next step.'}</div>`}`,
+      : 'Select a Company to link it to this app. All of its Locations come along in the next step (you cannot pick a subset).'}</div>`}`,
     `<button class="btn" data-close-modal>Cancel</button>
      ${isEmpty
        ? (shopifyCompanyDirectory.length
@@ -2703,18 +2694,16 @@ function openShopifyCompanySetup(step=null){
       ${selectedHeader}
       <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
         ${source.locations.map(l=>{
-          const on=state.selectedShopifyLocations.includes(l.id);
           const nBuyers=buyersAt(source,l.name).length;
-          return `<label class="rule-card ${on?'selected':''}" data-sloc="${l.id}">
-            <input type="checkbox" ${on?'checked':''}>
+          /* Locations không chọn/untick riêng — mọi Location của Company đều được đưa vào (khoá). */
+          return `<label class="rule-card selected" style="cursor:default">
+            <input type="checkbox" checked disabled>
             <div><div class="rule-title">${esc(l.name)}</div>
               <div class="rule-desc">${esc(l.terms)} · ${esc(l.ordering)} · ${nBuyers} buyer${nBuyers===1?'':'s'}</div></div>
           </label>`;
         }).join('')}
       </div>
-      <div class="inline-note" style="margin-top:10px">${selectedLocations.length
-        ? `${selectedLocations.length} of ${source.locations.length} location${source.locations.length===1?'':'s'} will be added. Contacts follow their location.`
-        : 'Select at least one location to continue.'}</div>`;
+      <div class="inline-note" style="margin-top:10px">All ${source.locations.length} location${source.locations.length===1?'':'s'} will be added. Contacts follow their location.</div>`;
     foot=`<button class="btn" data-action="company-setup-back">Back</button>
       <button class="btn primary" data-action="company-setup-next" ${selectedLocations.length?'':'disabled'}>Continue</button>`;
   }
@@ -2970,7 +2959,6 @@ const APP_SECTIONS = [
   {id:'form',        label:'Form',         icon:'▤', external:true},
   {id:'customers',   label:'B2B Company',  icon:'▢', external:false},
   {id:'pricing',     label:'Pricing',      icon:'◫', external:false},
-  {id:'analytics',   label:'Analytics',    icon:'▥', external:false},
   {id:'manual-order',label:'Manual Order', icon:'▦', external:true},
   {id:'discount',    label:'Discount',     icon:'◈', external:true},
   {id:'others',      label:'Others',       icon:'⋯', external:true}
@@ -3154,23 +3142,18 @@ function companyBasePricingCard(c){
       </td>
     </tr>`;
   }).join('');
-  const closedQ = (db.quotes||[]).filter(q=>q.company===c.id && quoteIsClosed(q) && quotePricedLines(q).length);
-  const buildBtn = closedQ.length ? `<button class="btn small" data-action="build-base-from-quotes" data-target-company="${c.id}" title="Build a base pricing from this company's ${closedQ.length} closed quote${closedQ.length===1?'':'s'} — most recent price per product">Build pricing from closed quote${closedQ.length===1?'':'s'}</button>` : '';
   const body = entries.length
     ? `<table><thead><tr><th>Pricing</th><th title="Lower number applies first; the rest are fallbacks.">Priority</th><th>Status</th><th></th></tr></thead><tbody>
         ${rows}
         ${entries.length > baseCount ? '<tr><td colspan="4" style="padding:8px 0 2px;text-align:center"><button class="btn small" data-action="bases-more">Show more</button></td></tr>' : (entries.length > BASE_LIMIT ? '<tr><td colspan="4" style="padding:8px 0 2px;text-align:center"><button class="btn small" data-action="bases-less">Show less</button></td></tr>' : '')}
         <tr><td colspan="4" style="padding-top:0">
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn small" data-action="assign-open" data-target-company="${c.id}" data-target-kind="base"><span class="plus">+</span> Add base pricing</button>
-            ${buildBtn}
-          </div>
+          <button class="btn small" data-action="assign-open" data-target-company="${c.id}" data-target-kind="base"><span class="plus">+</span> Add base pricing</button>
         </td></tr>
       </tbody></table>`
     : `<div class="empty" style="padding:20px 16px">
         <div class="empty-title">No base pricing yet</div>
         <p>Assign a base pricing so buyers get a B2B price. You can add more than one — the lowest priority applies first.</p>
-        <div class="btns" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center"><button class="btn primary" data-action="assign-open" data-target-company="${c.id}" data-target-kind="base">Add base pricing</button>${buildBtn}</div>
+        <div class="btns"><button class="btn primary" data-action="assign-open" data-target-company="${c.id}" data-target-kind="base">Add base pricing</button></div>
       </div>`;
   return `<div class="card"><div class="card-head"><h2>Base pricing</h2>
       <div class="right"><span class="dim">The standard B2B price for this company</span></div></div>
@@ -3400,7 +3383,7 @@ function renderCompany(){
   const quotes = db.quotes.filter(q=>q.company===c.id);
   const waiting = quotes.filter(q=>['New Received','Read','Updated'].includes(q.status)).length;
   const companyOrders = c.orders||[];
-  const tabs = [['pricing','Pricing'],['analytics','Analytics'],['quotes',`Quotes${quotes.length?` <span class="n">${quotes.length}</span>`:''}`],
+  const tabs = [['pricing','Pricing'],['quotes',`Quotes${quotes.length?` <span class="n">${quotes.length}</span>`:''}`],
                 ['orders',`Orders${companyOrders.length?` <span class="n">${companyOrders.length}</span>`:''}`],
                 ['locations','Locations'],['contacts','Contacts']];
 
@@ -3780,55 +3763,38 @@ function renderLocation(){
         <p>Assign a buyer so someone can purchase under this location.</p></div>`}
   </div>`;
 
-  /* Pricing card copy đúng hành vi của company Pricing (edit ✎ / swap ⇄ /
-     unassign ⊖ + "Assign per type on the row") nhưng gán ở cấp Location — chuẩn
-     bị sunset company pricing. Resolve theo chuỗi Location → Company: mỗi kind
-     hoặc là override riêng của location, hoặc inherit từ company. */
+  /* Location không còn giữ pricing riêng — card Pricing chỉ hiển thị, mọi kind
+     inherit từ Company (quản lý ở trang Company). Không nút assign/swap/override. */
   const pricingCard = `<div class="card"><div class="card-head"><h2>Pricing</h2>
-      <div class="right"><span class="dim">Assign per type on the row</span></div></div>
-    <table><thead><tr><th>Pricing type</th><th>Pricing</th><th>Products</th><th>Status</th><th></th></tr></thead><tbody>
+      <div class="right"><span class="dim">Inherited from the company · manage on the Company</span></div></div>
+    <table><thead><tr><th>Pricing type</th><th>Pricing</th><th>Products</th><th>Status</th></tr></thead><tbody>
     ${(()=>{
       let rows='';
-      /* Base: the resolved bases (a single Location override replaces the whole
-         inherited list; otherwise the company's bases, in priority order). The
-         Location override control sits on the first base row only. */
       const baseEntries = ep.entries.filter(e=>e.kind==='base');
       if(baseEntries.length){
         baseEntries.forEach((e,i)=>{
           const p=e.policy, first=i===0;
-          const sub = e.source==='LOCATION' ? '<span class="badge info">Location override</span>' : `Inherited from ${esc(c.name)}`;
           rows += `<tr>
             <td title="${esc(KIND_TOOLTIP.base||'')}"><div class="cell-main">${kindName('base')}</div>${first?`<div class="cell-sub">${kindPurpose('base')}</div>`:''}</td>
-            <td><div class="cell-main">${esc(p.name)}</div><div class="cell-sub">${sub}</div></td>
+            <td><div class="cell-main">${esc(p.name)}</div><div class="cell-sub">Inherited from ${esc(c.name)}</div></td>
             <td class="nowrap">${scopeLabel(p)}</td>
             <td class="nowrap"><span class="badge ${policyStatus(p).tone}">${policyStatus(p).label}</span></td>
-            <td class="num" style="white-space:nowrap">
-              <button class="btn small icon" data-edit-policy="${p.id}" data-scope-location="1" title="Edit pricing" aria-label="Edit pricing">${ICON.edit}</button>
-              ${first?`<button class="btn small icon" data-action="set-loc-pricing" data-kind="base" title="Override base for this location" aria-label="Override base for this location">${ICON.swap}</button>
-                ${e.source==='LOCATION'?`<button class="btn small icon critical" data-action="revert-loc-pricing" data-kind="base" title="Remove location override" aria-label="Remove location override">${ICON.unassign}</button>`:''}`:''}
-            </td>
           </tr>`;
         });
       } else {
         rows += `<tr>
           <td title="${esc(KIND_TOOLTIP.base||'')}"><div class="cell-main">${kindName('base')}</div><div class="cell-sub">${kindPurpose('base')}</div></td>
-          <td><span class="badge warning">Not set</span></td>
+          <td><span class="badge warning">Not set</span><div class="cell-sub">Set it on the Company</div></td>
           <td class="nowrap"><span class="dim">-</span></td><td class="nowrap"><span class="dim">-</span></td>
-          <td class="num" style="white-space:nowrap"><button class="btn small icon" data-action="set-loc-pricing" data-kind="base" title="Assign a base pricing" aria-label="Assign a base pricing">${ICON.assign}</button></td>
         </tr>`;
       }
       /* Quantity: single slot. */
       const qe = ep.entries.find(e=>e.kind==='quantity'), qp = qe&&qe.policy;
       rows += `<tr>
         <td title="${esc(KIND_TOOLTIP.quantity||'')}"><div class="cell-main">${kindName('quantity')}</div><div class="cell-sub">${kindPurpose('quantity')}</div></td>
-        <td>${qp?`<div class="cell-main">${esc(qp.name)}</div><div class="cell-sub">${qe.source==='LOCATION'?'<span class="badge info">Location override</span>':`Inherited from ${esc(c.name)}`}</div>`:'<span class="badge warning">Not set</span>'}</td>
+        <td>${qp?`<div class="cell-main">${esc(qp.name)}</div><div class="cell-sub">Inherited from ${esc(c.name)}</div>`:'<span class="badge warning">Not set</span>'}</td>
         <td class="nowrap">${qp?scopeLabel(qp):'<span class="dim">-</span>'}</td>
         <td class="nowrap">${qp?`<span class="badge ${policyStatus(qp).tone}">${policyStatus(qp).label}</span>`:'<span class="dim">-</span>'}</td>
-        <td class="num" style="white-space:nowrap">${qp
-          ? `<button class="btn small icon" data-edit-policy="${qp.id}" data-scope-location="1" title="Edit pricing" aria-label="Edit pricing">${ICON.edit}</button>
-             <button class="btn small icon" data-action="set-loc-pricing" data-kind="quantity" title="Change to another quantity pricing" aria-label="Change to another quantity pricing">${ICON.swap}</button>
-             ${qe.source==='LOCATION'?`<button class="btn small icon critical" data-action="revert-loc-pricing" data-kind="quantity" title="Remove location override" aria-label="Remove location override">${ICON.unassign}</button>`:''}`
-          : `<button class="btn small icon" data-action="set-loc-pricing" data-kind="quantity" title="Assign a quantity pricing" aria-label="Assign a quantity pricing">${ICON.assign}</button>`}</td>
       </tr>`;
       return rows;
     })()}
@@ -4163,95 +4129,6 @@ function openQuotePricingAssign(companyId, lines){
   openAssign({companyId, targetType:'company', kind:'base', targetLocked:true, typeLocked:true,
     quoteOverrides:overrides, quoteLines:priced});
 }
-/* Company-level "Build pricing from closed quotes": gộp giá đã chốt của MỌI closed
-   quote thành một base — mỗi SKU lấy giá ở quote MỚI NHẤT (sort created tăng dần →
-   sau ghi đè trước), đánh dấu xung đột nếu cùng SKU có giá khác nhau giữa các quote.
-   Mở modal review: sửa quoted / xóa dòng / xem nguồn, rồi lưu vào base chọn hoặc tạo mới. */
-function openCompanyClosedQuotesPricing(companyId){
-  const co = companyById(companyId); if(!co) return;
-  /* Most recent CLOSED quote wins: sort theo thời điểm closed (updated, fallback created)
-     tăng dần → quote closed gần nhất ghi đè. Không đánh dấu "conflict". */
-  const closed = (db.quotes||[]).filter(q=>q.company===companyId && quoteIsClosed(q))
-    .slice().sort((a,b)=>String(a.updated||a.created||'').localeCompare(String(b.updated||b.created||'')));
-  const bySku = {};
-  closed.forEach(q=>{ quotePricedLines(q).forEach(l=>{ bySku[l.sku]={sku:l.sku, quoted:Number(l.quoted), proposed:Number(l.quoted), from:q.id}; }); });
-  const rows = Object.values(bySku);
-  if(!rows.length) return toast('No closed quotes with priced lines for this company yet.');
-  state.buildQuotes = { companyId, rows,
-    dest:(companyBaseEntries(co)[0]?.id)||null,
-    newName:`${co.name} · quote prices`, newPriority:1 };
-  renderBuildFromQuotes();
-}
-function renderBuildFromQuotes(){
-  const s = state.buildQuotes; if(!s) return;
-  const co = companyById(s.companyId); if(!co) return;
-  const bases = companyBaseEntries(co).map(e=>policyById(e.id)).filter(Boolean);
-  const opts = bases.map(b=>`<option value="${b.id}" ${s.dest===b.id?'selected':''}>${esc(b.name)}</option>`).join('');
-  const rowsHTML = s.rows.map((r,i)=>{
-    const p = productBySku(r.sku);
-    return `<tr style="border-top:1px solid var(--border)">
-        <td style="padding:9px 12px"><div style="font-weight:600">${esc(p?p.title:r.sku)}</div><div style="font-size:12px;color:var(--text-sub)">${esc(r.sku)}</div></td>
-        <td style="padding:9px 12px;text-align:right;color:var(--text-sub);white-space:nowrap">${money(p?p.list:0)}</td>
-        <td style="padding:9px 12px;text-align:right;color:var(--text-sub);white-space:nowrap">${money(r.quoted)}</td>
-        <td style="padding:9px 12px;text-align:right;white-space:nowrap"><span style="display:inline-flex;align-items:center;gap:3px"><span style="color:var(--text-sub);font-size:13px">$</span><input data-build-proposed="${i}" type="number" min="0" step="any" value="${r.proposed}" style="width:78px;text-align:right;padding:5px 7px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-weight:600;font-family:inherit;font-size:13px"></span></td>
-        <td style="padding:9px 12px;white-space:nowrap"><a href="#" data-build-goto="${esc(r.from)}" style="font-size:12px;color:var(--p-color-text-emphasis,#005bd3);text-decoration:none">from #${esc(r.from)}</a></td>
-        <td style="padding:9px 12px;text-align:right"><button class="btn small icon critical" data-build-remove="${i}" title="Remove this product" aria-label="Remove product">${ICON.close}</button></td>
-      </tr>`;
-  }).join('');
-  const table = s.rows.length
-    ? `<div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:10px">
-        <table style="width:100%;border-collapse:collapse">
-          <thead><tr style="position:sticky;top:0;background:var(--surface-sub)">
-            <th style="text-align:left;padding:10px 12px;font-size:12px;color:var(--text-sub);font-weight:600"><span title="The product being priced" style="border-bottom:1px dotted var(--text-sub);cursor:help">Product</span></th>
-            <th style="text-align:right;padding:10px 12px;font-size:12px;color:var(--text-sub);font-weight:600"><span title="The regular Shopify (retail) price" style="border-bottom:1px dotted var(--text-sub);cursor:help">Shopify price</span></th>
-            <th style="text-align:right;padding:10px 12px;font-size:12px;color:var(--text-sub);font-weight:600"><span title="The price agreed in the closed quote — shown for reference" style="border-bottom:1px dotted var(--text-sub);cursor:help">Quoted price</span></th>
-            <th style="text-align:right;padding:10px 12px;font-size:12px;color:var(--text-sub);font-weight:600"><span title="The fixed B2B price to set for this product. Defaults to the quoted price; edit before saving." style="border-bottom:1px dotted var(--text-sub);cursor:help">Proposed price</span></th>
-            <th style="text-align:left;padding:10px 12px;font-size:12px;color:var(--text-sub);font-weight:600"><span title="The closed quote this price came from — click to open it" style="border-bottom:1px dotted var(--text-sub);cursor:help">Source</span></th>
-            <th style="padding:10px 12px"></th>
-          </tr></thead>
-          <tbody>${rowsHTML}</tbody>
-        </table>
-      </div>`
-    : `<div class="empty" style="padding:20px 16px"><div class="empty-title">No products left</div><p>Every line was removed. Cancel, or reopen to start over.</p></div>`;
-  const body = `
-    <p style="margin:0 0 14px;font-size:13px;color:var(--text-sub);line-height:1.5">Prices pulled from <strong style="color:var(--text)">${esc(co.name)}</strong>'s Deal-Closed quotes — most recent price per product. Edit or remove any line before saving.</p>
-    ${bases.length?`<label style="font-size:13px;font-weight:600;color:var(--text);display:block;margin-bottom:6px">Add to</label>
-    <select data-build-dest style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)">${opts}</select>
-    <div style="font-size:12px;color:var(--text-sub);margin-top:6px">These prices are added to it; other products keep their current price.</div>
-    <div class="chooser-or">or</div>`:''}
-    <button class="btn-alt" data-build-create><span class="plus">+</span>Create a new base pricing</button>
-    <div style="font-size:14px;font-weight:650;color:var(--text);margin:18px 0 8px">Products <span style="font-weight:450;font-size:12px;color:var(--text-sub)">— ${s.rows.length} · edit price or remove before saving</span></div>
-    ${table}`;
-  const foot = `<button class="btn" data-close-modal>Cancel</button>
-    <button class="btn primary" data-build-save ${s.rows.length && bases.length?'':'disabled'}>Save base pricing</button>`;
-  openModal(`Build base pricing: ${esc(co.name)}`, body, foot, true);
-  const m = document.getElementById('modal');
-  m.querySelectorAll('[data-build-proposed]').forEach(inp=>{ inp.oninput=()=>{ const i=+inp.dataset.buildProposed; const v=parseFloat(inp.value); s.rows[i].proposed=isNaN(v)?0:v; }; });
-  m.querySelectorAll('[data-build-remove]').forEach(btn=>{ btn.onclick=()=>{ s.rows.splice(+btn.dataset.buildRemove,1); renderBuildFromQuotes(); }; });
-  m.querySelectorAll('[data-build-goto]').forEach(a=>{ a.onclick=(e)=>{ e.preventDefault(); const qid=a.dataset.buildGoto; state.buildQuotes=null; closeModal(); state.selectedQuote=qid; state.view='quote'; render(); }; });
-  const sel=m.querySelector('[data-build-dest]'); if(sel) sel.onchange=()=>{ s.dest=sel.value; renderBuildFromQuotes(); };
-  const cr=m.querySelector('[data-build-create]'); if(cr) cr.onclick=()=>{
-    const lines=s.rows.filter(r=>r.proposed!=='' && r.proposed!=null && !isNaN(Number(r.proposed)) && Number(r.proposed)>0 && productBySku(r.sku)).map(r=>({sku:r.sku, quoted:Number(r.proposed)}));
-    if(!lines.length) return toast('Keep at least one product with a price.');
-    const cid=s.companyId; state.buildQuotes=null; closeModal(); startQuotePricingBuilder(cid, lines);
-  };
-  const sv=m.querySelector('[data-build-save]'); if(sv) sv.onclick=()=>saveBuildFromQuotes();
-}
-function saveBuildFromQuotes(){
-  const s = state.buildQuotes; if(!s) return;
-  const lines = s.rows
-    .filter(r=>r.proposed!=='' && r.proposed!=null && !isNaN(Number(r.proposed)) && Number(r.proposed)>0 && productBySku(r.sku))
-    .map(r=>({sku:r.sku, quoted:Number(r.proposed)}));
-  if(!lines.length) return toast('Keep at least one product with a price.');
-  if(!policyById(s.dest)) return toast('Pick a base pricing to add these to, or create a new one.');
-  const msg = applyQuotePricingTransfer(s.companyId, lines, { targetId:s.dest, newName:'', newPriority:1 });
-  const cid = s.companyId;
-  state.buildQuotes = null;
-  closeModal();
-  state.view='company'; state.selectedCompany=cid; state.companyTab='pricing';
-  toast(msg || 'Base pricing updated');
-  render();
-}
 /* Seed the existing pricing EDITOR (builder) with a scoped base built from the
    quoted lines, bound to this company — so "Create new pricing" reuses the
    normal create-pricing model instead of a bespoke form. */
@@ -4351,11 +4228,10 @@ function renderQuote(){
   const unpriced=q.lines.some(l=>l.quoted==null);
   const d=quoteDelta(q);
 
-  /* Chỉ một hành động thuộc về app này: biến giá đã chốt thành pricing cho Company.
-     Mọi thao tác trên chính cái quote đều mở sang RFQ. */
+  /* Quote chỉ để xem ở app này — mọi thao tác trên quote (kể cả biến giá đã chốt
+     thành pricing) đều mở sang RFQ. Bản này không có cross-sync giá quote → B2B. */
   const actions = `<button class="btn" data-action="quote-back">Back</button>
-    <a class="btn" href="${RFQ_APP_URL}" target="_blank" rel="noopener">Open in RFQ${ICON.external}</a>
-    ${quoteIsClosed(q)?`<button class="btn primary" data-action="open-quote-pricing" data-quote="${q.id}">${q.pricingSaved?'Edit saved pricing':'Turn into pricing'}</button>`:''}`;
+    <a class="btn" href="${RFQ_APP_URL}" target="_blank" rel="noopener">Open in RFQ${ICON.external}</a>`;
 
   const rows=q.lines.map(l=>{
     const p=productBySku(l.sku); if(!p) return '';
@@ -5410,24 +5286,14 @@ function openCompanyPicker(){
         <span class="badge ${badge[0]}">${badge[1]}</span>
       </label>`;
     }
-    /* Company cha đang tick thì location con được PHỦ theo: hiện checked + badge
-       "Covered by company" nhưng KHÔNG khoá — vẫn bỏ tick lẻ được. Bỏ tick một
-       location sẽ "nổ" cụm ra (company off, các location còn lại thành override
-       riêng) nên location đó không đi theo giá của company nữa. */
-    const coveredByCompany = cChosen.includes(n.companyId) && !lChosen.includes(n.id);
-    const ownOverride = lChosen.includes(n.id);
-    const chosen = coveredByCompany || ownOverride;
-    const st=locRowState(b,n.id);
-    const badge = coveredByCompany ? ['','Covered by company']
-      : st.holdsThis && chosen ? ['success','Assigned']
-      : st.holdsThis ? ['critical','Will be removed']
-      : st.other && chosen ? ['warning','Replaces override']
-      : chosen ? ['success','Location override'] : ['','Location'];
-    return `<label class="multi-row" data-loc-pick="${n.id}" style="padding-left:30px">
-      <input type="checkbox" ${chosen?'checked':''}>
+    /* Locations không còn chọn/bỏ tick riêng — pricing đi theo CẢ Company. Location
+       con chỉ hiển thị, luôn phủ theo Company (checkbox khoá), không có override lẻ. */
+    const coveredByCompany = cChosen.includes(n.companyId);
+    return `<label class="multi-row" style="padding-left:30px;cursor:default;opacity:${coveredByCompany?'1':'.85'}">
+      <input type="checkbox" ${coveredByCompany?'checked':''} disabled>
       <span class="grow"><span class="m-name" style="font-weight:500">↳ ${esc(n.title)}</span>
         <span class="m-meta">${esc(n.meta||'')}</span></span>
-      <span class="badge ${badge[0]}">${badge[1]}</span>
+      <span class="badge">${coveredByCompany?'Covered by company':'Location'}</span>
     </label>`;
   };
 
@@ -7862,13 +7728,8 @@ document.addEventListener('click', e => {
   if(a==='application-route') return openApplicationRoute();
   if(a==='bases-more'){ state.baseShowCount=(state.baseShowCount||10)+10; return render(); }
   if(a==='bases-less'){ state.baseShowCount=10; return render(); }
-  if(a==='build-base-from-quotes') return openCompanyClosedQuotesPricing(t.dataset.targetCompany);
-  /* ── Cross-app price: quote → B2B pricing (opens the real select/create modal) ── */
-  if(a==='open-quote-pricing'){
-    return openQuotePricingModal(t.dataset.quote || state.selectedQuote);
-  }
-  /* Add the quoted prices to the base picked in the real assign modal, forking a
-     company-specific copy first if that base is shared. */
+  /* Bản này KHÔNG có cross-sync giá quote → B2B (open-quote-pricing / apply-quote-assign
+     bị gỡ). Giá quote chỉ xử lý bên RFQ; ở đây quote chỉ để xem. */
   if(a==='apply-quote-assign'){
     const s=state.assign; if(!s || !s.quoteOverrides) return;
     const co=companyById(s.companyId); if(!co) return toast('Company not found.');
