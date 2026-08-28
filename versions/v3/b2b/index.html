@@ -6826,6 +6826,20 @@ function moveRuleTo(from, to){
   return true;
 }
 let _dragRuleIdx = null;
+let _dragScrollEl = null, _dragScrollRAF = null, _dragPointerY = 0;
+/* Kéo rule ra sát mép trên/dưới của vùng cuộn thì tự cuộn theo, để thả được vào
+   vị trí đang bị ẩn ngoài khung 5 dòng. Vòng rAF đọc _dragPointerY nên vẫn cuộn
+   cả khi con trỏ đứng yên ở mép. */
+function _stopRuleAutoScroll(){ if(_dragScrollRAF){ cancelAnimationFrame(_dragScrollRAF); _dragScrollRAF=null; } _dragScrollEl=null; }
+function _ruleAutoScrollTick(){
+  if(_dragRuleIdx===null || !_dragScrollEl){ _dragScrollRAF=null; return; }
+  const el=_dragScrollEl, r=el.getBoundingClientRect(), EDGE=44, MAX=16, y=_dragPointerY;
+  let dy=0;
+  if(y < r.top+EDGE) dy = -MAX*Math.min(1,(r.top+EDGE-y)/EDGE);
+  else if(y > r.bottom-EDGE) dy = MAX*Math.min(1,(y-(r.bottom-EDGE))/EDGE);
+  if(dy) el.scrollTop += dy;
+  _dragScrollRAF=requestAnimationFrame(_ruleAutoScrollTick);
+}
 function clearRuleDropMarks(){
   document.querySelectorAll('.rule-drag-row.dragging,.rule-drag-row.drop-target')
     .forEach(el=>el.classList.remove('dragging','drop-target'));
@@ -6841,9 +6855,12 @@ document.addEventListener('dragstart', e => {
     try{ e.dataTransfer.setDragImage(row, 12, 12); }catch(_){}
   }
   row.classList.add('dragging');
+  _dragScrollEl = row.closest('.rules-scroll'); _dragPointerY = e.clientY;
+  if(_dragScrollEl && !_dragScrollRAF) _dragScrollRAF=requestAnimationFrame(_ruleAutoScrollTick);
 });
 document.addEventListener('dragover', e => {
   if(_dragRuleIdx===null) return;
+  _dragPointerY = e.clientY;
   const row = e.target.closest && e.target.closest('[data-rule-drag]');
   if(!row) return;
   e.preventDefault();
@@ -6854,12 +6871,12 @@ document.addEventListener('dragover', e => {
 document.addEventListener('drop', e => {
   if(_dragRuleIdx===null) return;
   const row = e.target.closest && e.target.closest('[data-rule-drag]');
-  const from = _dragRuleIdx; _dragRuleIdx=null; clearRuleDropMarks();
+  const from = _dragRuleIdx; _dragRuleIdx=null; _stopRuleAutoScroll(); clearRuleDropMarks();
   if(!row) return;
   e.preventDefault();
   if(moveRuleTo(from, Number(row.dataset.ruleDrag))) renderBuilder();
 });
-document.addEventListener('dragend', () => { _dragRuleIdx=null; clearRuleDropMarks(); });
+document.addEventListener('dragend', () => { _dragRuleIdx=null; _stopRuleAutoScroll(); clearRuleDropMarks(); });
 
 /* ===== Analytics filter selects (ported) ===== */
 document.addEventListener('change', e => {
