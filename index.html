@@ -3360,8 +3360,10 @@ function openSaveQuotePricingModal(){
   const qty = Number((qtyEl && qtyEl.value) || quote.product.quantity || 1);
   const quoted = Number((priceEl && priceEl.value) || quote.product.price || 0);
   const bases = RFQ_PRICING_OPTIONS[key] || [];
+  const locEl = document.getElementById('customerLocationSelect');
+  const locationName = (locEl && locEl.selectedOptions && locEl.selectedOptions[0]) ? locEl.selectedOptions[0].text.trim() : '';
   rfqPricing = {
-    key, companyName: company.name || 'this company',
+    key, companyName: company.name || 'this company', locationName,
     lines: [{ sku: quote.product.sku, title: quote.product.name, qty, list: Number(quote.product.price || 0), quoted }],
     dest: bases.length ? bases[0].id : '__new__',
     name: `${company.name || 'Company'} · ${quote.number} prices`,
@@ -3405,11 +3407,12 @@ function renderSaveQuotePricingModal(){
     <td><strong>${money(l.quoted)}</strong>${l.quoted>l.list?' <span style="color:#8e0b21;font-size:12px">Above Shopify</span>':''}</td></tr>`).join('');
 
   body.innerHTML = `
-    <label style="font-size:12px;color:#616161;display:block;margin-bottom:4px">Add quoted prices to</label>
+    <p style="margin:0 0 14px;font-size:13px;color:var(--text-sub);line-height:1.5">Applies to ${s.locationName ? `<strong style="color:var(--text)">${s.locationName}</strong>` : 'the location on this quote'} on this quote only — other locations aren't affected, and the prices take effect immediately.</p>
+    <label style="font-size:13px;font-weight:600;color:var(--text);display:block;margin-bottom:6px">Add quoted prices to</label>
     <select data-rfq-select style="width:100%;padding:8px 10px;border:1px solid #e3e3e3;border-radius:8px">${opts}</select>
     <div style="font-size:12px;color:#616161;margin-top:6px">${isNew?'A new base that prices only these products.':'These prices are added to it; other products keep their current price.'}</div>
     ${newFields}
-    <div style="font-size:12px;color:#616161;margin:14px 0 6px">Quoted prices</div>
+    <div style="font-size:14px;font-weight:650;color:var(--text);margin:18px 0 8px">Quoted prices</div>
     <table class="product-table"><thead><tr><th>Product</th><th>Shopify</th><th>Quoted</th></tr></thead><tbody>${lineRows}</tbody></table>
     ${anyOver?`<p style="margin:10px 0 0;color:#8e0b21;font-size:13px">Some quoted prices are above the Shopify price. B2B pricing can't be higher — adjust in the quote first.</p>`:''}`;
   foot.innerHTML = `<button class="btn" data-close="saveQuotePricingModal">Cancel</button>

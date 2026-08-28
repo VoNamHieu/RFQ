@@ -1753,7 +1753,7 @@ const state = {
      one off the dropdown is a different act — that pricing belongs to the
      library and to everyone else using it, so setup does not offer to edit it. */
   companySetupDraftIsNew:false,
-  companySetupPolicyByKind:{base:null,quantity:null},
+  companySetupPolicyByKind:{base:[],quantity:null},
   priceCreateContext:null,
   pricingBuilderTab:'settings',
   emptyMode:false, forkApplyAll:false,
@@ -1781,7 +1781,10 @@ const state = {
    một default adjustment cộng explicit price cho những product ngoại lệ. Merchant
    không còn phải hỏi "dùng cái nào" rồi "cái nào thắng". */
 const KIND_ORDER = ['base','quantity'];
-function emptyKindSel(){ return {base:null,quantity:null}; }
+function emptyKindSel(){ return {base:[],quantity:null}; }
+/* Phương án A: base là DANH SÁCH refs (thêm nhiều base), quantity vẫn 1 slot. */
+function selBaseRefs(sel){ return (sel && Array.isArray(sel.base)) ? sel.base : (sel && sel.base ? [sel.base] : []); }
+function selAllRefs(sel){ return [...selBaseRefs(sel), ...(sel && sel.quantity ? [sel.quantity] : [])]; }
 function kindOf(p){ return p?.priceKind==='quantity' ? 'quantity' : 'base'; }
 /* Buyer count is derived from the account list so the number and the names
    can never disagree. */
@@ -1855,8 +1858,8 @@ const contactLocationName = (c,ct) => (locationById(c, ct.locationId)||{}).name 
    below so precedence and Inactive-handling can never drift between screens. */
 function effectivePricing(company, location){ return resolvePricing(company, location); }
 db.companies.forEach(normalizeCompany);
-function kindSelPrimary(sel){ if(!sel) return null; for(const k of KIND_ORDER){ if(sel[k]) return sel[k]; } return null; }
-function kindSelPolicies(sel){ return KIND_ORDER.map(k=>sel&&sel[k]).filter(Boolean).map(id=>policyById(id)).filter(Boolean); }
+function kindSelPrimary(sel){ return selAllRefs(sel)[0] || null; }
+function kindSelPolicies(sel){ return selAllRefs(sel).map(id=>policyById(id)).filter(Boolean); }
 function syncSetupPolicySelections(){
   state.companySetupPolicyId = kindSelPrimary(state.companySetupPolicyByKind);
 }
@@ -1870,11 +1873,13 @@ function setupPolicy(ref){
   return isDraftRef(ref) ? (state.companySetupDrafts[draftKindOf(ref)] || null) : policyById(ref);
 }
 const setupKindPolicies = sel =>
-  KIND_ORDER.map(k=>sel&&sel[k]).filter(Boolean).map(setupPolicy).filter(Boolean);
+  selAllRefs(sel).map(setupPolicy).filter(Boolean);
 
 function seedKindSelFromPolicy(sel, policyId){
   const p=policyById(policyId); if(!p) return sel;
-  sel[kindOf(p)]=p.id; return sel;
+  if(kindOf(p)==='base'){ if(!Array.isArray(sel.base)) sel.base=[]; if(!sel.base.includes(p.id)) sel.base.push(p.id); }
+  else sel.quantity=p.id;
+  return sel;
 }
 
 /* A Company has no single "default price". It holds at most one profile per
@@ -2713,29 +2718,34 @@ function openShopifyCompanySetup(step=null){
        editor is open the row is hidden, so a draft never looks committed.
        The full summary belongs to the deciding stage — the chooser shows it
        before Save. Once it is in the slot, one line is enough. */
-    const addedRows = KIND_ORDER.map(k=>{
-      if(k===state.companySetupAddKind) return '';
-      const id = state.companySetupPolicyByKind[k];
-      const p = setupPolicy(id);
+    const rowHtml = (k, ref) => {
+      const p = setupPolicy(ref);
       if(!p) return '';
-      /* Built here or picked from the library — read off the reference itself,
-         so a flag cannot drift from what the slot actually holds. */
-      const createdHere = isDraftRef(id);
+      const createdHere = isDraftRef(ref);
       return `<div class="added-row">
         <span class="dot ready"></span>
         <span class="grow"><span class="a-name">${esc(p.name)}</span>
           <span class="a-meta">${kindName(k)}</span></span>
         ${createdHere
-          ? `<button class="btn small icon" data-action="setup-edit-kind" data-kind="${k}"
+          ? `<button class="btn small icon" data-action="setup-edit-kind" data-kind="${k}" data-ref="${ref}"
                title="Edit pricing" aria-label="Edit pricing">${ICON.edit}</button>`
-          : `<button class="btn small icon" data-action="setup-change-kind" data-kind="${k}"
-               title="Change to another ${kindName(k).toLowerCase()}" aria-label="Change to another ${kindName(k).toLowerCase()}">${ICON.swap}</button>`}
-        <button class="btn small icon critical" data-action="setup-remove-kind" data-kind="${k}"
+          : (k==='quantity'
+            ? `<button class="btn small icon" data-action="setup-change-kind" data-kind="${k}"
+               title="Change to another ${kindName(k).toLowerCase()}" aria-label="Change to another ${kindName(k).toLowerCase()}">${ICON.swap}</button>`
+            : '')}
+        <button class="btn small icon critical" data-action="setup-remove-kind" data-kind="${k}" data-ref="${ref}"
           title="Remove this ${kindName(k).toLowerCase()}" aria-label="Remove this ${kindName(k).toLowerCase()}">${ICON.unassign}</button>
       </div>`;
-    }).join('');
+    };
+    /* Base: mọi base đã thêm luôn hiện (draft đang dựng nằm ở chooser, chưa vào list).
+       Quantity: 1 slot, ẩn khi đang mở chooser để đổi. */
+    const addedRows = [
+      ...selBaseRefs(state.companySetupPolicyByKind).map(ref=>rowHtml('base',ref)),
+      ...(state.companySetupPolicyByKind.quantity && state.companySetupAddKind!=='quantity'
+        ? [rowHtml('quantity', state.companySetupPolicyByKind.quantity)] : [])
+    ].join('');
 
-    const addedCount = KIND_ORDER.filter(k=>state.companySetupPolicyByKind[k]).length;
+    const addedCount = selBaseRefs(state.companySetupPolicyByKind).length + (state.companySetupPolicyByKind.quantity?1:0);
     const addKind = state.companySetupAddKind;
 
     /* Three bare buttons named after concepts the merchant may be meeting for
@@ -2743,7 +2753,7 @@ function openShopifyCompanySetup(step=null){
        against each other stays in the tooltip. */
     const typeCards = `<div class="kind-pick-row">
       ${KIND_ORDER.map(k=>{
-        const taken = !!state.companySetupPolicyByKind[k];
+        const taken = k==='base' ? false : !!state.companySetupPolicyByKind[k];
         return `<button class="kind-pick ${taken?'taken':''}" title="${taken?'Already added':kindDesc[k]}"
           ${taken?'disabled':`data-action="setup-add-kind" data-kind="${k}"`}>
           <span class="k-head"><span class="plus">${taken?'✓':'+'}</span>${kindName(k)}</span>
@@ -2757,7 +2767,7 @@ function openShopifyCompanySetup(step=null){
       const label = kindName(addKind).toLowerCase();
       /* Setup luôn gán cho một Company, nên chỉ pricing phục vụ Company mới được
          chào ở đây. Pricing của phía customer không tìm thấy và không gán được. */
-      const options = policiesFor('b2b', addKind);
+      const options = policiesFor('b2b', addKind).filter(p=> addKind!=='base' || !selBaseRefs(state.companySetupPolicyByKind).includes(p.id));
       const cur = state.companySetupDraftPolicy || '';
       const sel = setupPolicy(cur);
       /* A pricing just built in this flow is the selection. Leaving the library
@@ -2767,7 +2777,7 @@ function openShopifyCompanySetup(step=null){
       const justBuilt = !!(sel && state.companySetupDraftIsNew);
       return `<div class="soft-card" style="margin-top:6px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          <h3 style="margin:0;flex:1">${state.companySetupPolicyByKind[addKind]?'Change':'Add'} ${label}</h3>
+          <h3 style="margin:0;flex:1">${addKind==='base'?'Add':(state.companySetupPolicyByKind.quantity?'Change':'Add')} ${label}</h3>
           ${sel && state.companySetupDraftIsNew
             ? `<button class="btn small" data-action="setup-edit-draft">Edit</button>` : ''}
           <button class="btn small" data-action="setup-discard-kind">Discard</button>
@@ -2801,9 +2811,11 @@ function openShopifyCompanySetup(step=null){
         </dl></div></div>`:''}
         ${sel?'':`
           ${options.length?`<div class="chooser-or">or</div>`:''}
-          <button class="btn-alt" data-action="create-price-for-company-setup" data-kind="${addKind}">
-            <span class="plus">+</span>Create a new ${label}
-          </button>`}
+          ${addKind==='base' && selBaseRefs(state.companySetupPolicyByKind).some(isDraftRef)
+            ? `<div class="inline-note">You can create one new base pricing here. Add existing ones now, or create more from Pricing after setup.</div>`
+            : `<button class="btn-alt" data-action="create-price-for-company-setup" data-kind="${addKind}">
+                <span class="plus">+</span>Create a new ${label}
+              </button>`}`}
       </div>`;
     })() : '';
 
@@ -2811,7 +2823,7 @@ function openShopifyCompanySetup(step=null){
       <div class="context-target-title">Assign pricing</div>
 
       ${addedRows}
-      ${KIND_ORDER.some(k=>isDraftRef(state.companySetupPolicyByKind[k]) && k!==state.companySetupAddKind)
+      ${(selBaseRefs(state.companySetupPolicyByKind).some(isDraftRef) || (isDraftRef(state.companySetupPolicyByKind.quantity) && state.companySetupAddKind!=='quantity'))
         ? `<div class="hint" style="margin:-2px 0 8px">A pricing created here can’t be swapped for a template. Remove it to pick a template, or edit it.</div>` : ''}
 
       ${/* An open editor decides what shows here — not how many slots are
@@ -2819,11 +2831,7 @@ function openShopifyCompanySetup(step=null){
             types set rendered "All three pricing types are set." instead of the
             chooser: the row hid itself, no editor appeared, and Review stayed
             disabled because an editor was open. Nothing left to click. */''}
-      ${addKind
-        ? kindChooser
-        : addedCount<KIND_ORDER.length
-          ? typeCards
-          : `<div class="inline-note" style="margin-top:8px">Both pricing types are set.</div>`}
+      ${addKind ? kindChooser : typeCards}
 
       ${addedCount===0 && !addKind
         ? `<div class="banner warning" style="margin-top:4px"><div><b>No pricing yet</b>You can still finish setup. The Company and its Locations are added, but buyers cannot order until pricing is assigned from the Pricing page.</div></div>`
@@ -3527,16 +3535,36 @@ function renderCompany(){
     if(!months.length) months=[{key:'none',label:'No data',sales:0,orders:0}];
 
     const lineChart=(items)=>{
-      const W=680,H=220,PL=54,PR=18,PT=18,PB=34;
-      const max=Math.max(1,...items.map(x=>x.sales));
-      const x=i=>items.length===1?(W/2):PL+i*((W-PL-PR)/(items.length-1));
-      const y=v=>PT+(H-PT-PB)*(1-v/max);
-      const pts=items.map((m,i)=>`${x(i)},${y(m.sales)}`).join(' ');
-      const ticks=[0,.5,1].map(t=>{const val=max*t;const yy=y(val);return `<g><line x1="${PL}" y1="${yy}" x2="${W-PR}" y2="${yy}" class="chart-grid-line"/><text x="${PL-10}" y="${yy+4}" text-anchor="end" class="chart-axis-text">${val?money(val):'$0'}</text></g>`}).join('');
-      return `<svg viewBox="0 0 ${W} ${H}" class="metric-line-chart" role="img" aria-label="Sales over time">
+      const W=680,H=220,PL=48,PR=16,PT=16,PB=32,innerH=H-PT-PB,innerW=W-PL-PR;
+      /* Nice round axis top with headroom, so the peak never touches the top gridline. */
+      const rawMax=Math.max(1,...items.map(x=>x.sales));
+      const niceStep=r=>{const p=Math.pow(10,Math.floor(Math.log10(r)||0));const n=r/p;return (n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*p;};
+      const step=niceStep(rawMax/4);
+      const top=Math.max(step,Math.ceil(rawMax/step)*step);
+      const fmtAxis=v=>v>=1000?`$${(v/1000).toFixed(v%1000?1:0)}k`:`$${Math.round(v)}`;
+      const x=i=>items.length===1?(PL+innerW/2):PL+i*(innerW/(items.length-1));
+      const y=v=>PT+innerH*(1-v/top);
+      const tickVals=[];for(let t=0;t<=top+1e-6;t+=step)tickVals.push(t);
+      const ticks=tickVals.map(val=>{const yy=y(val);return `<line x1="${PL}" y1="${yy.toFixed(1)}" x2="${W-PR}" y2="${yy.toFixed(1)}" class="chart-grid-line"/><text x="${PL-10}" y="${(yy+4).toFixed(1)}" text-anchor="end" class="chart-axis-text">${val?fmtAxis(val):'$0'}</text>`}).join('');
+      const pts=items.map((m,i)=>({x:x(i),y:y(m.sales),label:m.label,v:m.sales}));
+      const path=pts.map((p,i)=>(i?'L':'M')+p.x.toFixed(1)+' '+p.y.toFixed(1)).join(' ');
+      const slot=innerW/Math.max(1,items.length);
+      /* Selective labels only — value shown on hover (crosshair + tooltip), not on
+         every point. Same pure-CSS hover as the advanced chart. */
+      const pointG=p=>{
+        const above=p.y>64,th=39,bgY=above?-(th+10):14,ty0=bgY+16;
+        return `<g class="cpoint"><rect class="cp-hit" x="${(p.x-slot/2).toFixed(1)}" y="${PT}" width="${slot.toFixed(1)}" height="${innerH}"/>`
+          +`<line class="cp-guide" x1="${p.x.toFixed(1)}" y1="${PT}" x2="${p.x.toFixed(1)}" y2="${(PT+innerH).toFixed(1)}"/>`
+          +`<circle class="dot" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4"/>`
+          +`<g class="cp-tip" transform="translate(${p.x.toFixed(1)},${p.y.toFixed(1)})"><rect class="cp-tip-bg" x="-58" y="${bgY}" width="116" height="${th}" rx="7"/>`
+            +`<text class="cp-tip-t" x="0" y="${ty0}" text-anchor="middle">${esc(p.label)}</text>`
+            +`<text class="cp-tip-v" x="0" y="${ty0+15}" text-anchor="middle">${money(p.v)}</text></g>`
+          +`<text x="${p.x.toFixed(1)}" y="${H-10}" text-anchor="middle" class="chart-axis-text">${esc(p.label)}</text></g>`;
+      };
+      return `<svg viewBox="0 0 ${W} ${H}" class="metric-line-chart shopify-line-chart" role="img" aria-label="Sales over time">
         ${ticks}
-        <polyline points="${pts}" fill="none" class="metric-line"/>
-        ${items.map((m,i)=>`<g><circle cx="${x(i)}" cy="${y(m.sales)}" r="4.5" class="metric-dot"/><text x="${x(i)}" y="${H-10}" text-anchor="middle" class="chart-axis-text">${esc(m.label)}</text><text x="${x(i)}" y="${Math.max(14,y(m.sales)-10)}" text-anchor="middle" class="chart-point-label">${money(m.sales)}</text></g>`).join('')}
+        <path class="series" fill="none" d="${path}"/>
+        ${pts.map(pointG).join('')}
       </svg>`;
     };
 
@@ -7387,7 +7415,7 @@ document.addEventListener('click', e => {
   if(a==='setup-edit-draft' || a==='setup-edit-kind'){
     const k = a==='setup-edit-kind' ? t.dataset.kind : state.companySetupAddKind;
     const ref = a==='setup-edit-kind'
-      ? state.companySetupPolicyByKind[k]
+      ? (t.dataset.ref || state.companySetupPolicyByKind[k])
       : state.companySetupDraftPolicy;
     const p = setupPolicy(ref);
     if(!p) return;
@@ -7418,7 +7446,13 @@ document.addEventListener('click', e => {
   if(a==='setup-save-kind'){
     const k=state.companySetupAddKind;
     if(!k || !state.companySetupDraftPolicy) return;
-    state.companySetupPolicyByKind[k]=state.companySetupDraftPolicy;
+    if(k==='base'){
+      if(!Array.isArray(state.companySetupPolicyByKind.base)) state.companySetupPolicyByKind.base=[];
+      if(!state.companySetupPolicyByKind.base.includes(state.companySetupDraftPolicy))
+        state.companySetupPolicyByKind.base.push(state.companySetupDraftPolicy);
+    } else {
+      state.companySetupPolicyByKind[k]=state.companySetupDraftPolicy;
+    }
     state.companySetupPricingMode='existing';
     state.companySetupAddKind=null;
     state.companySetupDraftPolicy=null;
@@ -7428,9 +7462,10 @@ document.addEventListener('click', e => {
   if(a==='setup-discard-kind'){
     /* Discard leaves the committed value alone: opening Change and discarding
        must not clear a pricing type that was already saved. */
-    const dk=state.companySetupAddKind;
-    if(dk && isDraftRef(state.companySetupDraftPolicy)
-       && state.companySetupPolicyByKind[dk]!==state.companySetupDraftPolicy)
+    const dk=state.companySetupAddKind, dp=state.companySetupDraftPolicy;
+    const committed = dk==='base' ? selBaseRefs(state.companySetupPolicyByKind).includes(dp)
+                                  : state.companySetupPolicyByKind[dk]===dp;
+    if(dk && isDraftRef(dp) && !committed)
       delete state.companySetupDrafts[dk];
     state.companySetupAddKind=null;
     state.companySetupDraftPolicy=null;
@@ -7438,11 +7473,16 @@ document.addEventListener('click', e => {
     return openShopifyCompanySetup(3);
   }
   if(a==='setup-remove-kind'){
-    /* Bỏ slot giữ draft thì bỏ luôn draft: không có bản ghi nào để giữ lại. */
-    if(isDraftRef(state.companySetupPolicyByKind[t.dataset.kind]))
-      delete state.companySetupDrafts[t.dataset.kind];
-    state.companySetupPolicyByKind[t.dataset.kind]=null;
-    if(state.companySetupAddKind===t.dataset.kind){ state.companySetupAddKind=null; state.companySetupDraftPolicy=null; }
+    const k=t.dataset.kind, ref=t.dataset.ref;
+    /* Bỏ đúng item được bấm; nếu là draft thì xoá luôn draft. */
+    if(k==='base'){
+      if(isDraftRef(ref)) delete state.companySetupDrafts[draftKindOf(ref)];
+      state.companySetupPolicyByKind.base=selBaseRefs(state.companySetupPolicyByKind).filter(r=>r!==ref);
+    } else {
+      if(isDraftRef(state.companySetupPolicyByKind[k])) delete state.companySetupDrafts[k];
+      state.companySetupPolicyByKind[k]=null;
+    }
+    if(state.companySetupAddKind===k){ state.companySetupAddKind=null; state.companySetupDraftPolicy=null; }
     syncSetupPolicySelections();
     state.companySetupPricingMode=kindSelPrimary(state.companySetupPolicyByKind)?'existing':'later';
     return openShopifyCompanySetup(3);
@@ -7516,18 +7556,19 @@ document.addEventListener('click', e => {
     /* Đây là lần ghi duy nhất: draft dựng trong luồng này mới trở thành pricing
        profile thật ở đúng thời điểm Company được tạo. */
     const setupPricing=emptyKindSel();
-    KIND_ORDER.forEach(k=>{
-      const ref=state.companySetupPolicyByKind[k];
-      if(!ref) return;
+    const commitRef = ref => {
       if(isDraftRef(ref)){
         const d=state.companySetupDrafts[draftKindOf(ref)];
-        if(!d) return;
-        d.id=demoId('p'); d.status=d.status||'Active'; delete d.draftKind;
-        db.policies.push(d);
-        setupPricing[k]=d.id;
-      } else if(policyById(ref)) setupPricing[k]=ref;
-    });
-    const hasPricing=KIND_ORDER.some(k=>setupPricing[k]);
+        if(!d) return null;
+        d.id=d.id||demoId('p'); d.status=d.status||'Active'; delete d.draftKind;
+        if(!db.policies.some(p=>p.id===d.id)) db.policies.push(d);
+        return d.id;
+      }
+      return policyById(ref) ? ref : null;
+    };
+    setupPricing.base = selBaseRefs(state.companySetupPolicyByKind).map(commitRef).filter(Boolean);
+    setupPricing.quantity = state.companySetupPolicyByKind.quantity ? commitRef(state.companySetupPolicyByKind.quantity) : null;
+    const hasPricing = (setupPricing.base && setupPricing.base.length) || !!setupPricing.quantity;
     const mainContact=mainContactOf(source)?.name||'None';
     const selectedLocations=source.locations.filter(l=>state.selectedShopifyLocations.includes(l.id));
     const readyLocationCount=hasPricing?selectedLocations.length:0;
