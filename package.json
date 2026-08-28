@@ -1,10 +1,23 @@
 {
   "name": "rfq-x-b2b",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "QuoteSnap RFQ × Shopify B2B — create-company flow prototype (static single-page app).",
+  "type": "module",
+  "description": "QuoteSnap RFQ × Shopify B2B — Polaris React (Vite).",
   "scripts": {
-    "dev": "npx --yes serve .",
-    "start": "npx --yes serve ."
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "serve-static": "npx --yes serve ."
+  },
+  "dependencies": {
+    "@shopify/polaris": "^13.9.5",
+    "@shopify/polaris-icons": "^9.3.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.11"
   }
 }
