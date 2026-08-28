@@ -3150,11 +3150,11 @@ function renderCustomersEmpty(){
    edited inside a base's Edit (company-scoped), never on this screen. */
 function companyBasePricingCard(c){
   const entries = companyBaseEntries(c);
-  const PAGE_SIZES = [10,20,100];
-  const showTools = entries.length > 10;
+  const PAGE_SIZES = [5,10,20,100];
+  const showTools = entries.length > 5;
   const q = showTools ? (state.basePricingSearch||'').trim().toLowerCase() : '';
   const filtered = q ? entries.filter(e=>{ const p=policyById(e.id); return p && p.name.toLowerCase().includes(q); }) : entries;
-  const size = PAGE_SIZES.includes(state.basePageSize) ? state.basePageSize : 10;
+  const size = PAGE_SIZES.includes(state.basePageSize) ? state.basePageSize : 5;
   const pageCount = Math.max(1, Math.ceil(filtered.length / size));
   const page = Math.min(Math.max(1, state.basePage||1), pageCount);
   const start = (page-1)*size;
@@ -6959,7 +6959,7 @@ document.addEventListener('change', e => {
 document.addEventListener('change', e => {
   const el=e.target.closest('[data-base-page-size]');
   if(!el) return;
-  state.basePageSize=parseInt(el.value,10)||10;
+  state.basePageSize=parseInt(el.value,10)||5;
   state.basePage=1;
   return render();
 });
