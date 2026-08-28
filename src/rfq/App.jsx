@@ -1,19 +1,28 @@
 import React from 'react';
-import { Page, Card, Text, BlockStack } from '@shopify/polaris';
+import { Frame, Toast } from '@shopify/polaris';
+import { useStore } from './store.jsx';
+import { SubmissionList } from './screens/SubmissionList.jsx';
+import { QuoteDetail } from './screens/QuoteDetail.jsx';
+
+function CurrentView() {
+  const { state } = useStore();
+  switch (state.view) {
+    case 'quoteDetail':
+      return <QuoteDetail />;
+    case 'submissionList':
+    default:
+      return <SubmissionList />;
+  }
+}
 
 export function App() {
+  const { state, dispatch } = useStore();
   return (
-    <Page title="Request a Quote">
-      <Card>
-        <BlockStack gap="200">
-          <Text as="h2" variant="headingMd">
-            Polaris React scaffold
-          </Text>
-          <Text as="p" tone="subdued">
-            RFQ app — Vite + React + @shopify/polaris is running. Screens migrate in next.
-          </Text>
-        </BlockStack>
-      </Card>
-    </Page>
+    <Frame>
+      <CurrentView />
+      {state.toast && (
+        <Toast content={state.toast} onDismiss={() => dispatch({ type: 'CLEAR_TOAST' })} />
+      )}
+    </Frame>
   );
 }
