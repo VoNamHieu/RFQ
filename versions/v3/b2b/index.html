@@ -60,6 +60,15 @@
   .mono{font-family:var(--mono)}
   /* Short factual cells read as one line; only the rule sentence may wrap. */
   .nowrap{white-space:nowrap}
+  .base-tools{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:10px 12px 4px}
+  .base-tools-search{flex:1;min-width:200px;display:flex}
+  .base-tools-size{display:flex;align-items:center;gap:6px;color:var(--text-sub);font-size:13px;white-space:nowrap}
+  .base-tools-size select{padding:4px 26px 4px 8px;border:0.0625rem solid var(--p-color-input-border);border-top-color:var(--p-color-input-border-top);border-radius:var(--p-border-radius-200);background:var(--p-color-input-bg-surface);font:inherit;color:inherit;cursor:pointer;min-height:2rem}
+  .base-pager-cell{padding:10px 12px 4px}
+  .base-pager{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .base-pager-info{color:var(--text-sub);font-size:13px}
+  .base-pager-nav{display:flex;align-items:center;gap:6px}
+  .base-pager-page{color:var(--text-sub);font-size:13px;white-space:nowrap}
   /* BFS 4.1.1 #10 — .dim marks real content ("Not assigned", "Not set"), so it
      needs AA contrast. #8A8A8A on white is 3.5:1; Polaris uses that value for
      icons, not text. text-secondary is 6.5:1. */
@@ -3010,6 +3019,8 @@ const ICON = {
   turnOff:`<svg viewBox="0 0 20 20" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M6.5 5.75a4.25 4.25 0 0 0 0 8.5h7a4.25 4.25 0 0 0 0-8.5h-7Zm0 1.5h7a2.75 2.75 0 0 1 0 5.5h-7a2.75 2.75 0 0 1 0-5.5Z"/><path d="M8.5 10a1.75 1.75 0 1 1-3.5 0 1.75 1.75 0 0 1 3.5 0Z"/></svg>`,
   turnOn:`<svg viewBox="0 0 20 20" width="20" height="20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M6.5 5.75a4.25 4.25 0 0 0 0 8.5h7a4.25 4.25 0 0 0 0-8.5h-7Zm6.75 6a1.75 1.75 0 1 0 0-3.5 1.75 1.75 0 0 0 0 3.5Z"/></svg>`,
   swap:`<svg viewBox="0 0 20 20" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12.72 3.22a.75.75 0 0 1 1.06 0l2.5 2.5a.75.75 0 0 1 0 1.06l-2.5 2.5a.75.75 0 1 1-1.06-1.06l1.22-1.22H4a.75.75 0 0 1 0-1.5h9.94l-1.22-1.22a.75.75 0 0 1 0-1.06Z"/><path d="M7.28 10.72a.75.75 0 0 1 0 1.06l-1.22 1.22H16a.75.75 0 0 1 0 1.5H6.06l1.22 1.22a.75.75 0 1 1-1.06 1.06l-2.5-2.5a.75.75 0 0 1 0-1.06l2.5-2.5a.75.75 0 0 1 1.06 0Z"/></svg>`,
+  chevronLeft:`<svg viewBox="0 0 20 20" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12.28 5.72a.75.75 0 0 1 0 1.06L9.06 10l3.22 3.22a.75.75 0 1 1-1.06 1.06l-3.75-3.75a.75.75 0 0 1 0-1.06l3.75-3.75a.75.75 0 0 1 1.06 0Z"/></svg>`,
+  chevronRight:`<svg viewBox="0 0 20 20" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M7.72 5.72a.75.75 0 0 1 1.06 0l3.75 3.75a.75.75 0 0 1 0 1.06l-3.75 3.75a.75.75 0 1 1-1.06-1.06L10.94 10 7.72 6.78a.75.75 0 0 1 0-1.06Z"/></svg>`,
   chevronDown:`<svg viewBox="0 0 20 20" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M5.72 8.22a.75.75 0 0 1 1.06 0L10 11.44l3.22-3.22a.75.75 0 1 1 1.06 1.06l-3.75 3.75a.75.75 0 0 1-1.06 0L5.72 9.28a.75.75 0 0 1 0-1.06Z"/></svg>`,
   check:`<svg viewBox="0 0 20 20" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M16.03 6.22a.75.75 0 0 1 0 1.06l-6.5 6.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.97 2.97 5.97-5.97a.75.75 0 0 1 1.06 0Z"/></svg>`,
   arrowUp:`<svg viewBox="0 0 20 20" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M10 3.25a.75.75 0 0 1 .53.22l4 4a.75.75 0 1 1-1.06 1.06l-2.72-2.72V16a.75.75 0 0 1-1.5 0V5.81L6.53 8.53a.75.75 0 0 1-1.06-1.06l4-4a.75.75 0 0 1 .53-.22Z"/></svg>`,
@@ -3132,10 +3143,16 @@ function renderCustomersEmpty(){
    edited inside a base's Edit (company-scoped), never on this screen. */
 function companyBasePricingCard(c){
   const entries = companyBaseEntries(c);
-  const BASE_LIMIT = 10;
-  const baseCount = state.baseShowCount || BASE_LIMIT;
-  const shownEntries = entries.slice(0, baseCount);
-  const rows = shownEntries.map(e=>{
+  const PAGE_SIZES = [10,20,100];
+  const showTools = entries.length > 10;
+  const q = showTools ? (state.basePricingSearch||'').trim().toLowerCase() : '';
+  const filtered = q ? entries.filter(e=>{ const p=policyById(e.id); return p && p.name.toLowerCase().includes(q); }) : entries;
+  const size = PAGE_SIZES.includes(state.basePageSize) ? state.basePageSize : 10;
+  const pageCount = Math.max(1, Math.ceil(filtered.length / size));
+  const page = Math.min(Math.max(1, state.basePage||1), pageCount);
+  const start = (page-1)*size;
+  const pageEntries = filtered.slice(start, start+size);
+  const rows = pageEntries.map(e=>{
     const p=policyById(e.id), st=policyStatus(p);
     return `<tr>
       <td><div class="cell-main">${esc(p.name)}</div></td>
@@ -3148,12 +3165,31 @@ function companyBasePricingCard(c){
       </td>
     </tr>`;
   }).join('');
-  const closedQ = (db.quotes||[]).filter(q=>q.company===c.id && quoteIsClosed(q) && quotePricedLines(q).length);
+  const closedQ = (db.quotes||[]).filter(q2=>q2.company===c.id && quoteIsClosed(q2) && quotePricedLines(q2).length);
   const buildBtn = closedQ.length ? `<button class="btn small" data-action="build-base-from-quotes" data-target-company="${c.id}" title="Build a base pricing from this company's ${closedQ.length} closed quote${closedQ.length===1?'':'s'} — most recent price per product">Build pricing from closed quote${closedQ.length===1?'':'s'}</button>` : '';
+  const toolbar = showTools ? `<div class="base-tools">
+      <div class="base-tools-search">${searchField('Search base pricing','data-base-pricing-search',state.basePricingSearch||'')}</div>
+      <label class="base-tools-size">Show
+        <select data-base-page-size>${PAGE_SIZES.map(n=>`<option value="${n}"${n===size?' selected':''}>${n}</option>`).join('')}</select>
+        per page</label>
+    </div>` : '';
+  const rangeFrom = filtered.length ? start+1 : 0;
+  const rangeTo = start + pageEntries.length;
+  const pager = (showTools && filtered.length > size) ? `<tr><td colspan="4" class="base-pager-cell">
+      <div class="base-pager">
+        <span class="base-pager-info">${rangeFrom}–${rangeTo} of ${filtered.length}</span>
+        <span class="base-pager-nav">
+          <button class="btn small icon" data-action="base-page-prev"${page<=1?' disabled':''} title="Previous page" aria-label="Previous page">${ICON.chevronLeft}</button>
+          <span class="base-pager-page">Page ${page} of ${pageCount}</span>
+          <button class="btn small icon" data-action="base-page-next"${page>=pageCount?' disabled':''} title="Next page" aria-label="Next page">${ICON.chevronRight}</button>
+        </span>
+      </div>
+    </td></tr>` : '';
+  const emptyRow = `<tr><td colspan="4" style="padding:18px 12px;text-align:center;color:var(--text-sub)">No base pricing matches “${esc(state.basePricingSearch||'')}”.</td></tr>`;
   const body = entries.length
-    ? `<table><thead><tr><th>Pricing</th><th title="Lower number applies first; the rest are fallbacks.">Priority</th><th>Status</th><th></th></tr></thead><tbody>
-        ${rows}
-        ${entries.length > baseCount ? '<tr><td colspan="4" style="padding:8px 0 2px;text-align:center"><button class="btn small" data-action="bases-more">Show more</button></td></tr>' : (entries.length > BASE_LIMIT ? '<tr><td colspan="4" style="padding:8px 0 2px;text-align:center"><button class="btn small" data-action="bases-less">Show less</button></td></tr>' : '')}
+    ? `${toolbar}<table><thead><tr><th>Pricing</th><th title="Lower number applies first; the rest are fallbacks.">Priority</th><th>Status</th><th></th></tr></thead><tbody>
+        ${pageEntries.length ? rows : emptyRow}
+        ${pager}
         <tr><td colspan="4" style="padding-top:0">
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn small" data-action="assign-open" data-target-company="${c.id}" data-target-kind="base"><span class="plus">+</span> Add base pricing</button>
@@ -6869,6 +6905,14 @@ document.addEventListener('change', e => {
   return render();
 });
 
+document.addEventListener('change', e => {
+  const el=e.target.closest('[data-base-page-size]');
+  if(!el) return;
+  state.basePageSize=parseInt(el.value,10)||10;
+  state.basePage=1;
+  return render();
+});
+
 document.addEventListener('click', e => {
   // a label wrapping an input fires twice (label click + forwarded input click)
   if(e.target.tagName==='INPUT' && e.target.closest('[data-btoggle],[data-bchoice],[data-qt],[data-ar],[data-atarget],[data-acustomer],[data-customer-pick],[data-company-pick],[data-loc-pick],[data-assign-target],[data-company-sort-field],[data-pricing-sort-field],[data-sloc],[data-locpick]')) return;
@@ -7827,8 +7871,8 @@ document.addEventListener('click', e => {
   if(a==='quotesnap') return toast('Handed to QuoteSnap');
   if(a==='quote-treatment') return openQuoteTreatment();
   if(a==='application-route') return openApplicationRoute();
-  if(a==='bases-more'){ state.baseShowCount=(state.baseShowCount||10)+10; return render(); }
-  if(a==='bases-less'){ state.baseShowCount=10; return render(); }
+  if(a==='base-page-prev'){ state.basePage=Math.max(1,(state.basePage||1)-1); return render(); }
+  if(a==='base-page-next'){ state.basePage=(state.basePage||1)+1; return render(); }
   if(a==='build-base-from-quotes') return openCompanyClosedQuotesPricing(t.dataset.targetCompany);
   /* ── Cross-app price: quote → B2B pricing (opens the real select/create modal) ── */
   if(a==='open-quote-pricing'){
@@ -7881,6 +7925,7 @@ document.addEventListener('click', e => {
 const LIVE_SEARCH = {
   companySearch:      {key:'companySearch',      redraw:()=>render()},
   pricingSearch:      {key:'pricingSearch',      redraw:()=>render()},
+  basePricingSearch:  {key:'basePricingSearch',  redraw:()=>{ state.basePage=1; return render(); }},
   productSearch:      {key:'productSearch',      redraw:()=>renderBuilder()},
   priceBoardSearch:   {key:'priceBoardSearch',   redraw:()=>reopenPriceBoard()},
   assignSearch:       {key:'assignSearch',       redraw:()=>renderAssign()},
