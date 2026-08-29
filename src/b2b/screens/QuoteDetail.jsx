@@ -16,6 +16,7 @@ import { useStore } from '../store.jsx';
 import { money, money2 } from '../format.js';
 import { resolvedPriceFor } from '../pricing.js';
 import { openBuildFromQuote } from '../components/BuildFromQuotes.jsx';
+import { versionFlags } from '../../shared/versions.js';
 
 const STATUS_TONE = {
   'New Received': 'attention',
@@ -71,7 +72,7 @@ export function QuoteDetail() {
   const vsShopify = shopifyTotal ? Math.round(((shopifyTotal - quoteTotal) / shopifyTotal) * 100) : 0;
 
   const secondaryActions = [{ content: 'Open in RFQ', onAction: () => dispatch({ type: 'TOAST', message: 'Opens the RFQ app' }) }];
-  if (quote.status === 'Deal Closed') {
+  if (quote.status === 'Deal Closed' && versionFlags().priceCrossSync) {
     secondaryActions.push({
       content: 'Turn into pricing',
       onAction: () => openBuildFromQuote(dispatch, company, state.db, quote),

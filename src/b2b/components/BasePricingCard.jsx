@@ -20,6 +20,7 @@ import { EditIcon, ExchangeIcon, XCircleIcon, PlusIcon, SearchIcon } from '@shop
 import { useStore } from '../store.jsx';
 import { companyBaseEntries, policyStatus } from '../pricing.js';
 import { openBuildFromQuotes } from './BuildFromQuotes.jsx';
+import { versionFlags } from '../../shared/versions.js';
 
 const PAGE_SIZES = [5, 10, 20, 100];
 
@@ -37,12 +38,15 @@ export function BasePricingCard({ company }) {
   const start = (page - 1) * size;
   const pageEntries = filtered.slice(start, start + size);
 
-  const closedQuotes = (state.db.quotes || []).filter(
-    (query) =>
-      query.company === company.id &&
-      query.status === 'Deal Closed' &&
-      (query.lines || []).some((l) => l.quoted != null),
-  );
+  const crossSync = versionFlags().priceCrossSync;
+  const closedQuotes = crossSync
+    ? (state.db.quotes || []).filter(
+        (query) =>
+          query.company === company.id &&
+          query.status === 'Deal Closed' &&
+          (query.lines || []).some((l) => l.quoted != null),
+      )
+    : [];
 
   const toast = (m) => dispatch({ type: 'TOAST', message: m });
 

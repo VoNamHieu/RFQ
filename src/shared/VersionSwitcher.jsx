@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Select } from '@shopify/polaris';
+import { activeVersion } from './versions.js';
 
-// Version switcher (ported from the god-file top-bar <select>): Latest is the
-// current React app; v1–v4 are the static god-file snapshots under /versions/.
-// `app` ('rfq' | 'b2b') picks the right sub-path.
+// Version switcher: renders the SAME React app with a different `?v=` so Latest
+// and v1–v4 are all Polaris (not the old static snapshots). Changelog still links
+// to the static /versions/ index. `app` is kept for signature compatibility.
 export function VersionSwitcher({ app }) {
   const [versions, setVersions] = useState([]);
+  const current = activeVersion();
 
   useEffect(() => {
     let alive = true;
@@ -27,14 +29,13 @@ export function VersionSwitcher({ app }) {
   ];
 
   const onChange = (val) => {
-    if (val === 'latest') {
-      window.location.href = app === 'b2b' ? '/b2b' : '/';
-    } else if (val === 'changelog') {
+    if (val === 'changelog') {
       window.location.href = '/versions/';
-    } else {
-      window.location.href = app === 'b2b' ? `/versions/${val}/b2b/` : `/versions/${val}/`;
+      return;
     }
+    const base = window.location.pathname;
+    window.location.href = val === 'latest' ? base : `${base}?v=${val}`;
   };
 
-  return <Select label="Version" labelHidden options={options} value="latest" onChange={onChange} />;
+  return <Select label="Version" labelHidden options={options} value={current} onChange={onChange} />;
 }

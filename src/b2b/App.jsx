@@ -27,6 +27,10 @@ import { BuildFromQuotes } from './components/BuildFromQuotes.jsx';
 import { PriceBoard } from './components/PriceBoard.jsx';
 import { AssignModal } from './components/AssignModal.jsx';
 import { AddCompanyWizard } from './components/AddCompanyWizard.jsx';
+import { versionFlags, activeVersion } from '../shared/versions.js';
+
+const flags = versionFlags();
+const withV = (path) => (activeVersion() === 'latest' ? path : `${path}?v=${activeVersion()}`);
 
 function CurrentView() {
   const { state } = useStore();
@@ -40,7 +44,7 @@ function CurrentView() {
     case 'pricing':
       return <PricingLibrary />;
     case 'analytics':
-      return <Analytics />;
+      return flags.analytics ? <Analytics /> : <CompaniesList />;
     case 'settings':
       return <Settings />;
     case 'customers':
@@ -68,7 +72,7 @@ export function App() {
     {
       title: 'Apps',
       items: [
-        { label: 'O:Request a Quote', icon: ClipboardIcon, onClick: () => { window.location.href = '/'; } },
+        { label: 'O:Request a Quote', icon: ClipboardIcon, onClick: () => { window.location.href = withV('/'); } },
         { label: 'Wholesale B2B Solution', icon: StoreIcon, selected: b2bActive, onClick: () => dispatch({ type: 'NAVIGATE', view: 'customers' }) },
       ],
     },
@@ -88,7 +92,9 @@ export function App() {
           badge: String(state.db.policies.length),
           onClick: () => dispatch({ type: 'NAVIGATE', view: 'pricing' }),
         },
-        { label: 'Analytics', icon: ChartVerticalIcon, selected: state.view === 'analytics', onClick: () => dispatch({ type: 'NAVIGATE', view: 'analytics' }) },
+        ...(flags.analytics
+          ? [{ label: 'Analytics', icon: ChartVerticalIcon, selected: state.view === 'analytics', onClick: () => dispatch({ type: 'NAVIGATE', view: 'analytics' }) }]
+          : []),
         { label: 'Manual Order', icon: OrderIcon, onClick: () => {} },
         { label: 'Discount', icon: DiscountIcon, onClick: () => {} },
         { label: 'Others', icon: MenuHorizontalIcon, onClick: () => {} },

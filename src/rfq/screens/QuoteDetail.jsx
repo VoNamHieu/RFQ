@@ -18,6 +18,7 @@ import { money, money2, subtotalOf } from '../utils.js';
 import { shopifyCompanyDirectory } from '../data/companies.js';
 import { SaveToB2B } from '../components/SaveToB2B.jsx';
 import { B2BRelationshipCard, SyncFlowModals } from '../components/B2BRelationship.jsx';
+import { versionFlags } from '../../shared/versions.js';
 
 function quoteCompanyKey(quote) {
   return (
@@ -124,7 +125,7 @@ export function QuoteDetail() {
   const [saveOpen, setSaveOpen] = useState(false);
   const quote = state.quotes[state.currentQuoteId];
   if (!quote) return null;
-  const isDealClosed = state.meta[state.currentQuoteId]?.status === 'Deal Closed';
+  const isDealClosed = state.meta[state.currentQuoteId]?.status === 'Deal Closed' && versionFlags().priceCrossSync;
 
   const lines =
     quote.lines && quote.lines.length

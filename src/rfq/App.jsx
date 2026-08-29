@@ -13,7 +13,10 @@ import {
   PlusIcon,
 } from '@shopify/polaris-icons';
 import { AdminFrame } from '../shared/AdminFrame.jsx';
+import { activeVersion } from '../shared/versions.js';
 import { useStore } from './store.jsx';
+
+const withV = (path) => (activeVersion() === 'latest' ? path : `${path}?v=${activeVersion()}`);
 import { SubmissionList } from './screens/SubmissionList.jsx';
 import { QuoteDetail } from './screens/QuoteDetail.jsx';
 import { CreateQuote } from './screens/CreateQuote.jsx';
@@ -51,7 +54,7 @@ export function App() {
       title: 'Apps',
       items: [
         { label: 'O:Request a Quote', icon: ClipboardIcon, selected: rfqActive, onClick: goList },
-        { label: 'Wholesale B2B Solution', icon: StoreIcon, onClick: () => { window.location.href = '/b2b'; } },
+        { label: 'Wholesale B2B Solution', icon: StoreIcon, onClick: () => { window.location.href = withV('/b2b'); } },
       ],
     },
     {

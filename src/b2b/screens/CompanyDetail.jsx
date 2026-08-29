@@ -7,10 +7,11 @@ import { QuotesTab } from '../components/tabs/QuotesTab.jsx';
 import { OrdersTab } from '../components/tabs/OrdersTab.jsx';
 import { LocationsTab } from '../components/tabs/LocationsTab.jsx';
 import { ContactsTab } from '../components/tabs/ContactsTab.jsx';
+import { versionFlags } from '../../shared/versions.js';
 
 const TABS = [
   { id: 'pricing', label: 'Pricing' },
-  { id: 'analytics', label: 'Analytics' },
+  ...(versionFlags().analytics ? [{ id: 'analytics', label: 'Analytics' }] : []),
   { id: 'quotes', label: 'Quotes' },
   { id: 'orders', label: 'Orders' },
   { id: 'locations', label: 'Locations' },
