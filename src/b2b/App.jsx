@@ -24,6 +24,7 @@ import { Settings } from './screens/Settings.jsx';
 import { PricingEditor } from './components/PricingEditor.jsx';
 import { BuildFromQuotes } from './components/BuildFromQuotes.jsx';
 import { PriceBoard } from './components/PriceBoard.jsx';
+import { AssignModal } from './components/AssignModal.jsx';
 
 function CurrentView() {
   const { state } = useStore();
@@ -93,6 +94,7 @@ export function App() {
       <PricingEditor />
       <BuildFromQuotes />
       <PriceBoard />
+      <AssignModal />
       {state.toast && <Toast content={state.toast} onDismiss={() => dispatch({ type: 'CLEAR_TOAST' })} />}
     </AdminFrame>
   );

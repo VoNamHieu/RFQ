@@ -78,7 +78,7 @@ export function BasePricingCard({ company }) {
               icon={ExchangeIcon}
               variant="tertiary"
               accessibilityLabel="Change to another base pricing"
-              onClick={() => toast('Swap base pricing')}
+              onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'swap', swapId: p.id })}
             />
             <Button
               icon={XCircleIcon}
@@ -96,10 +96,7 @@ export function BasePricingCard({ company }) {
   const footerButtons = (
     <Box padding="300">
       <ButtonGroup>
-        <Button
-          icon={PlusIcon}
-          onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: null, context: { mode: 'add-base', companyId: company.id } })}
-        >
+        <Button icon={PlusIcon} onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'add' })}>
           Add base pricing
         </Button>
         {closedQuotes.length > 0 && (
@@ -123,7 +120,7 @@ export function BasePricingCard({ company }) {
           </Text>
           <EmptyState
             heading="No base pricing yet"
-            action={{ content: 'Add base pricing', onAction: () => toast('Add base pricing') }}
+            action={{ content: 'Add base pricing', onAction: () => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'add' }) }}
             secondaryAction={
               closedQuotes.length
                 ? { content: 'Build pricing from closed quotes', onAction: () => toast('Build from quotes') }

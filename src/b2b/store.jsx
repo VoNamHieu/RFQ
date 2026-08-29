@@ -42,6 +42,7 @@ const initialState = {
   // Build pricing from closed quotes (spec §5.4)
   buildQuotes: null, // { companyId, rows:[{sku,quoted,proposed,from}], dest }
   priceBoard: null, // { companyId, search } — resolved-prices preview
+  assign: null, // { companyId, mode:'add'|'swap', swapId, selectedId } — assign/swap base
   db: normalizeDb(dbSeed),
   toast: null,
 };
@@ -101,6 +102,29 @@ function reducer(state, action) {
       return { ...state, priceBoard: { ...state.priceBoard, ...action.patch } };
     case 'CLOSE_PRICE_BOARD':
       return { ...state, priceBoard: null };
+    // ----- Assign / swap base pricing -----
+    case 'OPEN_ASSIGN':
+      return { ...state, assign: { companyId: action.companyId, mode: action.mode, swapId: action.swapId || null, selectedId: null } };
+    case 'ASSIGN_SELECT':
+      return { ...state, assign: { ...state.assign, selectedId: action.id } };
+    case 'CLOSE_ASSIGN':
+      return { ...state, assign: null };
+    case 'ASSIGN_CONFIRM': {
+      const a = state.assign;
+      const db = clone(state.db);
+      const c = db.companies.find((x) => x.id === a.companyId);
+      if (c && a.selectedId) {
+        if (!Array.isArray(c.pricing.base)) c.pricing.base = c.pricing.base ? [{ id: c.pricing.base, priority: 1 }] : [];
+        const pol = db.policies.find((p) => p.id === a.selectedId);
+        if (a.mode === 'swap') {
+          const idx = c.pricing.base.findIndex((e) => e.id === a.swapId);
+          if (idx >= 0) c.pricing.base[idx] = { id: a.selectedId, priority: pol?.priority ?? c.pricing.base[idx].priority };
+        } else if (!c.pricing.base.some((e) => e.id === a.selectedId)) {
+          c.pricing.base.push({ id: a.selectedId, priority: pol?.priority ?? c.pricing.base.length + 1 });
+        }
+      }
+      return { ...state, db, assign: null, toast: a.mode === 'swap' ? 'Base pricing changed' : 'Base pricing added' };
+    }
     case 'SET_LIST_FILTER':
       return { ...state, listFilter: action.filter };
     case 'SET_COMPANY_SEARCH':
