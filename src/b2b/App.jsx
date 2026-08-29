@@ -17,6 +17,8 @@ import { useStore } from './store.jsx';
 import { CompaniesList } from './screens/CompaniesList.jsx';
 import { CompanyDetail } from './screens/CompanyDetail.jsx';
 import { PricingLibrary } from './screens/PricingLibrary.jsx';
+import { Analytics } from './screens/Analytics.jsx';
+import { Settings } from './screens/Settings.jsx';
 import { PricingEditor } from './components/PricingEditor.jsx';
 import { BuildFromQuotes } from './components/BuildFromQuotes.jsx';
 
@@ -27,6 +29,10 @@ function CurrentView() {
       return <CompanyDetail />;
     case 'pricing':
       return <PricingLibrary />;
+    case 'analytics':
+      return <Analytics />;
+    case 'settings':
+      return <Settings />;
     case 'customers':
     default:
       return <CompaniesList />;
@@ -35,7 +41,6 @@ function CurrentView() {
 
 export function App() {
   const { state, dispatch } = useStore();
-  const soon = (label) => () => dispatch({ type: 'TOAST', message: `${label} — migrating next` });
   const companyActive = ['customers', 'company', 'quote', 'location'].includes(state.view);
 
   const sections = [
@@ -66,11 +71,11 @@ export function App() {
           badge: String(state.db.policies.length),
           onClick: () => dispatch({ type: 'NAVIGATE', view: 'pricing' }),
         },
-        { label: 'Analytics', icon: ChartVerticalIcon, selected: state.view === 'analytics', onClick: soon('Analytics') },
+        { label: 'Analytics', icon: ChartVerticalIcon, selected: state.view === 'analytics', onClick: () => dispatch({ type: 'NAVIGATE', view: 'analytics' }) },
         { label: 'Manual Order', icon: OrderIcon, onClick: () => {} },
         { label: 'Discount', icon: DiscountIcon, onClick: () => {} },
         { label: 'Others', icon: MenuHorizontalIcon, onClick: () => {} },
-        { label: 'Settings', icon: SettingsIcon, selected: state.view === 'settings', onClick: soon('Settings') },
+        { label: 'Settings', icon: SettingsIcon, selected: state.view === 'settings', onClick: () => dispatch({ type: 'NAVIGATE', view: 'settings' }) },
       ],
     },
   ];
