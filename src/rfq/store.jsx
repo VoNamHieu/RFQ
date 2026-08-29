@@ -72,12 +72,15 @@ function reducer(state, action) {
       return { ...state, syncFlow: null };
     case 'OPEN_CREATE_COMPANY': {
       const q = state.quotes[action.quoteId];
+      const email = q?.customer?.email || '';
+      const domain = (email.split('@')[1] || '').split('.')[0];
+      const derived = domain ? domain.charAt(0).toUpperCase() + domain.slice(1) : '';
       return {
         ...state,
         syncFlow: null,
         createCompany: {
           quoteId: action.quoteId,
-          name: q?.customer?.company || '',
+          name: q?.customer?.company || derived,
           externalId: '',
           shipCity: '',
           shipAddress: '',
