@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer } from 'react';
-import { dbSeed } from './data/db.js';
+import { dbSeed, orderSeed } from './data/db.js';
 
 // The B2B god file rebuilt #app from a single `state` on every action. Here that
 // becomes a reducer: a view state machine + the (mutable) demo db + the handful
@@ -16,6 +16,7 @@ function normalizeDb(seed) {
     if (typeof c.pricing.base === 'string') {
       c.pricing.base = [{ id: c.pricing.base, priority: 1 }];
     }
+    c.orders = orderSeed[c.id] || [];
   });
   return db;
 }

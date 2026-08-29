@@ -3,6 +3,10 @@ import { Page, Tabs, Card, BlockStack, Text, Box } from '@shopify/polaris';
 import { useStore, currentCompany } from '../store.jsx';
 import { BasePricingCard } from '../components/BasePricingCard.jsx';
 import { QuantityPricingCard } from '../components/QuantityPricingCard.jsx';
+import { QuotesTab } from '../components/tabs/QuotesTab.jsx';
+import { OrdersTab } from '../components/tabs/OrdersTab.jsx';
+import { LocationsTab } from '../components/tabs/LocationsTab.jsx';
+import { ContactsTab } from '../components/tabs/ContactsTab.jsx';
 
 const TABS = [
   { id: 'pricing', label: 'Pricing' },
@@ -62,14 +66,17 @@ export function CompanyDetail() {
           />
         </Card>
 
-        {state.companyTab === 'pricing' ? (
+        {state.companyTab === 'pricing' && (
           <>
             <BasePricingCard company={company} />
             <QuantityPricingCard company={company} />
           </>
-        ) : (
-          <Placeholder label={TABS[tabIndex].label} />
         )}
+        {state.companyTab === 'quotes' && <QuotesTab company={company} />}
+        {state.companyTab === 'orders' && <OrdersTab company={company} />}
+        {state.companyTab === 'locations' && <LocationsTab company={company} />}
+        {state.companyTab === 'contacts' && <ContactsTab company={company} />}
+        {state.companyTab === 'analytics' && <Placeholder label="Analytics" />}
       </BlockStack>
     </Page>
   );
