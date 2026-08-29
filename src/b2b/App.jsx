@@ -16,6 +16,7 @@ import { AdminFrame } from '../shared/AdminFrame.jsx';
 import { useStore } from './store.jsx';
 import { CompaniesList } from './screens/CompaniesList.jsx';
 import { CompanyDetail } from './screens/CompanyDetail.jsx';
+import { PricingLibrary } from './screens/PricingLibrary.jsx';
 import { PricingEditor } from './components/PricingEditor.jsx';
 import { BuildFromQuotes } from './components/BuildFromQuotes.jsx';
 
@@ -24,6 +25,8 @@ function CurrentView() {
   switch (state.view) {
     case 'company':
       return <CompanyDetail />;
+    case 'pricing':
+      return <PricingLibrary />;
     case 'customers':
     default:
       return <CompaniesList />;
@@ -61,7 +64,7 @@ export function App() {
           icon: PriceListIcon,
           selected: state.view === 'pricing',
           badge: String(state.db.policies.length),
-          onClick: soon('Pricing library'),
+          onClick: () => dispatch({ type: 'NAVIGATE', view: 'pricing' }),
         },
         { label: 'Analytics', icon: ChartVerticalIcon, selected: state.view === 'analytics', onClick: soon('Analytics') },
         { label: 'Manual Order', icon: OrderIcon, onClick: () => {} },

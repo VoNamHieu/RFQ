@@ -127,6 +127,27 @@ export function ruleAdjustmentLabel(rule) {
   return rule.rule === 'increase' ? `+${unit}` : `${unit} off`;
 }
 
+// Who a policy is assigned to, for the Pricing library "Assigned to" column.
+export function policyUsage(policy, db) {
+  let companies = 0;
+  let customers = 0;
+  (db.companies || []).forEach((c) => {
+    const base = c.pricing?.base;
+    const baseIds = Array.isArray(base) ? base.map((e) => e.id) : base ? [base] : [];
+    if (baseIds.includes(policy.id) || c.pricing?.quantity === policy.id) companies += 1;
+  });
+  (db.customers || []).forEach((cu) => {
+    if (cu.policyId === policy.id) customers += 1;
+  });
+  (db.tagPricing || []).forEach((t) => {
+    if (t.defaultPolicyId === policy.id) customers += 1;
+  });
+  const parts = [];
+  if (companies) parts.push(`${companies} compan${companies === 1 ? 'y' : 'ies'}`);
+  if (customers) parts.push(`${customers} customer${customers === 1 ? '' : 's'}`);
+  return parts.join(', ') || 'Not assigned';
+}
+
 export const scopeTypeLabel = (policy) => {
   if (!policy) return '';
   switch (policy.scopeType) {
