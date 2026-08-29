@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, BlockStack, InlineGrid, TextField, Card, Text, Box } from '@shopify/polaris';
+import { Modal, BlockStack, InlineGrid, TextField, Card, Text, Box, Badge, InlineStack } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
 import { RuleBuilderCard } from './RuleBuilderCard.jsx';
 import { VolumeRangesCard } from './VolumeRangesCard.jsx';
@@ -64,6 +64,44 @@ export function PricingEditor() {
               <RuleBuilderCard />
             </>
           )}
+
+          <Card>
+            <BlockStack gap="300">
+              <Text as="h3" variant="headingSm">
+                Storefront appearance
+              </Text>
+              <Text as="p" tone="subdued" variant="bodySm">
+                How this price shows on product and cart pages for B2B buyers.
+              </Text>
+              <InlineGrid columns={{ xs: 1, sm: 2 }} gap="300">
+                <TextField
+                  label="Display title"
+                  value={builder.displayTitle ?? ''}
+                  placeholder={builder.name}
+                  onChange={(v) => patch({ displayTitle: v })}
+                  autoComplete="off"
+                />
+                <TextField
+                  label="Price badge"
+                  value={builder.priceBadge ?? ''}
+                  placeholder="B2B price"
+                  onChange={(v) => patch({ priceBadge: v })}
+                  autoComplete="off"
+                />
+              </InlineGrid>
+              <Box background="bg-surface-secondary" padding="300" borderRadius="200">
+                <InlineStack gap="200" blockAlign="center">
+                  <Text as="span" tone="subdued" variant="bodySm">
+                    Preview:
+                  </Text>
+                  <Text as="span" variant="bodyMd" fontWeight="medium">
+                    {builder.displayTitle || builder.name}
+                  </Text>
+                  <Badge tone="info">{builder.priceBadge || 'B2B price'}</Badge>
+                </InlineStack>
+              </Box>
+            </BlockStack>
+          </Card>
         </BlockStack>
       </Modal.Section>
     </Modal>

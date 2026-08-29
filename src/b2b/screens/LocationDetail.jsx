@@ -11,9 +11,12 @@ import {
   Divider,
   IndexTable,
   Select,
+  Button,
+  Banner,
 } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
-import { companyBaseEntries, companyQuantityPolicy } from '../pricing.js';
+import { companyBaseEntries, companyQuantityPolicy, policyById } from '../pricing.js';
+import { versionFlags } from '../../shared/versions.js';
 
 export function LocationDetail() {
   const { state, dispatch } = useStore();
@@ -43,6 +46,9 @@ export function LocationDetail() {
                 <Text as="p" tone="subdued" variant="bodySm">
                   This location inherits the company’s pricing. Add an override to give it different prices.
                 </Text>
+                {versionFlags().locationPricing && (
+                  <LocationOverride company={company} location={location} />
+                )}
                 <Box borderColor="border" borderWidth="025" borderRadius="200">
                   <IndexTable
                     resourceName={{ singular: 'pricing', plural: 'pricings' }}
@@ -154,6 +160,37 @@ export function LocationDetail() {
         </Layout.Section>
       </Layout>
     </Page>
+  );
+}
+
+// v1 per-location pricing override control.
+function LocationOverride({ company, location }) {
+  const { state, dispatch } = useStore();
+  const overrideId = location.pricing?.base;
+  const overridePolicy = overrideId ? policyById(state.db.policies, overrideId) : null;
+  const baseOptions = [
+    { label: 'Inherit company pricing', value: '' },
+    ...state.db.policies
+      .filter((p) => p.priceKind === 'base' && p.audienceType === 'b2b')
+      .map((p) => ({ label: p.name, value: p.id })),
+  ];
+  const setBase = (v) =>
+    dispatch({ type: 'SET_LOCATION_PRICING', companyId: company.id, locationId: location.id, baseId: v || null });
+
+  return (
+    <Box background="bg-surface-secondary" padding="300" borderRadius="200">
+      <BlockStack gap="200">
+        {overridePolicy && (
+          <Banner tone="info">{`This location uses “${overridePolicy.name}” instead of the company pricing.`}</Banner>
+        )}
+        <InlineStack gap="200" blockAlign="end">
+          <div style={{ minWidth: 240 }}>
+            <Select label="Location pricing" options={baseOptions} value={overrideId || ''} onChange={setBase} />
+          </div>
+          {overridePolicy && <Button onClick={() => setBase('')}>Revert to company pricing</Button>}
+        </InlineStack>
+      </BlockStack>
+    </Box>
   );
 }
 

@@ -98,6 +98,14 @@ function reducer(state, action) {
       return { ...state, view: 'quote', selectedQuote: action.id };
     case 'OPEN_LOCATION':
       return { ...state, view: 'location', selectedCompany: action.companyId, selectedLocation: action.locationId };
+    // v1 per-location pricing override
+    case 'SET_LOCATION_PRICING': {
+      const db = clone(state.db);
+      const c = db.companies.find((x) => x.id === action.companyId);
+      const l = c?.locations?.find((x) => x.id === action.locationId);
+      if (l) l.pricing = { base: action.baseId || null, quantity: l.pricing?.quantity || null };
+      return { ...state, db, toast: action.baseId ? 'Location pricing overridden' : 'Reverted to company pricing' };
+    }
     case 'OPEN_PRICE_BOARD':
       return { ...state, priceBoard: { companyId: action.companyId, search: '' } };
     case 'PRICE_BOARD_PATCH':
@@ -228,6 +236,8 @@ function reducer(state, action) {
           pricingRule: b.pricingRule,
           valueType: b.valueType,
           value: b.value,
+          displayTitle: b.displayTitle,
+          priceBadge: b.priceBadge,
         });
       } else {
         const id = `pN${db.policies.length + 1}`;
