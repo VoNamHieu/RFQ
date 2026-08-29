@@ -11,7 +11,12 @@ export function LocationsTab({ company }) {
     const buyers = typeof l.buyers === 'number' ? l.buyers : (company.contacts || []).filter((c) => c.locations === l.name).length;
     const override = l.pricing && (l.pricing.base || l.pricing.quantity);
     return (
-      <IndexTable.Row id={l.id || String(index)} key={l.id || index} position={index}>
+      <IndexTable.Row
+        id={l.id || String(index)}
+        key={l.id || index}
+        position={index}
+        onClick={() => dispatch({ type: 'OPEN_LOCATION', companyId: company.id, locationId: l.id })}
+      >
         <IndexTable.Cell>
           <BlockStack gap="050">
             <Text as="span" variant="bodyMd" fontWeight="semibold">

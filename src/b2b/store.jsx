@@ -92,6 +92,8 @@ function reducer(state, action) {
       return { ...state, companyTab: action.tab };
     case 'OPEN_QUOTE':
       return { ...state, view: 'quote', selectedQuote: action.id };
+    case 'OPEN_LOCATION':
+      return { ...state, view: 'location', selectedCompany: action.companyId, selectedLocation: action.locationId };
     case 'SET_LIST_FILTER':
       return { ...state, listFilter: action.filter };
     case 'SET_COMPANY_SEARCH':
