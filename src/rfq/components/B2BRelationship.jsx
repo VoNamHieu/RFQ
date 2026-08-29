@@ -13,6 +13,7 @@ import {
   Checkbox,
   Select,
   Divider,
+  TextField,
 } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
 import { shopifyCompanyDirectory } from '../data/companies.js';
@@ -102,13 +103,13 @@ export function B2BRelationshipCard({ quote }) {
           B2B
         </Text>
         <Badge tone="success">Managed in B2B</Badge>
-        {company && (
+        {(company || quote.createdCompanyName) && (
           <BlockStack gap="050">
             <Text as="span" variant="bodyMd" fontWeight="medium">
-              {company.name}
+              {company?.name || quote.createdCompanyName}
             </Text>
             <Text as="span" tone="subdued" variant="bodySm">
-              {`Company ${company.shopifyId || ''}`}
+              {company?.shopifyId ? `Company ${company.shopifyId}` : 'Newly created company'}
             </Text>
           </BlockStack>
         )}
@@ -159,7 +160,7 @@ export function SyncFlowModals() {
         title={`Sync ${company?.name || 'company'} to B2B`}
         primaryAction={{ content: 'Review', onAction: () => dispatch({ type: 'SYNC_GOTO', step: 'review' }) }}
         secondaryActions={[
-          { content: 'Create new company', onAction: () => dispatch({ type: 'TOAST', message: 'Create-company overlay' }) },
+          { content: 'Create new company', onAction: () => dispatch({ type: 'OPEN_CREATE_COMPANY', quoteId: sf.quoteId }) },
           { content: 'Cancel', onAction: close },
         ]}
       >
@@ -279,5 +280,58 @@ function Kv({ label, value }) {
         {value || '—'}
       </Text>
     </InlineStack>
+  );
+}
+
+// "Create new company" overlay from the sync flow (spec §5.7 / §2.4).
+export function CreateCompanyModal() {
+  const { state, dispatch } = useStore();
+  const cc = state.createCompany;
+  if (!cc) return null;
+  const patch = (p) => dispatch({ type: 'CREATE_COMPANY_PATCH', patch: p });
+
+  return (
+    <Modal
+      open
+      onClose={() => dispatch({ type: 'CLOSE_CREATE_COMPANY' })}
+      title="Create a company in B2B"
+      size="large"
+      primaryAction={{ content: 'Create company', onAction: () => dispatch({ type: 'CREATE_COMPANY_CONFIRM' }), disabled: !cc.name.trim() }}
+      secondaryActions={[{ content: 'Back to RFQ', onAction: () => dispatch({ type: 'CLOSE_CREATE_COMPANY' }) }]}
+    >
+      <Modal.Section>
+        <BlockStack gap="400">
+          <BlockStack gap="200">
+            <Text as="h3" variant="headingSm">
+              Company details
+            </Text>
+            <TextField label="Company name" value={cc.name} onChange={(v) => patch({ name: v })} autoComplete="off" />
+            <TextField label="Company ID" placeholder="Optional" value={cc.externalId} onChange={(v) => patch({ externalId: v })} autoComplete="off" />
+          </BlockStack>
+          <Divider />
+          <BlockStack gap="200">
+            <Text as="h3" variant="headingSm">
+              Company location
+            </Text>
+            <TextField label="Address" value={cc.shipAddress} onChange={(v) => patch({ shipAddress: v })} autoComplete="off" />
+            <TextField label="City" value={cc.shipCity} onChange={(v) => patch({ shipCity: v })} autoComplete="off" />
+          </BlockStack>
+          <Divider />
+          <BlockStack gap="150">
+            <Text as="h3" variant="headingSm">
+              Initial company contact
+            </Text>
+            <Text as="p" variant="bodyMd">
+              {cc.contactName}
+            </Text>
+            <Text as="p" tone="subdued" variant="bodySm">
+              {cc.contactEmail} · set as the company’s main contact
+            </Text>
+          </BlockStack>
+          <Divider />
+          <Checkbox label="Auto-sync new quotes for this company" checked={cc.autoSync} onChange={(v) => patch({ autoSync: v })} />
+        </BlockStack>
+      </Modal.Section>
+    </Modal>
   );
 }

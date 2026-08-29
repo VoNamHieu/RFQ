@@ -26,6 +26,7 @@ const initialState = {
   createQuote: emptyCreateQuote(),
   cqSeq: 0,
   syncFlow: null, // { step:'sync'|'review'|'success', quoteId, companyKey, autoSync, location, role }
+  createCompany: null, // { quoteId, name, externalId, shipCity, shipAddress, autoSync, contactName, contactEmail }
   toast: null,
 };
 
@@ -69,6 +70,43 @@ function reducer(state, action) {
       return { ...state, syncFlow: { ...state.syncFlow, step: action.step } };
     case 'SYNC_CLOSE':
       return { ...state, syncFlow: null };
+    case 'OPEN_CREATE_COMPANY': {
+      const q = state.quotes[action.quoteId];
+      return {
+        ...state,
+        syncFlow: null,
+        createCompany: {
+          quoteId: action.quoteId,
+          name: q?.customer?.company || '',
+          externalId: '',
+          shipCity: '',
+          shipAddress: '',
+          autoSync: false,
+          contactName: q?.customer?.name || '',
+          contactEmail: q?.customer?.email || '',
+        },
+      };
+    }
+    case 'CREATE_COMPANY_PATCH':
+      return { ...state, createCompany: { ...state.createCompany, ...action.patch } };
+    case 'CLOSE_CREATE_COMPANY':
+      return { ...state, createCompany: null };
+    case 'CREATE_COMPANY_CONFIRM': {
+      const cc = state.createCompany;
+      const q = {
+        ...state.quotes[cc.quoteId],
+        state: 'shopifySynced',
+        syncedCompanyKey: `created_${cc.quoteId}`,
+        createdCompanyName: cc.name,
+        quoteAutoSyncEnabled: cc.autoSync,
+      };
+      return {
+        ...state,
+        quotes: { ...state.quotes, [cc.quoteId]: q },
+        createCompany: null,
+        toast: `${cc.name || 'Company'} created in the B2B app`,
+      };
+    }
     case 'SYNC_CONFIRM': {
       const sf = state.syncFlow;
       const q = {
