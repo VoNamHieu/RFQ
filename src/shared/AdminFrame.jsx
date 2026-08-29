@@ -32,8 +32,9 @@ export function AdminFrame({ sections, children, searchPlaceholder = 'Search', a
     />
   );
 
-  const secondaryMenu = app ? (
-    <div style={{ minWidth: 168, paddingInline: 8, display: 'flex', alignItems: 'center' }}>
+  // Version switcher on the LEFT (TopBar contextControl slot).
+  const contextControl = app ? (
+    <div style={{ minWidth: 170, maxWidth: 240, paddingInline: 12, display: 'flex', alignItems: 'center', height: '100%' }}>
       <VersionSwitcher app={app} />
     </div>
   ) : undefined;
@@ -43,7 +44,7 @@ export function AdminFrame({ sections, children, searchPlaceholder = 'Search', a
       showNavigationToggle
       userMenu={userMenu}
       searchField={searchField}
-      secondaryMenu={secondaryMenu}
+      contextControl={contextControl}
       onNavigationToggle={toggleMobileNav}
     />
   );
