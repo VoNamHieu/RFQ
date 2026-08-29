@@ -32,7 +32,7 @@ const SUB_TABS = [
 ];
 
 export function QuotesTab({ company }) {
-  const { state } = useStore();
+  const { state, dispatch } = useStore();
   const [selected, setSelected] = React.useState(0);
 
   const companyQuotes = (state.db.quotes || []).filter((q) => q.company === company.id);
@@ -53,7 +53,7 @@ export function QuotesTab({ company }) {
     : companyQuotes;
 
   const rows = shown.map((q, index) => (
-    <IndexTable.Row id={q.id} key={q.id} position={index}>
+    <IndexTable.Row id={q.id} key={q.id} position={index} onClick={() => dispatch({ type: 'OPEN_QUOTE', id: q.id })}>
       <IndexTable.Cell>
         <Text as="span" variant="bodyMd" fontWeight="semibold">
           {q.id}

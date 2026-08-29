@@ -16,6 +16,7 @@ import { AdminFrame } from '../shared/AdminFrame.jsx';
 import { useStore } from './store.jsx';
 import { CompaniesList } from './screens/CompaniesList.jsx';
 import { CompanyDetail } from './screens/CompanyDetail.jsx';
+import { QuoteDetail } from './screens/QuoteDetail.jsx';
 import { PricingLibrary } from './screens/PricingLibrary.jsx';
 import { Analytics } from './screens/Analytics.jsx';
 import { Settings } from './screens/Settings.jsx';
@@ -27,6 +28,8 @@ function CurrentView() {
   switch (state.view) {
     case 'company':
       return <CompanyDetail />;
+    case 'quote':
+      return <QuoteDetail />;
     case 'pricing':
       return <PricingLibrary />;
     case 'analytics':

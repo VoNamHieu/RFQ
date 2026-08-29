@@ -33,6 +33,15 @@ export function openBuildFromQuotes(dispatch, company, db) {
   dispatch({ type: 'OPEN_BUILD_QUOTES', payload: { companyId: company.id, rows, dest: bases[0]?.id || '__new__' } });
 }
 
+// "Turn into pricing" from a single quote: seed rows from just its priced lines.
+export function openBuildFromQuote(dispatch, company, db, quote) {
+  const rows = (quote.lines || [])
+    .filter((l) => l.quoted != null)
+    .map((l) => ({ sku: l.sku, quoted: l.quoted, proposed: l.quoted, from: quote.id }));
+  const bases = companyBaseEntries(company, db.policies);
+  dispatch({ type: 'OPEN_BUILD_QUOTES', payload: { companyId: company.id, rows, dest: bases[0]?.id || '__new__' } });
+}
+
 export function BuildFromQuotes() {
   const { state, dispatch } = useStore();
   const bq = state.buildQuotes;

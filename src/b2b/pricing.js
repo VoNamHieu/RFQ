@@ -117,6 +117,30 @@ export function ruleMatchCount(rule, products) {
   return products.filter((p) => productMatchesRule(rule, p)).length;
 }
 
+// Apply a rule/adjustment ({rule,valueType,value}) to a Shopify list price.
+function applyAdjustment(a, list) {
+  if (!a || a.rule === 'keep') return list;
+  if (a.rule === 'set') return a.value;
+  const amount = a.valueType === 'percentage' ? (list * a.value) / 100 : a.value;
+  return a.rule === 'increase' ? list + amount : Math.max(0, list - amount);
+}
+
+// Resolve the B2B price a buyer at this company would pay for a product:
+// walk the company's base policies (priority order); an explicit product
+// override wins, else the first matching conditional rule, else Shopify price.
+export function resolvedPriceFor(company, product, policies) {
+  const entries = companyBaseEntries(company, policies);
+  for (const e of entries) {
+    const p = e.policy;
+    const adj = p.productAdjustments?.[product.sku];
+    if (adj) return applyAdjustment(adj, product.list);
+    for (const rule of p.conditionalRules || []) {
+      if (productMatchesRule(rule, product)) return applyAdjustment(rule, product.list);
+    }
+  }
+  return product.list;
+}
+
 // Short "25% off" / "$5 off" / "Set $75" badge label for a collapsed rule row.
 export function ruleAdjustmentLabel(rule) {
   if (!rule || rule.rule === 'keep' || !rule.value) return 'No change';
