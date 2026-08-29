@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useReducer } from 'react';
 import { dbSeed, orderSeed } from './data/db.js';
+import { shopifyCompanyDirectory } from './data/directory.js';
 
 // The B2B god file rebuilt #app from a single `state` on every action. Here that
 // becomes a reducer: a view state machine + the (mutable) demo db + the handful
@@ -43,6 +44,7 @@ const initialState = {
   buildQuotes: null, // { companyId, rows:[{sku,quoted,proposed,from}], dest }
   priceBoard: null, // { companyId, search } — resolved-prices preview
   assign: null, // { companyId, mode:'add'|'swap', swapId, selectedId } — assign/swap base
+  addCompany: null, // { step, shopifyId, baseId } — add-company wizard
   db: normalizeDb(dbSeed),
   toast: null,
 };
@@ -124,6 +126,38 @@ function reducer(state, action) {
         }
       }
       return { ...state, db, assign: null, toast: a.mode === 'swap' ? 'Base pricing changed' : 'Base pricing added' };
+    }
+    // ----- Add-company wizard -----
+    case 'OPEN_ADD_COMPANY':
+      return { ...state, addCompany: { step: 1, shopifyId: null, baseId: '' } };
+    case 'ADD_COMPANY_PATCH':
+      return { ...state, addCompany: { ...state.addCompany, ...action.patch } };
+    case 'ADD_COMPANY_STEP':
+      return { ...state, addCompany: { ...state.addCompany, step: action.step } };
+    case 'CLOSE_ADD_COMPANY':
+      return { ...state, addCompany: null };
+    case 'ADD_COMPANY_CONFIRM': {
+      const ac = state.addCompany;
+      const shp = Object.values(shopifyCompanyDirectory).find((s) => s.id === ac.shopifyId);
+      if (!shp) return { ...state, addCompany: null };
+      const db = clone(state.db);
+      const id = `c${db.companies.length + 1}`;
+      db.companies.push({
+        id,
+        name: shp.name,
+        mainContact: shp.contacts?.[0]?.name || '',
+        source: 'Company application',
+        pricing: { base: ac.baseId ? [{ id: ac.baseId, priority: 1 }] : null, quantity: null },
+        revenue: 0,
+        locations: (shp.locations || []).map((l) => ({ id: l.id, name: l.name, terms: l.terms, ordering: l.ordering, buyers: 0, lastOrder: '—' })),
+        contacts: (shp.contacts || []).map((c) => ({ name: c.name, email: c.email, role: c.role, access: c.access, locations: c.location })),
+        quotes: [],
+        exceptions: [],
+        activity: [],
+        orders: [],
+        shopifyCompanyId: ac.shopifyId,
+      });
+      return { ...state, db, addCompany: null, view: 'company', selectedCompany: id, companyTab: 'pricing', toast: 'Company added' };
     }
     case 'SET_LIST_FILTER':
       return { ...state, listFilter: action.filter };

@@ -81,7 +81,7 @@ export function CompaniesList() {
     <Page
       title="Companies"
       subtitle="Who gets which price."
-      primaryAction={{ content: 'Add company', onAction: () => dispatch({ type: 'TOAST', message: 'Add company wizard — migrating next' }) }}
+      primaryAction={{ content: 'Add company', onAction: () => dispatch({ type: 'OPEN_ADD_COMPANY' }) }}
     >
       <Card padding="0">
         <Box padding="300" paddingBlockEnd="200">
