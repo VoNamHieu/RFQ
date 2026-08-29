@@ -11,6 +11,7 @@ import {
   PriceListIcon,
   MenuHorizontalIcon,
   SettingsIcon,
+  ClipboardIcon,
 } from '@shopify/polaris-icons';
 import { AdminFrame } from '../shared/AdminFrame.jsx';
 import { useStore } from './store.jsx';
@@ -51,6 +52,7 @@ function CurrentView() {
 export function App() {
   const { state, dispatch } = useStore();
   const companyActive = ['customers', 'company', 'quote', 'location'].includes(state.view);
+  const b2bActive = [...['customers', 'company', 'quote', 'location'], 'pricing', 'analytics', 'settings'].includes(state.view);
 
   const sections = [
     {
@@ -64,7 +66,13 @@ export function App() {
       ],
     },
     {
-      title: 'Wholesale B2B Solution',
+      title: 'Apps',
+      items: [
+        { label: 'O:Request a Quote', icon: ClipboardIcon, onClick: () => { window.location.href = '/'; } },
+        { label: 'Wholesale B2B Solution', icon: StoreIcon, selected: b2bActive, onClick: () => dispatch({ type: 'NAVIGATE', view: 'customers' }) },
+      ],
+    },
+    {
       items: [
         {
           label: 'B2B Company',
@@ -90,7 +98,7 @@ export function App() {
   ];
 
   return (
-    <AdminFrame sections={sections} searchPlaceholder="Search customers, prices and issues">
+    <AdminFrame app="b2b" sections={sections} searchPlaceholder="Search customers, prices and issues">
       <CurrentView />
       <PricingEditor />
       <BuildFromQuotes />

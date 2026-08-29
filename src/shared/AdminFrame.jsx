@@ -1,10 +1,12 @@
 import React, { useState, useCallback } from 'react';
 import { Frame, Navigation, TopBar } from '@shopify/polaris';
+import { VersionSwitcher } from './VersionSwitcher.jsx';
 
 // Shared simulated-Shopify-admin chrome: a Polaris Frame with a top bar and the
 // left Navigation. `sections` is [{ title?, items:[{label, icon, badge, selected,
-// disabled, onClick}] }] so each app (RFQ / B2B) supplies its own nav.
-export function AdminFrame({ sections, children, searchPlaceholder = 'Search' }) {
+// disabled, onClick, subNavigationItems}] }] so each app (RFQ / B2B) supplies its
+// own nav. `app` ('rfq'|'b2b') adds the version switcher to the top bar.
+export function AdminFrame({ sections, children, searchPlaceholder = 'Search', app }) {
   const [mobileNavActive, setMobileNavActive] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
@@ -30,11 +32,18 @@ export function AdminFrame({ sections, children, searchPlaceholder = 'Search' })
     />
   );
 
+  const secondaryMenu = app ? (
+    <div style={{ minWidth: 168, paddingInline: 8, display: 'flex', alignItems: 'center' }}>
+      <VersionSwitcher app={app} />
+    </div>
+  ) : undefined;
+
   const topBar = (
     <TopBar
       showNavigationToggle
       userMenu={userMenu}
       searchField={searchField}
+      secondaryMenu={secondaryMenu}
       onNavigationToggle={toggleMobileNav}
     />
   );
@@ -52,6 +61,7 @@ export function AdminFrame({ sections, children, searchPlaceholder = 'Search' })
             selected: it.selected,
             disabled: it.disabled,
             onClick: it.onClick,
+            subNavigationItems: it.subNavigationItems,
           }))}
         />
       ))}
