@@ -19,6 +19,7 @@ import {
 import { EditIcon, ExchangeIcon, XCircleIcon, PlusIcon, SearchIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { companyBaseEntries, policyStatus } from '../pricing.js';
+import { openBuildFromQuotes } from './BuildFromQuotes.jsx';
 
 const PAGE_SIZES = [5, 10, 20, 100];
 
@@ -71,7 +72,7 @@ export function BasePricingCard({ company }) {
               icon={EditIcon}
               variant="tertiary"
               accessibilityLabel="Edit pricing"
-              onClick={() => toast(`Edit ${p.name} (editor coming next)`)}
+              onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: p, context: { mode: 'edit', companyId: company.id } })}
             />
             <Button
               icon={ExchangeIcon}
@@ -84,7 +85,7 @@ export function BasePricingCard({ company }) {
               variant="tertiary"
               tone="critical"
               accessibilityLabel="Remove this base pricing"
-              onClick={() => toast(`Remove ${p.name}`)}
+              onClick={() => dispatch({ type: 'REMOVE_COMPANY_BASE', companyId: company.id, policyId: p.id })}
             />
           </InlineStack>
         </IndexTable.Cell>
@@ -95,11 +96,14 @@ export function BasePricingCard({ company }) {
   const footerButtons = (
     <Box padding="300">
       <ButtonGroup>
-        <Button icon={PlusIcon} onClick={() => toast('Add base pricing')}>
+        <Button
+          icon={PlusIcon}
+          onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: null, context: { mode: 'add-base', companyId: company.id } })}
+        >
           Add base pricing
         </Button>
         {closedQuotes.length > 0 && (
-          <Button onClick={() => toast('Build pricing from closed quotes')}>
+          <Button onClick={() => openBuildFromQuotes(dispatch, company, state.db)}>
             {`Build pricing from closed quote${closedQuotes.length === 1 ? '' : 's'}`}
           </Button>
         )}

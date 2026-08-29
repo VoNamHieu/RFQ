@@ -16,6 +16,8 @@ import { AdminFrame } from '../shared/AdminFrame.jsx';
 import { useStore } from './store.jsx';
 import { CompaniesList } from './screens/CompaniesList.jsx';
 import { CompanyDetail } from './screens/CompanyDetail.jsx';
+import { PricingEditor } from './components/PricingEditor.jsx';
+import { BuildFromQuotes } from './components/BuildFromQuotes.jsx';
 
 function CurrentView() {
   const { state } = useStore();
@@ -73,6 +75,8 @@ export function App() {
   return (
     <AdminFrame sections={sections} searchPlaceholder="Search customers, prices and issues">
       <CurrentView />
+      <PricingEditor />
+      <BuildFromQuotes />
       {state.toast && <Toast content={state.toast} onDismiss={() => dispatch({ type: 'CLEAR_TOAST' })} />}
     </AdminFrame>
   );
