@@ -41,6 +41,7 @@ const initialState = {
   editorContext: null, // { mode:'edit'|'add-base'|'swap', companyId, swapId }
   // Build pricing from closed quotes (spec §5.4)
   buildQuotes: null, // { companyId, rows:[{sku,quoted,proposed,from}], dest }
+  priceBoard: null, // { companyId, search } — resolved-prices preview
   db: normalizeDb(dbSeed),
   toast: null,
 };
@@ -94,6 +95,12 @@ function reducer(state, action) {
       return { ...state, view: 'quote', selectedQuote: action.id };
     case 'OPEN_LOCATION':
       return { ...state, view: 'location', selectedCompany: action.companyId, selectedLocation: action.locationId };
+    case 'OPEN_PRICE_BOARD':
+      return { ...state, priceBoard: { companyId: action.companyId, search: '' } };
+    case 'PRICE_BOARD_PATCH':
+      return { ...state, priceBoard: { ...state.priceBoard, ...action.patch } };
+    case 'CLOSE_PRICE_BOARD':
+      return { ...state, priceBoard: null };
     case 'SET_LIST_FILTER':
       return { ...state, listFilter: action.filter };
     case 'SET_COMPANY_SEARCH':

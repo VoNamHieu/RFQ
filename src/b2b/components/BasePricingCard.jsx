@@ -107,6 +107,9 @@ export function BasePricingCard({ company }) {
             {`Build pricing from closed quote${closedQuotes.length === 1 ? '' : 's'}`}
           </Button>
         )}
+        <Button variant="tertiary" onClick={() => dispatch({ type: 'OPEN_PRICE_BOARD', companyId: company.id })}>
+          Preview prices
+        </Button>
       </ButtonGroup>
     </Box>
   );

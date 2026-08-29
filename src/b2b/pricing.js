@@ -141,6 +141,23 @@ export function resolvedPriceFor(company, product, policies) {
   return product.list;
 }
 
+// Like resolvedPriceFor, but also reports which layer decided the price.
+export function resolveDetail(company, product, policies) {
+  const entries = companyBaseEntries(company, policies);
+  for (const e of entries) {
+    const p = e.policy;
+    const adj = p.productAdjustments?.[product.sku];
+    if (adj) return { price: applyAdjustment(adj, product.list), decidedBy: `${p.name} · override`, layer: 'override' };
+    const rules = p.conditionalRules || [];
+    for (let i = 0; i < rules.length; i += 1) {
+      if (productMatchesRule(rules[i], product)) {
+        return { price: applyAdjustment(rules[i], product.list), decidedBy: `${p.name} · Rule ${i + 1}`, layer: 'rule' };
+      }
+    }
+  }
+  return { price: product.list, decidedBy: 'Shopify price', layer: 'shopify' };
+}
+
 // Short "25% off" / "$5 off" / "Set $75" badge label for a collapsed rule row.
 export function ruleAdjustmentLabel(rule) {
   if (!rule || rule.rule === 'keep' || !rule.value) return 'No change';
