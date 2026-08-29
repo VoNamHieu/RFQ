@@ -72,40 +72,36 @@ export function App() {
     {
       title: 'Apps',
       items: [
-        { label: 'Flow', icon: AutomationIcon, onClick: () => {} },
-        { label: 'O:Request a Quote', icon: ClipboardIcon, onClick: () => { window.location.href = withV('/'); } },
-        { label: 'Wholesale B2B Solution', icon: StoreIcon, selected: companyActive || ['pricing', 'analytics', 'settings'].includes(state.view), onClick: () => dispatch({ type: 'NAVIGATE', view: 'customers' }) },
+        { label: 'Flow', icon: AutomationIcon, url: '#/flow', onClick: () => {} },
+        { label: 'O:Request a Quote', icon: ClipboardIcon, url: '#/rfq-app', onClick: () => { window.location.href = withV('/'); } },
+        {
+          label: 'Wholesale B2B Solution',
+          icon: StoreIcon,
+          url: '#/b2b',
+          onClick: () => dispatch({ type: 'NAVIGATE', view: 'customers' }),
+          subNavigationItems: [
+            { label: 'Form', url: '#/b2b/form', matches: false, onClick: () => {} },
+            { label: `B2B Company (${state.db.companies.length})`, url: '#/b2b/company', matches: companyActive, onClick: () => dispatch({ type: 'NAVIGATE', view: 'customers' }) },
+            { label: `Pricing (${state.db.policies.length})`, url: '#/b2b/pricing', matches: state.view === 'pricing', onClick: () => dispatch({ type: 'NAVIGATE', view: 'pricing' }) },
+            ...(flags.analytics
+              ? [{ label: 'Analytics', url: '#/b2b/analytics', matches: state.view === 'analytics', onClick: () => dispatch({ type: 'NAVIGATE', view: 'analytics' }) }]
+              : []),
+            { label: 'Manual Order', url: '#/b2b/manual-order', matches: false, onClick: () => {} },
+            { label: 'Discount', url: '#/b2b/discount', matches: false, onClick: () => {} },
+            { label: 'Others', url: '#/b2b/others', matches: false, onClick: () => {} },
+          ],
+        },
       ],
     },
     {
       items: [
-        {
-          label: 'B2B Company',
-          icon: StoreIcon,
-          selected: companyActive,
-          badge: String(state.db.companies.length),
-          onClick: () => dispatch({ type: 'NAVIGATE', view: 'customers' }),
-        },
-        {
-          label: 'Pricing',
-          icon: PriceListIcon,
-          selected: state.view === 'pricing',
-          badge: String(state.db.policies.length),
-          onClick: () => dispatch({ type: 'NAVIGATE', view: 'pricing' }),
-        },
-        ...(flags.analytics
-          ? [{ label: 'Analytics', icon: ChartVerticalIcon, selected: state.view === 'analytics', onClick: () => dispatch({ type: 'NAVIGATE', view: 'analytics' }) }]
-          : []),
-        { label: 'Manual Order', icon: OrderIcon, onClick: () => {} },
-        { label: 'Discount', icon: DiscountIcon, onClick: () => {} },
-        { label: 'Others', icon: MenuHorizontalIcon, onClick: () => {} },
-        { label: 'Settings', icon: SettingsIcon, selected: state.view === 'settings', onClick: () => dispatch({ type: 'NAVIGATE', view: 'settings' }) },
+        { label: 'Settings', icon: SettingsIcon, url: '#/b2b/settings', matches: state.view === 'settings', onClick: () => dispatch({ type: 'NAVIGATE', view: 'settings' }) },
       ],
     },
   ];
 
   return (
-    <AdminFrame app="b2b" sections={sections} searchPlaceholder="Search customers, prices and issues">
+    <AdminFrame app="b2b" location="#/b2b/company" sections={sections} searchPlaceholder="Search customers, prices and issues">
       <CurrentView />
       <PricingEditor />
       <BuildFromQuotes />
