@@ -2,6 +2,7 @@ import React from 'react';
 import { Modal, BlockStack, InlineGrid, TextField, Card, Text, Box } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
 import { RuleBuilderCard } from './RuleBuilderCard.jsx';
+import { VolumeRangesCard } from './VolumeRangesCard.jsx';
 
 // Fullscreen-ish base pricing editor (spec §2.6 baseEditor, focused on the
 // signature Pricing-rules card). Open whenever state.builder is set.
@@ -11,6 +12,7 @@ export function PricingEditor() {
   if (!builder) return null;
 
   const isNew = !builder.id;
+  const isQuantity = builder.priceKind === 'quantity';
   const patch = (p) => dispatch({ type: 'BUILDER_PATCH', patch: p });
 
   return (
@@ -52,7 +54,7 @@ export function PricingEditor() {
             </BlockStack>
           </Card>
 
-          <RuleBuilderCard />
+          {isQuantity ? <VolumeRangesCard /> : <RuleBuilderCard />}
         </BlockStack>
       </Modal.Section>
     </Modal>

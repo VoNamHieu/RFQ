@@ -50,7 +50,7 @@ export function QuantityPricingCard({ company }) {
             <InlineStack gap="100" align="end" blockAlign="center" wrap={false}>
               {policy ? (
                 <>
-                  <Button icon={EditIcon} variant="tertiary" accessibilityLabel="Edit pricing" onClick={() => toast('Edit quantity pricing')} />
+                  <Button icon={EditIcon} variant="tertiary" accessibilityLabel="Edit pricing" onClick={() => dispatch({ type: 'OPEN_EDITOR', policy, context: { mode: 'edit', companyId: company.id } })} />
                   <Button icon={ExchangeIcon} variant="tertiary" accessibilityLabel="Change pricing" onClick={() => toast('Change quantity pricing')} />
                   <Button icon={XCircleIcon} variant="tertiary" tone="critical" accessibilityLabel="Remove" onClick={() => toast('Remove quantity pricing')} />
                 </>

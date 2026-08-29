@@ -219,7 +219,13 @@ function reducer(state, action) {
       const db = clone(state.db);
       const existing = db.policies.find((p) => p.id === b.id);
       if (existing) {
-        Object.assign(existing, { name: b.name, priority: b.priority, conditionalRules: b.conditionalRules, productAdjustments: b.productAdjustments });
+        Object.assign(existing, {
+          name: b.name,
+          priority: b.priority,
+          conditionalRules: b.conditionalRules,
+          productAdjustments: b.productAdjustments,
+          volumeRanges: b.volumeRanges,
+        });
       } else {
         const id = `pN${db.policies.length + 1}`;
         db.policies.push({ ...newBaseBuilder(), ...b, id });
