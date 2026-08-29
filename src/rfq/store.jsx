@@ -25,6 +25,7 @@ const initialState = {
   order: [...SUBMISSION_ORDER],
   createQuote: emptyCreateQuote(),
   cqSeq: 0,
+  syncFlow: null, // { step:'sync'|'review'|'success', quoteId, companyKey, autoSync, location, role }
   toast: null,
 };
 
@@ -49,6 +50,37 @@ function reducer(state, action) {
         cqSeq: state.cqSeq + 1,
         view: 'submissionList',
       };
+    // ----- B2B relationship / sync flow -----
+    case 'INSTALL_B2B': {
+      const q = { ...state.quotes[action.id], state: 'new', syncMode: 'selector' };
+      return { ...state, quotes: { ...state.quotes, [action.id]: q } };
+    }
+    case 'SYNC_OPEN': {
+      const q = state.quotes[action.id];
+      const companyKey = q.recommendedKey || q.fixedCompanyKey || q.previewCompanyKey || 'abc';
+      return {
+        ...state,
+        syncFlow: { step: 'sync', quoteId: action.id, companyKey, autoSync: false, location: '', role: 'Ordering only' },
+      };
+    }
+    case 'SYNC_PATCH':
+      return { ...state, syncFlow: { ...state.syncFlow, ...action.patch } };
+    case 'SYNC_GOTO':
+      return { ...state, syncFlow: { ...state.syncFlow, step: action.step } };
+    case 'SYNC_CLOSE':
+      return { ...state, syncFlow: null };
+    case 'SYNC_CONFIRM': {
+      const sf = state.syncFlow;
+      const q = {
+        ...state.quotes[sf.quoteId],
+        state: 'shopifySynced',
+        syncedCompanyKey: sf.companyKey,
+        assignedLocation: sf.location,
+        assignedRole: sf.role,
+        quoteAutoSyncEnabled: sf.autoSync,
+      };
+      return { ...state, quotes: { ...state.quotes, [sf.quoteId]: q }, syncFlow: { ...sf, step: 'success' } };
+    }
     case 'TOAST':
       return { ...state, toast: action.message };
     case 'CLEAR_TOAST':

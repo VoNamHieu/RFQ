@@ -17,6 +17,7 @@ import { useStore } from '../store.jsx';
 import { money, money2, subtotalOf } from '../utils.js';
 import { shopifyCompanyDirectory } from '../data/companies.js';
 import { SaveToB2B } from '../components/SaveToB2B.jsx';
+import { B2BRelationshipCard, SyncFlowModals } from '../components/B2BRelationship.jsx';
 
 function quoteCompanyKey(quote) {
   return (
@@ -238,20 +239,7 @@ export function QuoteDetail() {
         <Layout.Section variant="oneThird">
           <BlockStack gap="400">
             <CustomerCard quote={quote} />
-            <Card>
-              <BlockStack gap="100">
-                <Text as="h2" variant="headingSm">
-                  B2B
-                </Text>
-                <Badge tone={quote.state === 'linked' || quote.state === 'shopifySynced' ? 'success' : undefined}>
-                  {quote.state === 'linked' || quote.state === 'shopifySynced'
-                    ? 'Managed in B2B'
-                    : quote.state === 'uninstalled'
-                      ? 'App not installed'
-                      : 'Not in B2B yet'}
-                </Badge>
-              </BlockStack>
-            </Card>
+            <B2BRelationshipCard quote={quote} />
           </BlockStack>
         </Layout.Section>
       </Layout>
@@ -266,6 +254,7 @@ export function QuoteDetail() {
         }}
       />
     )}
+    <SyncFlowModals />
     </>
   );
 }
