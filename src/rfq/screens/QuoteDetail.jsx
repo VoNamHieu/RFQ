@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Page,
   Card,
@@ -11,10 +11,12 @@ import {
   Badge,
   Select,
   Box,
+  Button,
 } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
 import { money, money2, subtotalOf } from '../utils.js';
 import { shopifyCompanyDirectory } from '../data/companies.js';
+import { SaveToB2B } from '../components/SaveToB2B.jsx';
 
 function quoteCompanyKey(quote) {
   return (
@@ -118,8 +120,10 @@ function Field({ label, value, sub, multiline }) {
 
 export function QuoteDetail() {
   const { state, dispatch } = useStore();
+  const [saveOpen, setSaveOpen] = useState(false);
   const quote = state.quotes[state.currentQuoteId];
   if (!quote) return null;
+  const isDealClosed = state.meta[state.currentQuoteId]?.status === 'Deal Closed';
 
   const lines =
     quote.lines && quote.lines.length
@@ -164,6 +168,7 @@ export function QuoteDetail() {
   });
 
   return (
+    <>
     <Page
       backAction={{ content: 'Submission list', onAction: () => dispatch({ type: 'NAVIGATE', view: 'submissionList' }) }}
       title={`Quote No.${quote.number}`}
@@ -196,6 +201,13 @@ export function QuoteDetail() {
               >
                 {rows}
               </IndexTable>
+              {isDealClosed && (
+                <Box padding="300" borderBlockStartWidth="025" borderColor="border">
+                  <Button variant="primary" onClick={() => setSaveOpen(true)}>
+                    Save prices to B2B
+                  </Button>
+                </Box>
+              )}
             </Card>
 
             <Card>
@@ -244,5 +256,16 @@ export function QuoteDetail() {
         </Layout.Section>
       </Layout>
     </Page>
+    {saveOpen && (
+      <SaveToB2B
+        quote={quote}
+        onClose={() => setSaveOpen(false)}
+        onDone={() => {
+          setSaveOpen(false);
+          dispatch({ type: 'TOAST', message: 'Prices saved to the B2B app' });
+        }}
+      />
+    )}
+    </>
   );
 }
