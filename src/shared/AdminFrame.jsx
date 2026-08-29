@@ -6,7 +6,7 @@ import { VersionSwitcher } from './VersionSwitcher.jsx';
 // left Navigation. `sections` is [{ title?, items:[{label, icon, badge, selected,
 // disabled, onClick, subNavigationItems}] }] so each app (RFQ / B2B) supplies its
 // own nav. `app` ('rfq'|'b2b') adds the version switcher to the top bar.
-export function AdminFrame({ sections, children, searchPlaceholder = 'Search', app }) {
+export function AdminFrame({ sections, children, searchPlaceholder = 'Search', app, location }) {
   const [mobileNavActive, setMobileNavActive] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
@@ -50,7 +50,7 @@ export function AdminFrame({ sections, children, searchPlaceholder = 'Search', a
   );
 
   const navigation = (
-    <Navigation location="/">
+    <Navigation location={location || '/'}>
       {sections.map((sec, i) => (
         <Navigation.Section
           key={i}
@@ -59,6 +59,7 @@ export function AdminFrame({ sections, children, searchPlaceholder = 'Search', a
             label: it.label,
             icon: it.icon,
             badge: it.badge,
+            url: it.url,
             selected: it.selected,
             disabled: it.disabled,
             onClick: it.onClick,
