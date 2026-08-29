@@ -29,6 +29,9 @@ export function BasePricingCard({ company }) {
   const policies = state.db.policies;
   const entries = companyBaseEntries(company, policies);
 
+  // v1: single base pricing per company (no priority list / pagination).
+  if (!versionFlags().multiBase) return <SingleBaseCard company={company} />;
+
   const showTools = entries.length > 5;
   const q = showTools ? (state.basePricingSearch || '').trim().toLowerCase() : '';
   const filtered = q ? entries.filter((e) => e.policy.name.toLowerCase().includes(q)) : entries;
@@ -230,6 +233,72 @@ export function BasePricingCard({ company }) {
       )}
 
       {footerButtons}
+    </Card>
+  );
+}
+
+// v1 single-slot base pricing card.
+function SingleBaseCard({ company }) {
+  const { state, dispatch } = useStore();
+  const entries = companyBaseEntries(company, state.db.policies);
+  const primary = entries[0];
+  const st = primary ? policyStatus(primary.policy) : null;
+  return (
+    <Card padding="0">
+      <Box padding="300" paddingBlockEnd="200">
+        <InlineStack align="space-between" blockAlign="center">
+          <Text as="h2" variant="headingSm">
+            Base pricing
+          </Text>
+          <Text as="span" tone="subdued" variant="bodySm">
+            The standard B2B price for this company
+          </Text>
+        </InlineStack>
+      </Box>
+      <IndexTable
+        resourceName={{ singular: 'base pricing', plural: 'base pricings' }}
+        itemCount={1}
+        selectable={false}
+        headings={[{ title: 'Pricing' }, { title: 'Products' }, { title: 'Status' }, { title: '', alignment: 'end' }]}
+      >
+        <IndexTable.Row id="base" position={0}>
+          <IndexTable.Cell>
+            {primary ? (
+              <Text as="span" variant="bodyMd" fontWeight="medium">
+                {primary.policy.name}
+              </Text>
+            ) : (
+              <Badge tone="attention">Not set</Badge>
+            )}
+          </IndexTable.Cell>
+          <IndexTable.Cell>
+            <Text as="span" tone="subdued">
+              All products
+            </Text>
+          </IndexTable.Cell>
+          <IndexTable.Cell>
+            {primary ? <Badge tone={st.tone}>{st.label}</Badge> : <Text as="span" tone="subdued">-</Text>}
+          </IndexTable.Cell>
+          <IndexTable.Cell>
+            <InlineStack gap="100" align="end" wrap={false}>
+              {primary ? (
+                <>
+                  <Button icon={EditIcon} variant="tertiary" accessibilityLabel="Edit pricing" onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: primary.policy, context: { mode: 'edit', companyId: company.id } })} />
+                  <Button icon={ExchangeIcon} variant="tertiary" accessibilityLabel="Change base pricing" onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'swap', swapId: primary.policy.id })} />
+                  <Button icon={XCircleIcon} variant="tertiary" tone="critical" accessibilityLabel="Remove" onClick={() => dispatch({ type: 'REMOVE_COMPANY_BASE', companyId: company.id, policyId: primary.policy.id })} />
+                </>
+              ) : (
+                <Button icon={PlusIcon} variant="tertiary" accessibilityLabel="Set base pricing" onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'add' })} />
+              )}
+            </InlineStack>
+          </IndexTable.Cell>
+        </IndexTable.Row>
+      </IndexTable>
+      <Box padding="300">
+        <Button variant="tertiary" onClick={() => dispatch({ type: 'OPEN_PRICE_BOARD', companyId: company.id })}>
+          Preview prices
+        </Button>
+      </Box>
     </Card>
   );
 }

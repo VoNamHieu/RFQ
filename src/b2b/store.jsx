@@ -225,6 +225,9 @@ function reducer(state, action) {
           conditionalRules: b.conditionalRules,
           productAdjustments: b.productAdjustments,
           volumeRanges: b.volumeRanges,
+          pricingRule: b.pricingRule,
+          valueType: b.valueType,
+          value: b.value,
         });
       } else {
         const id = `pN${db.policies.length + 1}`;

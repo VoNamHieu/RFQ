@@ -3,6 +3,8 @@ import { Modal, BlockStack, InlineGrid, TextField, Card, Text, Box } from '@shop
 import { useStore } from '../store.jsx';
 import { RuleBuilderCard } from './RuleBuilderCard.jsx';
 import { VolumeRangesCard } from './VolumeRangesCard.jsx';
+import { DefaultPriceCard } from './DefaultPriceCard.jsx';
+import { versionFlags } from '../../shared/versions.js';
 
 // Fullscreen-ish base pricing editor (spec §2.6 baseEditor, focused on the
 // signature Pricing-rules card). Open whenever state.builder is set.
@@ -54,7 +56,14 @@ export function PricingEditor() {
             </BlockStack>
           </Card>
 
-          {isQuantity ? <VolumeRangesCard /> : <RuleBuilderCard />}
+          {isQuantity ? (
+            <VolumeRangesCard />
+          ) : (
+            <>
+              {!versionFlags().multiBase && <DefaultPriceCard />}
+              <RuleBuilderCard />
+            </>
+          )}
         </BlockStack>
       </Modal.Section>
     </Modal>

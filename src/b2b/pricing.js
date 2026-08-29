@@ -137,6 +137,8 @@ export function resolvedPriceFor(company, product, policies) {
     for (const rule of p.conditionalRules || []) {
       if (productMatchesRule(rule, product)) return applyAdjustment(rule, product.list);
     }
+    // v1 profile-level default price (covers the whole catalog).
+    if (p.pricingRule && p.pricingRule !== 'keep') return applyAdjustment(p, product.list);
   }
   return product.list;
 }
@@ -153,6 +155,9 @@ export function resolveDetail(company, product, policies) {
       if (productMatchesRule(rules[i], product)) {
         return { price: applyAdjustment(rules[i], product.list), decidedBy: `${p.name} · Rule ${i + 1}`, layer: 'rule' };
       }
+    }
+    if (p.pricingRule && p.pricingRule !== 'keep') {
+      return { price: applyAdjustment(p, product.list), decidedBy: `${p.name} · Default price`, layer: 'rule' };
     }
   }
   return { price: product.list, decidedBy: 'Shopify price', layer: 'shopify' };
