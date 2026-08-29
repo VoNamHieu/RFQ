@@ -13,6 +13,7 @@ import {
 } from '@shopify/polaris';
 import { money, marginPct, costFallback } from '../utils.js';
 import { RFQ_CATALOG, RFQ_PRICING_OPTIONS } from '../data/catalog.js';
+import { versionFlags } from '../../shared/versions.js';
 
 const catBySku = (sku) => RFQ_CATALOG.find((p) => p.sku === sku);
 
@@ -90,10 +91,17 @@ export function SaveToB2B({ quote, onClose, onDone }) {
       <Modal.Section>
         <BlockStack gap="300">
           <Text as="p" tone="subdued" variant="bodySm">
-            Saves onto a company base pricing — every location using that base gets these prices right away.
+            {versionFlags().crossSyncScope === 'location'
+              ? 'Applies to the location this quote came from — other locations keep their current pricing.'
+              : 'Saves onto a company base pricing — every location using that base gets these prices right away.'}
           </Text>
 
-          <Select label="Add to base pricing" options={destOptions} value={dest} onChange={setDest} />
+          <Select
+            label={versionFlags().crossSyncScope === 'location' ? "Add to this location’s pricing" : 'Add to base pricing'}
+            options={destOptions}
+            value={dest}
+            onChange={setDest}
+          />
 
           {anyOver && (
             <Banner tone="critical">B2B pricing can’t be higher than the Shopify price — lower them first.</Banner>
