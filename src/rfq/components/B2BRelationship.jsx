@@ -15,7 +15,7 @@ import {
   Divider,
   TextField,
 } from '@shopify/polaris';
-import { useStore } from '../store.jsx';
+import { useStore, handoffToB2B } from '../store.jsx';
 import { shopifyCompanyDirectory } from '../data/companies.js';
 
 function companyKeyOf(quote) {
@@ -31,7 +31,7 @@ function companyKeyOf(quote) {
 
 // Right-column B2B relationship card (spec §5.6): four states.
 export function B2BRelationshipCard({ quote }) {
-  const { dispatch } = useStore();
+  const { state: rfqState, dispatch } = useStore();
   const key = companyKeyOf(quote);
   const company = key ? shopifyCompanyDirectory[key] : null;
   const state = quote.state;
@@ -115,7 +115,7 @@ export function B2BRelationshipCard({ quote }) {
         )}
         {managedBanner}
         <InlineStack gap="200">
-          <Button onClick={() => dispatch({ type: 'TOAST', message: 'Opens the B2B app' })}>
+          <Button onClick={() => handoffToB2B(rfqState, quote.number)}>
             {state === 'linked' ? 'View in B2B' : 'Open in B2B'}
           </Button>
           <Button variant="tertiary" onClick={() => dispatch({ type: 'TOAST', message: 'Opens in Shopify' })}>
@@ -254,7 +254,7 @@ export function SyncFlowModals() {
       open
       onClose={close}
       title={alreadyInB2B ? 'Buyer added' : 'Sync complete'}
-      primaryAction={{ content: 'View in B2B app', onAction: () => dispatch({ type: 'TOAST', message: 'Opens the B2B app' }) }}
+      primaryAction={{ content: 'View in B2B app', onAction: () => handoffToB2B(state, sf.quoteId) }}
       secondaryActions={[{ content: 'Stay in RFQ', onAction: close }]}
     >
       <Modal.Section>

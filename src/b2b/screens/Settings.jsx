@@ -1,6 +1,7 @@
 import React from 'react';
 import { Page, Card, Text, BlockStack, InlineGrid, InlineStack, Badge, Select, Divider, Box } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
+import { resetDemo } from '../../shared/persistence.js';
 
 export function Settings() {
   const { state, dispatch } = useStore();
@@ -16,7 +17,7 @@ export function Settings() {
     <Page
       title="Settings"
       primaryAction={{ content: 'Save', onAction: () => toast('Settings saved') }}
-      secondaryActions={[{ content: 'Reset sample data', onAction: () => toast('Demo only') }]}
+      secondaryActions={[{ content: 'Reset sample data', onAction: resetDemo }]}
     >
       <BlockStack gap="400">
         <Card>

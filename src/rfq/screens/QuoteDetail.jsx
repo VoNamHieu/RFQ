@@ -13,7 +13,7 @@ import {
   Box,
   Button,
 } from '@shopify/polaris';
-import { useStore } from '../store.jsx';
+import { useStore, handoffToB2B } from '../store.jsx';
 import { money, money2, subtotalOf } from '../utils.js';
 import { shopifyCompanyDirectory } from '../data/companies.js';
 import { SaveToB2B } from '../components/SaveToB2B.jsx';
@@ -249,9 +249,16 @@ export function QuoteDetail() {
       <SaveToB2B
         quote={quote}
         onClose={() => setSaveOpen(false)}
-        onDone={() => {
+        onDone={(result) => {
           setSaveOpen(false);
-          dispatch({ type: 'TOAST', message: 'Prices saved to the B2B app' });
+          const transfer = result
+            ? {
+                targetId: result.dest,
+                newName: result.dest === '__new__' ? `Quote ${quote.number} prices` : '',
+                newPriority: 1,
+              }
+            : null;
+          handoffToB2B(state, quote.number, { pricingTransfer: transfer, lines: result?.lines });
         }}
       />
     )}

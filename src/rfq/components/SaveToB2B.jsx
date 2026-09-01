@@ -60,7 +60,10 @@ export function SaveToB2B({ quote, onClose, onDone }) {
         open
         onClose={onClose}
         title="Saved to B2B"
-        primaryAction={{ content: 'Open in B2B app', onAction: onDone }}
+        primaryAction={{
+          content: 'Open in B2B app',
+          onAction: () => onDone({ dest, lines: rows.map((r) => ({ sku: r.sku, quoted: r.quoted })) }),
+        }}
         secondaryActions={[{ content: 'Close', onAction: onClose }]}
       >
         <Modal.Section>
