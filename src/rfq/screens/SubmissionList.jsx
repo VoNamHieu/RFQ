@@ -8,14 +8,18 @@ import {
   Banner,
   Text,
   BlockStack,
-  useBreakpoints,
+  Box,
 } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
 import { money2, quoteAmount } from '../utils.js';
+import { shopifyCompanyDirectory } from '../data/companies.js';
 import {
   SUBMISSION_TABS,
   SUBMISSION_TAB_STATUS,
 } from '../data/submissions.js';
+
+const companyKeyOf = (q) =>
+  q?.syncedCompanyKey || q?.linkedCompanyKey || q?.fixedCompanyKey || q?.recommendedKey || q?.previewCompanyKey || null;
 
 // Submission status → Polaris Badge tone.
 const STATUS_TONE = {
@@ -46,6 +50,7 @@ export function SubmissionList() {
     const quote = state.quotes[id];
     const meta = state.meta[id] || {};
     const customer = quote?.customer || {};
+    const companyName = shopifyCompanyDirectory[companyKeyOf(quote)]?.name || quote?.createdCompanyName || null;
     return (
       <IndexTable.Row
         id={id}
@@ -73,12 +78,18 @@ export function SubmissionList() {
             </Text>
             <Text as="span" tone="subdued" variant="bodySm">
               {customer.email}
+              {customer.phone ? ` · ${customer.phone}` : ''}
             </Text>
+            {companyName ? (
+              <Text as="span" tone="subdued" variant="bodySm">
+                {companyName}
+              </Text>
+            ) : null}
           </BlockStack>
         </IndexTable.Cell>
         <IndexTable.Cell>
           <Text as="span" tone="subdued" variant="bodySm">
-            {quote?.received}
+            {(quote?.received || '').replace(/^Received by /, '')}
           </Text>
         </IndexTable.Cell>
         <IndexTable.Cell>
@@ -153,6 +164,13 @@ export function SubmissionList() {
               { title: 'Quote log' },
               { title: 'Assignee' },
             ]}
+            emptyState={
+              <Box padding="400">
+                <Text as="p" alignment="center" tone="subdued">
+                  No quotes in this tab.
+                </Text>
+              </Box>
+            }
           >
             {rowMarkup}
           </IndexTable>

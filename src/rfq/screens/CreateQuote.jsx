@@ -108,7 +108,8 @@ export function CreateQuote() {
     const next = [...lines];
     additions.forEach((add) => {
       const j = add.sku ? next.findIndex((l) => l.sku === add.sku) : -1;
-      if (j >= 0) next[j] = { ...next[j], price: add.price, priced: add.priced };
+      // Re-adding an existing SKU accumulates quantity (legacy cqPushLine).
+      if (j >= 0) next[j] = { ...next[j], qty: (Number(next[j].qty) || 0) + (Number(add.qty) || 1), price: add.price, priced: add.priced };
       else next.push(add);
     });
     setLines(next);
@@ -119,19 +120,21 @@ export function CreateQuote() {
     dispatch({ type: 'CQ_PATCH', patch: { customerKey: key, message: c?.note || '' } });
   };
 
-  const canCreate =
-    !!customer &&
-    lines.length > 0 &&
-    lines.every((l) => Number(l.price) >= 0 && Number(l.qty) > 0 && (!l.custom || (l.title || '').trim()));
+  // Drop blank/invalid lines and create from the rest (legacy filters invalid).
+  const isValidLine = (l) => Number(l.price) >= 0 && Number(l.qty) > 0 && (!l.custom || (l.title || '').trim());
+  const canCreate = !!customer && lines.some(isValidLine);
 
   const cqCreate = () => {
     if (!canCreate) return;
     const id = String(1052001 + state.cqSeq);
-    const valid = lines;
+    const valid = lines.filter(isValidLine);
     const first = valid[0];
     const quote = {
       number: id,
+      title: `Quote No.${id}`,
+      scenario: 'Merchant created',
       received: 'Received by Aug 29 2026, 10:00 AM',
+      dueDate: cq.dueDate || '',
       state: 'linked',
       linkedCompanyKey: customer.companyKey,
       amountOverride: subtotal,
@@ -143,7 +146,7 @@ export function CreateQuote() {
         priced: !!l.priced,
       })),
       product: { name: lineTitle(first), sku: first.sku, price: Number(first.price), quantity: Number(first.qty) },
-      customer: { name: customer.name, email: customer.email, shipping: customer.shipping, message: cq.message },
+      customer: { name: customer.name, email: customer.email, phone: customer.phone, shipping: customer.shipping, message: cq.message },
     };
     const meta = {
       status: 'New Received',
