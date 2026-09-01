@@ -7,6 +7,7 @@ import {
   BlockStack,
   Box,
   Tabs,
+  Banner,
   EmptyState,
 } from '@shopify/polaris';
 import { useStore } from '../../store.jsx';
@@ -46,6 +47,15 @@ export function QuotesTab({ company }) {
       </Card>
     );
   }
+
+  // Per-status counts drive the sub-tab labels.
+  const countFor = (status) => (status ? companyQuotes.filter((q) => q.status === status).length : companyQuotes.length);
+  const subTabs = SUB_TABS.map((t) => ({ ...t, content: `${t.content} (${countFor(t.status)})` }));
+
+  // "Waiting on a price": open quotes with at least one unpriced line.
+  const waiting = companyQuotes.filter(
+    (q) => !['Deal Closed', 'Deal Rejected', 'Trashed'].includes(q.status) && (q.lines || []).some((l) => l.quoted == null),
+  ).length;
 
   const activeStatus = SUB_TABS[selected].status;
   const shown = activeStatus
@@ -99,7 +109,12 @@ export function QuotesTab({ company }) {
 
   return (
     <Card padding="0">
-      <Tabs tabs={SUB_TABS} selected={selected} onSelect={setSelected} />
+      {waiting > 0 && (
+        <Box padding="300" paddingBlockEnd="0">
+          <Banner tone="warning">{`${waiting} quote${waiting === 1 ? '' : 's'} waiting on a price. Price them in the RFQ app to move them forward.`}</Banner>
+        </Box>
+      )}
+      <Tabs tabs={subTabs} selected={selected} onSelect={setSelected} />
       <IndexTable
         resourceName={{ singular: 'quote', plural: 'quotes' }}
         itemCount={shown.length}

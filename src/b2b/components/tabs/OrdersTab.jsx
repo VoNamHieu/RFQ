@@ -1,20 +1,26 @@
-import React from 'react';
-import { Card, IndexTable, Badge, Text, BlockStack, Box, EmptyState } from '@shopify/polaris';
-import { useStore } from '../../store.jsx';
+import React, { useState } from 'react';
+import { Card, IndexTable, Badge, Text, BlockStack, Box, InlineStack, Select, EmptyState } from '@shopify/polaris';
 import { money } from '../../format.js';
 
 const STATUS_TONE = {
   Fulfilled: 'success',
   Paid: 'success',
-  'Needs review': 'attention',
+  'Needs review': 'warning',
   Blocked: 'critical',
+  Cancelled: 'critical',
+  'Draft order': 'info',
 };
+const orderTone = (s) => STATUS_TONE[s]; // neutral fallback for unmapped statuses
 
 export function OrdersTab({ company }) {
-  useStore();
-  const orders = company.orders || [];
+  const [loc, setLoc] = useState('all');
+  const allOrders = company.orders || [];
+  const orders = (loc === 'all' ? allOrders : allOrders.filter((o) => o.location === loc))
+    .slice()
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const locationNames = [...new Set(allOrders.map((o) => o.location).filter(Boolean))];
 
-  if (orders.length === 0) {
+  if (allOrders.length === 0) {
     return (
       <Card>
         <EmptyState heading="No orders yet" image="">
@@ -47,17 +53,28 @@ export function OrdersTab({ company }) {
         </Text>
       </IndexTable.Cell>
       <IndexTable.Cell>
-        <Badge tone={STATUS_TONE[o.status]}>{o.status}</Badge>
+        <Badge tone={orderTone(o.status)}>{o.status}</Badge>
       </IndexTable.Cell>
     </IndexTable.Row>
   ));
 
   return (
     <Card padding="0">
-      <Box padding="300" paddingBlockEnd="0">
-        <Text as="h2" variant="headingSm">
-          Orders
-        </Text>
+      <Box padding="300" paddingBlockEnd="200">
+        <InlineStack align="space-between" blockAlign="center" gap="200">
+          <Text as="h2" variant="headingSm">{`Orders${loc === 'all' ? '' : ` · ${loc}`} (${orders.length})`}</Text>
+          {locationNames.length > 1 && (
+            <Box minWidth="180px">
+              <Select
+                label="Location"
+                labelHidden
+                options={[{ label: 'All locations', value: 'all' }, ...locationNames.map((n) => ({ label: n, value: n }))]}
+                value={loc}
+                onChange={setLoc}
+              />
+            </Box>
+          )}
+        </InlineStack>
       </Box>
       <IndexTable
         resourceName={{ singular: 'order', plural: 'orders' }}

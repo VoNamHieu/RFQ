@@ -1,7 +1,9 @@
 import React from 'react';
-import { Card, IndexTable, Text, BlockStack, Box, EmptyState } from '@shopify/polaris';
+import { Card, IndexTable, Text, BlockStack, Box, InlineStack, Button, EmptyState } from '@shopify/polaris';
+import { useStore } from '../../store.jsx';
 
 export function ContactsTab({ company }) {
+  const { dispatch } = useStore();
   const contacts = company.contacts || [];
 
   if (contacts.length === 0) {
@@ -34,10 +36,14 @@ export function ContactsTab({ company }) {
 
   return (
     <Card padding="0">
-      <Box padding="300" paddingBlockEnd="0">
-        <Text as="h2" variant="headingSm">
-          Contacts
-        </Text>
+      <Box padding="300" paddingBlockEnd="200">
+        <InlineStack align="space-between" blockAlign="center">
+          <BlockStack gap="050">
+            <Text as="h2" variant="headingSm">Contacts</Text>
+            <Text as="span" tone="subdued" variant="bodySm">Managed on the Shopify company record</Text>
+          </BlockStack>
+          <Button onClick={() => dispatch({ type: 'TOAST', message: 'Opens the Shopify company record' })}>Open in Shopify</Button>
+        </InlineStack>
       </Box>
       <IndexTable
         resourceName={{ singular: 'contact', plural: 'contacts' }}
