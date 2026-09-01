@@ -6,7 +6,7 @@
   "description": "QuoteSnap RFQ × Shopify B2B — Polaris React (Vite).",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/postbuild.mjs",
     "preview": "vite preview",
     "serve-static": "npx --yes serve ."
   },
