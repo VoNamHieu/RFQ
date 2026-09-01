@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Page, Tabs, Card, BlockStack, Text, Box, Modal } from '@shopify/polaris';
+import { Page, Tabs, Card, BlockStack, InlineStack, Button, Text, Box, Modal } from '@shopify/polaris';
 import { useStore, currentCompany } from '../store.jsx';
 import { companyBaseEntries, companyQuantityPolicy } from '../pricing.js';
 import { BasePricingCard } from '../components/BasePricingCard.jsx';
@@ -8,6 +8,7 @@ import { QuotesTab } from '../components/tabs/QuotesTab.jsx';
 import { OrdersTab } from '../components/tabs/OrdersTab.jsx';
 import { LocationsTab } from '../components/tabs/LocationsTab.jsx';
 import { ContactsTab } from '../components/tabs/ContactsTab.jsx';
+import { Analytics } from './Analytics.jsx';
 import { versionFlags } from '../../shared/versions.js';
 
 const TABS = [
@@ -82,7 +83,14 @@ export function CompanyDetail() {
         {state.companyTab === 'orders' && <OrdersTab company={company} />}
         {state.companyTab === 'locations' && <LocationsTab company={company} />}
         {state.companyTab === 'contacts' && <ContactsTab company={company} />}
-        {state.companyTab === 'analytics' && <Placeholder label="Analytics" />}
+        {state.companyTab === 'analytics' && (
+          <BlockStack gap="300">
+            <InlineStack align="end">
+              <Button onClick={() => dispatch({ type: 'NAVIGATE', view: 'analytics' })}>View advanced analytics</Button>
+            </InlineStack>
+            <Analytics embeddedCompanyId={company.id} />
+          </BlockStack>
+        )}
       </BlockStack>
 
       {confirmDelete && (
