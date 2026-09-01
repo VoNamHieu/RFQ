@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Page, Tabs, Card, BlockStack, InlineStack, Button, Text, Box, Modal } from '@shopify/polaris';
+import { Page, Tabs, Card, BlockStack, InlineStack, Button, Text, Modal } from '@shopify/polaris';
 import { useStore, currentCompany } from '../store.jsx';
 import { companyBaseEntries, companyQuantityPolicy } from '../pricing.js';
 import { BasePricingCard } from '../components/BasePricingCard.jsx';
@@ -19,18 +19,6 @@ const TABS = [
   { id: 'locations', label: 'Locations' },
   { id: 'contacts', label: 'Contacts' },
 ];
-
-function Placeholder({ label }) {
-  return (
-    <Card>
-      <Box padding="400">
-        <Text as="p" tone="subdued" alignment="center">
-          {label} tab — migrating next.
-        </Text>
-      </Box>
-    </Card>
-  );
-}
 
 export function CompanyDetail() {
   const { state, dispatch } = useStore();

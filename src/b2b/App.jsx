@@ -108,7 +108,9 @@ export function App() {
       <BuildFromQuotes />
       <PriceBoard />
       <AssignModal />
-      <MultiAssignModal />
+      {/* Mount only while open so its props-derived initial state (target type by
+          audience) initializes from the actual policy, not a stale null. */}
+      {state.assignMulti && <MultiAssignModal />}
       <AddCompanyWizard />
       {state.toast && <Toast content={state.toast} onDismiss={() => dispatch({ type: 'CLEAR_TOAST' })} />}
     </AdminFrame>
