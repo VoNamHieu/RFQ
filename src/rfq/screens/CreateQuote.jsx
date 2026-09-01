@@ -504,13 +504,26 @@ function PickerModal({ picker, setPicker, customer, onAdd }) {
             </div>
           )}
         </IndexTable.Cell>
+        <IndexTable.Cell>
+          <div style={{ width: 72 }}>
+            <TextField
+              label="Qty"
+              labelHidden
+              type="number"
+              min={1}
+              value={String(pick.qty ?? 1)}
+              onChange={(v) => setPick(r.sku, { qty: Math.max(1, Number(v) || 1) }, r.price)}
+              autoComplete="off"
+            />
+          </div>
+        </IndexTable.Cell>
       </IndexTable.Row>
     );
   });
 
   const headings = isCat
-    ? [{ title: '' }, { title: 'Product' }, { title: 'Available' }, { title: 'Price' }]
-    : [{ title: '' }, { title: 'Product' }, { title: 'Price' }];
+    ? [{ title: '' }, { title: 'Product' }, { title: 'Available' }, { title: 'Price' }, { title: 'Qty' }]
+    : [{ title: '' }, { title: 'Product' }, { title: 'Price' }, { title: 'Qty' }];
 
   return (
     <Modal
