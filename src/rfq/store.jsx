@@ -19,6 +19,27 @@ export const emptyCreateQuote = () => ({
 const clone = (obj) =>
   typeof structuredClone === 'function' ? structuredClone(obj) : JSON.parse(JSON.stringify(obj));
 
+// Parse a free-form quote shipping string ("128 Le Loi, District 1, HCMC, Vietnam"
+// or multi-line) into address fields to prefill the create-company form.
+const COUNTRY_CODE = { vietnam: 'VN', 'united states': 'US', usa: 'US', 'united kingdom': 'GB', uk: 'GB', singapore: 'SG', australia: 'AU' };
+export function parseQuoteShipping(raw) {
+  const empty = { address1: '', address2: '', city: '', postal: '', country: 'VN' };
+  if (!raw) return empty;
+  const parts = String(raw).split(/\n|,/).map((s) => s.trim()).filter(Boolean);
+  if (!parts.length) return empty;
+  let country = 'VN';
+  if (parts.length > 1) {
+    const last = parts[parts.length - 1].toLowerCase();
+    if (COUNTRY_CODE[last]) { country = COUNTRY_CODE[last]; parts.pop(); }
+  }
+  const city = parts.length > 1 ? parts.pop() : '';
+  const address1 = parts.shift() || '';
+  const address2 = parts.join(', ');
+  return { address1, address2, city, postal: '', country };
+}
+
+const emptyAddress = (country = 'VN') => ({ firstName: '', lastName: '', company: '', address1: '', address2: '', city: '', postal: '', country, phone: '' });
+
 const initialState = {
   view: 'submissionList', // 'submissionList' | 'quoteDetail' | 'createQuote' | 'b2bCreateCompany' | 'createLocation' | 'b2bCompany'
   currentQuoteId: DEFAULT_QUOTE_ID,
@@ -185,6 +206,7 @@ function reducer(state, action) {
       const email = q?.customer?.email || '';
       const domain = (email.split('@')[1] || '').split('.')[0];
       const derived = domain ? domain.charAt(0).toUpperCase() + domain.slice(1) : '';
+      const parsed = parseQuoteShipping(q?.customer?.shipping);
       return {
         ...state,
         syncFlow: null,
@@ -192,11 +214,28 @@ function reducer(state, action) {
           quoteId: action.quoteId,
           name: q?.customer?.company || derived,
           externalId: '',
-          shipCity: '',
-          shipAddress: '',
-          autoSync: false,
+          // Shipping address (prefilled from the RFQ request), with a demo "no address" toggle.
+          ship: { ...emptyAddress(parsed.country), address1: parsed.address1, address2: parsed.address2, city: parsed.city, postal: parsed.postal, phone: q?.customer?.phone || '' },
+          noShipping: false,
+          // Billing
+          billingSame: true,
+          bill: emptyAddress(parsed.country),
+          locationId: '',
+          // Commerce
+          checkoutToDraft: false,
+          editableShipping: false,
+          paymentTerms: 'No payment terms',
+          // Tax
+          taxSettings: 'collect',
+          taxRegistrationId: '',
+          // Contact
+          setMainContact: true,
+          autoSync: q?.quoteAutoSyncEnabled === true,
           contactName: q?.customer?.name || '',
           contactEmail: q?.customer?.email || '',
+          // legacy compat fields still read by some callers
+          shipCity: parsed.city,
+          shipAddress: parsed.address1,
         },
       };
     }
@@ -216,18 +255,35 @@ function reducer(state, action) {
       };
       // Snapshot the created company (mirrors legacy shopifyCompanyDirectory[created_*])
       // so it survives reloads and can be handed to / rebuilt by the B2B app.
-      const locationName = [cc.shipAddress, cc.shipCity].filter(Boolean).join(', ');
+      const ship = cc.noShipping ? emptyAddress(cc.ship?.country) : cc.ship || emptyAddress();
+      const billing = cc.billingSame ? ship : cc.bill || emptyAddress();
+      const city = ship.city || '';
       const snapshot = {
         name: cc.name,
         externalId: cc.externalId || '',
-        mainContact: cc.contactName || '',
+        mainContact: cc.setMainContact ? cc.contactName || '' : '',
+        mainContactAssigned: !!cc.setMainContact,
         contactName: cc.contactName || '',
         contactEmail: cc.contactEmail || '',
-        locationName: cc.shipCity || locationName || '',
-        locationSummary: cc.shipCity || locationName || '',
-        terms: cc.terms || 'Not set',
+        locationName: city,
+        locationSummary: city || 'Company location',
+        terms: cc.paymentTerms || 'Not set',
         createdInB2B: true,
         autoSyncEnabled: !!cc.autoSync,
+        // Rich location profile (mirrors legacy created company.location) — carried
+        // in the handoff so the B2B app can rebuild the full location.
+        location: {
+          shippingAddress: ship,
+          billingSameAsShipping: !!cc.billingSame,
+          billingAddress: billing,
+          locationId: cc.locationId || '',
+          checkoutToDraft: !!cc.checkoutToDraft,
+          editableShipping: !!cc.editableShipping,
+          paymentTerms: cc.paymentTerms || 'No payment terms',
+          taxSettings: cc.taxSettings || 'collect',
+          taxRegistrationId: cc.taxRegistrationId || '',
+          customized: !!(cc.checkoutToDraft || cc.editableShipping || (cc.taxSettings && cc.taxSettings !== 'collect') || cc.taxRegistrationId || (cc.paymentTerms && cc.paymentTerms !== 'No payment terms')),
+        },
       };
       return {
         ...state,
