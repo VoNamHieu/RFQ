@@ -576,6 +576,13 @@ function reducer(state, action) {
       if (p) p.status = p.status === 'Inactive' ? 'Active' : 'Inactive';
       return { ...state, db, toast: p && p.status === 'Inactive' ? 'Pricing turned off' : 'Pricing turned on' };
     }
+    // Store-wide default pricing (All Companies / All customers) — consulted by
+    // the resolution engine's fallback (resolvePricing / companyNeedsPrice).
+    case 'SET_DEFAULT_POLICY': {
+      const db = clone(state.db);
+      db.defaults = { ...(db.defaults || {}), [action.key]: action.value || null };
+      return { ...state, db, toast: 'Default pricing updated' };
+    }
     // ----- Base pricing card actions -----
     case 'REMOVE_COMPANY_BASE': {
       const db = clone(state.db);

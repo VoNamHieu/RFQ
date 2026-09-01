@@ -58,15 +58,17 @@ export function Settings() {
               </Text>
               <Select
                 label="Default B2B pricing"
-                options={[{ label: 'None', value: '' }, ...state.db.policies.filter((p) => p.audienceType === 'b2b').map((p) => ({ label: p.name, value: p.id }))]}
-                value=""
-                onChange={() => toast('Demo only')}
+                helpText="Applies to every company that has no pricing of its own."
+                options={[{ label: 'None', value: '' }, ...state.db.policies.filter((p) => p.audienceType === 'b2b' && p.priceKind !== 'quantity').map((p) => ({ label: p.name, value: p.id }))]}
+                value={state.db.defaults?.b2bPolicyId || ''}
+                onChange={(v) => dispatch({ type: 'SET_DEFAULT_POLICY', key: 'b2bPolicyId', value: v })}
               />
               <Select
                 label="Default wholesale pricing"
+                helpText="Applies to signed-in customers not attached to a company."
                 options={[{ label: 'None', value: '' }, ...state.db.policies.filter((p) => p.audienceType === 'd2c').map((p) => ({ label: p.name, value: p.id }))]}
-                value=""
-                onChange={() => toast('Demo only')}
+                value={state.db.defaults?.wholesalePolicyId || ''}
+                onChange={(v) => dispatch({ type: 'SET_DEFAULT_POLICY', key: 'wholesalePolicyId', value: v })}
               />
             </BlockStack>
           </Card>
