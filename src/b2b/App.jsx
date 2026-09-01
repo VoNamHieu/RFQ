@@ -27,6 +27,7 @@ import { PricingEditor } from './components/PricingEditor.jsx';
 import { BuildFromQuotes } from './components/BuildFromQuotes.jsx';
 import { PriceBoard } from './components/PriceBoard.jsx';
 import { AssignModal } from './components/AssignModal.jsx';
+import { MultiAssignModal } from './components/MultiAssignModal.jsx';
 import { AddCompanyWizard } from './components/AddCompanyWizard.jsx';
 import { versionFlags, activeVersion } from '../shared/versions.js';
 
@@ -107,6 +108,7 @@ export function App() {
       <BuildFromQuotes />
       <PriceBoard />
       <AssignModal />
+      <MultiAssignModal />
       <AddCompanyWizard />
       {state.toast && <Toast content={state.toast} onDismiss={() => dispatch({ type: 'CLEAR_TOAST' })} />}
     </AdminFrame>

@@ -64,6 +64,7 @@ function makeBaseState() {
     buildQuotes: null, // { companyId, rows:[{sku,quoted,proposed,from}], dest }
     priceBoard: null, // { companyId, search } — resolved-prices preview
     assign: null, // { companyId, mode:'add'|'swap', swapId, selectedId } — assign/swap base
+    assignMulti: null, // { policyId } — assign one policy to many companies/customers/tags/global
     addCompany: null, // { step, shopifyId, baseId } — add-company wizard
     db: normalizeDb(dbSeed),
     toast: null,
@@ -388,6 +389,40 @@ function reducer(state, action) {
       const c = db.companies.find((x) => x.id === action.companyId);
       if (c && c.pricing) c.pricing.quantity = null;
       return { ...state, db, toast: 'Quantity pricing removed' };
+    }
+    // ----- Assign one policy to many targets (companies / customers / tags / global) -----
+    case 'OPEN_MULTI_ASSIGN':
+      return { ...state, assignMulti: { policyId: action.policyId } };
+    case 'CLOSE_MULTI_ASSIGN':
+      return { ...state, assignMulti: null };
+    case 'MULTI_ASSIGN': {
+      const db = clone(state.db);
+      const pol = db.policies.find((p) => p.id === action.policyId);
+      if (!pol) return { ...state, assignMulti: null };
+      const kind = pol.priceKind === 'quantity' ? 'quantity' : 'base';
+      const ids = action.ids || [];
+      if (action.targetType === 'company') {
+        ids.forEach((id) => {
+          const c = db.companies.find((x) => x.id === id);
+          if (!c) return;
+          c.pricing = c.pricing || { base: null, quantity: null };
+          if (kind === 'quantity') c.pricing.quantity = pol.id;
+          else addCompanyBase(c, pol.id, pol.priority);
+        });
+      } else if (action.targetType === 'customer') {
+        ids.forEach((id) => {
+          const cu = (db.customers || []).find((x) => x.id === id);
+          if (cu) cu.policyId = pol.id;
+        });
+      } else if (action.targetType === 'tag') {
+        ids.forEach((id) => {
+          const t = (db.tagPricing || []).find((x) => x.id === id);
+          if (t) t.defaultPolicyId = pol.id;
+        });
+      } else if (action.targetType === 'global') {
+        db.defaults = { ...(db.defaults || {}), [pol.audienceType === 'd2c' ? 'wholesalePolicyId' : 'b2bPolicyId']: pol.id };
+      }
+      return { ...state, db, assignMulti: null, toast: `${pol.name} assigned` };
     }
     // ----- Add-company wizard -----
     case 'OPEN_ADD_COMPANY':

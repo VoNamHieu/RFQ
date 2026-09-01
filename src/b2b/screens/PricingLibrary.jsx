@@ -68,6 +68,9 @@ export function PricingLibrary() {
         <IndexTable.Cell><Text as="span" tone="subdued" variant="bodySm">{policyUsage(p, state.db)}</Text></IndexTable.Cell>
         <IndexTable.Cell>
           <InlineStack gap="100" align="end" wrap={false}>
+            <Button variant="tertiary" onClick={() => dispatch({ type: 'OPEN_MULTI_ASSIGN', policyId: p.id })}>
+              Assign
+            </Button>
             {canToggle && (
               <Button variant="tertiary" onClick={() => dispatch({ type: 'TOGGLE_POLICY_STATUS', id: p.id })}>
                 {isOff ? 'Turn on' : 'Turn off'}

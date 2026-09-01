@@ -233,6 +233,30 @@ export function companyPricingStatus(company, policies, defaults) {
     : { label: 'Price ready', tone: 'success' };
 }
 
+// ── Customer (d2c) resolution ────────────────────────────────────────────────
+// A contact attached to a company always gets the B2B experience, so no
+// customer-level pricing can reach them (legacy companyForCustomerEmail).
+export function companyForCustomerEmail(db, email) {
+  if (!email) return null;
+  const key = String(email).toLowerCase();
+  return (db.companies || []).find((c) => (c.contacts || []).some((x) => String(x.email).toLowerCase() === key)) || null;
+}
+export function tagPolicyFor(db, customer) {
+  const tags = customer?.tags || [];
+  for (const t of db.tagPricing || []) if (tags.includes(t.id) && t.defaultPolicyId) return t;
+  return null;
+}
+// The policy a wholesale (non-company) customer is priced by: explicit override →
+// tag default → store-wide wholesale default.
+export function resolveCustomer(db, customer) {
+  if (companyForCustomerEmail(db, customer?.email)) return { profile: null, source: 'Priced by their Company' };
+  if (customer?.policyId) return { profile: policyById(db.policies, customer.policyId), source: 'Customer override' };
+  const t = tagPolicyFor(db, customer);
+  if (t) return { profile: policyById(db.policies, t.defaultPolicyId), source: `Tag default · ${t.name}` };
+  if (db.defaults?.wholesalePolicyId) return { profile: policyById(db.policies, db.defaults.wholesalePolicyId), source: 'All customers default' };
+  return { profile: null, source: 'No pricing' };
+}
+
 // ── Status (derived) ─────────────────────────────────────────────────────────
 // Read order = decisiveness: turned off, then nobody assigned, then dated window.
 // (Pass `db` to apply the "nobody assigned ⇒ Inactive" rule.)
