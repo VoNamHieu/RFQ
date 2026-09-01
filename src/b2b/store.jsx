@@ -134,6 +134,21 @@ export function newBaseBuilder() {
   };
 }
 
+export function newQuantityBuilder() {
+  return {
+    ...newBaseBuilder(),
+    name: 'New quantity pricing',
+    priceKind: 'quantity',
+    scopeType: 'products',
+    volumeRanges: [
+      { from: 1, to: 9, valueType: 'percentage', value: 0 },
+      { from: 10, to: null, valueType: 'percentage', value: 10 },
+    ],
+    volumeBasis: 'shopify', // 'shopify' | 'base'
+    quantityBasis: 'all_selected', // all_selected | per_product | per_variant
+  };
+}
+
 // ── Cross-app handoff helpers (ported from b2b/index.html §8118-8232) ─────────
 
 // Build (or match by id/name) a B2B company from an RFQ payload; returns its id.
@@ -341,7 +356,7 @@ function reducer(state, action) {
       return { ...state, priceBoard: null };
     // ----- Assign / swap base pricing -----
     case 'OPEN_ASSIGN':
-      return { ...state, assign: { companyId: action.companyId, mode: action.mode, swapId: action.swapId || null, selectedId: null } };
+      return { ...state, assign: { companyId: action.companyId, mode: action.mode, kind: action.kind || 'base', swapId: action.swapId || null, selectedId: null } };
     case 'ASSIGN_SELECT':
       return { ...state, assign: { ...state.assign, selectedId: action.id } };
     case 'CLOSE_ASSIGN':
@@ -351,16 +366,28 @@ function reducer(state, action) {
       const db = clone(state.db);
       const c = db.companies.find((x) => x.id === a.companyId);
       if (c && a.selectedId) {
-        if (!Array.isArray(c.pricing.base)) c.pricing.base = c.pricing.base ? [{ id: c.pricing.base, priority: 1 }] : [];
-        const pol = db.policies.find((p) => p.id === a.selectedId);
-        if (a.mode === 'swap') {
-          const idx = c.pricing.base.findIndex((e) => e.id === a.swapId);
-          if (idx >= 0) c.pricing.base[idx] = { id: a.selectedId, priority: pol?.priority ?? c.pricing.base[idx].priority };
-        } else if (!c.pricing.base.some((e) => e.id === a.selectedId)) {
-          c.pricing.base.push({ id: a.selectedId, priority: pol?.priority ?? c.pricing.base.length + 1 });
+        c.pricing = c.pricing || { base: null, quantity: null };
+        if (a.kind === 'quantity') {
+          c.pricing.quantity = a.selectedId;
+        } else {
+          if (!Array.isArray(c.pricing.base)) c.pricing.base = c.pricing.base ? [{ id: c.pricing.base, priority: 1 }] : [];
+          const pol = db.policies.find((p) => p.id === a.selectedId);
+          if (a.mode === 'swap') {
+            const idx = c.pricing.base.findIndex((e) => e.id === a.swapId);
+            if (idx >= 0) c.pricing.base[idx] = { id: a.selectedId, priority: pol?.priority ?? c.pricing.base[idx].priority };
+          } else if (!c.pricing.base.some((e) => e.id === a.selectedId)) {
+            c.pricing.base.push({ id: a.selectedId, priority: pol?.priority ?? c.pricing.base.length + 1 });
+          }
         }
       }
-      return { ...state, db, assign: null, toast: a.mode === 'swap' ? 'Base pricing changed' : 'Base pricing added' };
+      const label = a.kind === 'quantity' ? 'Quantity pricing' : 'Base pricing';
+      return { ...state, db, assign: null, toast: a.mode === 'swap' ? `${label} changed` : `${label} added` };
+    }
+    case 'REMOVE_COMPANY_QUANTITY': {
+      const db = clone(state.db);
+      const c = db.companies.find((x) => x.id === action.companyId);
+      if (c && c.pricing) c.pricing.quantity = null;
+      return { ...state, db, toast: 'Quantity pricing removed' };
     }
     // ----- Add-company wizard -----
     case 'OPEN_ADD_COMPANY':
@@ -423,11 +450,26 @@ function reducer(state, action) {
     case 'OPEN_EDITOR':
       return {
         ...state,
-        builder: action.policy ? clone(action.policy) : newBaseBuilder(),
+        builder: action.policy
+          ? clone(action.policy)
+          : action.kind === 'quantity'
+          ? newQuantityBuilder()
+          : newBaseBuilder(),
         ruleEdit: null,
         addRuleMenu: false,
         editorContext: action.context || null,
       };
+    // Switch the pricing type of a NEW (unsaved) builder, keeping name/priority/audience.
+    case 'SWITCH_KIND': {
+      if (!state.builder || state.builder.id) return state;
+      const fresh = action.kind === 'quantity' ? newQuantityBuilder() : newBaseBuilder();
+      return {
+        ...state,
+        builder: { ...fresh, name: state.builder.name, priority: state.builder.priority, audienceType: state.builder.audienceType },
+        ruleEdit: null,
+        addRuleMenu: false,
+      };
+    }
     case 'CLOSE_EDITOR':
       return { ...state, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null };
     case 'BUILDER_PATCH':
@@ -511,6 +553,28 @@ function reducer(state, action) {
       }
       Object.assign(existing, draft, { id: existing.id });
       return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: 'Pricing saved' };
+    }
+    // ----- Pricing library actions -----
+    case 'DELETE_POLICY': {
+      const db = clone(state.db);
+      db.policies = db.policies.filter((p) => p.id !== action.id);
+      db.companies.forEach((c) => {
+        if (Array.isArray(c.pricing.base)) c.pricing.base = c.pricing.base.filter((e) => e.id !== action.id);
+        if (c.pricing.quantity === action.id) c.pricing.quantity = null;
+        (c.locations || []).forEach((l) => {
+          if (l.pricing) {
+            if (l.pricing.base === action.id) l.pricing.base = null;
+            if (l.pricing.quantity === action.id) l.pricing.quantity = null;
+          }
+        });
+      });
+      return { ...state, db, toast: 'Pricing deleted' };
+    }
+    case 'TOGGLE_POLICY_STATUS': {
+      const db = clone(state.db);
+      const p = db.policies.find((x) => x.id === action.id);
+      if (p) p.status = p.status === 'Inactive' ? 'Active' : 'Inactive';
+      return { ...state, db, toast: p && p.status === 'Inactive' ? 'Pricing turned off' : 'Pricing turned on' };
     }
     // ----- Base pricing card actions -----
     case 'REMOVE_COMPANY_BASE': {

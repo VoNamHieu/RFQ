@@ -7,8 +7,7 @@ import { companyQuantityPolicy, policyStatus, scopeTypeLabel } from '../pricing.
 export function QuantityPricingCard({ company }) {
   const { state, dispatch } = useStore();
   const policy = companyQuantityPolicy(company, state.db.policies);
-  const st = policyStatus(policy);
-  const toast = (m) => dispatch({ type: 'TOAST', message: m });
+  const st = policyStatus(policy, state.db);
 
   return (
     <Card padding="0">
@@ -51,11 +50,11 @@ export function QuantityPricingCard({ company }) {
               {policy ? (
                 <>
                   <Button icon={EditIcon} variant="tertiary" accessibilityLabel="Edit pricing" onClick={() => dispatch({ type: 'OPEN_EDITOR', policy, context: { mode: 'edit', companyId: company.id } })} />
-                  <Button icon={ExchangeIcon} variant="tertiary" accessibilityLabel="Change pricing" onClick={() => toast('Change quantity pricing')} />
-                  <Button icon={XCircleIcon} variant="tertiary" tone="critical" accessibilityLabel="Remove" onClick={() => toast('Remove quantity pricing')} />
+                  <Button icon={ExchangeIcon} variant="tertiary" accessibilityLabel="Change pricing" onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, kind: 'quantity', mode: 'swap', swapId: policy.id })} />
+                  <Button icon={XCircleIcon} variant="tertiary" tone="critical" accessibilityLabel="Remove" onClick={() => dispatch({ type: 'REMOVE_COMPANY_QUANTITY', companyId: company.id })} />
                 </>
               ) : (
-                <Button icon={PlusIcon} variant="tertiary" accessibilityLabel="Assign a quantity pricing" onClick={() => toast('Assign quantity pricing')} />
+                <Button icon={PlusIcon} variant="tertiary" accessibilityLabel="Assign a quantity pricing" onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, kind: 'quantity', mode: 'add' })} />
               )}
             </InlineStack>
           </IndexTable.Cell>

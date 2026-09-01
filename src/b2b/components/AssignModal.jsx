@@ -1,20 +1,27 @@
 import React from 'react';
 import { Modal, BlockStack, Box, Text, RadioButton, Button, Badge, InlineStack } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
-import { companyBaseEntries, scopeTypeLabel } from '../pricing.js';
+import { companyBaseEntries, companyQuantityPolicy, scopeTypeLabel } from '../pricing.js';
 
-// Assign an existing base pricing to a company, or swap one for another
-// (spec §2.8 target-locked). "Create new" hands off to the editor.
+// Assign an existing pricing to a company, or swap one for another (spec §2.8).
+// Kind-aware: base pricings stack (priority), quantity is a single slot.
 export function AssignModal() {
   const { state, dispatch } = useStore();
   const a = state.assign;
   if (!a) return null;
+  const isQuantity = a.kind === 'quantity';
+  const kindName = isQuantity ? 'quantity pricing' : 'base pricing';
   const company = state.db.companies.find((c) => c.id === a.companyId);
-  const assignedIds = companyBaseEntries(company, state.db.policies).map((e) => e.policy.id);
+  const assignedIds = isQuantity
+    ? [companyQuantityPolicy(company, state.db.policies)?.id].filter(Boolean)
+    : companyBaseEntries(company, state.db.policies).map((e) => e.policy.id);
 
-  // Candidate bases: b2b base policies not already on the company (swap keeps the one being replaced out too).
   const candidates = state.db.policies.filter(
-    (p) => p.priceKind === 'base' && p.audienceType === 'b2b' && (a.mode === 'swap' ? p.id !== a.swapId : true) && !assignedIds.includes(p.id),
+    (p) =>
+      (isQuantity ? p.priceKind === 'quantity' : p.priceKind !== 'quantity') &&
+      p.audienceType === 'b2b' &&
+      (a.mode === 'swap' ? p.id !== a.swapId : true) &&
+      !assignedIds.includes(p.id),
   );
 
   const isSwap = a.mode === 'swap';
@@ -24,7 +31,7 @@ export function AssignModal() {
     <Modal
       open
       onClose={() => dispatch({ type: 'CLOSE_ASSIGN' })}
-      title={isSwap ? `Change ${swapped?.name || 'base pricing'} to…` : 'Add a base pricing'}
+      title={isSwap ? `Change ${swapped?.name || kindName} to…` : `Add a ${kindName}`}
       primaryAction={{
         content: isSwap ? 'Change' : 'Add',
         onAction: () => dispatch({ type: 'ASSIGN_CONFIRM' }),
@@ -32,10 +39,10 @@ export function AssignModal() {
       }}
       secondaryActions={[
         {
-          content: 'Create a new base pricing',
+          content: `Create a new ${kindName}`,
           onAction: () => {
             dispatch({ type: 'CLOSE_ASSIGN' });
-            dispatch({ type: 'OPEN_EDITOR', policy: null, context: { mode: 'add-base', companyId: a.companyId } });
+            dispatch({ type: 'OPEN_EDITOR', policy: null, kind: a.kind, context: { mode: isQuantity ? 'add-quantity' : 'add-base', companyId: a.companyId } });
           },
         },
         { content: 'Cancel', onAction: () => dispatch({ type: 'CLOSE_ASSIGN' }) },
@@ -44,12 +51,12 @@ export function AssignModal() {
       <Modal.Section>
         <BlockStack gap="200">
           <Text as="p" tone="subdued" variant="bodySm">
-            Pick a reusable base pricing from the library
-            {isSwap ? ' to replace the current one.' : ' to add to this company. The lowest priority applies first.'}
+            {`Pick a reusable ${kindName} from the library`}
+            {isSwap ? ' to replace the current one.' : isQuantity ? ' for this company.' : ' to add to this company. The lowest priority applies first.'}
           </Text>
           {candidates.length === 0 ? (
             <Text as="p" tone="subdued">
-              No other base pricing available — create a new one.
+              {`No other ${kindName} available — create a new one.`}
             </Text>
           ) : (
             candidates.map((p) => (
@@ -66,7 +73,7 @@ export function AssignModal() {
                       <Text as="span" variant="bodyMd" fontWeight="medium">
                         {p.name}
                       </Text>
-                      <Badge size="small">{`Priority ${p.priority ?? '—'}`}</Badge>
+                      {!isQuantity && <Badge size="small">{`Priority ${p.priority ?? '—'}`}</Badge>}
                     </InlineStack>
                   }
                   helpText={scopeTypeLabel(p)}
