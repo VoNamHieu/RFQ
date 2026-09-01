@@ -25,7 +25,7 @@ export function VersionSwitcher({ app }) {
   // Newest first: Latest, v4, v3, v2, v1 (manifest lists v1→v4 ascending).
   const options = [
     { label: 'Version: Latest', value: 'latest' },
-    ...versions.slice().reverse().map((v) => ({ label: `${v.id} · ${v.date}`, value: v.id })),
+    ...versions.slice().reverse().map((v) => ({ label: `Version: ${v.id} · ${v.date}`, value: v.id })),
     { label: 'Changelog ↗', value: 'changelog' },
   ];
 
