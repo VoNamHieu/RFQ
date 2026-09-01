@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useReducer } from 'react';
 import { dbSeed, orderSeed } from './data/db.js';
 import { shopifyCompanyDirectory } from './data/directory.js';
-import { policyById } from './pricing.js';
+import { policyById, policyUsageCount } from './pricing.js';
 import { DEMO_STATE_KEY, readJSON, consumeHandoff } from '../shared/persistence.js';
 
 // The B2B god file rebuilt #app from a single `state` on every action. Here that
@@ -191,16 +191,6 @@ function demoPolicyId(db) {
   return `pq${n}`;
 }
 
-function policyUsageCount(db, policyId) {
-  let n = 0;
-  (db.companies || []).forEach((c) => {
-    const base = c.pricing && c.pricing.base;
-    const ids = Array.isArray(base) ? base.map((e) => e.id) : base ? [base] : [];
-    if (ids.includes(policyId) || (c.pricing && c.pricing.quantity === policyId)) n += 1;
-  });
-  return n;
-}
-
 function companyBaseArray(c) {
   if (!Array.isArray(c.pricing.base)) c.pricing.base = c.pricing.base ? [{ id: c.pricing.base, priority: 1 }] : [];
   return c.pricing.base;
@@ -243,7 +233,7 @@ function applyQuotePricingTransfer(db, companyId, lines, transfer) {
   }
   const base = policyById(db.policies, tid);
   const usesBase = companyBaseArray(co).some((e) => e.id === base.id);
-  const shared = policyUsageCount(db, base.id) - (usesBase ? 1 : 0) > 0;
+  const shared = policyUsageCount(base, db) - (usesBase ? 1 : 0) > 0;
   if (shared) {
     const fork = JSON.parse(JSON.stringify(base));
     fork.id = demoPolicyId(db);
@@ -399,30 +389,51 @@ function reducer(state, action) {
     }
     case 'SAVE_EDITOR': {
       const b = state.builder;
+      // Prune conditional rules with no chosen value or no real adjustment
+      // (legacy validConditionalRule), and derive explicitEnabled from overrides.
+      const cleanRules = (b.conditionalRules || []).filter(
+        (r) =>
+          (r.conditions || []).some((c) =>
+            Array.isArray(c.values) ? c.values.filter(Boolean).length : c.value != null && c.value !== '',
+          ) && r.rule && r.rule !== 'keep',
+      );
+      const draft = {
+        ...b,
+        conditionalRules: cleanRules,
+        explicitEnabled: Object.keys(b.productAdjustments || {}).length > 0,
+      };
+      if (!draft.name || !draft.name.trim()) {
+        return { ...state, toast: 'Give the pricing a name' };
+      }
       const db = clone(state.db);
       const existing = db.policies.find((p) => p.id === b.id);
-      if (existing) {
-        Object.assign(existing, {
-          name: b.name,
-          priority: b.priority,
-          conditionalRules: b.conditionalRules,
-          productAdjustments: b.productAdjustments,
-          volumeRanges: b.volumeRanges,
-          pricingRule: b.pricingRule,
-          valueType: b.valueType,
-          value: b.value,
-          displayTitle: b.displayTitle,
-          priceBadge: b.priceBadge,
-        });
-      } else {
+      if (!existing) {
         const id = `pN${db.policies.length + 1}`;
-        db.policies.push({ ...newBaseBuilder(), ...b, id });
+        db.policies.push({ ...newBaseBuilder(), ...draft, id });
         const c = db.companies.find((x) => x.id === (state.editorContext?.companyId || state.selectedCompany));
-        if (c) {
-          if (!Array.isArray(c.pricing.base)) c.pricing.base = c.pricing.base ? [{ id: c.pricing.base, priority: 1 }] : [];
-          c.pricing.base.push({ id, priority: b.priority || c.pricing.base.length + 1 });
-        }
+        if (c) addCompanyBase(c, id, draft.priority);
+        return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: 'Pricing saved' };
       }
+      // Editing an existing profile. If it is SHARED (assigned beyond the company
+      // we are editing from) and we are editing from a company scope, fork an
+      // account-specific copy so the edit does not silently change every assignee
+      // — unless the merchant explicitly chose "apply to all" (action.applyToAll).
+      const scopeCompany = state.editorContext?.companyId
+        ? db.companies.find((x) => x.id === state.editorContext.companyId)
+        : null;
+      const usage = policyUsageCount({ id: b.id }, db);
+      const usesHere = scopeCompany ? companyBaseArray(scopeCompany).some((e) => e.id === b.id) : false;
+      const sharedElsewhere = usage - (usesHere ? 1 : 0) > 0;
+      if (scopeCompany && sharedElsewhere && !action.applyToAll) {
+        const fork = JSON.parse(JSON.stringify(existing));
+        Object.assign(fork, draft, { id: demoPolicyId(db), type: 'Account-specific' });
+        if (fork.name === existing.name) fork.name = `${scopeCompany.name} ${existing.name}`;
+        db.policies.push(fork);
+        removeCompanyBase(scopeCompany, existing.id);
+        addCompanyBase(scopeCompany, fork.id, draft.priority);
+        return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: `Forked into ${fork.name}` };
+      }
+      Object.assign(existing, draft, { id: existing.id });
       return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: 'Pricing saved' };
     }
     // ----- Base pricing card actions -----
@@ -443,16 +454,20 @@ function reducer(state, action) {
       return { ...state, buildQuotes: { ...state.buildQuotes, ...action.patch } };
     case 'APPLY_BUILD_QUOTES': {
       const db = clone(state.db);
-      const priced = (action.rows || []).filter((r) => Number(r.proposed) > 0);
-      const policy = db.policies.find((p) => p.id === action.dest);
-      if (policy) {
-        policy.productAdjustments = { ...(policy.productAdjustments || {}) };
-        priced.forEach((r) => {
-          policy.productAdjustments[r.sku] = { rule: 'set', valueType: 'amount', value: Number(r.proposed) };
-        });
-        policy.explicitEnabled = Object.keys(policy.productAdjustments).length > 0;
-      }
-      return { ...state, db, buildQuotes: null, toast: 'Prices added to base pricing' };
+      const companyId = state.buildQuotes?.companyId;
+      const co = db.companies.find((c) => c.id === companyId);
+      const lines = (action.rows || [])
+        .filter((r) => Number(r.proposed) > 0)
+        .map((r) => ({ sku: r.sku, quoted: Number(r.proposed) }));
+      const transfer = {
+        targetId: action.dest,
+        newName: action.dest === '__new__' ? `${(co && co.name) || 'Company'} quote prices` : '',
+        newPriority: 1,
+      };
+      // Same engine as the RFQ→B2B handoff: create a scoped base, or merge into
+      // the chosen base — forking it first if it is shared with other companies.
+      const msg = applyQuotePricingTransfer(db, companyId, lines, transfer) || 'No prices to add';
+      return { ...state, db, buildQuotes: null, toast: msg };
     }
     case 'TOAST':
       return { ...state, toast: action.message };

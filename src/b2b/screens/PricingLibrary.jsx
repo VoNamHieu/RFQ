@@ -28,7 +28,7 @@ export function PricingLibrary() {
   const policies = state.db.policies.filter((p) => (audience === 'all' ? true : p.audienceType === audience));
 
   const rows = policies.map((p, index) => {
-    const st = policyStatus(p);
+    const st = policyStatus(p, state.db);
     return (
       <IndexTable.Row
         id={p.id}

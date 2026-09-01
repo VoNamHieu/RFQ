@@ -37,14 +37,20 @@ export function QuoteDetail() {
   const lines = quote.lines || [];
   const notFullyPriced = lines.some((l) => l.quoted == null);
 
-  let quoteTotal = 0;
-  let shopifyTotal = 0;
+  // Legacy quoteTotal falls back to the Shopify list price for unpriced lines;
+  // quoteListPrice is the all-Shopify baseline; the delta is suppressed unless
+  // the two differ (and hidden entirely while any line is unpriced).
+  const lineProduct = (l) => products.find((p) => p.sku === l.sku) || { list: 0, title: l.sku };
+  const quoteTotalVal = lines.reduce((n, l) => {
+    const p = lineProduct(l);
+    return n + (l.quoted != null ? Number(l.quoted) : Number(p.list) || 0) * (Number(l.qty) || 0);
+  }, 0);
+  const listTotal = lines.reduce((n, l) => n + (Number(lineProduct(l).list) || 0) * (Number(l.qty) || 0), 0);
+  const delta = !listTotal || quoteTotalVal === listTotal ? null : Math.round(((quoteTotalVal - listTotal) / listTotal) * 1000) / 10;
+
   const rows = lines.map((l, index) => {
-    const product = products.find((p) => p.sku === l.sku) || { list: 0, title: l.sku };
-    const b2b = company ? resolvedPriceFor(company, product, state.db.policies) : product.list;
-    const lineTotal = (Number(l.quoted) || 0) * (Number(l.qty) || 0);
-    quoteTotal += lineTotal;
-    shopifyTotal += (Number(product.list) || 0) * (Number(l.qty) || 0);
+    const product = lineProduct(l);
+    const b2b = company ? resolvedPriceFor(company, product, state.db.policies) : null;
     return (
       <IndexTable.Row id={String(index)} key={index} position={index}>
         <IndexTable.Cell>
@@ -59,17 +65,22 @@ export function QuoteDetail() {
         </IndexTable.Cell>
         <IndexTable.Cell>{l.qty}</IndexTable.Cell>
         <IndexTable.Cell>{money(product.list)}</IndexTable.Cell>
-        <IndexTable.Cell>{money(b2b)}</IndexTable.Cell>
-        <IndexTable.Cell>{l.quoted != null ? money(l.quoted) : <Badge tone="attention">No price</Badge>}</IndexTable.Cell>
+        <IndexTable.Cell>{b2b != null ? money(b2b) : <Text as="span" tone="subdued">No pricing</Text>}</IndexTable.Cell>
+        <IndexTable.Cell>
+          {l.quoted != null ? (
+            <Text as="span" fontWeight="semibold">{money(l.quoted)}</Text>
+          ) : (
+            <Text as="span" tone="subdued">Not priced yet</Text>
+          )}
+        </IndexTable.Cell>
         <IndexTable.Cell>
           <Text as="span" alignment="end">
-            {money(lineTotal)}
+            {l.quoted != null ? money(Number(l.quoted) * (Number(l.qty) || 0)) : '—'}
           </Text>
         </IndexTable.Cell>
       </IndexTable.Row>
     );
   });
-  const vsShopify = shopifyTotal ? Math.round(((shopifyTotal - quoteTotal) / shopifyTotal) * 100) : 0;
 
   const secondaryActions = [{ content: 'Open in RFQ', onAction: () => dispatch({ type: 'TOAST', message: 'Opens the RFQ app' }) }];
   if (quote.status === 'Deal Closed' && versionFlags().priceCrossSync) {
@@ -121,12 +132,14 @@ export function QuoteDetail() {
               </IndexTable>
               <Box padding="300">
                 <InlineStack align="end" gap="200">
-                  <Text as="span" tone="subdued">
-                    {`Quote total · ${vsShopify}% vs Shopify price`}
-                  </Text>
-                  <Text as="span" fontWeight="semibold">
-                    {money2(quoteTotal)}
-                  </Text>
+                  <Text as="span" tone="subdued">Quote total</Text>
+                  {notFullyPriced ? (
+                    <Text as="span" tone="subdued">Not priced yet</Text>
+                  ) : (
+                    <Text as="span" fontWeight="semibold">
+                      {`${money2(quoteTotalVal)}${delta != null ? ` · ${delta}% vs Shopify price` : ''}`}
+                    </Text>
+                  )}
                 </InlineStack>
               </Box>
             </Card>

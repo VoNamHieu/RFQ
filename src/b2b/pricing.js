@@ -1,21 +1,60 @@
-// Pricing helpers ported from the B2B god file (spec §5.1, §5.3, §8).
+// Pricing engine — ported to full parity with the B2B god file (b2b/index.html
+// §1809-2503, §4455). Resolution walks a company's Active, in-date base pricings
+// in priority order (a scoped base that does not cover a product falls through to
+// the next), then the quantity slot; the first price wins. Status, usage and a
+// company's "needs a price" are all DERIVED from the data, never stored.
 import { COLLECTIONS } from './data/constants.js';
 
+// Demo "today" anchor for dated validity (legacy TODAY = new Date('2026-07-28')).
+// Dates are plain YYYY-MM-DD, so lexical string comparison matches Date order.
+const TODAY = '2026-07-28';
+
+export const KIND_ORDER = ['base', 'quantity'];
+export const kindOf = (p) => (p?.priceKind === 'quantity' ? 'quantity' : 'base');
+// Generic "usable" gate — a policy that is not turned off (any kind).
+const activePolicy = (p) => (p && p.status !== 'Inactive' ? p : null);
+
 export function policyById(policies, id) {
-  return policies.find((p) => p.id === id) || null;
+  return (policies || []).find((p) => p.id === id) || null;
 }
 
-// A company's base pricing entries, sorted by priority (lower applies first),
-// tie-broken by insertion order; dangling policy ids dropped. Legacy scalar
-// `pricing.base:'p1'` is normalized to a single entry.
+// ── Company base list (resolution order) ─────────────────────────────────────
+// Priority is a property of the PROFILE (its "Priority 0-99" field), not a
+// per-company number: lower applies first. On a tie a SCOPED base (covers only
+// some SKUs — e.g. a quote pricing) beats an all-products base, then insertion
+// order. Dangling ids dropped; legacy scalar base normalized to a one-item list.
 export function companyBaseEntries(company, policies) {
   let base = company?.pricing?.base;
   if (!base) return [];
   if (typeof base === 'string') base = [{ id: base, priority: 1 }];
+  const spec = (id) => {
+    const st = policyById(policies, id)?.scopeType;
+    return st && st !== 'all' ? 0 : 1;
+  };
   return base
-    .map((e, idx) => ({ ...e, idx, policy: policyById(policies, e.id) }))
+    .map((e, idx) => {
+      const id = (e && e.id) || e;
+      const policy = policyById(policies, id);
+      return { id, idx, priority: Number(policy?.priority) || 0, policy };
+    })
     .filter((e) => e.policy)
-    .sort((a, b) => a.priority - b.priority || a.idx - b.idx);
+    .sort((a, b) => a.priority - b.priority || spec(a.id) - spec(b.id) || a.idx - b.idx);
+}
+
+// Usable for resolution right now: not Inactive, and inside its dated window if
+// it has one. Scheduled/expired bases step aside so the next priority applies.
+export function basePriceableNow(policy) {
+  if (!policy || policy.status === 'Inactive') return false;
+  if (policy.validityType === 'dated') {
+    if (policy.startDate && policy.startDate > TODAY) return false;
+    if (policy.endDate && policy.endDate < TODAY) return false;
+  }
+  return true;
+}
+export function companyActiveBasePolicies(company, policies) {
+  return companyBaseEntries(company, policies)
+    .map((e) => e.policy)
+    .filter(basePriceableNow);
 }
 
 export function companyQuantityPolicy(company, policies) {
@@ -23,29 +62,204 @@ export function companyQuantityPolicy(company, policies) {
   return q ? policyById(policies, q) : null;
 }
 
-// Effective status → Polaris Badge {label, tone}. Considers dated validity.
-export function policyStatus(policy) {
-  if (!policy) return { label: '—', tone: undefined };
-  if (policy.status === 'Inactive') return { label: 'Inactive', tone: undefined };
-  if (policy.validityType === 'dated' && policy.startDate) {
-    // Compare on plain YYYY-MM-DD strings (no Date needed for lexical order).
-    const today = '2026-08-28';
-    if (policy.startDate > today) return { label: 'Scheduled', tone: 'attention' };
-    if (policy.endDate && policy.endDate < today) return { label: 'Expired', tone: undefined };
+// ── Scope + rule matching ────────────────────────────────────────────────────
+const explicitOn = (p) => !!(p && Object.keys(p.productAdjustments || {}).length);
+
+// A base only prices products in its scope (all | collection | products); a
+// product outside that scope falls through to the NEXT base by priority.
+export function baseInScope(base, sku) {
+  if (!base) return false;
+  const st = base.scopeType;
+  if (!st || st === 'all') return true;
+  if (st === 'collection') return (COLLECTIONS[base.collection] || []).includes(sku);
+  if (st === 'products') return (base.selectedProducts || []).includes(sku);
+  return true;
+}
+// Whether a profile prices a SKU at all (a base always does; quantity honors its
+// own product scope). Base pricing narrowing is handled by baseInScope above.
+function inScope(profile, sku) {
+  if (!profile) return false;
+  if (kindOf(profile) === 'base') return true;
+  if (profile.scopeType === 'all') return true;
+  return (profile.selectedProducts || []).includes(sku);
+}
+
+const condValues = (c) =>
+  !c ? [] : Array.isArray(c.values) ? c.values.filter(Boolean) : c.value != null && c.value !== '' ? [c.value] : [];
+
+function conditionMatches(cond, product) {
+  const vals = condValues(cond);
+  if (!vals.length) return false;
+  switch (cond.field) {
+    case 'all':
+      return true;
+    case 'collection':
+      return vals.some((v) => (COLLECTIONS[v] || []).includes(product.sku));
+    case 'vendor':
+      return vals.includes(product.vendor);
+    case 'productType':
+      return vals.includes(product.productType);
+    case 'tag':
+      return (product.tags || []).some((t) => vals.includes(t));
+    default:
+      return false;
   }
-  if (policy.status === 'Scheduled') return { label: 'Scheduled', tone: 'attention' };
+}
+// A rule can hold several conditions across dimensions, joined by match ANY/ALL.
+export function ruleMatches(rule, product) {
+  const conds = (rule?.conditions || []).filter((c) => condValues(c).length);
+  if (!conds.length) return false;
+  return rule.match === 'ANY'
+    ? conds.some((c) => conditionMatches(c, product))
+    : conds.every((c) => conditionMatches(c, product));
+}
+// Back-compat name used by the rule-builder card.
+export const productMatchesRule = ruleMatches;
+export function ruleMatchCount(rule, products) {
+  return products.filter((p) => ruleMatches(rule, p)).length;
+}
+function matchConditionalRuleIndex(profile, product) {
+  const rules = profile.conditionalRules || [];
+  for (let i = 0; i < rules.length; i += 1) if (ruleMatches(rules[i], product)) return i;
+  return -1;
+}
+
+// Apply an adjustment to a base price. Rounds to 2dp; a decrease may go negative
+// (legacy allows it so save-time validation can flag "below cost / above list").
+export function applyAdjustment(rule, valueType, value, base) {
+  const round = (x) => Math.round(x * 100) / 100;
+  const val = Number(value ?? 0);
+  if (rule === 'keep') return base;
+  if (rule === 'set') return round(val);
+  if (rule === 'decrease') return round(valueType === 'percentage' ? base * (1 - val / 100) : base - val);
+  if (rule === 'increase') return round(valueType === 'percentage' ? base * (1 + val / 100) : base + val);
+  return base;
+}
+
+// The price + which layer decided it, for one profile (null if out of scope):
+// Product override → Conditional rule → profile-level default.
+function priceForDetail(profile, product) {
+  if (!inScope(profile, product.sku)) return null;
+  const base = product.list;
+  const adj = explicitOn(profile) ? (profile.productAdjustments || {})[product.sku] : null;
+  if (adj && adj.rule) {
+    return { price: applyAdjustment(adj.rule, adj.valueType || 'percentage', adj.value, base), layer: 'override', decidedBy: `${profile.name} · override` };
+  }
+  const ri = matchConditionalRuleIndex(profile, product);
+  if (ri >= 0) {
+    const r = profile.conditionalRules[ri];
+    return { price: applyAdjustment(r.rule, r.valueType || 'percentage', r.value, base), layer: 'rule', decidedBy: `${profile.name} · Rule ${ri + 1}` };
+  }
+  return { price: applyAdjustment(profile.pricingRule, profile.valueType, profile.value, base), layer: 'base', decidedBy: `${profile.name} · Default price` };
+}
+
+// Resolve the B2B price a company pays for a product (legacy resolvedPriceFor):
+// the first in-scope Active base wins (a scope-all base is authoritative and
+// returns the Shopify price when nothing matches); else the quantity slot; else
+// null → the caller shows "No pricing".
+function resolveProductDetail(company, product, policies) {
+  for (const p of companyActiveBasePolicies(company, policies)) {
+    if (!baseInScope(p, product.sku)) continue;
+    const r = priceForDetail(p, product);
+    if (r) return r;
+  }
+  const q = companyQuantityPolicy(company, policies);
+  if (q && q.status !== 'Inactive') {
+    const r = priceForDetail(q, product);
+    if (r) return r;
+  }
+  return null;
+}
+export function resolvedPriceFor(company, product, policies) {
+  const r = resolveProductDetail(company, product, policies);
+  return r ? r.price : null;
+}
+// Like resolvedPriceFor, but reports which layer decided the price; the Price
+// Board falls back to the Shopify price row when nothing is assigned.
+export function resolveDetail(company, product, policies) {
+  return resolveProductDetail(company, product, policies) || { price: product.list, decidedBy: 'Shopify price', layer: 'shopify' };
+}
+
+// ── Company-level resolution (source / status / needs-a-price) ───────────────
+// Location override (single) replaces the whole company base list; else the
+// company's Active bases + quantity; else the store-wide All-Companies default.
+export function resolvePricing(company, location, policies, defaults) {
+  const locPricing = (location && location.pricing) || {};
+  const locBase = activePolicy(policyById(policies, locPricing.base));
+  const basePolicies = locBase ? [locBase] : companyActiveBasePolicies(company, policies);
+  const qty = activePolicy(policyById(policies, locPricing.quantity)) || activePolicy(companyQuantityPolicy(company, policies));
+  const profiles = [...basePolicies, ...(qty ? [qty] : [])];
+  if (profiles.length) return { profiles, profile: profiles[0] };
+  const def = activePolicy(policyById(policies, defaults && defaults.b2bPolicyId));
+  if (def) return { profiles: [def], profile: def };
+  return { profiles: [], profile: null };
+}
+
+// A company "needs a price" if any of its locations fails to resolve a profile —
+// considering location overrides, active/dated validity, and the global default.
+export function companyNeedsPrice(company, policies, defaults) {
+  const locs = company.locations || [];
+  if (!locs.length) return !resolvePricing(company, null, policies, defaults).profile;
+  return locs.some((l) => !resolvePricing(company, l, policies, defaults).profile);
+}
+export function companyPricingStatus(company, policies, defaults) {
+  return companyNeedsPrice(company, policies, defaults)
+    ? { label: 'Needs a price', tone: undefined } // neutral: an ordinary step left to do
+    : { label: 'Price ready', tone: 'success' };
+}
+
+// ── Status (derived) ─────────────────────────────────────────────────────────
+// Read order = decisiveness: turned off, then nobody assigned, then dated window.
+// (Pass `db` to apply the "nobody assigned ⇒ Inactive" rule.)
+export function policyStatus(policy, db) {
+  if (!policy) return { label: 'Not set', tone: undefined };
+  if (policy.status === 'Inactive') return { label: 'Inactive', tone: undefined };
+  if (db && policyUsageCount(policy, db) === 0) return { label: 'Inactive', tone: undefined };
+  if (policy.validityType === 'dated' && policy.startDate && policy.startDate > TODAY) {
+    return { label: 'Scheduled', tone: 'info' };
+  }
   return { label: 'Active', tone: 'success' };
 }
+export const canToggleStatus = (policy, db) => !!(policy && policyUsageCount(policy, db) > 0);
 
-// Company pricing-readiness for the Companies list badge.
-export function companyPricingStatus(company, policies) {
-  const hasBase = companyBaseEntries(company, policies).length > 0;
-  return hasBase
-    ? { label: 'Price ready', tone: 'success' }
-    : { label: 'Needs a price', tone: 'attention' };
+// ── Usage (derived from assignments, never stored) ───────────────────────────
+function policyUsageDetail(policy, db) {
+  const id = policy && policy.id;
+  if (!id) return { companies: 0, locations: 0, tags: 0, customers: 0, globals: [], count: 0 };
+  let companies = 0;
+  let locations = 0;
+  (db.companies || []).forEach((c) => {
+    const base = c.pricing && c.pricing.base;
+    const ids = Array.isArray(base) ? base.map((e) => e.id) : base ? [base] : [];
+    if (ids.includes(id) || (c.pricing && c.pricing.quantity === id)) companies += 1;
+    (c.locations || []).forEach((l) => {
+      if (KIND_ORDER.some((k) => (l.pricing || {})[k] === id)) locations += 1;
+    });
+  });
+  const tags = (db.tagPricing || []).filter((t) => t.defaultPolicyId === id).length;
+  const customers = (db.customers || []).filter((cu) => cu.policyId === id).length;
+  const globals = [];
+  if (db.defaults && db.defaults.b2bPolicyId === id) globals.push('All Companies');
+  if (db.defaults && db.defaults.wholesalePolicyId === id) globals.push('All customers');
+  return { companies, locations, tags, customers, globals, count: companies + locations + tags + customers + globals.length };
+}
+export function policyUsageCount(policy, db) {
+  return policyUsageDetail(policy, db).count;
+}
+// "Assigned to" summary string for the Pricing library / cards.
+export function policyUsage(policy, db) {
+  const u = policyUsageDetail(policy, db);
+  if (!u.count) return 'Not assigned';
+  const parts = [];
+  if (u.companies) parts.push(`${u.companies} Compan${u.companies === 1 ? 'y' : 'ies'}`);
+  if (u.locations) parts.push(`${u.locations} Location${u.locations === 1 ? '' : 's'}`);
+  if (u.tags) parts.push(`${u.tags} tag${u.tags === 1 ? '' : 's'}`);
+  if (u.customers) parts.push(`${u.customers} customer${u.customers === 1 ? '' : 's'}`);
+  u.globals.forEach((g) => parts.push(g));
+  return parts.join(' · ');
 }
 
-// ----- Conditional-rule helpers (pricing editor, spec §5.3) -----
+// ── Conditional-rule label helpers (pricing editor UI) ───────────────────────
 
 export const RULE_FIELDS = [
   { field: 'all', label: 'All products' },
@@ -94,75 +308,6 @@ export function conditionValueOptions(field, products) {
   }
 }
 
-export function productMatchesRule(rule, product) {
-  const c = rule?.conditions?.[0] || {};
-  if (c.field === 'all') return true;
-  const vals = c.values || [];
-  if (!vals.length) return false;
-  switch (c.field) {
-    case 'collection':
-      return vals.some((v) => (COLLECTIONS[v] || []).includes(product.sku));
-    case 'vendor':
-      return vals.includes(product.vendor);
-    case 'productType':
-      return vals.includes(product.productType);
-    case 'tag':
-      return (product.tags || []).some((t) => vals.includes(t));
-    default:
-      return false;
-  }
-}
-
-export function ruleMatchCount(rule, products) {
-  return products.filter((p) => productMatchesRule(rule, p)).length;
-}
-
-// Apply a rule/adjustment ({rule,valueType,value}) to a Shopify list price.
-function applyAdjustment(a, list) {
-  if (!a || a.rule === 'keep') return list;
-  if (a.rule === 'set') return a.value;
-  const amount = a.valueType === 'percentage' ? (list * a.value) / 100 : a.value;
-  return a.rule === 'increase' ? list + amount : Math.max(0, list - amount);
-}
-
-// Resolve the B2B price a buyer at this company would pay for a product:
-// walk the company's base policies (priority order); an explicit product
-// override wins, else the first matching conditional rule, else Shopify price.
-export function resolvedPriceFor(company, product, policies) {
-  const entries = companyBaseEntries(company, policies);
-  for (const e of entries) {
-    const p = e.policy;
-    const adj = p.productAdjustments?.[product.sku];
-    if (adj) return applyAdjustment(adj, product.list);
-    for (const rule of p.conditionalRules || []) {
-      if (productMatchesRule(rule, product)) return applyAdjustment(rule, product.list);
-    }
-    // v1 profile-level default price (covers the whole catalog).
-    if (p.pricingRule && p.pricingRule !== 'keep') return applyAdjustment(p, product.list);
-  }
-  return product.list;
-}
-
-// Like resolvedPriceFor, but also reports which layer decided the price.
-export function resolveDetail(company, product, policies) {
-  const entries = companyBaseEntries(company, policies);
-  for (const e of entries) {
-    const p = e.policy;
-    const adj = p.productAdjustments?.[product.sku];
-    if (adj) return { price: applyAdjustment(adj, product.list), decidedBy: `${p.name} · override`, layer: 'override' };
-    const rules = p.conditionalRules || [];
-    for (let i = 0; i < rules.length; i += 1) {
-      if (productMatchesRule(rules[i], product)) {
-        return { price: applyAdjustment(rules[i], product.list), decidedBy: `${p.name} · Rule ${i + 1}`, layer: 'rule' };
-      }
-    }
-    if (p.pricingRule && p.pricingRule !== 'keep') {
-      return { price: applyAdjustment(p, product.list), decidedBy: `${p.name} · Default price`, layer: 'rule' };
-    }
-  }
-  return { price: product.list, decidedBy: 'Shopify price', layer: 'shopify' };
-}
-
 // Short "25% off" / "$5 off" / "Set $75" badge label for a collapsed rule row.
 export function ruleAdjustmentLabel(rule) {
   if (!rule || rule.rule === 'keep' || !rule.value) return 'No change';
@@ -171,27 +316,6 @@ export function ruleAdjustmentLabel(rule) {
   }
   const unit = rule.valueType === 'percentage' ? `${rule.value}%` : `$${rule.value}`;
   return rule.rule === 'increase' ? `+${unit}` : `${unit} off`;
-}
-
-// Who a policy is assigned to, for the Pricing library "Assigned to" column.
-export function policyUsage(policy, db) {
-  let companies = 0;
-  let customers = 0;
-  (db.companies || []).forEach((c) => {
-    const base = c.pricing?.base;
-    const baseIds = Array.isArray(base) ? base.map((e) => e.id) : base ? [base] : [];
-    if (baseIds.includes(policy.id) || c.pricing?.quantity === policy.id) companies += 1;
-  });
-  (db.customers || []).forEach((cu) => {
-    if (cu.policyId === policy.id) customers += 1;
-  });
-  (db.tagPricing || []).forEach((t) => {
-    if (t.defaultPolicyId === policy.id) customers += 1;
-  });
-  const parts = [];
-  if (companies) parts.push(`${companies} compan${companies === 1 ? 'y' : 'ies'}`);
-  if (customers) parts.push(`${customers} customer${customers === 1 ? '' : 's'}`);
-  return parts.join(', ') || 'Not assigned';
 }
 
 export const scopeTypeLabel = (policy) => {

@@ -12,7 +12,7 @@ import {
   Box,
 } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
-import { companyBaseEntries, companyQuantityPolicy, companyPricingStatus } from '../pricing.js';
+import { companyBaseEntries, companyQuantityPolicy, companyPricingStatus, companyNeedsPrice } from '../pricing.js';
 
 const FILTERS = [
   { id: 'all', label: 'All' },
@@ -24,9 +24,10 @@ export function CompaniesList() {
   const { state, dispatch } = useStore();
   const policies = state.db.policies;
 
+  const defaults = state.db.defaults;
   const companies = state.db.companies.filter((c) => {
     if (state.listFilter === 'all') return true;
-    const ready = companyBaseEntries(c, policies).length > 0;
+    const ready = !companyNeedsPrice(c, policies, defaults);
     return state.listFilter === 'active' ? ready : !ready;
   });
 
@@ -38,7 +39,7 @@ export function CompaniesList() {
   };
 
   const rows = companies.map((c, index) => {
-    const status = companyPricingStatus(c, policies);
+    const status = companyPricingStatus(c, policies, defaults);
     const locationCount = (c.locations || []).length;
     return (
       <IndexTable.Row
