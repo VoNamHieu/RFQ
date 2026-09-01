@@ -195,6 +195,31 @@ export function resolvePricing(company, location, policies, defaults) {
   return { profiles: [], profile: null };
 }
 
+// Per-kind resolved pricing for a Location: a single Location override replaces
+// the whole inherited base list; otherwise the company's Active bases (priority
+// order). Quantity keeps its single Location→Company slot. Used by the location
+// pricing card to show name + source (override vs inherited).
+export function locationPricingEntries(company, location, policies) {
+  const locPricing = (location && location.pricing) || {};
+  const locBase = activePolicy(policyById(policies, locPricing.base));
+  const bases = locBase
+    ? [{ policy: locBase, source: 'LOCATION' }]
+    : companyActiveBasePolicies(company, policies).map((p) => ({ policy: p, source: 'COMPANY' }));
+  const locQty = activePolicy(policyById(policies, locPricing.quantity));
+  const compQty = activePolicy(companyQuantityPolicy(company, policies));
+  const quantity = locQty ? { policy: locQty, source: 'LOCATION' } : compQty ? { policy: compQty, source: 'COMPANY' } : null;
+  return { bases, quantity };
+}
+
+// Products-column label for a policy (base defaults to all; quantity to products).
+export const scopeLabel = (p) => {
+  if (!p) return 'None';
+  const st = p.scopeType || (kindOf(p) === 'base' ? 'all' : 'products');
+  if (st === 'all') return 'All products';
+  if (st === 'collection') return p.collection || 'Collection';
+  return `${(p.selectedProducts || []).length} selected products`;
+};
+
 // A company "needs a price" if any of its locations fails to resolve a profile —
 // considering location overrides, active/dated validity, and the global default.
 export function companyNeedsPrice(company, policies, defaults) {

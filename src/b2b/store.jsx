@@ -20,6 +20,21 @@ function normalizeDb(seed) {
       c.pricing.base = [{ id: c.pricing.base, priority: 1 }];
     }
     c.orders = orderSeed[c.id] || [];
+    // Fill the location fields the detail screen edits (non-destructive: keep the
+    // legacy terms/ordering the other screens still read). Mirrors normalizeCompany.
+    (c.locations || []).forEach((l, i) => {
+      l.id = l.id || `${c.id}-l${i + 1}`;
+      l.status = l.status || 'Active';
+      if (l.paymentTerms == null) l.paymentTerms = l.terms && l.terms !== 'Not set' ? l.terms : 'No payment terms';
+      if (l.purchasingMode == null) l.purchasingMode = l.ordering === 'You approve first' ? 'REQUIRE_APPROVAL' : 'DIRECT';
+      if (l.externalId == null) l.externalId = '';
+      if (!l.shipping) l.shipping = { country: 'VN', address1: l.address || '', address2: '', city: '', postal: '', phone: '' };
+      if (l.billingSameAsShipping == null) l.billingSameAsShipping = true;
+      if (l.editableShipping == null) l.editableShipping = false;
+      if (l.taxId == null) l.taxId = '';
+      if (!l.taxSettings) l.taxSettings = 'collect';
+      if (!l.pricing) l.pricing = { base: null, quantity: null };
+    });
   });
   return db;
 }
@@ -34,6 +49,8 @@ function makeBaseState() {
     // Companies list
     listFilter: 'all',
     companySearch: '',
+    companySortField: 'name', // name | locations | status
+    companySortDir: 'asc', // asc | desc
     // Base pricing pagination (spec §5.1)
     basePricingSearch: '',
     basePage: 1,
@@ -191,6 +208,12 @@ function demoPolicyId(db) {
   return `pq${n}`;
 }
 
+function recomputeBuyers(c) {
+  (c.locations || []).forEach((l) => {
+    l.buyers = (c.contacts || []).filter((ct) => ct.locations === l.name).length;
+  });
+}
+
 function companyBaseArray(c) {
   if (!Array.isArray(c.pricing.base)) c.pricing.base = c.pricing.base ? [{ id: c.pricing.base, priority: 1 }] : [];
   return c.pricing.base;
@@ -263,13 +286,52 @@ function reducer(state, action) {
       return { ...state, view: 'quote', selectedQuote: action.id };
     case 'OPEN_LOCATION':
       return { ...state, view: 'location', selectedCompany: action.companyId, selectedLocation: action.locationId };
-    // v1 per-location pricing override
+    // Per-location pricing override (base or quantity). Empty policyId reverts to
+    // the inherited company pricing for that kind.
     case 'SET_LOCATION_PRICING': {
       const db = clone(state.db);
       const c = db.companies.find((x) => x.id === action.companyId);
       const l = c?.locations?.find((x) => x.id === action.locationId);
-      if (l) l.pricing = { base: action.baseId || null, quantity: l.pricing?.quantity || null };
-      return { ...state, db, toast: action.baseId ? 'Location pricing overridden' : 'Reverted to company pricing' };
+      if (l) {
+        l.pricing = l.pricing || { base: null, quantity: null };
+        // Back-compat: older callers pass `baseId`; newer pass `kind` + `policyId`.
+        const kind = action.kind || 'base';
+        const policyId = action.policyId !== undefined ? action.policyId : action.baseId;
+        l.pricing[kind] = policyId || null;
+      }
+      return { ...state, db, toast: (action.policyId ?? action.baseId) ? 'Location pricing overridden' : 'Reverted to company pricing' };
+    }
+    // Assign / remove a buyer (contact) at a location. Buyer counts derive from
+    // contact assignment, so recompute every location's count on change.
+    case 'ASSIGN_BUYER': {
+      const db = clone(state.db);
+      const c = db.companies.find((x) => x.id === action.companyId);
+      const l = c?.locations?.find((x) => x.id === action.locationId);
+      const ct = c?.contacts?.find((x) => x.email === action.email);
+      if (c && l && ct) {
+        ct.locations = l.name;
+        if (action.role) ct.role = action.role;
+        recomputeBuyers(c);
+      }
+      return { ...state, db, toast: 'Buyer assigned' };
+    }
+    case 'UNASSIGN_BUYER': {
+      const db = clone(state.db);
+      const c = db.companies.find((x) => x.id === action.companyId);
+      const ct = c?.contacts?.find((x) => x.email === action.email);
+      if (c && ct) {
+        ct.locations = '';
+        recomputeBuyers(c);
+      }
+      return { ...state, db, toast: 'Buyer removed' };
+    }
+    // Live edit of a location's fields (general / shipping / commerce settings).
+    case 'SET_LOCATION_FIELD': {
+      const db = clone(state.db);
+      const c = db.companies.find((x) => x.id === action.companyId);
+      const l = c?.locations?.find((x) => x.id === action.locationId);
+      if (l) Object.assign(l, action.patch);
+      return { ...state, db, ...(action.silent ? {} : { toast: 'Location updated' }) };
     }
     case 'OPEN_PRICE_BOARD':
       return { ...state, priceBoard: { companyId: action.companyId, search: '' } };
@@ -336,6 +398,20 @@ function reducer(state, action) {
       return { ...state, listFilter: action.filter };
     case 'SET_COMPANY_SEARCH':
       return { ...state, companySearch: action.value };
+    case 'SET_COMPANY_SORT':
+      return { ...state, companySortField: action.field, companySortDir: action.dir };
+    case 'DELETE_COMPANY': {
+      const db = clone(state.db);
+      db.companies = db.companies.filter((c) => c.id !== action.id);
+      db.quotes = (db.quotes || []).filter((q) => q.company !== action.id);
+      const goList = state.selectedCompany === action.id;
+      return {
+        ...state,
+        db,
+        ...(goList ? { view: 'customers', selectedCompany: db.companies[0]?.id || null } : {}),
+        toast: 'Company deleted',
+      };
+    }
     // Base pricing pagination
     case 'BASE_SEARCH':
       return { ...state, basePricingSearch: action.value, basePage: 1 };

@@ -1,6 +1,7 @@
-import React from 'react';
-import { Page, Tabs, Card, BlockStack, Text, Box } from '@shopify/polaris';
+import React, { useState } from 'react';
+import { Page, Tabs, Card, BlockStack, Text, Box, Modal } from '@shopify/polaris';
 import { useStore, currentCompany } from '../store.jsx';
+import { companyBaseEntries, companyQuantityPolicy } from '../pricing.js';
 import { BasePricingCard } from '../components/BasePricingCard.jsx';
 import { QuantityPricingCard } from '../components/QuantityPricingCard.jsx';
 import { QuotesTab } from '../components/tabs/QuotesTab.jsx';
@@ -32,8 +33,12 @@ function Placeholder({ label }) {
 
 export function CompanyDetail() {
   const { state, dispatch } = useStore();
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const company = currentCompany(state);
   if (!company) return null;
+
+  const assignedCount =
+    companyBaseEntries(company, state.db.policies).length + (companyQuantityPolicy(company, state.db.policies) ? 1 : 0);
 
   const tabIndex = Math.max(0, TABS.findIndex((t) => t.id === state.companyTab));
   const tabs = TABS.map((t) => {
@@ -56,7 +61,7 @@ export function CompanyDetail() {
       backAction={{ content: 'Companies', onAction: () => dispatch({ type: 'NAVIGATE', view: 'customers' }) }}
       title={company.name}
       subtitle={`${company.source ? `From ${company.source}` : 'Active'} · ${locationCount} location${locationCount === 1 ? '' : 's'}`}
-      secondaryActions={[{ content: 'Delete', destructive: true, onAction: () => dispatch({ type: 'TOAST', message: 'Demo only' }) }]}
+      secondaryActions={[{ content: 'Delete', destructive: true, onAction: () => setConfirmDelete(true) }]}
     >
       <BlockStack gap="400">
         <Card padding="0">
@@ -79,6 +84,33 @@ export function CompanyDetail() {
         {state.companyTab === 'contacts' && <ContactsTab company={company} />}
         {state.companyTab === 'analytics' && <Placeholder label="Analytics" />}
       </BlockStack>
+
+      {confirmDelete && (
+        <Modal
+          open
+          onClose={() => setConfirmDelete(false)}
+          title={`Delete ${company.name}?`}
+          primaryAction={{
+            content: 'Delete company',
+            destructive: true,
+            onAction: () => {
+              setConfirmDelete(false);
+              dispatch({ type: 'DELETE_COMPANY', id: company.id });
+            },
+          }}
+          secondaryActions={[{ content: 'Cancel', onAction: () => setConfirmDelete(false) }]}
+        >
+          <Modal.Section>
+            <Text as="p">
+              This removes {company.name} from the B2B app — its {locationCount} location
+              {locationCount === 1 ? '' : 's'}, {(company.contacts || []).length} contact
+              {(company.contacts || []).length === 1 ? '' : 's'}
+              {assignedCount ? `, and unassigns ${assignedCount} pricing profile${assignedCount === 1 ? '' : 's'}` : ''}. The
+              Shopify company record is not affected.
+            </Text>
+          </Modal.Section>
+        </Modal>
+      )}
     </Page>
   );
 }
