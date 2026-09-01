@@ -66,6 +66,8 @@ function makeBaseState() {
     assign: null, // { companyId, mode:'add'|'swap', swapId, selectedId } — assign/swap base
     assignMulti: null, // { policyId } — assign one policy to many companies/customers/tags/global
     addCompany: null, // { step, shopifyId, baseId } — add-company wizard
+    emptyMode: false, // "show the app with no data" (fresh-install simulation)
+    emptyBackup: null,
     db: normalizeDb(dbSeed),
     toast: null,
   };
@@ -340,6 +342,34 @@ function reducer(state, action) {
         recomputeBuyers(c);
       }
       return { ...state, db, toast: 'Buyer removed' };
+    }
+    case 'ADD_LOCATION': {
+      const db = clone(state.db);
+      const c = db.companies.find((x) => x.id === action.companyId);
+      if (c) {
+        c.locations = c.locations || [];
+        const id = `${c.id}-l${c.locations.length + 1}`;
+        const approval = action.purchasingMode === 'REQUIRE_APPROVAL';
+        c.locations.push({
+          id,
+          name: action.name,
+          status: 'Active',
+          paymentTerms: action.paymentTerms || 'No payment terms',
+          purchasingMode: action.purchasingMode || 'DIRECT',
+          ordering: approval ? 'You approve first' : 'Buys directly',
+          terms: action.paymentTerms || 'Not set',
+          externalId: action.externalId || '',
+          shipping: { country: 'VN', address1: '', address2: '', city: '', postal: '', phone: '' },
+          billingSameAsShipping: true,
+          editableShipping: false,
+          taxId: '',
+          taxSettings: 'collect',
+          pricing: { base: null, quantity: null },
+          buyers: 0,
+          lastOrder: null,
+        });
+      }
+      return { ...state, db, toast: 'Location added' };
     }
     // Live edit of a location's fields (general / shipping / commerce settings).
     case 'SET_LOCATION_FIELD': {
@@ -617,6 +647,26 @@ function reducer(state, action) {
       const db = clone(state.db);
       db.defaults = { ...(db.defaults || {}), [action.key]: action.value || null };
       return { ...state, db, toast: 'Default pricing updated' };
+    }
+    // "Show the app with no data": clear app-owned records (companies, pricing,
+    // customers, tags, defaults, quotes) to reveal the fresh-install empty states;
+    // toggling off restores the sample data (legacy setEmptyMode / demoBackup).
+    case 'SET_EMPTY_MODE': {
+      if (action.on && !state.emptyMode) {
+        const emptyBackup = state.db;
+        const db = clone(state.db);
+        db.companies = [];
+        db.policies = [];
+        db.customers = [];
+        db.tagPricing = [];
+        db.quotes = [];
+        db.defaults = { b2bPolicyId: null, wholesalePolicyId: null };
+        return { ...state, db, emptyBackup, emptyMode: true, view: 'customers', selectedCompany: null, toast: 'Showing the app with no data' };
+      }
+      if (!action.on && state.emptyMode) {
+        return { ...state, db: state.emptyBackup || state.db, emptyBackup: null, emptyMode: false, view: 'customers', toast: 'Sample data restored' };
+      }
+      return state;
     }
     // ----- Base pricing card actions -----
     case 'REMOVE_COMPANY_BASE': {

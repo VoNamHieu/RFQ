@@ -1,11 +1,29 @@
-import React from 'react';
-import { Page, Card, Text, BlockStack, InlineGrid, InlineStack, Badge, Select, Divider, Box } from '@shopify/polaris';
+import React, { useState } from 'react';
+import { Page, Card, Text, BlockStack, InlineGrid, InlineStack, Badge, Select, Checkbox, Divider, Box } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
 import { resetDemo } from '../../shared/persistence.js';
+
+const APPROVED_APP = [
+  { label: 'Assign the standard wholesale pricing', value: 'standard' },
+  { label: 'Approve with no price yet', value: 'noprice' },
+  { label: 'Decline the application', value: 'decline' },
+];
+const EXPIRED_PRICE = [
+  { label: 'Fall back to the Shopify price', value: 'shopify' },
+  { label: 'Fall back to the next pricing', value: 'next' },
+  { label: 'Block ordering until renewed', value: 'block' },
+];
+const ACCEPTED_QUOTE = [
+  { label: 'Create a one-time order', value: 'order' },
+  { label: 'Turn it into ongoing pricing', value: 'pricing' },
+  { label: 'Ask each time', value: 'ask' },
+];
 
 export function Settings() {
   const { state, dispatch } = useStore();
   const toast = (m) => dispatch({ type: 'TOAST', message: m });
+  const [behaviors, setBehaviors] = useState({ approvedApp: 'standard', expiredPrice: 'shopify', acceptedQuote: 'order' });
+  const setB = (k) => (v) => setBehaviors((p) => ({ ...p, [k]: v }));
 
   const connections = [
     { name: 'Shopify B2B', status: 'Connected', tone: 'success' },
@@ -73,6 +91,29 @@ export function Settings() {
             </BlockStack>
           </Card>
         </InlineGrid>
+
+        <Card>
+          <BlockStack gap="300">
+            <Text as="h2" variant="headingSm">Default behaviors</Text>
+            <InlineGrid columns={{ xs: 1, md: 3 }} gap="400">
+              <Select label="When a wholesale application is approved" options={APPROVED_APP} value={behaviors.approvedApp} onChange={setB('approvedApp')} />
+              <Select label="When an assigned pricing expires" options={EXPIRED_PRICE} value={behaviors.expiredPrice} onChange={setB('expiredPrice')} />
+              <Select label="When a quote is accepted" options={ACCEPTED_QUOTE} value={behaviors.acceptedQuote} onChange={setB('acceptedQuote')} />
+            </InlineGrid>
+          </BlockStack>
+        </Card>
+
+        <Card>
+          <BlockStack gap="200">
+            <Text as="h2" variant="headingSm">Prototype</Text>
+            <Checkbox
+              label="Show the app with no data"
+              helpText="Clears this app's own records (companies, pricing, customers) to preview the fresh-install empty states. Shopify's products and companies are untouched."
+              checked={state.emptyMode}
+              onChange={(v) => dispatch({ type: 'SET_EMPTY_MODE', on: v })}
+            />
+          </BlockStack>
+        </Card>
       </BlockStack>
     </Page>
   );
