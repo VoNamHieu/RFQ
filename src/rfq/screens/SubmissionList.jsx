@@ -17,11 +17,7 @@ import {
 import { ChevronDownIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { money2, quoteAmount } from '../utils.js';
-import { shopifyCompanyDirectory } from '../data/companies.js';
 import { SUBMISSION_TABS, SUBMISSION_TAB_STATUS } from '../data/submissions.js';
-
-const companyKeyOf = (q) =>
-  q?.syncedCompanyKey || q?.linkedCompanyKey || q?.fixedCompanyKey || q?.recommendedKey || q?.previewCompanyKey || null;
 
 // Submission status → Polaris Badge tone.
 const STATUS_TONE = {
@@ -82,7 +78,6 @@ export function SubmissionList() {
     const quote = state.quotes[id];
     const meta = state.meta[id] || {};
     const customer = quote?.customer || {};
-    const companyName = shopifyCompanyDirectory[companyKeyOf(quote)]?.name || quote?.createdCompanyName || null;
     return (
       <IndexTable.Row
         id={id}
@@ -97,28 +92,17 @@ export function SubmissionList() {
           </Text>
         </IndexTable.Cell>
         <IndexTable.Cell>
-          <BlockStack gap="050">
-            <InlineStack gap="100" blockAlign="center">
-              <Text as="span" variant="bodyMd">
-                {customer.name}
-              </Text>
-              {meta.b2b ? (
-                <Badge tone="info" size="small">
-                  B2B
-                </Badge>
-              ) : null}
-              <Icon source={ChevronDownIcon} tone="subdued" />
-            </InlineStack>
-            <Text as="span" tone="subdued" variant="bodySm">
-              {customer.email}
-              {customer.phone ? ` · ${customer.phone}` : ''}
+          <InlineStack gap="100" blockAlign="center">
+            <Text as="span" variant="bodyMd">
+              {customer.name}
             </Text>
-            {companyName ? (
-              <Text as="span" tone="subdued" variant="bodySm">
-                {companyName}
-              </Text>
+            {meta.b2b ? (
+              <Badge tone="info" size="small">
+                B2B
+              </Badge>
             ) : null}
-          </BlockStack>
+            <Icon source={ChevronDownIcon} tone="subdued" />
+          </InlineStack>
         </IndexTable.Cell>
         <IndexTable.Cell>
           <Text as="span" tone="subdued" variant="bodySm">
