@@ -79,66 +79,63 @@ function ProductsCard({ lines, setLines, dispatch }) {
           autoComplete="off"
         />
 
-        <Box>
-          <InlineStack gap="400" blockAlign="center">
-            <Box width="46%"><Text as="span" tone="subdued" variant="bodySm">Product</Text></Box>
-            <Box width="16%"><Text as="span" tone="subdued" variant="bodySm">Quantity</Text></Box>
-            <Box width="20%"><Text as="span" tone="subdued" variant="bodySm">Quoted Price</Text></Box>
-            <Box width="12%"><Text as="span" tone="subdued" variant="bodySm">Total</Text></Box>
-          </InlineStack>
-        </Box>
+        <InlineStack gap="300" blockAlign="center">
+          <Box width="44%"><Text as="span" tone="subdued" variant="bodySm">Product</Text></Box>
+          <Box width="16%"><Text as="span" tone="subdued" variant="bodySm">Quantity</Text></Box>
+          <Box width="20%"><Text as="span" tone="subdued" variant="bodySm">Quoted Price</Text></Box>
+          <Box width="12%"><Text as="span" tone="subdued" variant="bodySm">Total</Text></Box>
+        </InlineStack>
         <Divider />
 
-        {lines.map((l, i) => {
-          const price = Number(l.price) || 0;
-          const qty = Number(l.qty ?? l.quantity ?? 1) || 0;
-          return (
-            <BlockStack gap="200" key={i}>
-              <InlineStack gap="400" blockAlign="start" wrap={false}>
-                <Box width="46%">
-                  <InlineStack gap="300" blockAlign="start" wrap={false}>
-                    <Thumb />
-                    <BlockStack gap="050">
-                      <Text as="span" variant="bodyMd" fontWeight="medium">{l.title || 'Custom item'}</Text>
-                      {l.sku ? <Text as="span" tone="subdued" variant="bodySm">{l.sku}</Text> : null}
-                      <InlineStack gap="150" blockAlign="center">
-                        <Text as="span" variant="bodyMd" tone="magic">{money(price)}</Text>
-                        {l.compareAt && Number(l.compareAt) !== price ? (
-                          <Text as="span" tone="subdued" variant="bodySm" textDecorationLine="line-through">{money(l.compareAt)}</Text>
-                        ) : null}
-                      </InlineStack>
-                      {l.sku ? (
-                        <>
-                          <Button variant="tertiary" disclosure={skuOpen.has(i) ? 'up' : 'down'} onClick={() => toggleSku(i)} textAlign="left">
-                            {`SKU: ${l.sku}`}
-                          </Button>
-                          <Collapsible id={`sku-${i}`} open={skuOpen.has(i)}>
-                            <Text as="span" tone="subdued" variant="bodySm">Variant details for {l.sku}.</Text>
-                          </Collapsible>
-                        </>
-                      ) : null}
-                      <Link onClick={() => dispatch({ type: 'TOAST', message: 'Add property' })}>
-                        <InlineStack gap="100" blockAlign="center">
-                          <Icon source={PlusCircleIcon} />
-                          <span>Add property</span>
+        <BlockStack gap="0">
+          {lines.map((l, i) => {
+            const price = Number(l.price) || 0;
+            const qty = Number(l.qty ?? l.quantity ?? 1) || 0;
+            return (
+              <Box key={i} paddingBlock="200" borderBlockEndWidth="025" borderColor="border">
+                <InlineStack gap="300" blockAlign="start" wrap={false}>
+                  <Box width="44%">
+                    <InlineStack gap="200" blockAlign="start" wrap={false}>
+                      <Thumb />
+                      <BlockStack gap="050">
+                        <Text as="span" variant="bodyMd" fontWeight="medium">{l.title || 'Custom item'}</Text>
+                        {l.sku ? <Text as="span" tone="subdued" variant="bodySm">{l.sku}</Text> : null}
+                        <InlineStack gap="150" blockAlign="center">
+                          <Text as="span" variant="bodyMd" tone="magic">{money(price)}</Text>
+                          {l.compareAt && Number(l.compareAt) !== price ? (
+                            <Text as="span" tone="subdued" variant="bodySm" textDecorationLine="line-through">{money(l.compareAt)}</Text>
+                          ) : null}
                         </InlineStack>
-                      </Link>
-                    </BlockStack>
-                  </InlineStack>
-                </Box>
-                <Box width="16%">
-                  <TextField label="Quantity" labelHidden type="number" min={1} value={String(qty)} onChange={(v) => setLine(i, { qty: Math.max(1, Number(v) || 1) })} autoComplete="off" />
-                </Box>
-                <Box width="20%">
-                  <TextField label="Quoted price" labelHidden type="number" min={0} prefix="$" value={String(price)} onChange={(v) => setLine(i, { price: Number(v) || 0 })} autoComplete="off" />
-                </Box>
-                <Box width="12%"><Text as="span" variant="bodyMd">{money(price * qty)}</Text></Box>
-                <Button icon={DeleteIcon} variant="tertiary" accessibilityLabel="Remove line" onClick={() => removeLine(i)} />
-              </InlineStack>
-              <Divider />
-            </BlockStack>
-          );
-        })}
+                        {l.sku ? (
+                          <InlineStack gap="050" blockAlign="center">
+                            <Text as="span" tone="subdued" variant="bodySm">{`SKU: ${l.sku}`}</Text>
+                            <Button variant="tertiary" disclosure={skuOpen.has(i) ? 'up' : 'down'} accessibilityLabel="Variant details" onClick={() => toggleSku(i)} />
+                          </InlineStack>
+                        ) : null}
+                        <Collapsible id={`sku-${i}`} open={skuOpen.has(i)}>
+                          <Text as="span" tone="subdued" variant="bodySm">Variant details for {l.sku}.</Text>
+                        </Collapsible>
+                        <Box>
+                          <Button variant="plain" icon={PlusCircleIcon} onClick={() => dispatch({ type: 'TOAST', message: 'Add property' })}>
+                            Add property
+                          </Button>
+                        </Box>
+                      </BlockStack>
+                    </InlineStack>
+                  </Box>
+                  <Box width="16%">
+                    <TextField label="Quantity" labelHidden type="number" min={1} value={String(qty)} onChange={(v) => setLine(i, { qty: Math.max(1, Number(v) || 1) })} autoComplete="off" />
+                  </Box>
+                  <Box width="20%">
+                    <TextField label="Quoted price" labelHidden type="number" min={0} prefix="$" value={String(price)} onChange={(v) => setLine(i, { price: Number(v) || 0 })} autoComplete="off" />
+                  </Box>
+                  <Box width="12%"><Text as="span" variant="bodyMd">{money(price * qty)}</Text></Box>
+                  <Button icon={DeleteIcon} variant="tertiary" accessibilityLabel="Remove line" onClick={() => removeLine(i)} />
+                </InlineStack>
+              </Box>
+            );
+          })}
+        </BlockStack>
       </BlockStack>
     </Card>
   );
@@ -256,15 +253,17 @@ function CustomerCard({ quote }) {
 function AiCard({ dispatch }) {
   return (
     <Card>
-      <BlockStack gap="300">
-        <InlineStack gap="150" blockAlign="center">
-          <Icon source={MagicIcon} tone="magic" />
+      <BlockStack gap="200">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ display: 'flex', flex: '0 0 auto' }}>
+            <Icon source={MagicIcon} tone="magic" />
+          </span>
           <Text as="h2" variant="headingSm">AI quote analysis</Text>
-        </InlineStack>
+        </div>
         <Text as="p" tone="subdued" variant="bodySm">
           Analyze this quote with AI: customer history, margin and the safest price to offer.
         </Text>
-        <Button variant="primary" icon={MagicIcon} onClick={() => dispatch({ type: 'TOAST', message: 'Analyzing quote…' })}>
+        <Button variant="primary" fullWidth icon={MagicIcon} onClick={() => dispatch({ type: 'TOAST', message: 'Analyzing quote…' })}>
           Analyze quote
         </Button>
       </BlockStack>
