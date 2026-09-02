@@ -1,7 +1,24 @@
 import React from 'react';
-import { Card, BlockStack, InlineStack, InlineGrid, Box, Text, Badge, Button, Banner } from '@shopify/polaris';
+import { Card, BlockStack, InlineStack, InlineGrid, Box, Text, Badge, Button, Banner, Divider } from '@shopify/polaris';
 import { useStore, handoffToB2B } from '../store.jsx';
 import { shopifyCompanyDirectory } from '../data/companies.js';
+import { money2 } from '../utils.js';
+
+const quoteValueOf = (quote) => {
+  const lines = quote.lines && quote.lines.length
+    ? quote.lines
+    : [{ price: quote.product?.price, qty: quote.product?.quantity ?? 1 }];
+  return lines.reduce((s, l) => s + (Number(l.price) || 0) * (Number(l.qty ?? l.quantity) || 1), 0);
+};
+
+function SummaryRow({ label, value }) {
+  return (
+    <InlineStack align="space-between" blockAlign="center">
+      <Text as="span" tone="subdued" variant="bodySm">{label}</Text>
+      <Text as="span" variant="bodyMd" fontWeight="medium">{value}</Text>
+    </InlineStack>
+  );
+}
 
 // The RFQ↔B2B relationship card. The sync flow and the create-company overlay it
 // launches live in sibling files; re-exported so callers keep one import.
@@ -77,36 +94,41 @@ export function B2BRelationshipCard({ quote }) {
   }
 
   // shopifySynced or linked → managed
+  const companyName = company?.name || quote.createdCompanyName || '—';
+  const locations = company?.locations ?? 1;
+  const buyers = company?.buyers ?? 1;
   const managedBanner =
     state === 'shopifySynced' ? (
       <Banner tone="success">
         {quote.quoteAutoSyncEnabled
-          ? 'Synced. New quotes for this company auto-sync to B2B.'
-          : 'Synced to the B2B app.'}
+          ? `${companyName} is available in B2B. Future quotes from any buyer across all Company locations sync automatically.`
+          : `${companyName} is available in B2B. This RFQ and future quotes stay in QuoteSnap RFQ until quote sync is enabled.`}
       </Banner>
     ) : null;
 
   return (
     <Card>
       <BlockStack gap="300">
-        <Text as="h2" variant="headingSm">
-          B2B
-        </Text>
-        <Badge tone="success">Managed in B2B</Badge>
-        {(company || quote.createdCompanyName) && (
-          <BlockStack gap="050">
-            <Text as="span" variant="bodyMd" fontWeight="medium">
-              {company?.name || quote.createdCompanyName}
-            </Text>
-            <Text as="span" tone="subdued" variant="bodySm">
-              {company?.shopifyId ? `Company ${company.shopifyId}` : 'Newly created company'}
-            </Text>
-          </BlockStack>
-        )}
+        <InlineStack align="space-between" blockAlign="center">
+          <Text as="h2" variant="headingSm">B2B relationship</Text>
+          <Badge tone="success">Managed</Badge>
+        </InlineStack>
+        <BlockStack gap="150">
+          <SummaryRow label="Company" value={companyName} />
+          <SummaryRow label="Locations" value={String(locations)} />
+          <SummaryRow label="Buyers" value={String(buyers)} />
+          <SummaryRow label="Quoted value" value={money2(quoteValueOf(quote))} />
+          {company?.shopifyId ? (
+            <Text as="span" tone="subdued" variant="bodySm">{`Shopify company ${company.shopifyId}`}</Text>
+          ) : (
+            <Text as="span" tone="subdued" variant="bodySm">Newly created company</Text>
+          )}
+        </BlockStack>
         {managedBanner}
+        <Divider />
         <InlineStack gap="200">
-          <Button onClick={() => handoffToB2B(rfqState, quote.number)}>
-            {state === 'linked' ? 'View in B2B' : 'Open in B2B'}
+          <Button variant="primary" onClick={() => handoffToB2B(rfqState, quote.number)}>
+            {state === 'linked' ? 'View in B2B app' : 'Open in B2B app'}
           </Button>
           <Button variant="tertiary" onClick={() => dispatch({ type: 'TOAST', message: 'Opens in Shopify' })}>
             Open in Shopify
