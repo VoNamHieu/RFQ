@@ -249,10 +249,13 @@ function reducer(state, action) {
           : action.kind === 'quantity'
           ? newQuantityBuilder()
           : newBaseBuilder(),
+        pricingBuilderTab: 'settings', // always land on Settings when the editor opens
         ruleEdit: null,
         addRuleMenu: false,
         editorContext: action.context || null,
       };
+    case 'SET_BUILDER_TAB':
+      return { ...state, pricingBuilderTab: action.tab };
     case 'CLOSE_EDITOR':
       return { ...state, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null };
     case 'BUILDER_PATCH':

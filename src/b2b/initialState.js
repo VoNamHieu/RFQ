@@ -22,6 +22,7 @@ export function makeBaseState() {
     basePageSize: 5,
     // Pricing editor (spec §5.3)
     builder: null, // working policy copy, or null when the editor is closed
+    pricingBuilderTab: 'settings', // 'settings' | 'appearance' — the editor's two tabs (god file)
     ruleEdit: null, // index of the conditional-rule open for inline edit
     addRuleMenu: false,
     editorContext: null, // { mode:'edit'|'add-base'|'swap', companyId, swapId }
