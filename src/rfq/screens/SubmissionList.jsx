@@ -120,8 +120,8 @@ export function SubmissionList() {
           </Text>
         </IndexTable.Cell>
         <IndexTable.Cell>
-          <BlockStack gap="050">
-            <Badge tone={STATUS_TONE[meta.status]} progress="incomplete">
+          <BlockStack gap="050" inlineAlign="start">
+            <Badge tone={STATUS_TONE[meta.status]} progress="incomplete" size="small">
               {meta.status}
             </Badge>
             {meta.progress ? (
