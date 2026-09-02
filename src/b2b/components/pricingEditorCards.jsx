@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Card, BlockStack, InlineGrid, InlineStack, TextField, Text, Box, Button, Select, ChoiceList, RadioButton, Divider, Combobox, Listbox, Icon } from '@shopify/polaris';
+import { Card, BlockStack, InlineGrid, InlineStack, TextField, Text, Box, Button, Select, ChoiceList, RadioButton, Divider, Icon } from '@shopify/polaris';
 import { DeleteIcon, SearchIcon } from '@shopify/polaris-icons';
 import { COLLECTIONS } from '../data/constants.js';
 import { money } from '../format.js';
@@ -104,20 +104,17 @@ export function ProductOverridesCard({ builder, patch, products }) {
   const overrides = builder.productAdjustments || {};
   const skus = Object.keys(overrides);
   const remaining = products.filter((p) => !overrides[p.sku]);
-  const [addSku, setAddSku] = useState('');
   const [query, setQuery] = useState('');
-  const [addPrice, setAddPrice] = useState('');
+  const [hovered, setHovered] = useState(null);
 
-  // Searchable picker: filter by name / SKU / vendor, capped so a large catalog
-  // stays fast and the list never runs off-screen.
+  // Search among the not-yet-overridden products, filtering by name / SKU /
+  // vendor and capping the list so a large catalog stays fast and bounded.
   const MAX_RESULTS = 50;
+  const q = query.trim().toLowerCase();
   const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const base = q
-      ? remaining.filter((p) => [p.title, p.sku, p.vendor].filter(Boolean).join(' ').toLowerCase().includes(q))
-      : remaining;
+    const base = q ? remaining.filter((p) => [p.title, p.sku, p.vendor].filter(Boolean).join(' ').toLowerCase().includes(q)) : [];
     return { list: base.slice(0, MAX_RESULTS), total: base.length };
-  }, [query, remaining]);
+  }, [q, remaining]);
 
   const setPrice = (sku, value) => patch({ productAdjustments: { ...overrides, [sku]: { rule: 'set', valueType: 'amount', value: Number(value) || 0 } } });
   const remove = (sku) => {
@@ -125,21 +122,12 @@ export function ProductOverridesCard({ builder, patch, products }) {
     delete next[sku];
     patch({ productAdjustments: next });
   };
-  const titleOf = (sku) => products.find((p) => p.sku === sku)?.title || sku;
-  const onQuery = (v) => {
-    setQuery(v);
-    if (addSku && v !== titleOf(addSku)) setAddSku(''); // editing the field clears the pick
-  };
-  const onSelect = (sku) => {
-    setAddSku(sku);
-    setQuery(titleOf(sku));
-  };
-  const add = () => {
-    if (!addSku) return;
-    setPrice(addSku, addPrice);
-    setAddSku('');
-    setQuery('');
-    setAddPrice('');
+  const prod = (sku) => products.find((p) => p.sku === sku);
+  const subline = (p) => [p.sku, p.list != null ? money(p.list) : null, p.vendor].filter(Boolean).join(' · ');
+  // Click-to-add: prefill the row with the product's list price, editable inline.
+  const addProduct = (sku) => {
+    const p = prod(sku);
+    setPrice(sku, p?.list ?? 0);
   };
 
   return (
@@ -147,74 +135,89 @@ export function ProductOverridesCard({ builder, patch, products }) {
       <BlockStack gap="300">
         <Text as="h3" variant="headingSm">Product price overrides</Text>
         <Text as="p" tone="subdued" variant="bodySm">Set an exact price for specific products. Overrides win over rules and the default.</Text>
+
         {skus.length > 0 && (
-          <BlockStack gap="200">
-            {skus.map((sku) => (
-              <InlineStack key={sku} gap="200" blockAlign="end" wrap={false}>
-                <div style={{ flex: 1 }}>
-                  <Text as="span" variant="bodyMd">{titleOf(sku)}</Text>
-                  <Text as="span" tone="subdued" variant="bodySm">{` · ${sku}`}</Text>
-                </div>
-                <div style={{ width: 120 }}>
-                  <TextField label="Price" labelHidden type="number" prefix="$" min={0} value={String(overrides[sku].value ?? '')} onChange={(v) => setPrice(sku, v)} autoComplete="off" />
-                </div>
-                <Button icon={DeleteIcon} tone="critical" variant="tertiary" accessibilityLabel="Remove override" onClick={() => remove(sku)} />
-              </InlineStack>
-            ))}
-          </BlockStack>
+          <Box borderWidth="025" borderColor="border" borderRadius="200">
+            {skus.map((sku, i) => {
+              const p = prod(sku);
+              return (
+                <Box key={sku} padding="300" borderBlockStartWidth={i === 0 ? '0' : '025'} borderColor="border">
+                  <InlineStack gap="300" blockAlign="center" wrap={false}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <BlockStack gap="0">
+                        <Text as="span" variant="bodyMd" truncate>{p?.title || sku}</Text>
+                        <Text as="span" tone="subdued" variant="bodySm">{p ? subline(p) : sku}</Text>
+                      </BlockStack>
+                    </div>
+                    <div style={{ width: 128 }}>
+                      <TextField label="Price" labelHidden type="number" prefix="$" min={0} value={String(overrides[sku].value ?? '')} onChange={(v) => setPrice(sku, v)} autoComplete="off" />
+                    </div>
+                    <Button icon={DeleteIcon} tone="critical" variant="tertiary" accessibilityLabel={`Remove ${p?.title || sku}`} onClick={() => remove(sku)} />
+                  </InlineStack>
+                </Box>
+              );
+            })}
+          </Box>
         )}
+
         {remaining.length > 0 && (
-          <>
-            <Divider />
-            <InlineStack gap="200" blockAlign="end" wrap={false}>
-              <div style={{ flex: 1 }}>
-                <Combobox
-                  activator={
-                    <Combobox.TextField
-                      label="Add a product"
-                      value={query}
-                      onChange={onQuery}
-                      prefix={<Icon source={SearchIcon} tone="subdued" />}
-                      placeholder="Search products by name or SKU"
-                      autoComplete="off"
-                    />
-                  }
-                >
-                  {matches.list.length > 0 ? (
-                    <Listbox onSelect={onSelect}>
-                      {matches.list.map((p) => (
-                        <Listbox.Option key={p.sku} value={p.sku} selected={addSku === p.sku} accessibilityLabel={p.title}>
-                          <Box paddingBlock="100">
+          <BlockStack gap="150">
+            <TextField
+              label="Add products"
+              value={query}
+              onChange={setQuery}
+              prefix={<Icon source={SearchIcon} tone="subdued" />}
+              placeholder="Search products by name or SKU"
+              autoComplete="off"
+              clearButton
+              onClearButtonClick={() => setQuery('')}
+            />
+            {q !== '' && (
+              <Box borderWidth="025" borderColor="border" borderRadius="200">
+                {matches.list.length > 0 ? (
+                  <div style={{ maxHeight: 264, overflowY: 'auto' }}>
+                    {matches.list.map((p, i) => (
+                      <button
+                        key={p.sku}
+                        type="button"
+                        onClick={() => addProduct(p.sku)}
+                        onMouseEnter={() => setHovered(p.sku)}
+                        onMouseLeave={() => setHovered((h) => (h === p.sku ? null : h))}
+                        style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%', boxSizing: 'border-box' }}
+                      >
+                        <Box
+                          paddingBlock="150"
+                          paddingInline="300"
+                          borderBlockStartWidth={i === 0 ? '0' : '025'}
+                          borderColor="border"
+                          background={hovered === p.sku ? 'bg-surface-hover' : undefined}
+                        >
+                          <InlineStack align="space-between" blockAlign="center" wrap={false} gap="300">
                             <BlockStack gap="0">
                               <Text as="span" variant="bodyMd">{p.title}</Text>
-                              <Text as="span" tone="subdued" variant="bodySm">
-                                {[p.sku, p.list != null ? money(p.list) : null, p.vendor].filter(Boolean).join(' · ')}
-                              </Text>
+                              <Text as="span" tone="subdued" variant="bodySm">{subline(p)}</Text>
                             </BlockStack>
-                          </Box>
-                        </Listbox.Option>
-                      ))}
-                      {matches.total > matches.list.length && (
-                        <Box padding="200">
-                          <Text as="span" tone="subdued" variant="bodySm">
-                            {`Showing first ${matches.list.length} of ${matches.total} — keep typing to narrow it down.`}
-                          </Text>
+                            <Text as="span" tone={hovered === p.sku ? 'magic' : 'subdued'} variant="bodySm" fontWeight="medium">
+                              Add
+                            </Text>
+                          </InlineStack>
                         </Box>
-                      )}
-                    </Listbox>
-                  ) : (
-                    <Box padding="300">
-                      <Text as="span" tone="subdued" variant="bodySm">No products match “{query}”.</Text>
-                    </Box>
-                  )}
-                </Combobox>
-              </div>
-              <div style={{ width: 120 }}>
-                <TextField label="Price" type="number" prefix="$" min={0} value={addPrice} onChange={setAddPrice} autoComplete="off" />
-              </div>
-              <Button onClick={add} disabled={!addSku || addPrice === ''}>Add</Button>
-            </InlineStack>
-          </>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <Box padding="300">
+                    <Text as="span" tone="subdued" variant="bodySm">No products match “{query.trim()}”.</Text>
+                  </Box>
+                )}
+                {matches.total > matches.list.length && (
+                  <Box padding="200" borderBlockStartWidth="025" borderColor="border" background="bg-surface-secondary">
+                    <Text as="span" tone="subdued" variant="bodySm">{`Showing first ${matches.list.length} of ${matches.total} — keep typing to narrow it down.`}</Text>
+                  </Box>
+                )}
+              </Box>
+            )}
+          </BlockStack>
         )}
       </BlockStack>
     </Card>
