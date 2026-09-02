@@ -322,6 +322,22 @@ function reducer(state, action) {
       if (!existing) {
         const id = `pN${db.policies.length + 1}`;
         db.policies.push({ ...newBaseBuilder(), ...draft, id });
+        // Created from the Add-company wizard (the company doesn't exist yet):
+        // hand the new policy back to the wizard's pricing step, don't assign.
+        const setupKind = state.editorContext?.setupKind;
+        if (setupKind && state.addCompany) {
+          const key = setupKind === 'quantity' ? 'quantityId' : 'baseId';
+          return {
+            ...state,
+            db,
+            builder: null,
+            ruleEdit: null,
+            addRuleMenu: false,
+            editorContext: null,
+            addCompany: { ...state.addCompany, [key]: id, step: 2 },
+            toast: 'Pricing created',
+          };
+        }
         const c = db.companies.find((x) => x.id === (state.editorContext?.companyId || state.selectedCompany));
         if (c) addCompanyBase(c, id, draft.priority);
         return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: 'Pricing saved' };

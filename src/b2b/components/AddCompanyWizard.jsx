@@ -19,7 +19,9 @@ const TERMS_PREVIEW = 3;
 export function AddCompanyWizard() {
   const { state, dispatch } = useStore();
   const ac = state.addCompany;
-  if (!ac) return null;
+  // Hide the wizard while the pricing editor is open (a "Create a new price"
+  // from step 2); it reappears on this step once the editor saves or closes.
+  if (!ac || state.builder) return null;
 
   const linkedNames = new Set(state.db.companies.map((c) => c.name));
   const available = Object.values(shopifyCompanyDirectory).filter((shp) => !linkedNames.has(shp.name));
@@ -174,7 +176,26 @@ export function AddCompanyWizard() {
                     <Text as="span" tone="subdued" variant="bodySm">
                       {KIND_META[kind].purpose}
                     </Text>
-                    <Select label={KIND_META[kind].name} labelHidden options={options} value={value || ''} onChange={on} />
+                    <Select
+                      label={`Use an existing ${KIND_META[kind].name.toLowerCase()}`}
+                      labelHidden
+                      options={options}
+                      value={value || ''}
+                      onChange={on}
+                    />
+                    <InlineStack align="space-between" blockAlign="center">
+                      <Button
+                        variant="plain"
+                        onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: null, kind, context: { setupKind: kind } })}
+                      >
+                        {`Create a new ${KIND_META[kind].name.toLowerCase()}`}
+                      </Button>
+                      {value ? (
+                        <Button variant="plain" tone="critical" onClick={() => on('')}>
+                          Remove
+                        </Button>
+                      ) : null}
+                    </InlineStack>
                   </BlockStack>
                 </Box>
               ))}
