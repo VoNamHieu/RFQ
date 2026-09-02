@@ -3,20 +3,22 @@ import {
   Page,
   Card,
   IndexTable,
-  Tabs,
+  IndexFilters,
+  useSetIndexFiltersMode,
+  useIndexResourceState,
   Badge,
   Banner,
   Text,
+  Icon,
   BlockStack,
+  InlineStack,
   Box,
 } from '@shopify/polaris';
+import { ChevronDownIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { money2, quoteAmount } from '../utils.js';
 import { shopifyCompanyDirectory } from '../data/companies.js';
-import {
-  SUBMISSION_TABS,
-  SUBMISSION_TAB_STATUS,
-} from '../data/submissions.js';
+import { SUBMISSION_TABS, SUBMISSION_TAB_STATUS } from '../data/submissions.js';
 
 const companyKeyOf = (q) =>
   q?.syncedCompanyKey || q?.linkedCompanyKey || q?.fixedCompanyKey || q?.recommendedKey || q?.previewCompanyKey || null;
@@ -24,27 +26,57 @@ const companyKeyOf = (q) =>
 // Submission status → Polaris Badge tone.
 const STATUS_TONE = {
   'New Received': 'attention',
+  'New Created': 'attention',
   Read: undefined,
-  Updated: 'info',
+  Updated: 'warning',
   'Deal Closed': 'success',
   'Deal Rejected': 'critical',
   Trashed: undefined,
 };
 
+const SORT_OPTIONS = [
+  { label: 'Created time', value: 'created desc', directionLabel: 'Newest first' },
+  { label: 'Created time', value: 'created asc', directionLabel: 'Oldest first' },
+  { label: 'Amount', value: 'amount desc', directionLabel: 'Highest first' },
+  { label: 'Amount', value: 'amount asc', directionLabel: 'Lowest first' },
+];
+
 export function SubmissionList() {
   const { state, dispatch } = useStore();
   const [bannerVisible, setBannerVisible] = useState(true);
+  const [query, setQuery] = useState('');
+  const [sortSelected, setSortSelected] = useState(['created desc']);
+  const { mode, setMode } = useSetIndexFiltersMode();
 
   const tabIndex = Math.max(0, SUBMISSION_TABS.indexOf(state.submissionTab));
   const statusFilter = SUBMISSION_TAB_STATUS[state.submissionTab];
-  const ids = state.order.filter(
-    (id) => !statusFilter || state.meta[id]?.status === statusFilter,
-  );
 
-  const tabs = SUBMISSION_TABS.map((label) => ({
-    id: `tab-${label}`,
-    content: label,
-  }));
+  let ids = state.order.filter((id) => !statusFilter || state.meta[id]?.status === statusFilter);
+  const q = query.trim().toLowerCase();
+  if (q) {
+    ids = ids.filter((id) => {
+      const quote = state.quotes[id];
+      return [String(quote?.number ?? id), quote?.customer?.name || '', quote?.customer?.email || '']
+        .join(' ')
+        .toLowerCase()
+        .includes(q);
+    });
+  }
+  const [sortField, sortDir] = (sortSelected[0] || 'created desc').split(' ');
+  const baseIndex = (id) => state.order.indexOf(id); // state.order is newest-first
+  ids = [...ids];
+  if (sortField === 'amount') {
+    ids.sort((a, b) => quoteAmount(state.quotes[a]) - quoteAmount(state.quotes[b])); // ascending
+    if (sortDir === 'desc') ids.reverse();
+  } else {
+    ids.sort((a, b) => baseIndex(a) - baseIndex(b)); // by creation order → newest first
+    if (sortDir === 'asc') ids.reverse();
+  }
+
+  const resources = ids.map((id) => ({ id }));
+  const { selectedResources, allResourcesSelected, handleSelectionChange } = useIndexResourceState(resources);
+
+  const tabs = SUBMISSION_TABS.map((label, i) => ({ id: `tab-${label}`, content: label, index: i }));
 
   const rowMarkup = ids.map((id, index) => {
     const quote = state.quotes[id];
@@ -56,6 +88,7 @@ export function SubmissionList() {
         id={id}
         key={id}
         position={index}
+        selected={selectedResources.includes(id)}
         onClick={() => dispatch({ type: 'OPEN_QUOTE', id })}
       >
         <IndexTable.Cell>
@@ -65,17 +98,17 @@ export function SubmissionList() {
         </IndexTable.Cell>
         <IndexTable.Cell>
           <BlockStack gap="050">
-            <Text as="span" variant="bodyMd">
-              {customer.name}
+            <InlineStack gap="100" blockAlign="center">
+              <Text as="span" variant="bodyMd">
+                {customer.name}
+              </Text>
               {meta.b2b ? (
-                <>
-                  {'  '}
-                  <Badge tone="info" size="small">
-                    B2B
-                  </Badge>
-                </>
+                <Badge tone="info" size="small">
+                  B2B
+                </Badge>
               ) : null}
-            </Text>
+              <Icon source={ChevronDownIcon} tone="subdued" />
+            </InlineStack>
             <Text as="span" tone="subdued" variant="bodySm">
               {customer.email}
               {customer.phone ? ` · ${customer.phone}` : ''}
@@ -104,7 +137,9 @@ export function SubmissionList() {
         </IndexTable.Cell>
         <IndexTable.Cell>
           <BlockStack gap="050">
-            <Badge tone={STATUS_TONE[meta.status]}>{meta.status}</Badge>
+            <Badge tone={STATUS_TONE[meta.status]} progress="incomplete">
+              {meta.status}
+            </Badge>
             {meta.progress ? (
               <Text as="span" tone="subdued" variant="bodySm">
                 {meta.progress}
@@ -124,10 +159,7 @@ export function SubmissionList() {
   return (
     <Page
       title="Submission list"
-      primaryAction={{
-        content: 'Create a quote',
-        onAction: () => dispatch({ type: 'START_CREATE_QUOTE' }),
-      }}
+      primaryAction={{ content: 'Create a quote', onAction: () => dispatch({ type: 'START_CREATE_QUOTE' }) }}
       secondaryActions={[
         { content: 'Export', onAction: () => dispatch({ type: 'TOAST', message: 'Demo only' }) },
         { content: 'Edit', disclosure: true, onAction: () => {} },
@@ -142,19 +174,37 @@ export function SubmissionList() {
             onDismiss={() => setBannerVisible(false)}
             action={{ content: 'Automate Delivery Updates' }}
           >
-            <p>Turn a closed quote into a B2B pricing so buyers reorder at the agreed price.</p>
+            <p>
+              Once a quote becomes an order, automatically sends shipment updates and lets customers track deliveries
+              themselves. Reduce up to 90% of “Where is my order?” inquiries.
+            </p>
           </Banner>
         )}
         <Card padding="0">
-          <Tabs
+          <IndexFilters
+            queryValue={query}
+            queryPlaceholder="Searching in all submissions"
+            onQueryChange={setQuery}
+            onQueryClear={() => setQuery('')}
             tabs={tabs}
             selected={tabIndex}
             onSelect={(i) => dispatch({ type: 'SET_TAB', tab: SUBMISSION_TABS[i] })}
+            sortOptions={SORT_OPTIONS}
+            sortSelected={sortSelected}
+            onSort={setSortSelected}
+            filters={[]}
+            appliedFilters={[]}
+            onClearAll={() => {}}
+            mode={mode}
+            setMode={setMode}
+            cancelAction={{ onAction: () => setQuery('') }}
+            canCreateNewView={false}
           />
           <IndexTable
             resourceName={{ singular: 'submission', plural: 'submissions' }}
             itemCount={ids.length}
-            selectable={false}
+            selectedItemsCount={allResourcesSelected ? 'All' : selectedResources.length}
+            onSelectionChange={handleSelectionChange}
             headings={[
               { title: 'Quote ID' },
               { title: 'Customer information' },
