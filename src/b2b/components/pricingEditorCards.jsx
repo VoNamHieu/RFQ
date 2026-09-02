@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Card, BlockStack, InlineGrid, InlineStack, TextField, Text, Box, Button, Select, ChoiceList, RadioButton, Divider } from '@shopify/polaris';
-import { DeleteIcon } from '@shopify/polaris-icons';
+import React, { useState, useMemo } from 'react';
+import { Card, BlockStack, InlineGrid, InlineStack, TextField, Text, Box, Button, Select, ChoiceList, RadioButton, Divider, Combobox, Listbox, Icon } from '@shopify/polaris';
+import { DeleteIcon, SearchIcon } from '@shopify/polaris-icons';
 import { COLLECTIONS } from '../data/constants.js';
 import { money } from '../format.js';
 
@@ -104,8 +104,20 @@ export function ProductOverridesCard({ builder, patch, products }) {
   const overrides = builder.productAdjustments || {};
   const skus = Object.keys(overrides);
   const remaining = products.filter((p) => !overrides[p.sku]);
-  const [addSku, setAddSku] = useState(remaining[0]?.sku || '');
+  const [addSku, setAddSku] = useState('');
+  const [query, setQuery] = useState('');
   const [addPrice, setAddPrice] = useState('');
+
+  // Searchable picker: filter by name / SKU / vendor, capped so a large catalog
+  // stays fast and the list never runs off-screen.
+  const MAX_RESULTS = 50;
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const base = q
+      ? remaining.filter((p) => [p.title, p.sku, p.vendor].filter(Boolean).join(' ').toLowerCase().includes(q))
+      : remaining;
+    return { list: base.slice(0, MAX_RESULTS), total: base.length };
+  }, [query, remaining]);
 
   const setPrice = (sku, value) => patch({ productAdjustments: { ...overrides, [sku]: { rule: 'set', valueType: 'amount', value: Number(value) || 0 } } });
   const remove = (sku) => {
@@ -113,14 +125,22 @@ export function ProductOverridesCard({ builder, patch, products }) {
     delete next[sku];
     patch({ productAdjustments: next });
   };
+  const titleOf = (sku) => products.find((p) => p.sku === sku)?.title || sku;
+  const onQuery = (v) => {
+    setQuery(v);
+    if (addSku && v !== titleOf(addSku)) setAddSku(''); // editing the field clears the pick
+  };
+  const onSelect = (sku) => {
+    setAddSku(sku);
+    setQuery(titleOf(sku));
+  };
   const add = () => {
     if (!addSku) return;
     setPrice(addSku, addPrice);
-    const nextRemaining = products.filter((p) => p.sku !== addSku && !overrides[p.sku]);
-    setAddSku(nextRemaining[0]?.sku || '');
+    setAddSku('');
+    setQuery('');
     setAddPrice('');
   };
-  const titleOf = (sku) => products.find((p) => p.sku === sku)?.title || sku;
 
   return (
     <Card>
@@ -148,7 +168,46 @@ export function ProductOverridesCard({ builder, patch, products }) {
             <Divider />
             <InlineStack gap="200" blockAlign="end" wrap={false}>
               <div style={{ flex: 1 }}>
-                <Select label="Add a product" options={remaining.map((p) => ({ label: p.title, value: p.sku }))} value={addSku} onChange={setAddSku} />
+                <Combobox
+                  activator={
+                    <Combobox.TextField
+                      label="Add a product"
+                      value={query}
+                      onChange={onQuery}
+                      prefix={<Icon source={SearchIcon} tone="subdued" />}
+                      placeholder="Search products by name or SKU"
+                      autoComplete="off"
+                    />
+                  }
+                >
+                  {matches.list.length > 0 ? (
+                    <Listbox onSelect={onSelect}>
+                      {matches.list.map((p) => (
+                        <Listbox.Option key={p.sku} value={p.sku} selected={addSku === p.sku} accessibilityLabel={p.title}>
+                          <Box paddingBlock="100">
+                            <BlockStack gap="0">
+                              <Text as="span" variant="bodyMd">{p.title}</Text>
+                              <Text as="span" tone="subdued" variant="bodySm">
+                                {[p.sku, p.list != null ? money(p.list) : null, p.vendor].filter(Boolean).join(' · ')}
+                              </Text>
+                            </BlockStack>
+                          </Box>
+                        </Listbox.Option>
+                      ))}
+                      {matches.total > matches.list.length && (
+                        <Box padding="200">
+                          <Text as="span" tone="subdued" variant="bodySm">
+                            {`Showing first ${matches.list.length} of ${matches.total} — keep typing to narrow it down.`}
+                          </Text>
+                        </Box>
+                      )}
+                    </Listbox>
+                  ) : (
+                    <Box padding="300">
+                      <Text as="span" tone="subdued" variant="bodySm">No products match “{query}”.</Text>
+                    </Box>
+                  )}
+                </Combobox>
               </div>
               <div style={{ width: 120 }}>
                 <TextField label="Price" type="number" prefix="$" min={0} value={addPrice} onChange={setAddPrice} autoComplete="off" />
