@@ -54,7 +54,9 @@ export function buildInitialState() {
       s.selectedCompany = id;
       const lines = handoff.quote && Array.isArray(handoff.quote.lines) ? handoff.quote.lines : [];
       const hasLines = lines.length > 0;
-      s.companyTab = hasLines && handoff.pricingTransfer ? 'pricing' : 'locations';
+      // openPricing: the RFQ "no B2B pricing" prompt sends the merchant straight to
+      // the company's Pricing tab to add a base price.
+      s.companyTab = (hasLines && handoff.pricingTransfer) || handoff.openPricing ? 'pricing' : 'locations';
       if (hasLines && handoff.pricingTransfer) {
         s.toast = applyQuotePricingTransfer(s.db, id, lines, handoff.pricingTransfer);
       }

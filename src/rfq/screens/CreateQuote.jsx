@@ -18,9 +18,10 @@ import {
   EmptyState,
   Checkbox,
   Icon,
+  Banner,
 } from '@shopify/polaris';
 import { PlusIcon, XIcon } from '@shopify/polaris-icons';
-import { useStore } from '../store.jsx';
+import { useStore, handoffCompanyToB2B } from '../store.jsx';
 import { money, subtotalOf } from '../utils.js';
 import {
   RFQ_CATALOG,
@@ -98,6 +99,12 @@ export function CreateQuote() {
   const customer = RFQ_CUSTOMERS.find((c) => c.key === cq.customerKey) || null;
   const lines = cq.lines;
   const subtotal = subtotalOf(lines.map((l) => ({ price: l.price, qty: l.qty })));
+
+  // B2B pricing status for the selected company (mirrors the B2B app). If the
+  // company has no base pricing, prompt the merchant to set it up in the B2B app.
+  const companyInB2B = !!shopifyCompanyDirectory[customer?.companyKey]?.inB2B;
+  const companyHasPricing = customer ? (RFQ_PRICING_OPTIONS[customer.companyKey] || []).length > 0 : true;
+  const showPricingPrompt = !!customer && !companyHasPricing;
 
   const [picker, setPicker] = useState(null); // {mode:'priced'|'catalog', templateId, picks:{}, search}
 
@@ -236,6 +243,28 @@ export function CreateQuote() {
       title="Create quote"
       primaryAction={{ content: 'Create quote', disabled: !canCreate, onAction: cqCreate }}
     >
+      {showPricingPrompt && (
+        <Box paddingBlockEnd="400">
+          <Banner
+            tone="warning"
+            title={
+              companyInB2B
+                ? `${customer.company} has no B2B pricing yet`
+                : `${customer.company} isn’t set up in the B2B app`
+            }
+            action={{
+              content: companyInB2B ? 'Create pricing in B2B app' : 'Set up in B2B app',
+              onAction: () => handoffCompanyToB2B(state, customer.companyKey, customer),
+            }}
+          >
+            <p>
+              {companyInB2B
+                ? `This quote will use manually entered prices. Set up pricing in the B2B app so ${customer.company}’s buyers automatically get contract prices on future orders.`
+                : `${customer.company} isn’t a managed B2B company yet. Add it in the B2B app and set its pricing so its buyers get contract prices automatically.`}
+            </p>
+          </Banner>
+        </Box>
+      )}
       <Layout>
         <Layout.Section>
           <Card padding="0">

@@ -194,6 +194,35 @@ export function handoffToB2B(state, quoteId, { pricingTransfer = null, lines = n
   }
 }
 
+// Hand a company (no quote yet) off to the B2B app to set up its pricing — used by
+// the "no B2B pricing" prompt on Create quote. `openPricing` lands the merchant on
+// the company's Pricing tab so they can add a base price straight away.
+export function handoffCompanyToB2B(state, companyKey, customer = null, { openPricing = true } = {}) {
+  const dir = shopifyCompanyDirectory[companyKey] || {};
+  const locSummary = dir.locationSummary && dir.locationSummary !== 'Company location' ? dir.locationSummary : '';
+  const payload = {
+    id: companyKey,
+    name: dir.name || customer?.company || '',
+    mainContact: dir.mainContact || customer?.name || '',
+    contactEmail: dir.contactEmail || customer?.email || '',
+    externalId: dir.externalId || '',
+    locationName: locSummary || '',
+    locationList: dir.locationList || null,
+    buyerList: dir.buyerList || null,
+    openPricing,
+  };
+  if (!payload.name) return;
+  writeJSON(HANDOFF_KEY, payload);
+  writeJSON(DEMO_STATE_KEY, serializeDemoState(state));
+  const v = activeVersion();
+  const target = v === 'latest' ? '/b2b' : `/b2b?v=${v}`;
+  try {
+    window.location.href = target;
+  } catch {
+    /* ignore */
+  }
+}
+
 function reducer(state, action) {
   switch (action.type) {
     case 'NAVIGATE':
