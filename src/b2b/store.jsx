@@ -253,17 +253,6 @@ function reducer(state, action) {
         addRuleMenu: false,
         editorContext: action.context || null,
       };
-    // Switch the pricing type of a NEW (unsaved) builder, keeping name/priority/audience.
-    case 'SWITCH_KIND': {
-      if (!state.builder || state.builder.id) return state;
-      const fresh = action.kind === 'quantity' ? newQuantityBuilder() : newBaseBuilder();
-      return {
-        ...state,
-        builder: { ...fresh, name: state.builder.name, priority: state.builder.priority, audienceType: state.builder.audienceType },
-        ruleEdit: null,
-        addRuleMenu: false,
-      };
-    }
     case 'CLOSE_EDITOR':
       return { ...state, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null };
     case 'BUILDER_PATCH':

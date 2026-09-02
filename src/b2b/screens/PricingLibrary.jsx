@@ -93,7 +93,10 @@ export function PricingLibrary() {
       fullWidth
       title="Pricing"
       subtitle="Make a price once, then assign it to companies or customers."
-      primaryAction={{ content: 'Create pricing', onAction: () => dispatch({ type: 'OPEN_EDITOR', policy: null, context: { mode: 'add-base' } }) }}
+      primaryAction={{ content: 'Create base pricing', onAction: () => dispatch({ type: 'OPEN_EDITOR', policy: null, kind: 'base', context: { mode: 'add-base' } }) }}
+      secondaryActions={[
+        { content: 'Create quantity pricing', onAction: () => dispatch({ type: 'OPEN_EDITOR', policy: null, kind: 'quantity', context: { mode: 'add-quantity' } }) },
+      ]}
     >
       <Card padding="0">
         <Box padding="300" paddingBlockEnd="200">

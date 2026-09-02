@@ -10,7 +10,6 @@ import {
   Box,
   Badge,
   Button,
-  ButtonGroup,
   Select,
   ChoiceList,
   RadioButton,
@@ -107,13 +106,11 @@ export function PricingEditor() {
             </Banner>
           )}
           {isNew && (
+            // The type is fixed by how the editor was opened (base vs quantity) —
+            // no in-place switch, which is confusing mid-create. Just describe it.
             <Card>
-              <BlockStack gap="200">
-                <Text as="h3" variant="headingSm">Pricing type</Text>
-                <ButtonGroup variant="segmented">
-                  <Button pressed={!isQuantity} onClick={() => dispatch({ type: 'SWITCH_KIND', kind: 'base' })}>Base pricing</Button>
-                  <Button pressed={isQuantity} onClick={() => dispatch({ type: 'SWITCH_KIND', kind: 'quantity' })}>Quantity pricing</Button>
-                </ButtonGroup>
+              <BlockStack gap="100">
+                <Text as="h3" variant="headingSm">{isQuantity ? 'Quantity pricing' : 'Base pricing'}</Text>
                 <Text as="p" tone="subdued" variant="bodySm">
                   {isQuantity
                     ? 'Volume discounts that kick in above a quantity threshold, on selected products.'
