@@ -207,13 +207,16 @@ function reducer(state, action) {
     case 'CQ_PATCH':
       return { ...state, createQuote: { ...state.createQuote, ...action.patch } };
     case 'CREATE_QUOTE':
+      // Open the newly created quote (it's also prepended to the submission list).
       return {
         ...state,
         quotes: { ...state.quotes, [action.id]: action.quote },
         meta: { ...state.meta, [action.id]: action.meta },
         order: [action.id, ...state.order],
         cqSeq: state.cqSeq + 1,
-        view: 'submissionList',
+        currentQuoteId: action.id,
+        view: 'quoteDetail',
+        toast: `Quote ${action.quote.number} created`,
       };
     // ----- B2B relationship / sync flow -----
     case 'INSTALL_B2B': {
