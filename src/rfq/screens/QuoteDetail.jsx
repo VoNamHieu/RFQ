@@ -46,8 +46,8 @@ function quoteCompanyKey(quote) {
 // Small placeholder product thumbnail (no external image — CSP-safe).
 function Thumb() {
   return (
-    <Box background="bg-surface-secondary" borderRadius="200" borderWidth="025" borderColor="border" width="48px" minHeight="48px">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 48 }}>
+    <Box background="bg-surface-secondary" borderRadius="200" borderWidth="025" borderColor="border" width="40px" minHeight="40px">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 40 }}>
         <Icon source={ProductIcon} tone="subdued" />
       </div>
     </Box>
@@ -63,7 +63,7 @@ function ProductsCard({ lines, setLines, dispatch }) {
 
   return (
     <Card>
-      <BlockStack gap="300">
+      <BlockStack gap="200">
         <InlineStack align="space-between" blockAlign="center">
           <Text as="h2" variant="headingSm">Products</Text>
           <Button icon={MenuHorizontalIcon} variant="tertiary" accessibilityLabel="Product actions" onClick={() => dispatch({ type: 'TOAST', message: 'Product actions' })} />
@@ -92,7 +92,7 @@ function ProductsCard({ lines, setLines, dispatch }) {
             const price = Number(l.price) || 0;
             const qty = Number(l.qty ?? l.quantity ?? 1) || 0;
             return (
-              <Box key={i} paddingBlock="200" borderBlockEndWidth="025" borderColor="border">
+              <Box key={i} paddingBlock="150" borderBlockEndWidth="025" borderColor="border">
                 <InlineStack gap="300" blockAlign="start" wrap={false}>
                   <Box width="44%">
                     <InlineStack gap="200" blockAlign="start" wrap={false}>
@@ -156,10 +156,10 @@ function PaymentCard({ subtotal, dispatch, onSendProposal }) {
   );
   return (
     <Card>
-      <BlockStack gap="300">
+      <BlockStack gap="200">
         <Text as="h2" variant="headingSm">Payment Information</Text>
-        <Box borderColor="border" borderWidth="025" borderRadius="200" padding="400">
-          <BlockStack gap="300">
+        <Box borderColor="border" borderWidth="025" borderRadius="200" padding="300">
+          <BlockStack gap="200">
             <InlineStack align="space-between">
               <Text as="span" fontWeight="semibold">Subtotal</Text>
               <Text as="span" fontWeight="semibold">{money2(subtotal)}</Text>
@@ -193,7 +193,7 @@ function CustomerCard({ quote }) {
 
   return (
     <Card>
-      <BlockStack gap="300">
+      <BlockStack gap="200">
         <InlineStack align="space-between" blockAlign="center">
           <Text as="h2" variant="headingSm">Customer</Text>
           <Button icon={MenuHorizontalIcon} variant="tertiary" accessibilityLabel="Customer actions" />
@@ -303,7 +303,7 @@ export function QuoteDetail() {
       >
         <Layout>
           <Layout.Section>
-            <BlockStack gap="400">
+            <BlockStack gap="300">
               <ProductsCard lines={lines} setLines={setLines} dispatch={dispatch} />
               {isDealClosed && (
                 <InlineStack>
@@ -319,7 +319,7 @@ export function QuoteDetail() {
           </Layout.Section>
 
           <Layout.Section variant="oneThird">
-            <BlockStack gap="400">
+            <BlockStack gap="300">
               <CustomerCard quote={quote} />
               <AiCard dispatch={dispatch} />
               <B2BRelationshipCard quote={quote} />
