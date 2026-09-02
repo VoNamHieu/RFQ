@@ -235,9 +235,9 @@ function reducer(state, action) {
       return { ...state, view: 'createQuote', createQuote: emptyCreateQuote() };
     case 'CQ_PATCH':
       return { ...state, createQuote: { ...state.createQuote, ...action.patch } };
-    case 'CREATE_QUOTE':
+    case 'CREATE_QUOTE': {
       // Open the newly created quote (it's also prepended to the submission list).
-      return {
+      const next = {
         ...state,
         quotes: { ...state.quotes, [action.id]: action.quote },
         meta: { ...state.meta, [action.id]: action.meta },
@@ -247,6 +247,17 @@ function reducer(state, action) {
         view: 'quoteDetail',
         toast: `Quote ${action.quote.number} created`,
       };
+      // openSync: the "Set up in B2B app" prompt (company not in B2B) launches the
+      // sync flow straight onto the new quote's detail.
+      if (action.openSync) {
+        const q = action.quote;
+        const companyKey = q.fixedCompanyKey || q.recommendedKey || q.previewCompanyKey || q.linkedCompanyKey || null;
+        if (companyKey) {
+          next.syncFlow = { step: 'sync', quoteId: action.id, companyKey, autoSync: false, location: '', role: 'Ordering only' };
+        }
+      }
+      return next;
+    }
     // ----- B2B relationship / sync flow -----
     case 'INSTALL_B2B': {
       const q = { ...state.quotes[action.id], state: 'new', syncMode: 'selector' };

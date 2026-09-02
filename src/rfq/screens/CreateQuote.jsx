@@ -132,19 +132,23 @@ export function CreateQuote() {
   const isValidLine = (l) => Number(l.price) >= 0 && Number(l.qty) > 0 && (!l.custom || (l.title || '').trim());
   const canCreate = !!customer && lines.some(isValidLine);
 
-  const cqCreate = () => {
+  const cqCreate = ({ openSync = false } = {}) => {
     if (!canCreate) return;
     const id = String(1052001 + state.cqSeq);
     const valid = lines.filter(isValidLine);
     const first = valid[0];
+    // A company already in the B2B app is linked (managed); one that isn't yet is a
+    // "new" B2B relationship the merchant syncs from the quote detail's sync flow.
     const quote = {
       number: id,
       title: `Quote No.${id}`,
       scenario: 'Merchant created',
       received: 'Received by Aug 29 2026, 10:00 AM',
       dueDate: cq.dueDate || '',
-      state: 'linked',
-      linkedCompanyKey: customer.companyKey,
+      state: companyInB2B ? 'linked' : 'new',
+      ...(companyInB2B
+        ? { linkedCompanyKey: customer.companyKey }
+        : { fixedCompanyKey: customer.companyKey, syncMode: 'fixed' }),
       amountOverride: subtotal,
       lines: valid.map((l) => ({
         title: lineTitle(l),
@@ -160,9 +164,11 @@ export function CreateQuote() {
       status: 'New Received',
       progress: 'Created',
       assignee: 'Unassigned',
-      b2b: !!shopifyCompanyDirectory[customer.companyKey]?.inB2B,
+      b2b: companyInB2B,
     };
-    dispatch({ type: 'CREATE_QUOTE', id, quote, meta });
+    // openSync (only meaningful for a not-in-B2B company): create the quote, then
+    // launch the Sync-to-B2B flow on it so the company is set up with location/role.
+    dispatch({ type: 'CREATE_QUOTE', id, quote, meta, openSync: openSync && !companyInB2B });
   };
 
   // ---- Line table ----
@@ -241,7 +247,7 @@ export function CreateQuote() {
       fullWidth
       backAction={{ content: 'Submission list', onAction: () => dispatch({ type: 'NAVIGATE', view: 'submissionList' }) }}
       title="Create quote"
-      primaryAction={{ content: 'Create quote', disabled: !canCreate, onAction: cqCreate }}
+      primaryAction={{ content: 'Create quote', disabled: !canCreate, onAction: () => cqCreate() }}
     >
       {showPricingPrompt && (
         <Box paddingBlockEnd="400">
@@ -254,7 +260,20 @@ export function CreateQuote() {
             }
             action={{
               content: companyInB2B ? 'Create pricing in B2B app' : 'Set up in B2B app',
-              onAction: () => handoffCompanyToB2B(state, customer.companyKey, customer),
+              onAction: () => {
+                // Managed company (Delta): straight to its Pricing tab in the B2B app.
+                if (companyInB2B) {
+                  handoffCompanyToB2B(state, customer.companyKey, customer);
+                  return;
+                }
+                // Not in B2B yet (Watson): sync it first via the proper flow, which
+                // needs a quote — create it, then the sync modal opens on its detail.
+                if (!canCreate) {
+                  dispatch({ type: 'TOAST', message: 'Add at least one product first, then set up the company in B2B.' });
+                  return;
+                }
+                cqCreate({ openSync: true });
+              },
             }}
           >
             <p>
