@@ -158,6 +158,7 @@ export function SubmissionList() {
 
   return (
     <Page
+      fullWidth
       title="Submission list"
       primaryAction={{ content: 'Create a quote', onAction: () => dispatch({ type: 'START_CREATE_QUOTE' }) }}
       secondaryActions={[

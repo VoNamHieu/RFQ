@@ -439,7 +439,7 @@ export function Analytics({ embeddedCompanyId = null }) {
 
   if (embeddedCompanyId) return content;
   return (
-    <Page title="Analytics" subtitle="B2B ordering and pricing performance.">
+    <Page fullWidth title="Analytics" subtitle="B2B ordering and pricing performance.">
       {content}
     </Page>
   );

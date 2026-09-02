@@ -172,6 +172,7 @@ export function QuoteDetail() {
   return (
     <>
     <Page
+      fullWidth
       backAction={{ content: 'Submission list', onAction: () => dispatch({ type: 'NAVIGATE', view: 'submissionList' }) }}
       title={`Quote No.${quote.number}`}
       subtitle={quote.received || undefined}

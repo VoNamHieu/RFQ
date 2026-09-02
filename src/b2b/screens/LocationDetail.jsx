@@ -153,6 +153,7 @@ export function LocationDetail() {
 
   return (
     <Page
+      fullWidth
       backAction={{ content: 'Locations', onAction: () => dispatch({ type: 'OPEN_COMPANY', id: company.id, tab: 'locations' }) }}
       title={location.name}
       subtitle={`${company.name} · Location`}

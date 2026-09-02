@@ -231,6 +231,7 @@ export function CreateQuote() {
 
   return (
     <Page
+      fullWidth
       backAction={{ content: 'Submission list', onAction: () => dispatch({ type: 'NAVIGATE', view: 'submissionList' }) }}
       title="Create quote"
       primaryAction={{ content: 'Create quote', disabled: !canCreate, onAction: cqCreate }}

@@ -92,6 +92,7 @@ export function QuoteDetail() {
 
   return (
     <Page
+      fullWidth
       backAction={{
         content: 'Quotes',
         onAction: () => dispatch({ type: 'OPEN_COMPANY', id: quote.company, tab: 'quotes' }),

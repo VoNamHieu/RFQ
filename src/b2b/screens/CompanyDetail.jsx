@@ -47,6 +47,7 @@ export function CompanyDetail() {
 
   return (
     <Page
+      fullWidth
       backAction={{ content: 'Companies', onAction: () => dispatch({ type: 'NAVIGATE', view: 'customers' }) }}
       title={company.name}
       subtitle={`${company.source ? `From ${company.source}` : 'Active'} · ${locationCount} location${locationCount === 1 ? '' : 's'}`}

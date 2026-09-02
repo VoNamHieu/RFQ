@@ -33,6 +33,7 @@ export function Settings() {
 
   return (
     <Page
+      fullWidth
       title="Settings"
       primaryAction={{ content: 'Save', onAction: () => toast('Settings saved') }}
       secondaryActions={[{ content: 'Reset sample data', onAction: resetDemo }]}

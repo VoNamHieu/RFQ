@@ -50,7 +50,7 @@ export function CompaniesList() {
   // First-run empty state (no companies at all) — the B2B boundary explainer.
   if (state.db.companies.length === 0) {
     return (
-      <Page title="Companies" subtitle="Who gets which price.">
+      <Page fullWidth title="Companies" subtitle="Who gets which price.">
         <Card>
           <EmptyState
             heading="No companies linked yet"
@@ -133,6 +133,7 @@ export function CompaniesList() {
 
   return (
     <Page
+      fullWidth
       title="Companies"
       subtitle="Who gets which price."
       primaryAction={{ content: 'Add company', onAction: () => dispatch({ type: 'OPEN_ADD_COMPANY' }) }}

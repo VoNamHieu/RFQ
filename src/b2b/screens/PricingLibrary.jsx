@@ -90,6 +90,7 @@ export function PricingLibrary() {
 
   return (
     <Page
+      fullWidth
       title="Pricing"
       subtitle="Make a price once, then assign it to companies or customers."
       primaryAction={{ content: 'Create pricing', onAction: () => dispatch({ type: 'OPEN_EDITOR', policy: null, context: { mode: 'add-base' } }) }}
