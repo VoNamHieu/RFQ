@@ -138,17 +138,19 @@ export function PricingEditor() {
             </BlockStack>
           </Card>
 
-          <ActiveDatesCard builder={builder} patch={patch} />
-
           {isQuantity ? (
             <>
-              <ProductScopeCard builder={builder} patch={patch} products={state.db.products} />
               <VolumeRangesCard />
+              <ProductScopeCard builder={builder} patch={patch} products={state.db.products} />
               <VolumeBasisCard builder={builder} patch={patch} />
             </>
           ) : (
             <>
-              <ProductScopeCard builder={builder} patch={patch} products={state.db.products} />
+              {/* In the multi-base model, product scope lives in the Pricing rules
+                  below (each rule targets all products, or a collection/vendor/tag),
+                  so a standalone "Applies to" card just duplicates it. Only the
+                  legacy single-base model needs the explicit scope + default price. */}
+              {!versionFlags().multiBase && <ProductScopeCard builder={builder} patch={patch} products={state.db.products} />}
               {!versionFlags().multiBase && <DefaultPriceCard />}
               <RuleBuilderCard />
               <ProductOverridesCard builder={builder} patch={patch} products={state.db.products} />
@@ -172,6 +174,9 @@ export function PricingEditor() {
               </Box>
             </BlockStack>
           </Card>
+
+          {/* Scheduling last, matching the god-file editor order. */}
+          <ActiveDatesCard builder={builder} patch={patch} />
         </BlockStack>
       </Modal.Section>
     </Modal>
