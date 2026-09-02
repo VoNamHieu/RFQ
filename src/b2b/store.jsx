@@ -185,7 +185,7 @@ function reducer(state, action) {
     }
     // ----- Add-company wizard -----
     case 'OPEN_ADD_COMPANY':
-      return { ...state, addCompany: { step: 1, shopifyId: null, baseId: '' } };
+      return { ...state, addCompany: { step: 1, shopifyId: null, baseId: '', quantityId: '', search: '', termsExpanded: false } };
     case 'ADD_COMPANY_PATCH':
       return { ...state, addCompany: { ...state.addCompany, ...action.patch } };
     case 'ADD_COMPANY_STEP':
@@ -203,7 +203,7 @@ function reducer(state, action) {
         name: shp.name,
         mainContact: shp.contacts?.[0]?.name || '',
         source: 'Company application',
-        pricing: { base: ac.baseId ? [{ id: ac.baseId, priority: 1 }] : null, quantity: null },
+        pricing: { base: ac.baseId ? [{ id: ac.baseId, priority: 1 }] : null, quantity: ac.quantityId || null },
         revenue: 0,
         locations: (shp.locations || []).map((l) => ({ id: l.id, name: l.name, terms: l.terms, ordering: l.ordering, buyers: 0, lastOrder: '—' })),
         contacts: (shp.contacts || []).map((c) => ({ name: c.name, email: c.email, role: c.role, access: c.access, locations: c.location })),
