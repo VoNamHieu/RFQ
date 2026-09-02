@@ -103,39 +103,72 @@ export function b2bPayloadForQuote(state, quoteId) {
   };
 }
 
+// The seed quote ids (everything else in state.quotes was created in-session).
+const SEED_QUOTE_IDS = new Set(SUBMISSION_ORDER);
+
 function serializeDemoState(state) {
-  const quotes = {};
+  const quotes = {}; // mutable-field patches for the SEED quotes
+  const newQuotes = {}; // full records (+ meta) for quotes created in-session
   const b2bCompanies = {};
   Object.keys(state.quotes).forEach((id) => {
     const q = state.quotes[id];
-    quotes[id] = {
-      state: q.state,
-      syncedCompanyKey: q.syncedCompanyKey || null,
-      assignedLocation: q.assignedLocation || null,
-      assignedRole: q.assignedRole || null,
-      createdCompanyName: q.createdCompanyName || null,
-      quoteAutoSyncEnabled: !!q.quoteAutoSyncEnabled,
-    };
+    if (SEED_QUOTE_IDS.has(id)) {
+      quotes[id] = {
+        state: q.state,
+        syncedCompanyKey: q.syncedCompanyKey || null,
+        assignedLocation: q.assignedLocation || null,
+        assignedRole: q.assignedRole || null,
+        createdCompanyName: q.createdCompanyName || null,
+        quoteAutoSyncEnabled: !!q.quoteAutoSyncEnabled,
+      };
+    } else {
+      newQuotes[id] = { quote: q, meta: state.meta[id] || null };
+    }
     if (q.syncedCompanyKey) {
       const payload = b2bPayloadForQuote(state, id);
       if (payload) b2bCompanies[q.syncedCompanyKey] = payload;
     }
   });
-  return { currentQuoteId: state.currentQuoteId, quotes, createdCompanies: state.createdCompanies, b2bCompanies };
+  return {
+    currentQuoteId: state.currentQuoteId,
+    cqSeq: state.cqSeq,
+    quotes,
+    newQuotes,
+    newOrder: state.order.filter((id) => !SEED_QUOTE_IDS.has(id)),
+    createdCompanies: state.createdCompanies,
+    b2bCompanies,
+  };
 }
 
 function hydrate(base) {
   const s = readJSON(DEMO_STATE_KEY);
   if (!s) return base;
   const quotes = { ...base.quotes };
+  const meta = { ...base.meta };
+  // Re-apply mutable fields onto the seed quotes.
   if (s.quotes) {
     Object.keys(s.quotes).forEach((id) => {
       if (quotes[id]) quotes[id] = { ...quotes[id], ...s.quotes[id] };
     });
   }
+  // Restore quotes created in a prior session (full record + meta).
+  if (s.newQuotes) {
+    Object.keys(s.newQuotes).forEach((id) => {
+      const nq = s.newQuotes[id];
+      if (nq && nq.quote) {
+        quotes[id] = nq.quote;
+        if (nq.meta) meta[id] = nq.meta;
+      }
+    });
+  }
+  // Prepend the created ids (newest-first) to the seed order.
+  const createdOrder = (s.newOrder || []).filter((id) => quotes[id] && !base.order.includes(id));
   return {
     ...base,
     quotes,
+    meta,
+    order: [...createdOrder, ...base.order],
+    cqSeq: typeof s.cqSeq === 'number' ? s.cqSeq : base.cqSeq,
     createdCompanies: s.createdCompanies || {},
     currentQuoteId: s.currentQuoteId && quotes[s.currentQuoteId] ? s.currentQuoteId : base.currentQuoteId,
   };
