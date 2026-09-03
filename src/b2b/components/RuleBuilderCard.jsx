@@ -284,6 +284,11 @@ export function RuleBuilderCard() {
       active={addMenu}
       onClose={() => setAddMenu(false)}
       preferredAlignment="left"
+      // The editor is a custom full-screen overlay at z-index 517 (PricingEditor),
+      // above Polaris' default overlay z-index (400) — so without this the menu
+      // opens *behind* the editor and looks like the button does nothing. Lift it
+      // over the editor but keep it under the Frame toast (520).
+      zIndexOverride={518}
       activator={
         <Button icon={PlusIcon} disclosure onClick={() => setAddMenu((v) => !v)}>
           Add rule
