@@ -12,19 +12,7 @@ export function ActiveDatesCard({ builder, patch }) {
   return (
     <Card>
       <BlockStack gap="300">
-        <Text as="h3" variant="headingSm">Status &amp; active dates</Text>
-        <InlineGrid columns={{ xs: 1, sm: 2 }} gap="300">
-          <Select
-            label="Status"
-            options={[
-              { label: 'Active', value: 'Active' },
-              { label: 'Inactive (turned off)', value: 'Inactive' },
-              { label: 'Scheduled', value: 'Scheduled' },
-            ]}
-            value={builder.status || 'Active'}
-            onChange={(v) => patch({ status: v })}
-          />
-        </InlineGrid>
+        <Text as="h3" variant="headingSm">Active dates</Text>
         <BlockStack gap="150">
           <RadioButton label="Always on" checked={!dated} id="valid-evergreen" name="validity" onChange={() => patch({ validityType: 'evergreen' })} />
           <RadioButton label="Set a start / end date" checked={dated} id="valid-dated" name="validity" onChange={() => patch({ validityType: 'dated' })} />

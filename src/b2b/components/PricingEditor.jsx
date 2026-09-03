@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   BlockStack,
@@ -17,7 +17,7 @@ import {
   Divider,
   Tabs,
 } from '@shopify/polaris';
-import { DeleteIcon } from '@shopify/polaris-icons';
+import { DeleteIcon, XIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { RuleBuilderCard } from './RuleBuilderCard.jsx';
 import { VolumeRangesCard } from './VolumeRangesCard.jsx';
@@ -33,6 +33,21 @@ export function PricingEditor() {
   const { state, dispatch } = useStore();
   const [forkConfirm, setForkConfirm] = useState(false);
   const builder = state.builder;
+  const isOpen = !!builder;
+  // Full-page overlay: lock body scroll and close on Escape while open.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e) => {
+      if (e.key === 'Escape') dispatch({ type: 'CLOSE_EDITOR' });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [isOpen, dispatch]);
   if (!builder) return null;
 
   const isNew = !builder.id;
@@ -59,18 +74,9 @@ export function PricingEditor() {
     else dispatch({ type: 'SAVE_EDITOR' });
   };
 
+  const editorTitle = isNew ? `Create ${isQuantity ? 'quantity' : 'base'} pricing` : `Edit pricing: ${builder.name}`;
   return (
-    <Modal
-      open
-      onClose={() => dispatch({ type: 'CLOSE_EDITOR' })}
-      title={isNew ? `Create ${isQuantity ? 'quantity' : 'base'} pricing` : `Edit pricing: ${builder.name}`}
-      size="large"
-      primaryAction={{
-        content: isNew ? 'Create pricing' : 'Save',
-        onAction: onSave,
-      }}
-      secondaryActions={[{ content: 'Cancel', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }]}
-    >
+    <>
       {forkConfirm && (
         <Modal
           open
@@ -103,7 +109,32 @@ export function PricingEditor() {
           </Modal.Section>
         </Modal>
       )}
-      <Modal.Section>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={editorTitle}
+        style={{ position: 'fixed', inset: 0, zIndex: 517, display: 'flex', flexDirection: 'column', background: 'var(--p-color-bg, #f1f1f1)' }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '10px 20px',
+            background: 'var(--p-color-bg-surface, #fff)',
+            borderBottom: '1px solid var(--p-color-border, #e3e3e3)',
+            flex: '0 0 auto',
+          }}
+        >
+          <Text as="h2" variant="headingMd">{editorTitle}</Text>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Button onClick={() => dispatch({ type: 'CLOSE_EDITOR' })}>Cancel</Button>
+            <Button variant="primary" onClick={onSave}>{isNew ? 'Create pricing' : 'Save'}</Button>
+            <Button variant="tertiary" icon={XIcon} accessibilityLabel="Close" onClick={() => dispatch({ type: 'CLOSE_EDITOR' })} />
+          </div>
+        </div>
+        <div style={{ flex: '1 1 auto', overflowY: 'auto' }}>
+          <div style={{ maxWidth: 1160, margin: '0 auto', padding: '20px 20px 64px' }}>
         <BlockStack gap="400">
           {sharedElsewhere && (
             <Banner tone="info">
@@ -122,82 +153,110 @@ export function PricingEditor() {
             onSelect={(i) => dispatch({ type: 'SET_BUILDER_TAB', tab: i === 1 ? 'appearance' : 'settings' })}
           />
 
-          {pricingTab === 'settings' ? (
+          {/* Full-page two-column layout (god-file builder-shell): the config in
+              the main column, and Rule status / resolution / summary in the aside. */}
+          <InlineGrid columns={{ xs: '1fr', md: '2fr 1fr' }} gap="400" alignItems="start">
             <BlockStack gap="400">
-              {isNew && (
-                // The type is fixed by how the editor was opened (base vs quantity)
-                // — no in-place switch, which is confusing mid-create. Just describe it.
-                <Card>
-                  <BlockStack gap="100">
-                    <Text as="h3" variant="headingSm">{isQuantity ? 'Quantity pricing' : 'Base pricing'}</Text>
-                    <Text as="p" tone="subdued" variant="bodySm">
-                      {isQuantity
-                        ? 'Volume discounts that kick in above a quantity threshold, on selected products.'
-                        : 'A price that covers the whole catalog, with optional rules and per-product overrides.'}
-                    </Text>
-                  </BlockStack>
-                </Card>
-              )}
-
-              <Card>
-                <BlockStack gap="300">
-                  <Text as="h3" variant="headingSm">Pricing details</Text>
-                  <InlineGrid columns={{ xs: 1, sm: '2fr 1fr' }} gap="300">
-                    <TextField
-                      label="Name"
-                      value={builder.name}
-                      onChange={(v) => patch({ name: v })}
-                      maxLength={255}
-                      showCharacterCount
-                      autoComplete="off"
-                    />
-                    <TextField
-                      label="Priority (0–99)"
-                      type="number"
-                      min={0}
-                      max={99}
-                      value={String(builder.priority ?? '')}
-                      onChange={(v) => patch({ priority: Number(v) })}
-                      helpText="Lower number applies first; the rest are fallbacks. Company/Location and customer/tag precedence isn’t replaced by this."
-                      autoComplete="off"
-                    />
-                  </InlineGrid>
-                </BlockStack>
-              </Card>
-
-              {isQuantity ? (
+              {pricingTab === 'settings' ? (
                 <>
-                  <VolumeRangesCard />
-                  <ProductScopeCard builder={builder} patch={patch} products={state.db.products} />
-                  <VolumeBasisCard builder={builder} patch={patch} />
+                  {isNew && (
+                    // The type is fixed by how the editor was opened (base vs quantity)
+                    // — no in-place switch, which is confusing mid-create. Just describe it.
+                    <Card>
+                      <BlockStack gap="100">
+                        <Text as="h3" variant="headingSm">{isQuantity ? 'Quantity pricing' : 'Base pricing'}</Text>
+                        <Text as="p" tone="subdued" variant="bodySm">
+                          {isQuantity
+                            ? 'Volume discounts that kick in above a quantity threshold, on selected products.'
+                            : 'A price that covers the whole catalog, with optional rules and per-product overrides.'}
+                        </Text>
+                      </BlockStack>
+                    </Card>
+                  )}
+
+                  <Card>
+                    <BlockStack gap="300">
+                      <Text as="h3" variant="headingSm">Pricing details</Text>
+                      <InlineGrid columns={{ xs: 1, sm: '2fr 1fr' }} gap="300">
+                        <TextField
+                          label="Name"
+                          value={builder.name}
+                          onChange={(v) => patch({ name: v })}
+                          maxLength={255}
+                          showCharacterCount
+                          autoComplete="off"
+                        />
+                        <TextField
+                          label="Priority (0–99)"
+                          type="number"
+                          min={0}
+                          max={99}
+                          value={String(builder.priority ?? '')}
+                          onChange={(v) => patch({ priority: Number(v) })}
+                          helpText="Lower number applies first; the rest are fallbacks. Company/Location and customer/tag precedence isn’t replaced by this."
+                          autoComplete="off"
+                        />
+                      </InlineGrid>
+                    </BlockStack>
+                  </Card>
+
+                  {isQuantity ? (
+                    <>
+                      <VolumeRangesCard />
+                      <ProductScopeCard builder={builder} patch={patch} products={state.db.products} />
+                      <VolumeBasisCard builder={builder} patch={patch} />
+                    </>
+                  ) : (
+                    <>
+                      {/* In the multi-base model, product scope lives in the Pricing rules
+                          below (each rule targets all products, or a collection/vendor/tag),
+                          so a standalone "Applies to" card just duplicates it. Only the
+                          legacy single-base model needs the explicit scope + default price. */}
+                      {!versionFlags().multiBase && <ProductScopeCard builder={builder} patch={patch} products={state.db.products} />}
+                      {!versionFlags().multiBase && <DefaultPriceCard />}
+                      <RuleBuilderCard />
+                      <ProductOverridesCard builder={builder} patch={patch} products={state.db.products} />
+                    </>
+                  )}
+
+                  {/* Scheduling last, matching the god-file editor order. */}
+                  <ActiveDatesCard builder={builder} patch={patch} />
                 </>
               ) : (
-                <>
-                  {/* In the multi-base model, product scope lives in the Pricing rules
-                      below (each rule targets all products, or a collection/vendor/tag),
-                      so a standalone "Applies to" card just duplicates it. Only the
-                      legacy single-base model needs the explicit scope + default price. */}
-                  {!versionFlags().multiBase && <ProductScopeCard builder={builder} patch={patch} products={state.db.products} />}
-                  {!versionFlags().multiBase && <DefaultPriceCard />}
-                  <RuleBuilderCard />
-                  <ProductOverridesCard builder={builder} patch={patch} products={state.db.products} />
-                </>
+                <AppearanceTab builder={builder} patch={patch} kindWord={kindWord} product={state.db.products[0]} />
               )}
-
-              {/* How the price resolves — base only (a volume price has no single
-                  buyer-pays number), matching the god-file resolutionPreview. */}
-              {!isQuantity && <ResolutionCard builder={builder} products={state.db.products} />}
-              <SummaryCard builder={builder} isQuantity={isQuantity} />
-
-              {/* Scheduling last, matching the god-file editor order. */}
-              <ActiveDatesCard builder={builder} patch={patch} />
             </BlockStack>
-          ) : (
-            <AppearanceTab builder={builder} patch={patch} kindWord={kindWord} product={state.db.products[0]} />
-          )}
+
+            {/* Aside (god-file builder-side): status, resolution, summary. */}
+            <BlockStack gap="400">
+              <RuleStatusCard builder={builder} patch={patch} />
+              {pricingTab === 'settings' && !isQuantity && <ResolutionCard builder={builder} products={state.db.products} />}
+              <SummaryCard builder={builder} isQuantity={isQuantity} />
+            </BlockStack>
+          </InlineGrid>
         </BlockStack>
-      </Modal.Section>
-    </Modal>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// Rule status (god-file ruleStatusCard), shown in the aside: an on/off toggle.
+function RuleStatusCard({ builder, patch }) {
+  const on = (builder.status || 'Active') !== 'Inactive';
+  return (
+    <Card>
+      <InlineStack align="space-between" blockAlign="center" gap="200" wrap={false}>
+        <InlineStack gap="200" blockAlign="center">
+          <Text as="h3" variant="headingSm">Rule status</Text>
+          <Badge tone={on ? 'success' : undefined}>{on ? 'Active' : 'Inactive'}</Badge>
+        </InlineStack>
+        <Button size="slim" onClick={() => patch({ status: on ? 'Inactive' : 'Active' })}>
+          {on ? 'Turn off' : 'Turn on'}
+        </Button>
+      </InlineStack>
+    </Card>
   );
 }
 
