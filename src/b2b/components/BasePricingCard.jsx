@@ -13,7 +13,6 @@ import {
   BlockStack,
   Box,
   Tooltip,
-  EmptyState,
   Icon,
 } from '@shopify/polaris';
 import { EditIcon, ExchangeIcon, XCircleIcon, PlusIcon, SearchIcon } from '@shopify/polaris-icons';
@@ -21,6 +20,7 @@ import { useStore } from '../store.jsx';
 import { companyBaseEntries, policyStatus } from '../pricing.js';
 import { openBuildFromQuotes } from './BuildFromQuotes.jsx';
 import { versionFlags } from '../../shared/versions.js';
+import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 
 const PAGE_SIZES = [5, 10, 20, 100];
 
@@ -125,7 +125,7 @@ export function BasePricingCard({ company }) {
           <Text as="h2" variant="headingSm">
             Base pricing
           </Text>
-          <EmptyState
+          <EmptyBlock
             heading="No base pricing yet"
             action={{ content: 'Add base pricing', onAction: () => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'add' }) }}
             secondaryAction={
@@ -133,10 +133,9 @@ export function BasePricingCard({ company }) {
                 ? { content: 'Build pricing from closed quotes', onAction: () => toast('Build from quotes') }
                 : undefined
             }
-            image=""
           >
-            <p>Assign a base pricing so buyers get a B2B price. You can add more than one — the lowest priority applies first.</p>
-          </EmptyState>
+            Assign a base pricing so buyers get a B2B price. You can add more than one — the lowest priority applies first.
+          </EmptyBlock>
         </BlockStack>
       </Card>
     );

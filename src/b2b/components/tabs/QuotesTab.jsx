@@ -8,8 +8,8 @@ import {
   Box,
   Tabs,
   Banner,
-  EmptyState,
 } from '@shopify/polaris';
+import { EmptyBlock } from '../../../shared/EmptyBlock.jsx';
 import { useStore } from '../../store.jsx';
 
 // quote.status → Badge tone (undefined = the default neutral badge).
@@ -41,9 +41,7 @@ export function QuotesTab({ company }) {
   if (companyQuotes.length === 0) {
     return (
       <Card>
-        <EmptyState heading="No quotes yet" image="">
-          <p>Quotes from this company will show up here.</p>
-        </EmptyState>
+        <EmptyBlock heading="No quotes yet">Quotes from this company will show up here.</EmptyBlock>
       </Card>
     );
   }

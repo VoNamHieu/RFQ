@@ -1,5 +1,6 @@
 import React from 'react';
-import { Card, IndexTable, Text, BlockStack, Box, InlineStack, Button, EmptyState } from '@shopify/polaris';
+import { Card, IndexTable, Text, BlockStack, Box, InlineStack, Button } from '@shopify/polaris';
+import { EmptyBlock } from '../../../shared/EmptyBlock.jsx';
 import { useStore } from '../../store.jsx';
 
 export function ContactsTab({ company }) {
@@ -9,9 +10,7 @@ export function ContactsTab({ company }) {
   if (contacts.length === 0) {
     return (
       <Card>
-        <EmptyState heading="No contacts yet" image="">
-          <p>Company contacts will show up here.</p>
-        </EmptyState>
+        <EmptyBlock heading="No contacts yet">Company contacts will show up here.</EmptyBlock>
       </Card>
     );
   }

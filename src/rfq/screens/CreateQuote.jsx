@@ -15,11 +15,11 @@ import {
   InlineStack,
   Box,
   Divider,
-  EmptyState,
   Checkbox,
   Icon,
   Banner,
 } from '@shopify/polaris';
+import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import { PlusIcon, XIcon } from '@shopify/polaris-icons';
 import { useStore, handoffCompanyToB2B } from '../store.jsx';
 import { money, subtotalOf } from '../utils.js';
@@ -314,9 +314,9 @@ export function CreateQuote() {
             </Box>
             {lines.length === 0 ? (
               <Box padding="400">
-                <EmptyState heading="No products yet" image="">
-                  <p>Add priced items from the company’s pricing, a product from the catalog, or a custom item.</p>
-                </EmptyState>
+                <EmptyBlock heading="No products yet">
+                  Add priced items from the company’s pricing, a product from the catalog, or a custom item.
+                </EmptyBlock>
               </Box>
             ) : (
               <>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Card, IndexTable, Badge, Text, BlockStack, Box, InlineStack, Select, EmptyState } from '@shopify/polaris';
+import { Card, IndexTable, Badge, Text, BlockStack, Box, InlineStack, Select } from '@shopify/polaris';
+import { EmptyBlock } from '../../../shared/EmptyBlock.jsx';
 import { money } from '../../format.js';
 
 const STATUS_TONE = {
@@ -23,9 +24,7 @@ export function OrdersTab({ company }) {
   if (allOrders.length === 0) {
     return (
       <Card>
-        <EmptyState heading="No orders yet" image="">
-          <p>Orders from this company will show up here.</p>
-        </EmptyState>
+        <EmptyBlock heading="No orders yet">Orders from this company will show up here.</EmptyBlock>
       </Card>
     );
   }
