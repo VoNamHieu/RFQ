@@ -60,11 +60,20 @@ export function demoPolicyId(db) {
   return `pq${n}`;
 }
 export function quoteToBasePricing(name, priority, overrides) {
+  let p = Math.round(Number(priority));
+  if (!Number.isFinite(p)) p = 1;
   return {
     ...newBaseBuilder(),
     name: name || 'Quote prices',
-    priority: Number(priority) || 1,
+    priority: Math.max(0, Math.min(99, p)),
     type: 'Account-specific',
+    // Scope to just the quoted products (god file), so this pricing covers only
+    // those SKUs and doesn't shadow the company's other bases for the rest. A
+    // scope-all base would claim every product and price non-quoted ones at the
+    // Shopify list via pricingRule 'keep'.
+    scopeType: 'products',
+    collection: '',
+    selectedProducts: Object.keys(overrides),
     productAdjustments: overrides,
     explicitEnabled: true,
   };
