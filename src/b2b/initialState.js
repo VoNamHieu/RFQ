@@ -62,6 +62,22 @@ export function buildInitialState() {
         s.toast = applyQuotePricingTransfer(s.db, id, lines, handoff.pricingTransfer);
       }
     }
+  } else {
+    // 3) No handoff: honor a deep-link hash (e.g. RFQ "Create pricing" → Pricing
+    // library) so a redirect can land on a view other than the default.
+    const view = viewFromHash(typeof window !== 'undefined' ? window.location.hash : '');
+    if (view) s.view = view;
   }
   return s;
+}
+
+// Map the URL hash (kept in sync by the nav's `url`s) to an initial view.
+function viewFromHash(hash) {
+  const map = {
+    '#/b2b/pricing': 'pricing',
+    '#/b2b/company': 'customers',
+    '#/b2b/analytics': 'analytics',
+    '#/b2b/settings': 'settings',
+  };
+  return map[hash] || null;
 }

@@ -281,7 +281,8 @@ export function CreateQuote() {
                 }
                 // A regular customer → the B2B app's Pricing library to create a price.
                 const v = activeVersion();
-                window.location.href = v === 'latest' ? '/b2b' : `/b2b?v=${v}`;
+                const base = v === 'latest' ? '/b2b' : `/b2b?v=${v}`;
+                window.location.href = `${base}#/b2b/pricing`;
               },
             }}
           >
@@ -307,7 +308,7 @@ export function CreateQuote() {
                   <Button
                     variant="primary"
                     icon={PlusIcon}
-                    disabled={!customer}
+                    disabled={!customer || !companyHasPricing}
                     onClick={() => setPicker({ mode: 'priced', templateId: null, picks: {}, search: '' })}
                   >
                     Add custom priced items
