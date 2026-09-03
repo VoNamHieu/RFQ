@@ -199,14 +199,6 @@ export function AddCompanyWizard() {
                   </BlockStack>
                 </Box>
               ))}
-              {!anyPricing && (
-                <Banner tone="warning" title="No pricing yet">
-                  <p>
-                    You can still finish setup. The company and its locations are added, but buyers can’t order until
-                    pricing is assigned from the Pricing page.
-                  </p>
-                </Banner>
-              )}
             </BlockStack>
           )}
 
