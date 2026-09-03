@@ -153,6 +153,33 @@ function priceForDetail(profile, product) {
   return { price: applyAdjustment(profile.pricingRule, profile.valueType, profile.value, base), layer: 'base', decidedBy: `${profile.name} · Default price` };
 }
 
+// Single-profile price breakdown for the editor's "How the price resolves"
+// preview: the Shopify price, the profile's default adjustment, a matching
+// conditional rule, an explicit override, and what the buyer pays — same
+// precedence as priceForDetail (override → rule → default).
+export function policyPriceBreakdown(profile, product) {
+  if (!profile || !product) return null;
+  const base = product.list;
+  const defaultPrice = applyAdjustment(profile.pricingRule, profile.valueType, profile.value, base);
+  const ri = matchConditionalRuleIndex(profile, product);
+  const rule =
+    ri >= 0
+      ? {
+          index: ri,
+          price: applyAdjustment(
+            profile.conditionalRules[ri].rule,
+            profile.conditionalRules[ri].valueType || 'percentage',
+            profile.conditionalRules[ri].value,
+            base,
+          ),
+        }
+      : null;
+  const adj = explicitOn(profile) ? (profile.productAdjustments || {})[product.sku] : null;
+  const override = adj && adj.rule ? applyAdjustment(adj.rule, adj.valueType || 'percentage', adj.value, base) : null;
+  const final = override != null ? override : rule ? rule.price : defaultPrice;
+  return { shopify: base, defaultPrice, rule, override, final, inScope: inScope(profile, product.sku) };
+}
+
 // Resolve the B2B price a company pays for a product (legacy resolvedPriceFor):
 // the first in-scope Active base wins (a scope-all base is authoritative and
 // returns the Shopify price when nothing matches); else the quantity slot; else

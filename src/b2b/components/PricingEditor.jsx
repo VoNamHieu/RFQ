@@ -26,7 +26,7 @@ import { versionFlags } from '../../shared/versions.js';
 import { COLLECTIONS } from '../data/constants.js';
 import { money } from '../format.js';
 import { ActiveDatesCard, ProductScopeCard, VolumeBasisCard, ProductOverridesCard } from './pricingEditorCards.jsx';
-import { policyUsageCount, companyBaseEntries, companyQuantityPolicy } from '../pricing.js';
+import { policyUsageCount, companyBaseEntries, companyQuantityPolicy, policyPriceBreakdown, scopeLabel, kindOf } from '../pricing.js';
 
 // Fullscreen-ish pricing editor (spec §2.6). Open whenever state.builder is set.
 export function PricingEditor() {
@@ -143,14 +143,22 @@ export function PricingEditor() {
                 <BlockStack gap="300">
                   <Text as="h3" variant="headingSm">Pricing details</Text>
                   <InlineGrid columns={{ xs: 1, sm: '2fr 1fr' }} gap="300">
-                    <TextField label="Name" value={builder.name} onChange={(v) => patch({ name: v })} autoComplete="off" />
                     <TextField
-                      label="Priority"
+                      label="Name"
+                      value={builder.name}
+                      onChange={(v) => patch({ name: v })}
+                      maxLength={255}
+                      showCharacterCount
+                      autoComplete="off"
+                    />
+                    <TextField
+                      label="Priority (0–99)"
                       type="number"
                       min={0}
+                      max={99}
                       value={String(builder.priority ?? '')}
                       onChange={(v) => patch({ priority: Number(v) })}
-                      helpText="Lower number applies first; the rest are fallbacks."
+                      helpText="Lower number applies first; the rest are fallbacks. Company/Location and customer/tag precedence isn’t replaced by this."
                       autoComplete="off"
                     />
                   </InlineGrid>
@@ -176,6 +184,11 @@ export function PricingEditor() {
                 </>
               )}
 
+              {/* How the price resolves — base only (a volume price has no single
+                  buyer-pays number), matching the god-file resolutionPreview. */}
+              {!isQuantity && <ResolutionCard builder={builder} products={state.db.products} />}
+              <SummaryCard builder={builder} isQuantity={isQuantity} />
+
               {/* Scheduling last, matching the god-file editor order. */}
               <ActiveDatesCard builder={builder} patch={patch} />
             </BlockStack>
@@ -185,6 +198,71 @@ export function PricingEditor() {
         </BlockStack>
       </Modal.Section>
     </Modal>
+  );
+}
+
+// "How the price resolves" (god-file resolutionPreview): for a sample in-scope
+// product, Shopify price → default adjustment → matching rule → explicit price →
+// what the buyer pays. Base pricing only.
+function ResolutionCard({ builder, products }) {
+  const product = products.find((p) => policyPriceBreakdown(builder, p)?.inScope) || products[0];
+  const bd = product ? policyPriceBreakdown(builder, product) : null;
+  if (!bd) return null;
+  const Row = ({ label, value, strong, active }) => (
+    <InlineStack align="space-between" blockAlign="center">
+      <Text as="span" tone={active || strong ? undefined : 'subdued'} variant="bodySm" fontWeight={strong ? 'semibold' : undefined}>
+        {label}
+      </Text>
+      <Text as="span" variant="bodyMd" fontWeight={strong ? 'semibold' : undefined}>
+        {value}
+      </Text>
+    </InlineStack>
+  );
+  const overridden = bd.override != null;
+  return (
+    <Card>
+      <BlockStack gap="200">
+        <Text as="h3" variant="headingSm">How the price resolves</Text>
+        <Text as="p" tone="subdued" variant="bodySm">{product.title}</Text>
+        <BlockStack gap="150">
+          <Row label="Shopify price" value={money(bd.shopify)} />
+          <Row label="Default adjustment" value={money(bd.defaultPrice)} active={!overridden && !bd.rule} />
+          {bd.rule ? <Row label={`Rule ${bd.rule.index + 1}`} value={money(bd.rule.price)} active={!overridden} /> : null}
+          {overridden ? <Row label="Explicit price" value={money(bd.override)} active /> : null}
+          <Divider />
+          <Row label="Buyer pays" value={money(bd.final)} strong />
+        </BlockStack>
+      </BlockStack>
+    </Card>
+  );
+}
+
+// Settings summary (god-file asideSummary): an at-a-glance recap.
+function SummaryCard({ builder, isQuantity }) {
+  const items = [
+    ['Type', isQuantity ? 'Quantity pricing' : 'Base pricing'],
+    ['Products', scopeLabel(builder)],
+    ['Priority', String(builder.priority ?? 0)],
+    ['Status', builder.status || 'Active'],
+  ];
+  return (
+    <Card>
+      <BlockStack gap="200">
+        <Text as="h3" variant="headingSm">Settings summary</Text>
+        <BlockStack gap="150">
+          {items.map(([k, v]) => (
+            <InlineStack key={k} align="space-between" blockAlign="center">
+              <Text as="span" tone="subdued" variant="bodySm">
+                {k}
+              </Text>
+              <Text as="span" variant="bodyMd" fontWeight="medium">
+                {v}
+              </Text>
+            </InlineStack>
+          ))}
+        </BlockStack>
+      </BlockStack>
+    </Card>
   );
 }
 

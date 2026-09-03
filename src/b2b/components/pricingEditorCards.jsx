@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { Card, BlockStack, InlineGrid, InlineStack, TextField, Text, Box, Button, Select, ChoiceList, RadioButton, Divider, Icon } from '@shopify/polaris';
+import { Card, BlockStack, InlineGrid, InlineStack, TextField, Text, Box, Button, Select, ChoiceList, RadioButton, Divider, Icon, Badge } from '@shopify/polaris';
 import { DeleteIcon, SearchIcon } from '@shopify/polaris-icons';
 import { COLLECTIONS } from '../data/constants.js';
 import { money } from '../format.js';
+import { policyPriceBreakdown } from '../pricing.js';
 
 // Cards used by the pricing editor: status/dates, product scope, quantity discount
 // basis, and per-SKU price overrides. Split out of PricingEditor for readability.
@@ -124,6 +125,14 @@ export function ProductOverridesCard({ builder, patch, products }) {
   };
   const prod = (sku) => products.find((p) => p.sku === sku);
   const subline = (p) => [p.sku, p.list != null ? money(p.list) : null, p.vendor].filter(Boolean).join(' · ');
+  // What the product would resolve to from the rules/default WITHOUT this override,
+  // so "which wins" is readable on the row (god-file explicitPriceCard default column).
+  const defaultOf = (sku) => {
+    const p = prod(sku);
+    if (!p) return null;
+    const bd = policyPriceBreakdown({ ...builder, productAdjustments: {} }, p);
+    return bd && bd.inScope ? bd.final : null;
+  };
   // Click-to-add: prefill the row with the product's list price, editable inline.
   const addProduct = (sku) => {
     const p = prod(sku);
@@ -133,7 +142,10 @@ export function ProductOverridesCard({ builder, patch, products }) {
   return (
     <Card>
       <BlockStack gap="300">
-        <Text as="h3" variant="headingSm">Product price overrides</Text>
+        <InlineStack gap="200" blockAlign="center">
+          <Text as="h3" variant="headingSm">Product price overrides</Text>
+          {skus.length > 0 ? <Badge>{`${skus.length} product${skus.length === 1 ? '' : 's'}`}</Badge> : null}
+        </InlineStack>
         <Text as="p" tone="subdued" variant="bodySm">Set an exact price for specific products. Overrides win over rules and the default.</Text>
 
         {skus.length > 0 && (
@@ -148,6 +160,14 @@ export function ProductOverridesCard({ builder, patch, products }) {
                         <Text as="span" variant="bodyMd" truncate>{p?.title || sku}</Text>
                         <Text as="span" tone="subdued" variant="bodySm">{p ? subline(p) : sku}</Text>
                       </BlockStack>
+                    </div>
+                    <div style={{ width: 96, textAlign: 'right' }}>
+                      <Text as="span" tone="subdued" variant="bodySm">
+                        {(() => {
+                          const d = defaultOf(sku);
+                          return d != null ? `Default ${money(d)}` : '';
+                        })()}
+                      </Text>
                     </div>
                     <div style={{ width: 128 }}>
                       <TextField label="Price" labelHidden type="number" prefix="$" min={0} value={String(overrides[sku].value ?? '')} onChange={(v) => setPrice(sku, v)} autoComplete="off" />
