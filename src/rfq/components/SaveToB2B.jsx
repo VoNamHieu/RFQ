@@ -3,6 +3,7 @@ import {
   Modal,
   BlockStack,
   InlineStack,
+  InlineGrid,
   Box,
   Text,
   Select,
@@ -43,6 +44,10 @@ export function SaveToB2B({ quote, onClose, onDone }) {
   );
   const [dest, setDest] = useState(bases[0]?.id || '__new__');
   const [phase, setPhase] = useState('edit');
+  // Fields for the "Create a new base pricing" destination (god-file parity).
+  const [newName, setNewName] = useState(`Quote ${quote.number} prices`);
+  const [newPriority, setNewPriority] = useState(1);
+  const [newStatus, setNewStatus] = useState('Active');
 
   const anyOver = rows.some((r) => r.quoted > r.shopify);
   const anyBelowCost = rows.some((r) => r.quoted < r.cost);
@@ -62,7 +67,14 @@ export function SaveToB2B({ quote, onClose, onDone }) {
         title="Saved to B2B"
         primaryAction={{
           content: 'Open in B2B app',
-          onAction: () => onDone({ dest, lines: rows.map((r) => ({ sku: r.sku, quoted: r.quoted })) }),
+          onAction: () =>
+            onDone({
+              dest,
+              lines: rows.map((r) => ({ sku: r.sku, quoted: r.quoted })),
+              newName,
+              newPriority,
+              status: newStatus,
+            }),
         }}
         secondaryActions={[{ content: 'Close', onAction: onClose }]}
       >
@@ -105,6 +117,40 @@ export function SaveToB2B({ quote, onClose, onDone }) {
             value={dest}
             onChange={setDest}
           />
+
+          {dest === '__new__' && (
+            <Box borderColor="border" borderWidth="025" borderRadius="200" padding="300">
+              <BlockStack gap="300">
+                <Text as="h3" variant="headingSm">
+                  New pricing
+                </Text>
+                <InlineGrid columns={{ xs: 1, sm: 3 }} gap="300">
+                  <TextField label="Pricing name" value={newName} onChange={setNewName} autoComplete="off" />
+                  <TextField
+                    label="Priority (0–99)"
+                    type="number"
+                    min={0}
+                    max={99}
+                    value={String(newPriority)}
+                    onChange={(v) => setNewPriority(Math.max(0, Math.min(99, Math.round(Number(v) || 0))))}
+                    autoComplete="off"
+                  />
+                  <Select
+                    label="Status"
+                    options={[
+                      { label: 'Active', value: 'Active' },
+                      { label: 'Inactive (turned off)', value: 'Inactive' },
+                    ]}
+                    value={newStatus}
+                    onChange={setNewStatus}
+                  />
+                </InlineGrid>
+                <Text as="p" tone="subdued" variant="bodySm">
+                  Only the quoted products are added. Products without a price continue to the next pricing by priority.
+                </Text>
+              </BlockStack>
+            </Box>
+          )}
 
           {anyOver && (
             <Banner tone="critical">B2B pricing can’t be higher than the Shopify price — lower them first.</Banner>

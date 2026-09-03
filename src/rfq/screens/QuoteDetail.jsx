@@ -334,7 +334,12 @@ export function QuoteDetail() {
           onDone={(result) => {
             setSaveOpen(false);
             const transfer = result
-              ? { targetId: result.dest, newName: result.dest === '__new__' ? `Quote ${quote.number} prices` : '', newPriority: 1 }
+              ? {
+                  targetId: result.dest,
+                  newName: result.dest === '__new__' ? result.newName || `Quote ${quote.number} prices` : '',
+                  newPriority: result.newPriority ?? 1,
+                  status: result.status || 'Active',
+                }
               : null;
             handoffToB2B(state, quote.number, { pricingTransfer: transfer, lines: result?.lines });
           }}

@@ -59,13 +59,14 @@ export function demoPolicyId(db) {
   while (db.policies.some((p) => p.id === `pq${n}`)) n += 1;
   return `pq${n}`;
 }
-export function quoteToBasePricing(name, priority, overrides) {
+export function quoteToBasePricing(name, priority, overrides, status) {
   let p = Math.round(Number(priority));
   if (!Number.isFinite(p)) p = 1;
   return {
     ...newBaseBuilder(),
     name: name || 'Quote prices',
     priority: Math.max(0, Math.min(99, p)),
+    status: status === 'Inactive' ? 'Inactive' : 'Active',
     type: 'Account-specific',
     // Scope to just the quoted products (god file), so this pricing covers only
     // those SKUs and doesn't shadow the company's other bases for the rest. A
@@ -157,7 +158,12 @@ export function applyQuotePricingTransfer(db, companyId, lines, transfer) {
   priced.forEach((l) => { overrides[l.sku] = { rule: 'set', valueType: 'amount', value: Number(l.quoted) }; });
   const tid = transfer && transfer.targetId;
   if (tid === '__new__' || !policyById(db.policies, tid)) {
-    const prof = quoteToBasePricing(transfer && transfer.newName ? transfer.newName : `${co.name} quote prices`, transfer && transfer.newPriority, overrides);
+    const prof = quoteToBasePricing(
+      transfer && transfer.newName ? transfer.newName : `${co.name} quote prices`,
+      transfer && transfer.newPriority,
+      overrides,
+      transfer && transfer.status,
+    );
     prof.id = demoPolicyId(db);
     db.policies.push(prof);
     addCompanyBase(co, prof.id, prof.priority);
