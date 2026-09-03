@@ -104,8 +104,10 @@ export function CreateQuote() {
   // B2B pricing status for the selected company (mirrors the B2B app). If the
   // company has no base pricing, prompt the merchant to set it up in the B2B app.
   const company = customer ? shopifyCompanyDirectory[customer.companyKey] : null;
-  const isB2BCompany = !!company; // belongs to a Shopify Company → B2B; otherwise D2C
-  const companyInB2B = !!company?.inB2B; // managed in the B2B app
+  // Only a company already managed in the B2B app is treated as "B2B" here — a
+  // plain quote requester (e.g. Vo Hieu / Hieu Sports Retail) isn't pushed into
+  // B2B setup just for having a company record.
+  const companyInB2B = !!company?.inB2B;
   const companyHasPricing = customer ? (RFQ_PRICING_OPTIONS[customer.companyKey] || []).length > 0 : true;
   const showPricingPrompt = !!customer && !companyHasPricing;
 
@@ -259,24 +261,17 @@ export function CreateQuote() {
             title={
               companyInB2B
                 ? `${customer.company} has no B2B pricing yet`
-                : isB2BCompany
-                ? `${customer.company} isn’t set up in the B2B app`
-                : `${customer.company || customer.name} has no pricing yet`
+                : `${customer.name} has no pricing yet`
             }
             action={{
-              content: isB2BCompany
-                ? companyInB2B
-                  ? 'Create pricing in B2B app'
-                  : 'Set up in B2B app'
-                : 'Create pricing',
+              content: companyInB2B ? 'Create pricing in B2B app' : 'Create pricing',
               onAction: () => {
-                if (isB2BCompany) {
-                  // Redirect into the B2B app on this company's Pricing tab (the
-                  // company is created there first if it isn't in B2B yet).
+                if (companyInB2B) {
+                  // Managed B2B company → straight to its Pricing tab.
                   handoffCompanyToB2B(state, customer.companyKey, customer, { openPricing: true });
                   return;
                 }
-                // D2C customer — no B2B company; go to the B2B app's Pricing library.
+                // A regular customer → the B2B app's Pricing library to create a price.
                 const v = activeVersion();
                 window.location.href = v === 'latest' ? '/b2b' : `/b2b?v=${v}`;
               },
@@ -285,9 +280,7 @@ export function CreateQuote() {
             <p>
               {companyInB2B
                 ? `This quote will use manually entered prices. Set up pricing in the B2B app so ${customer.company}’s buyers automatically get contract prices on future orders.`
-                : isB2BCompany
-                ? `${customer.company} isn’t a managed B2B company yet. Add it in the B2B app and set its pricing so its buyers get contract prices automatically.`
-                : `No pricing has been created for this customer yet. Create a price in the B2B app so ${customer.name} gets the right price.`}
+                : `No pricing has been created for ${customer.name} yet. Create a price in the B2B app so they get the right price on this and future quotes.`}
             </p>
           </Banner>
         </Box>
