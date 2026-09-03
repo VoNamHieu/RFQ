@@ -22,6 +22,7 @@ import {
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import { PlusIcon, XIcon } from '@shopify/polaris-icons';
 import { useStore, handoffCompanyToB2B } from '../store.jsx';
+import { activeVersion } from '../../shared/versions.js';
 import { money, subtotalOf } from '../utils.js';
 import {
   RFQ_CATALOG,
@@ -102,7 +103,9 @@ export function CreateQuote() {
 
   // B2B pricing status for the selected company (mirrors the B2B app). If the
   // company has no base pricing, prompt the merchant to set it up in the B2B app.
-  const companyInB2B = !!shopifyCompanyDirectory[customer?.companyKey]?.inB2B;
+  const company = customer ? shopifyCompanyDirectory[customer.companyKey] : null;
+  const isB2BCompany = !!company; // belongs to a Shopify Company → B2B; otherwise D2C
+  const companyInB2B = !!company?.inB2B; // managed in the B2B app
   const companyHasPricing = customer ? (RFQ_PRICING_OPTIONS[customer.companyKey] || []).length > 0 : true;
   const showPricingPrompt = !!customer && !companyHasPricing;
 
@@ -256,30 +259,35 @@ export function CreateQuote() {
             title={
               companyInB2B
                 ? `${customer.company} has no B2B pricing yet`
-                : `${customer.company} isn’t set up in the B2B app`
+                : isB2BCompany
+                ? `${customer.company} isn’t set up in the B2B app`
+                : `${customer.company || customer.name} has no pricing yet`
             }
             action={{
-              content: companyInB2B ? 'Create pricing in B2B app' : 'Set up in B2B app',
+              content: isB2BCompany
+                ? companyInB2B
+                  ? 'Create pricing in B2B app'
+                  : 'Set up in B2B app'
+                : 'Create pricing',
               onAction: () => {
-                // Managed company (Delta): straight to its Pricing tab in the B2B app.
-                if (companyInB2B) {
-                  handoffCompanyToB2B(state, customer.companyKey, customer);
+                if (isB2BCompany) {
+                  // Redirect into the B2B app on this company's Pricing tab (the
+                  // company is created there first if it isn't in B2B yet).
+                  handoffCompanyToB2B(state, customer.companyKey, customer, { openPricing: true });
                   return;
                 }
-                // Not in B2B yet (Watson): sync it first via the proper flow, which
-                // needs a quote — create it, then the sync modal opens on its detail.
-                if (!canCreate) {
-                  dispatch({ type: 'TOAST', message: 'Add at least one product first, then set up the company in B2B.' });
-                  return;
-                }
-                cqCreate({ openSync: true });
+                // D2C customer — no B2B company; go to the B2B app's Pricing library.
+                const v = activeVersion();
+                window.location.href = v === 'latest' ? '/b2b' : `/b2b?v=${v}`;
               },
             }}
           >
             <p>
               {companyInB2B
                 ? `This quote will use manually entered prices. Set up pricing in the B2B app so ${customer.company}’s buyers automatically get contract prices on future orders.`
-                : `${customer.company} isn’t a managed B2B company yet. Add it in the B2B app and set its pricing so its buyers get contract prices automatically.`}
+                : isB2BCompany
+                ? `${customer.company} isn’t a managed B2B company yet. Add it in the B2B app and set its pricing so its buyers get contract prices automatically.`
+                : `No pricing has been created for this customer yet. Create a price in the B2B app so ${customer.name} gets the right price.`}
             </p>
           </Banner>
         </Box>
