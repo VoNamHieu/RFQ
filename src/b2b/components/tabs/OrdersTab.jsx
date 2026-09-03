@@ -11,7 +11,7 @@ const STATUS_TONE = {
   Cancelled: 'critical',
   'Draft order': 'info',
 };
-const orderTone = (s) => STATUS_TONE[s]; // neutral fallback for unmapped statuses
+const orderTone = (s) => STATUS_TONE[s]; // neutral tone for unmapped statuses
 
 export function OrdersTab({ company }) {
   const [loc, setLoc] = useState('all');

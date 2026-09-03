@@ -62,8 +62,24 @@ export function companyQuantityPolicy(company, policies) {
   return q ? policyById(policies, q) : null;
 }
 
+// ── Variants ─────────────────────────────────────────────────────────────────
+// A product's variants; the FIRST is the default and its id === the product sku.
+// Overrides (variantAdjustments) and quotes key by variant id; product-only
+// callers resolve against the default variant, so per-SKU behavior is unchanged.
+export const productVariants = (product) =>
+  product && Array.isArray(product.variants) && product.variants.length
+    ? product.variants
+    : product
+      ? [{ id: product.sku, title: 'Default', list: product.list }]
+      : [];
+export const defaultVariant = (product) => productVariants(product)[0] || null;
+const variantBase = (product, variant) => {
+  const v = variant || defaultVariant(product);
+  return v && v.list != null ? v.list : product?.list;
+};
+
 // ── Scope + rule matching ────────────────────────────────────────────────────
-const explicitOn = (p) => !!(p && Object.keys(p.productAdjustments || {}).length);
+const explicitOn = (p) => !!(p && Object.keys(p.variantAdjustments || {}).length);
 
 // A base only prices products in its scope (all | collection | products); a
 // product outside that scope falls through to the NEXT base by priority.
@@ -138,10 +154,11 @@ export function applyAdjustment(rule, valueType, value, base) {
 
 // The price + which layer decided it, for one profile (null if out of scope):
 // Product override → Conditional rule → profile-level default.
-function priceForDetail(profile, product) {
+function priceForDetail(profile, product, variant) {
   if (!inScope(profile, product.sku)) return null;
-  const base = product.list;
-  const adj = explicitOn(profile) ? (profile.productAdjustments || {})[product.sku] : null;
+  const v = variant || defaultVariant(product);
+  const base = variantBase(product, v);
+  const adj = explicitOn(profile) && v ? (profile.variantAdjustments || {})[v.id] : null;
   if (adj && adj.rule) {
     return { price: applyAdjustment(adj.rule, adj.valueType || 'percentage', adj.value, base), layer: 'override', decidedBy: `${profile.name} · override` };
   }
@@ -157,9 +174,10 @@ function priceForDetail(profile, product) {
 // preview: the Shopify price, the profile's default adjustment, a matching
 // conditional rule, an explicit override, and what the buyer pays — same
 // precedence as priceForDetail (override → rule → default).
-export function policyPriceBreakdown(profile, product) {
+export function policyPriceBreakdown(profile, product, variant) {
   if (!profile || !product) return null;
-  const base = product.list;
+  const v = variant || defaultVariant(product);
+  const base = variantBase(product, v);
   const defaultPrice = applyAdjustment(profile.pricingRule, profile.valueType, profile.value, base);
   const ri = matchConditionalRuleIndex(profile, product);
   const rule =
@@ -174,37 +192,37 @@ export function policyPriceBreakdown(profile, product) {
           ),
         }
       : null;
-  const adj = explicitOn(profile) ? (profile.productAdjustments || {})[product.sku] : null;
+  const adj = explicitOn(profile) && v ? (profile.variantAdjustments || {})[v.id] : null;
   const override = adj && adj.rule ? applyAdjustment(adj.rule, adj.valueType || 'percentage', adj.value, base) : null;
   const final = override != null ? override : rule ? rule.price : defaultPrice;
-  return { shopify: base, defaultPrice, rule, override, final, inScope: inScope(profile, product.sku) };
+  return { shopify: base, defaultPrice, rule, override, final, inScope: inScope(profile, product.sku), variant: v };
 }
 
 // Resolve the B2B price a company pays for a product (legacy resolvedPriceFor):
 // the first in-scope Active base wins (a scope-all base is authoritative and
 // returns the Shopify price when nothing matches); else the quantity slot; else
 // null → the caller shows "No pricing".
-function resolveProductDetail(company, product, policies) {
+function resolveProductDetail(company, product, policies, variant) {
   for (const p of companyActiveBasePolicies(company, policies)) {
     if (!baseInScope(p, product.sku)) continue;
-    const r = priceForDetail(p, product);
+    const r = priceForDetail(p, product, variant);
     if (r) return r;
   }
   const q = companyQuantityPolicy(company, policies);
   if (q && q.status !== 'Inactive') {
-    const r = priceForDetail(q, product);
+    const r = priceForDetail(q, product, variant);
     if (r) return r;
   }
   return null;
 }
-export function resolvedPriceFor(company, product, policies) {
-  const r = resolveProductDetail(company, product, policies);
+export function resolvedPriceFor(company, product, policies, variant) {
+  const r = resolveProductDetail(company, product, policies, variant);
   return r ? r.price : null;
 }
 // Like resolvedPriceFor, but reports which layer decided the price; the Price
 // Board falls back to the Shopify price row when nothing is assigned.
-export function resolveDetail(company, product, policies) {
-  return resolveProductDetail(company, product, policies) || { price: product.list, decidedBy: 'Shopify price', layer: 'shopify' };
+export function resolveDetail(company, product, policies, variant) {
+  return resolveProductDetail(company, product, policies, variant) || { price: variantBase(product, variant), decidedBy: 'Shopify price', layer: 'shopify' };
 }
 
 // ── Company-level resolution (source / status / needs-a-price) ───────────────

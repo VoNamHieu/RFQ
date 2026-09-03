@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   Modal,
   BlockStack,
-  InlineStack,
   InlineGrid,
   Box,
   Text,
@@ -12,14 +11,16 @@ import {
   IndexTable,
   Badge,
 } from '@shopify/polaris';
-import { money, marginPct, costFallback } from '../utils.js';
+import { money, marginPct, estimatedCost } from '../utils.js';
 import { RFQ_CATALOG, RFQ_PRICING_OPTIONS } from '../data/catalog.js';
 import { versionFlags } from '../../shared/versions.js';
 
 const catBySku = (sku) => RFQ_CATALOG.find((p) => p.sku === sku);
 
-// "Save quoted prices to B2B" (spec §5.5): editable Quoted + Cost/Margin, a
-// destination base, and the block-if-above-Shopify / warn-if-below-cost logic.
+// "Save quoted prices to B2B" (spec §5.5): read-only Quoted (carried over from
+// the quote) shown next to an editable Base price (what's written to B2B,
+// defaulting to the quote) plus Cost/Margin, a destination base, and the
+// block-if-above-Shopify / warn-if-below-cost logic.
 export function SaveToB2B({ quote, onClose, onDone }) {
   const companyKey = quote.linkedCompanyKey || quote.fixedCompanyKey || quote.recommendedKey;
   const bases = RFQ_PRICING_OPTIONS[companyKey] || [];
@@ -37,8 +38,9 @@ export function SaveToB2B({ quote, onClose, onDone }) {
         sku: l.sku,
         title: l.title || cat?.title || l.sku,
         shopify: cat?.list ?? quoted,
-        cost: costFallback(quoted),
+        cost: estimatedCost(quoted),
         quoted,
+        base: quoted, // what's written to B2B — defaults to the quoted price, editable
       };
     }),
   );
@@ -49,13 +51,16 @@ export function SaveToB2B({ quote, onClose, onDone }) {
   const [newPriority, setNewPriority] = useState(1);
   const [newStatus, setNewStatus] = useState('Active');
 
-  const anyOver = rows.some((r) => r.quoted > r.shopify);
-  const anyBelowCost = rows.some((r) => r.quoted < r.cost);
+  // Quoted is the read-only reference agreed on the RFQ side; Base price defaults
+  // to it but stays editable so the merchant can tweak what's written into the
+  // B2B base pricing. Margin / warnings track the (editable) base price.
+  const anyOver = rows.some((r) => r.base > r.shopify);
+  const anyBelowCost = rows.some((r) => r.base < r.cost);
 
-  const setQuoted = (i, v) => setRows(rows.map((r, k) => (k === i ? { ...r, quoted: Number(v) } : r)));
+  const setBase = (i, v) => setRows(rows.map((r, k) => (k === i ? { ...r, base: Number(v) } : r)));
 
   const destOptions = [
-    ...bases.map((b) => ({ label: `${b.name} (${b.priority === 1 ? 'applied first' : 'fallback'})`, value: b.id })),
+    ...bases.map((b) => ({ label: `${b.name} (priority ${b.priority})`, value: b.id })),
     { label: 'Create a new base pricing…', value: '__new__' },
   ];
 
@@ -70,7 +75,7 @@ export function SaveToB2B({ quote, onClose, onDone }) {
           onAction: () =>
             onDone({
               dest,
-              lines: rows.map((r) => ({ sku: r.sku, quoted: r.quoted })),
+              lines: rows.map((r) => ({ sku: r.sku, quoted: r.base })),
               newName,
               newPriority,
               status: newStatus,
@@ -168,13 +173,17 @@ export function SaveToB2B({ quote, onClose, onDone }) {
               { title: 'Shopify' },
               { title: 'Cost' },
               { title: 'Quoted' },
+              {
+                title: 'Base price',
+                tooltipContent: 'Saved as this product’s B2B base price. Defaults to the quoted price — edit if needed.',
+              },
               { title: 'Margin' },
             ]}
           >
             {rows.map((r, i) => {
-              const m = marginPct(r.quoted, r.cost);
-              const belowCost = r.quoted < r.cost;
-              const over = r.quoted > r.shopify;
+              const m = marginPct(r.base, r.cost);
+              const belowCost = r.base < r.cost;
+              const over = r.base > r.shopify;
               return (
                 <IndexTable.Row id={r.sku || String(i)} key={i} position={i}>
                   <IndexTable.Cell>
@@ -192,15 +201,18 @@ export function SaveToB2B({ quote, onClose, onDone }) {
                   <IndexTable.Cell>{money(r.shopify)}</IndexTable.Cell>
                   <IndexTable.Cell>{money(r.cost)}</IndexTable.Cell>
                   <IndexTable.Cell>
-                    <div style={{ width: 96 }}>
+                    <Text as="span" fontWeight="semibold">{money(r.quoted)}</Text>
+                  </IndexTable.Cell>
+                  <IndexTable.Cell>
+                    <div style={{ width: 110 }}>
                       <TextField
-                        label="Quoted"
+                        label="Base price"
                         labelHidden
                         type="number"
                         min={0}
                         prefix="$"
-                        value={String(r.quoted)}
-                        onChange={(v) => setQuoted(i, v)}
+                        value={String(r.base)}
+                        onChange={(v) => setBase(i, v)}
                         error={over}
                         autoComplete="off"
                       />

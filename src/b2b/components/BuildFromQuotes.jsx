@@ -73,7 +73,7 @@ export function BuildFromQuotes() {
         .forEach((r) => {
           adjustments[r.sku] = { rule: 'set', valueType: 'amount', value: Number(r.proposed) };
         });
-      const builder = { ...newBaseBuilder(), name: `${company.name} from closed quotes`, productAdjustments: adjustments, explicitEnabled: true };
+      const builder = { ...newBaseBuilder(), name: `${company.name} from closed quotes`, variantAdjustments: adjustments, explicitEnabled: true };
       dispatch({ type: 'CLOSE_BUILD_QUOTES' });
       dispatch({ type: 'OPEN_EDITOR', policy: builder, context: { mode: 'add-base', companyId: company.id } });
     } else {
@@ -98,7 +98,7 @@ export function BuildFromQuotes() {
       <IndexTable.Cell>
         <div style={{ width: 110 }}>
           <TextField
-            label="Proposed"
+            label="Base price"
             labelHidden
             type="number"
             min={0}
@@ -110,7 +110,14 @@ export function BuildFromQuotes() {
         </div>
       </IndexTable.Cell>
       <IndexTable.Cell>
-        <Link onClick={() => dispatch({ type: 'TOAST', message: `Open quote #${r.from}` })}>{`from #${r.from}`}</Link>
+        <Link
+          onClick={() => {
+            // God-file parity: close this modal and open the source quote in the
+            // B2B app (§b2b/index.html data-build-goto handler).
+            dispatch({ type: 'CLOSE_BUILD_QUOTES' });
+            dispatch({ type: 'OPEN_QUOTE', id: r.from });
+          }}
+        >{`from #${r.from}`}</Link>
       </IndexTable.Cell>
       <IndexTable.Cell>
         <Button icon={XCircleIcon} variant="tertiary" tone="critical" accessibilityLabel="Remove row" onClick={() => removeRow(i)} />
@@ -160,7 +167,10 @@ export function BuildFromQuotes() {
                   { title: 'Product' },
                   { title: 'Shopify price' },
                   { title: 'Quoted price' },
-                  { title: 'Proposed price' },
+                  {
+                    title: 'Base price',
+                    tooltipContent: 'This price is saved as the product’s base price in the selected pricing.',
+                  },
                   { title: 'Source' },
                   { title: '' },
                 ]}

@@ -304,7 +304,7 @@ function reducer(state, action) {
       const draft = {
         ...b,
         conditionalRules: cleanRules,
-        explicitEnabled: Object.keys(b.productAdjustments || {}).length > 0,
+        explicitEnabled: Object.keys(b.variantAdjustments || {}).length > 0,
       };
       if (!draft.name || !draft.name.trim()) {
         return { ...state, toast: 'Give the pricing a name' };
@@ -379,7 +379,8 @@ function reducer(state, action) {
       return { ...state, db, toast: p && p.status === 'Inactive' ? 'Pricing turned off' : 'Pricing turned on' };
     }
     // Store-wide default pricing (All Companies / All customers) — consulted by
-    // the resolution engine's fallback (resolvePricing / companyNeedsPrice).
+    // the resolution engine when no company/customer pricing matches
+    // (resolvePricing / companyNeedsPrice).
     case 'SET_DEFAULT_POLICY': {
       const db = clone(state.db);
       db.defaults = { ...(db.defaults || {}), [action.key]: action.value || null };

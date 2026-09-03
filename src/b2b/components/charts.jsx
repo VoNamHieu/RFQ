@@ -1,6 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useLayoutEffect } from 'react';
 import { Text, BlockStack, InlineStack } from '@shopify/polaris';
 import { money } from '../format.js';
+
+// Measure the container's rendered width so SVG charts draw at real pixels
+// (fixed height, no proportional up-scaling) and stay responsive + crisp.
+function useMeasure() {
+  const ref = useRef(null);
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect?.width;
+      if (w) setWidth(w);
+    });
+    ro.observe(el);
+    setWidth(el.getBoundingClientRect().width);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, width];
+}
 
 const BRAND = 'var(--p-color-bg-fill-brand)';
 const TRACK = 'var(--p-color-bg-fill-tertiary, var(--p-color-bg-surface-secondary))';
@@ -22,12 +41,13 @@ const fmt = (v, prefix = '$') => prefix + Math.round(v).toLocaleString('en-US');
 
 // Sales-over-time line chart with area, dots, hover value label and an optional
 // dashed "previous period" comparison series (legacy renderAnalytics trendSvg).
-export function LineChart({ data, compare = null, height = 240, prefix = '$', label = 'Sales over time' }) {
+export function LineChart({ data, compare = null, height = 200, prefix = '$', label = 'Sales over time' }) {
+  const [ref, measured] = useMeasure();
   const [hover, setHover] = useState(null);
   const hasCompare = Array.isArray(compare) && compare.length > 0;
-  const w = 640;
+  const w = Math.max(320, Math.round(measured || 640));
   const h = height;
-  const pad = { t: hasCompare ? 28 : 20, r: 20, b: 30, l: 56 };
+  const pad = { t: 14, r: 16, b: 26, l: 48 };
   const iw = w - pad.l - pad.r;
   const ih = h - pad.t - pad.b;
   const compareVals = hasCompare ? data.map((_, i) => Number(compare[i]?.value ?? compare[i] ?? 0)) : [];
@@ -37,7 +57,8 @@ export function LineChart({ data, compare = null, height = 240, prefix = '$', la
   const line = data.map((d, i) => `${x(i)},${y(d.value)}`).join(' ');
   const area = `${x(0)},${pad.t + ih} ${line} ${x(data.length - 1)},${pad.t + ih}`;
   const cline = hasCompare ? compareVals.map((v, i) => `${x(i)},${y(v)}`).join(' ') : '';
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => ({ v: max * f, yy: y(max * f) }));
+  const ticks = [0, 0.5, 1].map((f) => ({ v: max * f, yy: y(max * f) }));
+  const active = hover != null ? data[hover] : null;
 
   return (
     <BlockStack gap="200">
@@ -53,72 +74,60 @@ export function LineChart({ data, compare = null, height = 240, prefix = '$', la
           </InlineStack>
         </InlineStack>
       )}
-      <svg viewBox={`0 0 ${w} ${h}`} width="100%" role="img" aria-label={label} style={{ display: 'block' }}>
-        {ticks.map((t, i) => (
-          <g key={i}>
-            <line x1={pad.l} x2={pad.l + iw} y1={t.yy} y2={t.yy} stroke={GRID} strokeWidth="1" />
-            <text x={pad.l - 8} y={t.yy + 3} textAnchor="end" fontSize="10" fill={AXIS}>
-              {prefix === '$' ? moneyShort(t.v) : Math.round(t.v)}
-            </text>
-          </g>
-        ))}
-        <polygon points={area} fill={BRAND} opacity="0.08" />
-        {hasCompare && (
-          <polyline points={cline} fill="none" stroke={COMPARE} strokeWidth="2" strokeDasharray="5 4" strokeLinejoin="round" strokeLinecap="round" opacity="0.8" />
-        )}
-        <polyline points={line} fill="none" stroke={BRAND} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-        {hasCompare &&
-          compareVals.map((v, i) => <circle key={`c${i}`} cx={x(i)} cy={y(v)} r={3} fill="var(--p-color-bg-surface)" stroke={COMPARE} strokeWidth="1.5" />)}
-        {data.map((d, i) => (
-          <g key={i}>
-            <rect
-              x={x(i) - iw / (data.length * 2 || 1)}
-              y={pad.t}
-              width={Math.max(12, iw / (data.length || 1))}
-              height={ih}
-              fill="transparent"
-              onMouseEnter={() => setHover(i)}
-              onMouseLeave={() => setHover(null)}
-            />
-            <circle cx={x(i)} cy={y(d.value)} r={hover === i ? 5 : 3.5} fill={BRAND} stroke="var(--p-color-bg-surface)" strokeWidth="1.5" />
-            <text x={x(i)} y={h - 10} textAnchor="middle" fontSize="10" fill={AXIS}>
-              {d.label}
-            </text>
-            {hover === i && (
-              <g>
-                <text x={x(i)} y={y(d.value) - 10} textAnchor="middle" fontSize="11" fontWeight="600" fill="var(--p-color-text)">
-                  {fmt(d.value, prefix)}
-                </text>
-                {hasCompare && (
-                  <text x={x(i)} y={y(compareVals[i]) + 16} textAnchor="middle" fontSize="10" fill={AXIS}>
-                    {`prev ${fmt(compareVals[i], prefix)}`}
-                  </text>
-                )}
+      <div ref={ref} style={{ width: '100%' }}>
+        <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={label} style={{ display: 'block', maxWidth: '100%' }}>
+          {ticks.map((t, i) => (
+            <g key={i}>
+              <line x1={pad.l} x2={pad.l + iw} y1={t.yy} y2={t.yy} stroke={GRID} strokeWidth="1" />
+              <text x={pad.l - 8} y={t.yy + 3} textAnchor="end" fontSize="10" fill={AXIS}>
+                {prefix === '$' ? moneyShort(t.v) : Math.round(t.v)}
+              </text>
+            </g>
+          ))}
+          <polygon points={area} fill={BRAND} opacity="0.08" />
+          {hasCompare && (
+            <polyline points={cline} fill="none" stroke={COMPARE} strokeWidth="2" strokeDasharray="5 4" strokeLinejoin="round" strokeLinecap="round" opacity="0.75" />
+          )}
+          <polyline points={line} fill="none" stroke={BRAND} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+          {active && <line x1={x(hover)} x2={x(hover)} y1={pad.t} y2={pad.t + ih} stroke={AXIS} strokeWidth="1" strokeDasharray="3 3" opacity="0.5" />}
+          {hasCompare &&
+            compareVals.map((v, i) => <circle key={`c${i}`} cx={x(i)} cy={y(v)} r={hover === i ? 4 : 3} fill="var(--p-color-bg-surface)" stroke={COMPARE} strokeWidth="1.5" />)}
+          {data.map((d, i) => (
+            <g key={i}>
+              <circle cx={x(i)} cy={y(d.value)} r={hover === i ? 5 : 3.5} fill={BRAND} stroke="var(--p-color-bg-surface)" strokeWidth="1.5" />
+              <text x={x(i)} y={h - 8} textAnchor="middle" fontSize="10" fill={AXIS}>{d.label}</text>
+              <rect
+                x={x(i) - iw / (data.length * 2 || 1)}
+                y={pad.t}
+                width={Math.max(12, iw / (data.length || 1))}
+                height={ih}
+                fill="transparent"
+                style={{ cursor: 'pointer' }}
+                onMouseEnter={() => setHover(i)}
+                onMouseLeave={() => setHover(null)}
+              />
+            </g>
+          ))}
+          {active && (() => {
+            const rows = [active.label, fmt(active.value, prefix)];
+            if (hasCompare) rows.push(`prev ${fmt(compareVals[hover], prefix)}`);
+            const tw = 104;
+            const th = 12 + rows.length * 15;
+            const cx = x(hover);
+            const above = y(active.value) > th + 14;
+            const ty = above ? y(active.value) - th - 12 : y(active.value) + 12;
+            const tx = Math.min(Math.max(cx - tw / 2, 2), w - tw - 2);
+            return (
+              <g style={{ pointerEvents: 'none' }}>
+                <rect x={tx} y={ty} width={tw} height={th} rx="6" fill="var(--p-color-bg-surface)" stroke={GRID} strokeWidth="1" />
+                {rows.map((r, k) => (
+                  <text key={k} x={tx + tw / 2} y={ty + 16 + k * 15} textAnchor="middle" fontSize={k === 1 ? '12' : '11'} fontWeight={k === 1 ? '600' : '400'} fill={k === 2 ? AXIS : 'var(--p-color-text)'}>{r}</text>
+                ))}
               </g>
-            )}
-          </g>
-        ))}
-      </svg>
-    </BlockStack>
-  );
-}
-
-// Horizontal magnitude bars with direct labels + values (rounded ends).
-export function HBarChart({ rows, prefix = '$' }) {
-  const max = Math.max(1, ...rows.map((r) => r.value));
-  return (
-    <BlockStack gap="200">
-      {rows.map((r) => (
-        <BlockStack gap="100" key={r.label}>
-          <InlineStack align="space-between">
-            <Text as="span" variant="bodySm">{r.label}</Text>
-            <Text as="span" variant="bodySm" fontWeight="medium">{fmt(r.value, prefix)}</Text>
-          </InlineStack>
-          <div style={{ height: 10, borderRadius: 5, background: TRACK, overflow: 'hidden' }}>
-            <div style={{ width: `${Math.max(2, (r.value / max) * 100)}%`, height: '100%', background: BRAND, borderRadius: 5 }} />
-          </div>
-        </BlockStack>
-      ))}
+            );
+          })()}
+        </svg>
+      </div>
     </BlockStack>
   );
 }
@@ -188,31 +197,7 @@ export function StackedBar({ segments, format = money }) {
   );
 }
 
-// Conversion funnel: decreasing stages with count + % of the first stage.
-export function Funnel({ stages }) {
-  const top = Math.max(1, stages[0]?.value || 1);
-  return (
-    <BlockStack gap="150">
-      {stages.map((s, i) => {
-        const pct = Math.round((s.value / top) * 100);
-        const shade = 1 - i * (0.6 / Math.max(1, stages.length - 1));
-        return (
-          <div key={s.label}>
-            <InlineStack align="space-between">
-              <Text as="span" variant="bodySm">{s.label}</Text>
-              <Text as="span" variant="bodySm" tone="subdued">{`${s.value} · ${pct}%`}</Text>
-            </InlineStack>
-            <div style={{ height: 16, borderRadius: 4, background: TRACK, overflow: 'hidden', marginTop: 4 }}>
-              <div style={{ width: `${Math.max(3, pct)}%`, height: '100%', background: BRAND, opacity: shade, borderRadius: 4 }} />
-            </div>
-          </div>
-        );
-      })}
-    </BlockStack>
-  );
-}
-
-// Multi-stage funnel v2 (legacy .analytics-funnel-v2). Each stage carries a
+// Multi-stage funnel (legacy .analytics-funnel-v2). Each stage carries a
 // pre-formatted value string + optional note; the bar width is count / firstCount.
 export function FunnelV2({ stages }) {
   const top = Math.max(1, Number(stages[0]?.count) || 1);
@@ -240,40 +225,45 @@ export function FunnelV2({ stages }) {
 }
 
 // Simple vertical bar chart (e.g. order volume per month) with top value labels.
-export function VBarChart({ data, height = 240, prefix = '', label = 'Orders by period' }) {
+export function VBarChart({ data, height = 200, prefix = '', label = 'Orders by period' }) {
+  const [ref, measured] = useMeasure();
   const [hover, setHover] = useState(null);
-  const w = 640;
+  const w = Math.max(320, Math.round(measured || 640));
   const h = height;
-  const pad = { t: 24, r: 16, b: 30, l: 40 };
+  const pad = { t: 22, r: 12, b: 26, l: 34 };
   const iw = w - pad.l - pad.r;
   const ih = h - pad.t - pad.b;
   const max = Math.max(1, ...data.map((d) => d.value));
-  const bw = (iw / Math.max(1, data.length)) * 0.6;
-  const gap = (iw / Math.max(1, data.length)) * 0.4;
+  const slot = iw / Math.max(1, data.length);
+  const bw = Math.min(slot * 0.6, 56);
   const ticks = [0, 0.5, 1].map((f) => ({ v: max * f, yy: pad.t + ih - ih * f }));
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} width="100%" role="img" aria-label={label} style={{ display: 'block' }}>
-      {ticks.map((t, i) => (
-        <g key={i}>
-          <line x1={pad.l} x2={pad.l + iw} y1={t.yy} y2={t.yy} stroke={GRID} />
-          <text x={pad.l - 8} y={t.yy + 3} textAnchor="end" fontSize="10" fill={AXIS}>{Math.round(t.v)}</text>
-        </g>
-      ))}
-      {data.map((d, i) => {
-        const bh = (d.value / max) * ih;
-        const bx = pad.l + i * (bw + gap) + gap / 2;
-        const by = pad.t + ih - bh;
-        return (
-          <g key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
-            <rect x={bx} y={by} width={bw} height={Math.max(2, bh)} rx="5" fill={BRAND} opacity={hover === i ? 1 : 0.85} />
-            <text x={bx + bw / 2} y={Math.max(16, by - 8)} textAnchor="middle" fontSize="11" fontWeight="600" fill="var(--p-color-text)">
-              {prefix ? fmt(d.value, prefix) : d.value}
-            </text>
-            <text x={bx + bw / 2} y={h - 10} textAnchor="middle" fontSize="10" fill={AXIS}>{d.label}</text>
+    <div ref={ref} style={{ width: '100%' }}>
+      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={label} style={{ display: 'block', maxWidth: '100%' }}>
+        {ticks.map((t, i) => (
+          <g key={i}>
+            <line x1={pad.l} x2={pad.l + iw} y1={t.yy} y2={t.yy} stroke={GRID} />
+            <text x={pad.l - 8} y={t.yy + 3} textAnchor="end" fontSize="10" fill={AXIS}>{prefix ? moneyShort(t.v) : Math.round(t.v)}</text>
           </g>
-        );
-      })}
-    </svg>
+        ))}
+        {data.map((d, i) => {
+          const bh = (d.value / max) * ih;
+          const bx = pad.l + i * slot + (slot - bw) / 2;
+          const by = pad.t + ih - bh;
+          const on = hover === i;
+          return (
+            <g key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} style={{ cursor: 'pointer' }}>
+              <rect x={pad.l + i * slot} y={pad.t} width={slot} height={ih} fill="transparent" />
+              <rect x={bx} y={by} width={bw} height={Math.max(2, bh)} rx="5" fill={BRAND} opacity={on ? 1 : 0.82} />
+              <text x={bx + bw / 2} y={Math.max(14, by - 8)} textAnchor="middle" fontSize={on ? '12' : '11'} fontWeight="600" fill={on ? 'var(--p-color-text)' : AXIS}>
+                {prefix ? fmt(d.value, prefix) : d.value}
+              </text>
+              <text x={bx + bw / 2} y={h - 8} textAnchor="middle" fontSize="10" fill={AXIS}>{d.label}</text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
   );
 }
 

@@ -1,12 +1,13 @@
 import React, { useState, useMemo } from 'react';
-import { Card, BlockStack, InlineGrid, InlineStack, TextField, Text, Box, Button, Select, ChoiceList, RadioButton, Divider, Icon, Badge } from '@shopify/polaris';
-import { DeleteIcon, SearchIcon } from '@shopify/polaris-icons';
+import { Card, BlockStack, InlineGrid, InlineStack, TextField, Text, Box, Button, Select, ChoiceList, RadioButton, Badge, Icon, Checkbox } from '@shopify/polaris';
+import { SearchIcon, ImageIcon, ChevronDownIcon, ChevronRightIcon } from '@shopify/polaris-icons';
 import { COLLECTIONS } from '../data/constants.js';
 import { money } from '../format.js';
-import { policyPriceBreakdown } from '../pricing.js';
+import { productVariants, applyAdjustment } from '../pricing.js';
+import { VariantPicker } from './VariantPicker.jsx';
 
 // Cards used by the pricing editor: status/dates, product scope, quantity discount
-// basis, and per-SKU price overrides. Split out of PricingEditor for readability.
+// basis, and per-variant price overrides. Split out of PricingEditor for readability.
 export function ActiveDatesCard({ builder, patch }) {
   const dated = builder.validityType === 'dated';
   return (
@@ -88,43 +89,101 @@ export function VolumeBasisCard({ builder, patch }) {
   );
 }
 
-// Per-SKU exact price overrides (legacy explicitPriceCard).
+// Per-VARIANT price overrides, shown as a compact Shopify "price list" table
+// grouped by product: each product is one row — [checkbox] · Product (thumbnail +
+// name) · Options · Amount — and a product with 2+ priced variants is COLLAPSIBLE
+// (click to expand its variant sub-rows). Overrides are keyed by variant id (the
+// default variant id equals the product sku, so per-SKU pricing is unchanged).
+const OVERRIDE_RULES = [
+  { label: 'Set price', value: 'set' },
+  { label: 'Price decrease', value: 'decrease' },
+  { label: 'Price increase', value: 'increase' },
+];
+const ROW_GRID = { display: 'grid', gridTemplateColumns: 'auto minmax(140px, 1fr) 148px 92px 92px', gap: 12, alignItems: 'center' };
+const THUMB = { width: 32, height: 32, borderRadius: 6, background: 'var(--p-color-bg-surface-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' };
+const CARET = { all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', flex: '0 0 auto', width: 20 };
+
 export function ProductOverridesCard({ builder, patch, products }) {
-  const overrides = builder.productAdjustments || {};
-  const skus = Object.keys(overrides);
-  const remaining = products.filter((p) => !overrides[p.sku]);
-  const [query, setQuery] = useState('');
-  const [hovered, setHovered] = useState(null);
+  const overrides = builder.variantAdjustments || {};
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [selected, setSelected] = useState(() => new Set());
+  const [expanded, setExpanded] = useState(() => new Set());
 
-  // Search among the not-yet-overridden products, filtering by name / SKU /
-  // vendor and capping the list so a large catalog stays fast and bounded.
-  const MAX_RESULTS = 50;
-  const q = query.trim().toLowerCase();
-  const matches = useMemo(() => {
-    const base = q ? remaining.filter((p) => [p.title, p.sku, p.vendor].filter(Boolean).join(' ').toLowerCase().includes(q)) : [];
-    return { list: base.slice(0, MAX_RESULTS), total: base.length };
-  }, [q, remaining]);
+  // variantId → { product, variant }, for prefilling prices from the picker.
+  const variantIndex = useMemo(() => {
+    const m = {};
+    products.forEach((p) => productVariants(p).forEach((v) => { m[v.id] = { product: p, variant: v }; }));
+    return m;
+  }, [products]);
 
-  const setPrice = (sku, value) => patch({ productAdjustments: { ...overrides, [sku]: { rule: 'set', valueType: 'amount', value: Number(value) || 0 } } });
-  const remove = (sku) => {
+  // Priced variants grouped under their product, in catalog order.
+  const groups = [];
+  products.forEach((p) => {
+    const vs = productVariants(p).filter((v) => overrides[v.id]);
+    if (vs.length) groups.push({ product: p, variants: vs });
+  });
+  const allIds = groups.flatMap((g) => g.variants.map((v) => v.id));
+  const selCount = allIds.filter((id) => selected.has(id)).length;
+  const allSel = allIds.length > 0 && selCount === allIds.length;
+
+  const setField = (vid, patchObj) =>
+    patch({ variantAdjustments: { ...overrides, [vid]: { rule: 'set', valueType: 'amount', value: 0, ...(overrides[vid] || {}), ...patchObj } } });
+  // Product-level bulk edit: apply the same rule/amount to every variant at once.
+  const setGroupField = (vids, patchObj) => {
     const next = { ...overrides };
-    delete next[sku];
-    patch({ productAdjustments: next });
+    vids.forEach((vid) => { next[vid] = { rule: 'set', valueType: 'amount', value: 0, ...(next[vid] || {}), ...patchObj }; });
+    patch({ variantAdjustments: next });
   };
-  const prod = (sku) => products.find((p) => p.sku === sku);
-  const subline = (p) => [p.sku, p.list != null ? money(p.list) : null, p.vendor].filter(Boolean).join(' · ');
-  // What the product would resolve to from the rules/default WITHOUT this override,
-  // so "which wins" is readable on the row (god-file explicitPriceCard default column).
-  const defaultOf = (sku) => {
-    const p = prod(sku);
-    if (!p) return null;
-    const bd = policyPriceBreakdown({ ...builder, productAdjustments: {} }, p);
-    return bd && bd.inScope ? bd.final : null;
+  const toggleAll = () => setSelected(allSel ? new Set() : new Set(allIds));
+  const toggleRow = (id) =>
+    setSelected((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  const toggleGroup = (vids) =>
+    setSelected((s) => {
+      const n = new Set(s);
+      const all = vids.every((id) => n.has(id));
+      vids.forEach((id) => (all ? n.delete(id) : n.add(id)));
+      return n;
+    });
+  const toggleExpand = (sku) =>
+    setExpanded((e) => {
+      const n = new Set(e);
+      if (n.has(sku)) n.delete(sku);
+      else n.add(sku);
+      return n;
+    });
+  const removeSelected = () => {
+    const next = { ...overrides };
+    allIds.forEach((id) => { if (selected.has(id)) delete next[id]; });
+    patch({ variantAdjustments: next });
+    setSelected(new Set());
   };
-  // Click-to-add: prefill the row with the product's list price, editable inline.
-  const addProduct = (sku) => {
-    const p = prod(sku);
-    setPrice(sku, p?.list ?? 0);
+  // Commit a picker selection: keep existing prices for variants that stay, add
+  // newly-picked ones at their list price, drop those unchecked.
+  const commit = (picked) => {
+    const next = {};
+    picked.forEach((vid) => {
+      next[vid] = overrides[vid] || { rule: 'set', valueType: 'amount', value: variantIndex[vid]?.variant?.list ?? variantIndex[vid]?.product?.list ?? 0 };
+    });
+    patch({ variantAdjustments: next });
+    setPickerOpen(false);
+  };
+  // The Options select + Amount input + resolved "Buyer pays" price for one variant.
+  const rowCell = (vid) => {
+    const o = overrides[vid];
+    const listPrice = variantIndex[vid]?.variant?.list ?? variantIndex[vid]?.product?.list ?? 0;
+    const final = applyAdjustment(o.rule || 'set', o.valueType || 'amount', o.value, listPrice);
+    return (
+      <>
+        <Select label="Options" labelHidden options={OVERRIDE_RULES} value={o.rule || 'set'} onChange={(v) => setField(vid, { rule: v })} />
+        <TextField label="Amount" labelHidden type="number" prefix="$" min={0} value={String(o.value ?? '')} onChange={(v) => setField(vid, { value: Number(v) || 0 })} autoComplete="off" />
+        <Text as="span" variant="bodyMd" alignment="end" fontWeight="medium">{money(final)}</Text>
+      </>
+    );
   };
 
   return (
@@ -132,102 +191,152 @@ export function ProductOverridesCard({ builder, patch, products }) {
       <BlockStack gap="300">
         <InlineStack gap="200" blockAlign="center">
           <Text as="h3" variant="headingSm">Product price overrides</Text>
-          {skus.length > 0 ? <Badge>{`${skus.length} product${skus.length === 1 ? '' : 's'}`}</Badge> : null}
+          {allIds.length > 0 ? <Badge>{`${allIds.length} variant${allIds.length === 1 ? '' : 's'}`}</Badge> : null}
         </InlineStack>
-        <Text as="p" tone="subdued" variant="bodySm">Set an exact price for specific products. Overrides win over rules and the default.</Text>
+        <Text as="p" tone="subdued" variant="bodySm">Give specific product variants their own price. Overrides win over rules and the default.</Text>
 
-        {skus.length > 0 && (
-          <Box borderWidth="025" borderColor="border" borderRadius="200">
-            {skus.map((sku, i) => {
-              const p = prod(sku);
-              return (
-                <Box key={sku} padding="300" borderBlockStartWidth={i === 0 ? '0' : '025'} borderColor="border">
-                  <InlineStack gap="300" blockAlign="center" wrap={false}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <BlockStack gap="0">
-                        <Text as="span" variant="bodyMd" truncate>{p?.title || sku}</Text>
-                        <Text as="span" tone="subdued" variant="bodySm">{p ? subline(p) : sku}</Text>
-                      </BlockStack>
-                    </div>
-                    <div style={{ width: 96, textAlign: 'right' }}>
-                      <Text as="span" tone="subdued" variant="bodySm">
-                        {(() => {
-                          const d = defaultOf(sku);
-                          return d != null ? `Default ${money(d)}` : '';
-                        })()}
-                      </Text>
-                    </div>
-                    <div style={{ width: 128 }}>
-                      <TextField label="Price" labelHidden type="number" prefix="$" min={0} value={String(overrides[sku].value ?? '')} onChange={(v) => setPrice(sku, v)} autoComplete="off" />
-                    </div>
-                    <Button icon={DeleteIcon} tone="critical" variant="tertiary" accessibilityLabel={`Remove ${p?.title || sku}`} onClick={() => remove(sku)} />
+        {/* Looks like a search field but is a button — clicking opens the picker
+            modal (Shopify resource-picker pattern) rather than typing inline. */}
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          aria-label="Add products"
+          style={{ all: 'unset', display: 'block', width: '100%', cursor: 'pointer', boxSizing: 'border-box' }}
+        >
+          <Box borderColor="border" borderWidth="025" borderRadius="200" background="bg-surface" paddingBlock="150" paddingInline="300">
+            <InlineStack gap="150" blockAlign="center" wrap={false}>
+              <span style={{ display: 'flex', flex: '0 0 auto' }}>
+                <Icon source={SearchIcon} tone="subdued" />
+              </span>
+              <Text as="span" tone="subdued">Add products</Text>
+            </InlineStack>
+          </Box>
+        </button>
+
+        {groups.length > 0 && (
+          <Box borderWidth="025" borderColor="border" borderRadius="200" overflowX="hidden">
+            <div style={{ overflowX: 'auto' }}>
+            {selCount > 0 ? (
+              <Box background="bg-surface-secondary" borderBlockEndWidth="025" borderColor="border" paddingBlock="200" paddingInline="300">
+                <InlineStack align="space-between" blockAlign="center">
+                  <InlineStack gap="300" blockAlign="center">
+                    <Checkbox label="" labelHidden checked={allSel ? true : 'indeterminate'} onChange={toggleAll} />
+                    <Text as="span" variant="bodySm" fontWeight="medium">{`${selCount} selected`}</Text>
                   </InlineStack>
+                  <Button variant="tertiary" tone="critical" onClick={removeSelected}>Remove</Button>
+                </InlineStack>
+              </Box>
+            ) : (
+              <Box background="bg-surface-secondary" borderBlockEndWidth="025" borderColor="border" paddingBlock="150" paddingInline="300">
+                <div style={ROW_GRID}>
+                  <Checkbox label="" labelHidden checked={false} onChange={toggleAll} />
+                  <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium">Product</Text>
+                  <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium">Options</Text>
+                  <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium">Amount</Text>
+                  <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium" alignment="end">Buyer pays</Text>
+                </div>
+              </Box>
+            )}
+            {groups.map((g, gi) => {
+              const vids = g.variants.map((v) => v.id);
+              const collapsible = g.variants.length > 1;
+              const isExp = expanded.has(g.product.sku);
+              const pAll = vids.every((id) => selected.has(id));
+              const pSome = vids.some((id) => selected.has(id));
+              const topBorder = gi === 0 ? '0' : '025';
+              // Single priced variant → one inline row (no expand needed).
+              if (!collapsible) {
+                const v = g.variants[0];
+                return (
+                  <Box key={g.product.sku} paddingBlock="200" paddingInline="300" borderBlockStartWidth={topBorder} borderColor="border">
+                    <div style={ROW_GRID}>
+                      <Checkbox label="" labelHidden checked={selected.has(v.id)} onChange={() => toggleRow(v.id)} />
+                      <InlineStack gap="200" blockAlign="center" wrap={false}>
+                        <span style={{ width: 20, flex: '0 0 auto' }} />
+                        <span style={THUMB}><Icon source={ImageIcon} tone="subdued" /></span>
+                        <div style={{ minWidth: 0 }}>
+                          <Text as="span" variant="bodyMd" truncate>{g.product.title}</Text>
+                          <Text as="p" tone="subdued" variant="bodySm" truncate>{v.title || v.id}</Text>
+                        </div>
+                      </InlineStack>
+                      {rowCell(v.id)}
+                    </div>
+                  </Box>
+                );
+              }
+              // Multiple priced variants → collapsible product row + variant sub-rows.
+              // The product row's Options/Amount bulk-set every variant; when the
+              // variants differ it shows "Mixed" (edit inline to see per-variant).
+              const rules = g.variants.map((v) => overrides[v.id].rule || 'set');
+              const vals = g.variants.map((v) => overrides[v.id].value);
+              const sameRule = rules.every((r) => r === rules[0]);
+              const sameVal = vals.every((x) => x === vals[0]);
+              const groupOpts = sameRule ? OVERRIDE_RULES : [{ label: 'Mixed', value: 'mixed', disabled: true }, ...OVERRIDE_RULES];
+              // Buyer-pays for the whole product: a single price or a range across the
+              // variants' list prices; a dash when their rules/amounts are mixed.
+              let bulkPays = '—';
+              if (sameRule && sameVal) {
+                const fs = g.variants.map((v) => applyAdjustment(rules[0], 'amount', vals[0], v.list ?? g.product.list));
+                const lo = Math.min(...fs);
+                const hi = Math.max(...fs);
+                bulkPays = lo === hi ? money(lo) : `${money(lo)}–${money(hi)}`;
+              }
+              return (
+                <Box key={g.product.sku} borderBlockStartWidth={topBorder} borderColor="border">
+                  <Box paddingBlock="200" paddingInline="300">
+                    <div style={ROW_GRID}>
+                      <Checkbox label="" labelHidden checked={pAll ? true : pSome ? 'indeterminate' : false} onChange={() => toggleGroup(vids)} />
+                      <button type="button" onClick={() => toggleExpand(g.product.sku)} style={{ all: 'unset', cursor: 'pointer', display: 'block', minWidth: 0 }}>
+                        <InlineStack gap="200" blockAlign="center" wrap={false}>
+                          <span style={CARET}><Icon source={isExp ? ChevronDownIcon : ChevronRightIcon} tone="subdued" /></span>
+                          <span style={THUMB}><Icon source={ImageIcon} tone="subdued" /></span>
+                          <div style={{ minWidth: 0 }}>
+                            <Text as="span" variant="bodyMd" truncate>{g.product.title}</Text>
+                            <Text as="p" tone="subdued" variant="bodySm">{`${g.variants.length} variants`}</Text>
+                          </div>
+                        </InlineStack>
+                      </button>
+                      <Select label="Options" labelHidden options={groupOpts} value={sameRule ? rules[0] || 'set' : 'mixed'} onChange={(v) => { if (v !== 'mixed') setGroupField(vids, { rule: v }); }} />
+                      <TextField label="Amount" labelHidden type="number" prefix="$" min={0} value={sameVal ? String(vals[0] ?? '') : ''} placeholder={sameVal ? undefined : 'Mixed'} onChange={(v) => setGroupField(vids, { value: Number(v) || 0 })} autoComplete="off" />
+                      <Text as="span" variant="bodyMd" alignment="end" fontWeight="medium" tone={bulkPays === '—' ? 'subdued' : undefined}>{bulkPays}</Text>
+                    </div>
+                  </Box>
+                  {isExp && g.variants.map((v) => (
+                    <Box key={v.id} paddingBlock="200" paddingInline="300" borderBlockStartWidth="025" borderColor="border" background="bg-surface-secondary">
+                      <div style={ROW_GRID}>
+                        {/* Variant checkbox indented one level (under the thumbnail);
+                            name aligned under the product title with its SKU on a
+                            second line — Shopify variant-row pattern. */}
+                        <span style={{ paddingInlineStart: 40, display: 'flex', alignItems: 'center' }}>
+                          <Checkbox label="" labelHidden checked={selected.has(v.id)} onChange={() => toggleRow(v.id)} />
+                        </span>
+                        <InlineStack gap="200" blockAlign="center" wrap={false}>
+                          <span style={{ width: 20, flex: '0 0 auto' }} />
+                          <div style={{ minWidth: 0 }}>
+                            <Text as="span" variant="bodyMd" truncate>{v.title || v.id}</Text>
+                            {v.id && v.id !== v.title ? <Text as="p" tone="subdued" variant="bodySm" truncate>{v.id}</Text> : null}
+                          </div>
+                        </InlineStack>
+                        {rowCell(v.id)}
+                      </div>
+                    </Box>
+                  ))}
                 </Box>
               );
             })}
+            </div>
           </Box>
         )}
-
-        {remaining.length > 0 && (
-          <BlockStack gap="150">
-            <TextField
-              label="Add products"
-              value={query}
-              onChange={setQuery}
-              prefix={<Icon source={SearchIcon} tone="subdued" />}
-              placeholder="Search products by name or SKU"
-              autoComplete="off"
-              clearButton
-              onClearButtonClick={() => setQuery('')}
-            />
-            {q !== '' && (
-              <Box borderWidth="025" borderColor="border" borderRadius="200">
-                {matches.list.length > 0 ? (
-                  <div style={{ maxHeight: 264, overflowY: 'auto' }}>
-                    {matches.list.map((p, i) => (
-                      <button
-                        key={p.sku}
-                        type="button"
-                        onClick={() => addProduct(p.sku)}
-                        onMouseEnter={() => setHovered(p.sku)}
-                        onMouseLeave={() => setHovered((h) => (h === p.sku ? null : h))}
-                        style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%', boxSizing: 'border-box' }}
-                      >
-                        <Box
-                          paddingBlock="150"
-                          paddingInline="300"
-                          borderBlockStartWidth={i === 0 ? '0' : '025'}
-                          borderColor="border"
-                          background={hovered === p.sku ? 'bg-surface-hover' : undefined}
-                        >
-                          <InlineStack align="space-between" blockAlign="center" wrap={false} gap="300">
-                            <BlockStack gap="0">
-                              <Text as="span" variant="bodyMd">{p.title}</Text>
-                              <Text as="span" tone="subdued" variant="bodySm">{subline(p)}</Text>
-                            </BlockStack>
-                            <Text as="span" tone={hovered === p.sku ? 'magic' : 'subdued'} variant="bodySm" fontWeight="medium">
-                              Add
-                            </Text>
-                          </InlineStack>
-                        </Box>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <Box padding="300">
-                    <Text as="span" tone="subdued" variant="bodySm">No products match “{query.trim()}”.</Text>
-                  </Box>
-                )}
-                {matches.total > matches.list.length && (
-                  <Box padding="200" borderBlockStartWidth="025" borderColor="border" background="bg-surface-secondary">
-                    <Text as="span" tone="subdued" variant="bodySm">{`Showing first ${matches.list.length} of ${matches.total} — keep typing to narrow it down.`}</Text>
-                  </Box>
-                )}
-              </Box>
-            )}
-          </BlockStack>
-        )}
       </BlockStack>
+
+      {pickerOpen && (
+        <VariantPicker
+          products={products}
+          initialSelected={Object.keys(overrides)}
+          onCancel={() => setPickerOpen(false)}
+          onAdd={commit}
+        />
+      )}
     </Card>
   );
 }

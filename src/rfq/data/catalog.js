@@ -1,10 +1,13 @@
+// Shares the b2b product/variant shape (see b2b/data/db.js): the first variant is
+// the default and its id === the sku, so a quote line (product-level) maps to the
+// default variant when its prices sync into a B2B variant-level base pricing.
 export const RFQ_CATALOG = [
-  {sku:'FIL-STD', title:'Industrial filter, standard', list:62, stock:1200},
-  {sku:'FIL-XL',  title:'Industrial filter, XL',       list:96, stock:840},
-  {sku:'SEA-30',  title:'Sealant cartridge 300ml',     list:8, stock:2600},
-  {sku:'HOS-12',  title:'Reinforced hose, 12m',        list:145, stock:210},
-  {sku:'VLV-40',  title:'Ball valve 40mm',             list:52, stock:670},
-  {sku:'MCFC-TRAINING-JACKET', title:'Manchester City Team Training Jacket', list:1240, stock:120}
+  {sku:'FIL-STD', title:'Industrial filter, standard', list:62, stock:1200, variants:[{id:'FIL-STD', title:'Standard', list:62}]},
+  {sku:'FIL-XL',  title:'Industrial filter, XL',       list:96, stock:840, variants:[{id:'FIL-XL', title:'Standard', list:96},{id:'FIL-XL-HD', title:'Heavy-duty', list:118}]},
+  {sku:'SEA-30',  title:'Sealant cartridge 300ml',     list:8, stock:2600, variants:[{id:'SEA-30', title:'300 ml', list:8}]},
+  {sku:'HOS-12',  title:'Reinforced hose, 12m',        list:145, stock:210, variants:[{id:'HOS-12', title:'12 m', list:145},{id:'HOS-12-18M', title:'18 m', list:205},{id:'HOS-12-24M', title:'24 m', list:265}]},
+  {sku:'VLV-40',  title:'Ball valve 40mm',             list:52, stock:670, variants:[{id:'VLV-40', title:'40 mm', list:52}]},
+  {sku:'MCFC-TRAINING-JACKET', title:'Manchester City Team Training Jacket', list:1240, stock:120, variants:[{id:'MCFC-TRAINING-JACKET', title:'M', list:1240},{id:'MCFC-JACKET-L', title:'L', list:1240},{id:'MCFC-JACKET-XL', title:'XL', list:1290}]}
 ];
 
 /* Sản phẩm + giá B2B theo TỪNG base price template (id khớp RFQ_PRICING_OPTIONS). */
@@ -33,7 +36,7 @@ export const RFQ_CUSTOMERS = [
    the merchant can select or create the destination on the RFQ side. Ids match
    the B2B app's policy ids. */
 export const RFQ_PRICING_OPTIONS = {
-  abc:      [{id:'p1', name:'Distributor Tier 2', priority:1}, {id:'p8', name:'Contract Fallback Base', priority:2}],
+  abc:      [{id:'p1', name:'Distributor Tier 2', priority:1}, {id:'p8', name:'Contract Base', priority:2}],
   vinhphat: [{id:'p1', name:'Distributor Tier 2', priority:1}],
   songhong: [{id:'p1', name:'Distributor Tier 2', priority:1}]
 };

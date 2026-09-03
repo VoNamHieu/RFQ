@@ -37,7 +37,8 @@ export const marginPct = (quoted, cost) =>
   quoted ? Math.round(((quoted - cost) / quoted) * 100) : 0;
 export const discountPct = (list, quoted) =>
   list ? Math.round(((list - quoted) / list) * 100) : 0;
-export const costFallback = (price) => Math.round((Number(price) || 0) * 0.6);
+// Estimated unit cost when a real cost isn't known (≈60% of price).
+export const estimatedCost = (price) => Math.round((Number(price) || 0) * 0.6);
 
 export const COUNTRY_NAMES = {
   VN: 'Vietnam',

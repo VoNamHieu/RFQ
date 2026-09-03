@@ -193,7 +193,7 @@ export function PricingEditor() {
                           max={99}
                           value={String(builder.priority ?? '')}
                           onChange={(v) => patch({ priority: Number(v) })}
-                          helpText="Lower number applies first; the rest are fallbacks. Company/Location and customer/tag precedence isn’t replaced by this."
+                          helpText="Lower number applies first. Company/Location and customer/tag precedence isn’t replaced by this."
                           autoComplete="off"
                         />
                       </InlineGrid>

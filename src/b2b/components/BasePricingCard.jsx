@@ -54,7 +54,7 @@ export function BasePricingCard({ company }) {
   const toast = (m) => dispatch({ type: 'TOAST', message: m });
 
   const priorityHeader = (
-    <Tooltip content="Lower number applies first; the rest are fallbacks.">
+    <Tooltip content="Lower number applies first.">
       <span style={{ borderBottom: '1px dotted var(--p-color-border)', cursor: 'help' }}>Priority</span>
     </Tooltip>
   );

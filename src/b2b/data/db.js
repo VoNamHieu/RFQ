@@ -3,13 +3,22 @@
 
 const defaults = { b2bPolicyId: null, wholesalePolicyId: null };
 
+// Each product carries its variants. The FIRST variant is the default and its
+// id equals the product SKU, so per-SKU pricing (seed overrides, RFQ→B2B sync)
+// keeps resolving to the default variant unchanged; extra variants get new ids.
 const products = [
-  { sku: 'FIL-XL', title: 'Industrial filter, XL', list: 96, stock: 840, vendor: 'FilterCo', productType: 'Filters', tags: ['industrial'] },
-  { sku: 'FIL-STD', title: 'Industrial filter, standard', list: 62, stock: 1200, vendor: 'FilterCo', productType: 'Filters', tags: ['industrial', 'clearance'] },
-  { sku: 'SEA-30', title: 'Sealant cartridge 300ml', list: 8, stock: 2600, vendor: 'SealPro', productType: 'Sealants', tags: ['consumable'] },
-  { sku: 'HOS-12', title: 'Reinforced hose, 12m', list: 145, stock: 210, vendor: 'HydroMax', productType: 'Hoses', tags: ['industrial', 'premium'] },
-  { sku: 'VLV-40', title: 'Ball valve 40mm', list: 52, stock: 670, vendor: 'HydroMax', productType: 'Valves', tags: ['premium', 'clearance'] },
-  { sku: 'MCFC-TRAINING-JACKET', title: 'Manchester City Team Training Jacket', list: 1240, stock: 120, vendor: 'MCFC', productType: 'Apparel', tags: ['licensed'] }
+  { sku: 'FIL-XL', title: 'Industrial filter, XL', list: 96, stock: 840, vendor: 'FilterCo', productType: 'Filters', tags: ['industrial'],
+    variants: [{ id: 'FIL-XL', title: 'Standard', list: 96 }, { id: 'FIL-XL-HD', title: 'Heavy-duty', list: 118 }] },
+  { sku: 'FIL-STD', title: 'Industrial filter, standard', list: 62, stock: 1200, vendor: 'FilterCo', productType: 'Filters', tags: ['industrial', 'clearance'],
+    variants: [{ id: 'FIL-STD', title: 'Standard', list: 62 }] },
+  { sku: 'SEA-30', title: 'Sealant cartridge 300ml', list: 8, stock: 2600, vendor: 'SealPro', productType: 'Sealants', tags: ['consumable'],
+    variants: [{ id: 'SEA-30', title: '300 ml', list: 8 }] },
+  { sku: 'HOS-12', title: 'Reinforced hose, 12m', list: 145, stock: 210, vendor: 'HydroMax', productType: 'Hoses', tags: ['industrial', 'premium'],
+    variants: [{ id: 'HOS-12', title: '12 m', list: 145 }, { id: 'HOS-12-18M', title: '18 m', list: 205 }, { id: 'HOS-12-24M', title: '24 m', list: 265 }] },
+  { sku: 'VLV-40', title: 'Ball valve 40mm', list: 52, stock: 670, vendor: 'HydroMax', productType: 'Valves', tags: ['premium', 'clearance'],
+    variants: [{ id: 'VLV-40', title: '40 mm', list: 52 }] },
+  { sku: 'MCFC-TRAINING-JACKET', title: 'Manchester City Team Training Jacket', list: 1240, stock: 120, vendor: 'MCFC', productType: 'Apparel', tags: ['licensed'],
+    variants: [{ id: 'MCFC-TRAINING-JACKET', title: 'M', list: 1240 }, { id: 'MCFC-JACKET-L', title: 'L', list: 1240 }, { id: 'MCFC-JACKET-XL', title: 'XL', list: 1290 }] }
 ];
 
 const companies = [
@@ -91,88 +100,84 @@ const customers = [
 ];
 
 const policies = [
-  { id: 'p20', name: 'Volume Tier A', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 3, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 12, productAdjustments: {}, explicitEnabled: false, conditionalRules: [], fallback: 'keep', validityType: 'evergreen', startDate: '', endDate: '' },
-  { id: 'p21', name: 'Volume Tier B', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 4, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 15, productAdjustments: {}, explicitEnabled: false, conditionalRules: [], fallback: 'keep', validityType: 'evergreen', startDate: '', endDate: '' },
-  { id: 'p22', name: 'Volume Tier C', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 5, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 18, productAdjustments: {}, explicitEnabled: false, conditionalRules: [], fallback: 'keep', validityType: 'evergreen', startDate: '', endDate: '' },
-  { id: 'p23', name: 'Contractor Bulk', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 6, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 20, productAdjustments: {}, explicitEnabled: false, conditionalRules: [], fallback: 'keep', validityType: 'evergreen', startDate: '', endDate: '' },
-  { id: 'p24', name: 'Government Rate', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 7, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 10, productAdjustments: {}, explicitEnabled: false, conditionalRules: [], fallback: 'keep', validityType: 'evergreen', startDate: '', endDate: '' },
-  { id: 'p25', name: 'Loyalty Base', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 8, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 8, productAdjustments: {}, explicitEnabled: false, conditionalRules: [], fallback: 'keep', validityType: 'evergreen', startDate: '', endDate: '' },
-  { id: 'p26', name: 'Seasonal 2026', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 9, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 22, productAdjustments: {}, explicitEnabled: false, conditionalRules: [], fallback: 'keep', validityType: 'evergreen', startDate: '', endDate: '' },
-  { id: 'p27', name: 'Fleet Discount', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 10, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 14, productAdjustments: {}, explicitEnabled: false, conditionalRules: [], fallback: 'keep', validityType: 'evergreen', startDate: '', endDate: '' },
-  { id: 'p28', name: 'Clearance Base', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 11, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 30, productAdjustments: {}, explicitEnabled: false, conditionalRules: [], fallback: 'keep', validityType: 'evergreen', startDate: '', endDate: '' },
-  { id: 'p29', name: 'New Year Promo', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 12, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 25, productAdjustments: {}, explicitEnabled: false, conditionalRules: [], fallback: 'keep', validityType: 'evergreen', startDate: '', endDate: '' },
+  { id: 'p20', name: 'Volume Tier A', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 3, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 12, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  { id: 'p21', name: 'Volume Tier B', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 4, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 15, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  { id: 'p22', name: 'Volume Tier C', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 5, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 18, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  { id: 'p23', name: 'Contractor Bulk', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 6, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 20, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  { id: 'p24', name: 'Government Rate', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 7, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 10, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  { id: 'p25', name: 'Loyalty Base', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 8, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 8, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  { id: 'p26', name: 'Seasonal 2026', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 9, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 22, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  { id: 'p27', name: 'Fleet Discount', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 10, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 14, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  { id: 'p28', name: 'Clearance Base', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 11, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 30, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  { id: 'p29', name: 'New Year Promo', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 12, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 25, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
   {
     id: 'p1', name: 'Distributor Tier 2', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 1,
     priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: ['FIL-XL', 'FIL-STD', 'SEA-30', 'HOS-12', 'VLV-40'],
-    pricingRule: 'decrease', valueType: 'percentage', value: 25, productAdjustments: {}, explicitEnabled: false,
+    pricingRule: 'decrease', valueType: 'percentage', value: 25, variantAdjustments: {}, explicitEnabled: false,
     conditionalRules: [
       { id: 'cr1', conditions: [{ field: 'collection', operator: 'is', values: ['Contractor assortment'] }], match: 'ALL', rule: 'decrease', valueType: 'percentage', value: 35 },
       { id: 'cr2', conditions: [{ field: 'tag', operator: 'contains', values: ['clearance'] }], match: 'ALL', rule: 'decrease', valueType: 'percentage', value: 30 },
       { id: 'cr3', conditions: [{ field: 'vendor', operator: 'is', values: ['HydroMax'] }], match: 'ALL', rule: 'decrease', valueType: 'percentage', value: 15 }
     ],
-    fallback: 'hide',
     validityType: 'evergreen', startDate: '', endDate: ''
   },
   {
     id: 'p2', name: 'Contractor Standard', type: 'Reusable', status: 'Active', audienceType: 'd2c',
     priceKind: 'base', scopeType: 'collection', collection: 'Contractor assortment', selectedProducts: ['FIL-XL', 'FIL-STD', 'SEA-30', 'HOS-12', 'VLV-40'],
     pricingRule: 'decrease', valueType: 'percentage', value: 20,
-    productAdjustments: { 'FIL-XL': { rule: 'set', valueType: 'amount', value: 75 }, 'SEA-30': { rule: 'set', valueType: 'amount', value: 6.5 } },
-    explicitEnabled: true, fallback: 'quote',
+    variantAdjustments: { 'FIL-XL': { rule: 'set', valueType: 'amount', value: 75 }, 'SEA-30': { rule: 'set', valueType: 'amount', value: 6.5 } },
+    explicitEnabled: true,
     validityType: 'evergreen', startDate: '', endDate: ''
   },
   {
     id: 'p3', name: 'Standard Wholesale', type: 'Reusable', status: 'Active', audienceType: 'd2c',
     priceKind: 'base', priority: 0, scopeType: 'collection', collection: 'Wholesale assortment', selectedProducts: ['FIL-XL', 'FIL-STD', 'SEA-30', 'HOS-12', 'VLV-40'],
-    pricingRule: 'decrease', valueType: 'percentage', value: 20, productAdjustments: {}, explicitEnabled: false,
-    fallback: 'store',
+    pricingRule: 'decrease', valueType: 'percentage', value: 20, variantAdjustments: {}, explicitEnabled: false,
     validityType: 'evergreen', startDate: '', endDate: ''
   },
   {
     id: 'p4', name: 'ABC Hanoi Negotiated', type: 'Account-specific', status: 'Active', audienceType: 'd2c',
     priceKind: 'base', scopeType: 'products', collection: '', selectedProducts: ['FIL-XL', 'FIL-STD', 'SEA-30', 'HOS-12', 'VLV-40'],
     pricingRule: 'keep', valueType: 'amount', value: 0,
-    productAdjustments: {
+    variantAdjustments: {
       'FIL-XL': { rule: 'set', valueType: 'amount', value: 75 }, 'FIL-STD': { rule: 'set', valueType: 'amount', value: 49 },
       'SEA-30': { rule: 'set', valueType: 'amount', value: 6.5 }, 'HOS-12': { rule: 'set', valueType: 'amount', value: 118 },
       'VLV-40': { rule: 'set', valueType: 'amount', value: 41 }
     },
-    explicitEnabled: true, fallback: 'quote',
+    explicitEnabled: true,
     validityType: 'dated', startDate: '2026-01-01', endDate: '2026-12-31'
   },
   {
     id: 'p5', name: 'Riverside Project Pricing', type: 'Temporary', status: 'Scheduled', audienceType: 'b2b',
     priceKind: 'base', scopeType: 'products', collection: '', selectedProducts: ['HOS-12', 'VLV-40'],
     pricingRule: 'keep', valueType: 'amount', value: 0,
-    productAdjustments: { 'HOS-12': { rule: 'set', valueType: 'amount', value: 104 }, 'VLV-40': { rule: 'set', valueType: 'amount', value: 36 } },
-    explicitEnabled: true, fallback: 'quote',
+    variantAdjustments: { 'HOS-12': { rule: 'set', valueType: 'amount', value: 104 }, 'VLV-40': { rule: 'set', valueType: 'amount', value: 36 } },
+    explicitEnabled: true,
     validityType: 'dated', startDate: '2026-08-01', endDate: '2026-10-31'
   },
   {
     id: 'p6', name: 'Pallet Breaks', type: 'Reusable', status: 'Active', audienceType: 'b2b',
     priceKind: 'quantity', priority: 0, scopeType: 'all', collection: 'All B2B products',
     selectedProducts: ['FIL-XL', 'FIL-STD', 'SEA-30', 'HOS-12', 'VLV-40'],
-    pricingRule: 'decrease', valueType: 'percentage', value: 10, productAdjustments: {},
+    pricingRule: 'decrease', valueType: 'percentage', value: 10, variantAdjustments: {},
     volumeRanges: [{ id: 'r1', from: 1, to: 9, valueType: 'percentage', value: 0 }, { id: 'r2', from: 10, to: 49, valueType: 'percentage', value: 10 }, { id: 'r3', from: 50, to: null, valueType: 'percentage', value: 20 }],
     quantityBasis: 'all_selected', volumeBasis: 'base',
-    fallback: 'store',
     validityType: 'evergreen', startDate: '', endDate: ''
   },
   {
     id: 'p7', name: 'Filter Case Pricing', type: 'Reusable', status: 'Active', audienceType: 'b2b',
     priceKind: 'quantity', priority: 0, scopeType: 'products', collection: '',
     selectedProducts: ['FIL-XL', 'FIL-STD'],
-    pricingRule: 'decrease', valueType: 'percentage', value: 15, productAdjustments: {},
+    pricingRule: 'decrease', valueType: 'percentage', value: 15, variantAdjustments: {},
     volumeRanges: [{ id: 'r1', from: 1, to: 11, valueType: 'percentage', value: 0 }, { id: 'r2', from: 12, to: null, valueType: 'percentage', value: 15 }],
     quantityBasis: 'per_product', volumeBasis: 'shopify',
-    fallback: 'store',
     validityType: 'evergreen', startDate: '', endDate: ''
   },
   {
-    id: 'p8', name: 'Contract Fallback Base', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 2,
+    id: 'p8', name: 'Contract Base', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 2,
     priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: ['FIL-XL', 'FIL-STD', 'SEA-30', 'HOS-12', 'VLV-40'],
-    pricingRule: 'decrease', valueType: 'percentage', value: 10, productAdjustments: {}, explicitEnabled: false,
-    conditionalRules: [], fallback: 'store',
+    pricingRule: 'decrease', valueType: 'percentage', value: 10, variantAdjustments: {}, explicitEnabled: false,
+    conditionalRules: [],
     validityType: 'evergreen', startDate: '', endDate: ''
   }
 ];

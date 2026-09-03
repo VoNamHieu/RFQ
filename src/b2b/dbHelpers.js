@@ -75,7 +75,7 @@ export function quoteToBasePricing(name, priority, overrides, status) {
     scopeType: 'products',
     collection: '',
     selectedProducts: Object.keys(overrides),
-    productAdjustments: overrides,
+    variantAdjustments: overrides,
     explicitEnabled: true,
   };
 }
@@ -177,14 +177,14 @@ export function applyQuotePricingTransfer(db, companyId, lines, transfer) {
     fork.id = demoPolicyId(db);
     fork.type = 'Account-specific';
     if (fork.name === base.name) fork.name = `${co.name} pricing`;
-    fork.productAdjustments = { ...(fork.productAdjustments || {}), ...overrides };
+    fork.variantAdjustments = { ...(fork.variantAdjustments || {}), ...overrides };
     fork.explicitEnabled = true;
     db.policies.push(fork);
     removeCompanyBase(co, base.id);
     addCompanyBase(co, fork.id, base.priority);
     return `Forked ${base.name} → ${fork.name} with the quote prices`;
   }
-  base.productAdjustments = { ...(base.productAdjustments || {}), ...overrides };
+  base.variantAdjustments = { ...(base.variantAdjustments || {}), ...overrides };
   base.explicitEnabled = true;
   return `Quote prices added to ${base.name}`;
 }
