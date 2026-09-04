@@ -7,3 +7,6 @@ dist/
 
 # Godfile (legacy prototype) — kept local only, not on GitHub
 /index.html
+/b2b/
+/vendor/
+/versions/
