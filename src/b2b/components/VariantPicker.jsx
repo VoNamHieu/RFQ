@@ -99,11 +99,12 @@ export function VariantPicker({ products, initialSelected, onCancel, onAdd }) {
             const someSel = vids.some((id) => selected.has(id));
             const isExp = expanded.has(p.sku);
             const topBorder = i === 0 ? '0' : '025';
-            // A multi-variant product whose variants are priced differently reads
-            // as "Mixed" (rather than a range), matching the overrides table.
+            // Price shown for the product: a single value, or a low–high range
+            // when its variants are priced differently.
             const listVals = variants.map((v) => v.list ?? p.list);
-            const priceMixed = Math.min(...listVals) !== Math.max(...listVals);
-            const price = priceMixed ? 'Mixed' : money(listVals[0]);
+            const listLo = Math.min(...listVals);
+            const listHi = Math.max(...listVals);
+            const price = listLo === listHi ? money(listLo) : `${money(listLo)}–${money(listHi)}`;
 
             // Single-variant product → one inline row (no caret, aligned via a spacer).
             if (!multi) {
@@ -119,7 +120,7 @@ export function VariantPicker({ products, initialSelected, onCancel, onAdd }) {
                         <Text as="p" tone="subdued" variant="bodySm" truncate>{[p.sku, p.vendor].filter(Boolean).join(' · ')}</Text>
                       </div>
                     </InlineStack>
-                    <Text as="span" variant="bodyMd" alignment="end" tone={priceMixed ? 'subdued' : undefined}>{price}</Text>
+                    <Text as="span" variant="bodyMd" alignment="end">{price}</Text>
                   </div>
                 </Box>
               );
@@ -140,7 +141,7 @@ export function VariantPicker({ products, initialSelected, onCancel, onAdd }) {
                         </div>
                       </InlineStack>
                     </button>
-                    <Text as="span" variant="bodyMd" alignment="end" tone={priceMixed ? 'subdued' : undefined}>{price}</Text>
+                    <Text as="span" variant="bodyMd" alignment="end">{price}</Text>
                   </div>
                 </Box>
                 {isExp && variants.map((v) => (

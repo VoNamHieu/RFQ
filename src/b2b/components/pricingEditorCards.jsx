@@ -272,15 +272,16 @@ export function ProductOverridesCard({ builder, patch, products }) {
               const sameRule = rules.every((r) => r === rules[0]);
               const sameVal = vals.every((x) => x === vals[0]);
               const groupOpts = sameRule ? OVERRIDE_RULES : [{ label: 'Mixed', value: 'mixed', disabled: true }, ...OVERRIDE_RULES];
-              // Buyer-pays for the whole product: a single price or a range across the
-              // variants' list prices; a dash when their rules/amounts are mixed.
-              let bulkPays = '—';
-              if (sameRule && sameVal) {
-                const fs = g.variants.map((v) => applyAdjustment(rules[0], 'amount', vals[0], v.list ?? g.product.list));
-                const lo = Math.min(...fs);
-                const hi = Math.max(...fs);
-                bulkPays = lo === hi ? money(lo) : `${money(lo)}–${money(hi)}`;
-              }
+              // Buyer-pays for the whole product: each variant's actual final price,
+              // shown as a low–high range (a single value when they coincide) — even
+              // when the variants' overrides differ, so it always reads as a price.
+              const finals = g.variants.map((v) => {
+                const o = overrides[v.id];
+                return applyAdjustment(o.rule || 'set', o.valueType || 'amount', o.value, v.list ?? g.product.list);
+              });
+              const payLo = Math.min(...finals);
+              const payHi = Math.max(...finals);
+              const bulkPays = payLo === payHi ? money(payLo) : `${money(payLo)}–${money(payHi)}`;
               return (
                 <Box key={g.product.sku} borderBlockStartWidth={topBorder} borderColor="border">
                   <Box paddingBlock="200" paddingInline="300">
@@ -298,7 +299,7 @@ export function ProductOverridesCard({ builder, patch, products }) {
                       </button>
                       <Select label="Options" labelHidden options={groupOpts} value={sameRule ? rules[0] || 'set' : 'mixed'} onChange={(v) => { if (v !== 'mixed') setGroupField(vids, { rule: v }); }} />
                       <TextField label="Amount" labelHidden type="number" prefix="$" min={0} value={sameVal ? String(vals[0] ?? '') : ''} placeholder={sameVal ? undefined : 'Mixed'} onChange={(v) => setGroupField(vids, { value: Number(v) || 0 })} autoComplete="off" />
-                      <Text as="span" variant="bodyMd" alignment="end" fontWeight="medium" tone={bulkPays === '—' ? 'subdued' : undefined}>{bulkPays}</Text>
+                      <Text as="span" variant="bodyMd" alignment="end" fontWeight="medium">{bulkPays}</Text>
                     </div>
                   </Box>
                   {isExp && g.variants.map((v) => (
