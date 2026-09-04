@@ -153,17 +153,16 @@ export function CreateCompanyModal() {
       open
       onClose={() => dispatch({ type: 'CLOSE_CREATE_COMPANY' })}
       title="Create a company in B2B"
-      size="large"
       primaryAction={{ content: 'Create company', onAction: () => dispatch({ type: 'CREATE_COMPANY_CONFIRM' }), disabled: !cc.name.trim() }}
       secondaryActions={[{ content: 'Back to RFQ', onAction: () => dispatch({ type: 'CLOSE_CREATE_COMPANY' }) }]}
     >
       <Modal.Section>
         <BlockStack gap="200">
           <Text as="h3" variant="headingSm">Company details</Text>
-          <InlineGrid columns={{ xs: 1, sm: 2 }} gap="300">
+          <BlockStack gap="300">
             <TextField label="Company name" value={cc.name} onChange={(v) => patch({ name: v })} autoComplete="off" />
             <TextField label="Company ID" placeholder="Optional" value={cc.externalId} onChange={(v) => patch({ externalId: v })} autoComplete="off" />
-          </InlineGrid>
+          </BlockStack>
         </BlockStack>
       </Modal.Section>
 
@@ -216,10 +215,10 @@ export function CreateCompanyModal() {
                 <RadioButton label="Automatically submit orders" helpText="Orders without shipping addresses are submitted as draft orders." checked={!cc.checkoutToDraft} id="checkout-direct" name="checkout" onChange={() => patch({ checkoutToDraft: false })} />
                 <RadioButton label="Submit all orders as drafts for review" checked={!!cc.checkoutToDraft} id="checkout-draft" name="checkout" onChange={() => patch({ checkoutToDraft: true })} />
               </BlockStack>
-              <InlineGrid columns={{ xs: 1, sm: 2 }} gap="300">
+              <BlockStack gap="300">
                 <Select label="Payment terms" options={PAYMENT_TERMS.map((t) => ({ label: t, value: t }))} value={cc.paymentTerms} onChange={(v) => patch({ paymentTerms: v })} />
                 <TextField label="Tax registration ID" placeholder="Tax / VAT ID" value={cc.taxRegistrationId} onChange={(v) => patch({ taxRegistrationId: v })} autoComplete="off" />
-              </InlineGrid>
+              </BlockStack>
               <Select label="Tax settings" options={TAX_SETTINGS} value={cc.taxSettings} onChange={(v) => patch({ taxSettings: v })} />
             </BlockStack>
           </Disclosure>
@@ -232,10 +231,10 @@ export function CreateCompanyModal() {
             <Text as="h3" variant="headingSm">Initial company contact</Text>
             <Badge size="small">Existing Shopify customer</Badge>
           </InlineStack>
-          <InlineGrid columns={{ xs: 1, sm: 2 }} gap="300">
+          <BlockStack gap="300">
             <TextField label="Name" value={cc.contactName || ''} disabled autoComplete="off" />
             <TextField label="Email" value={cc.contactEmail || ''} disabled autoComplete="off" />
-          </InlineGrid>
+          </BlockStack>
           <Checkbox label="Set this requester as the company’s main contact" checked={cc.setMainContact !== false} onChange={(v) => patch({ setMainContact: v })} />
         </BlockStack>
       </Modal.Section>

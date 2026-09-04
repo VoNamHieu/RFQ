@@ -56,31 +56,17 @@ export function SyncFlowModals() {
       >
         <Modal.Section>
           <BlockStack gap="400">
-            {/* Zone 1 — provenance (god file "Started from QuoteSnap RFQ"; Quoted
-                value dropped per design review). */}
-            <Box background="bg-surface-secondary" borderRadius="200" padding="300">
-              <BlockStack gap="200">
-                <Text as="span" tone="subdued" variant="bodySm" fontWeight="medium">Started from QuoteSnap RFQ</Text>
-                <InlineGrid columns={{ xs: 1, sm: 2 }} gap="300">
-                  <KvItem label="Requester" value={buyer} />
-                  <KvItem label="Source quote" value={`#${quote?.number}`} />
-                </InlineGrid>
-              </BlockStack>
-            </Box>
-
-            {/* Zone 2 — the company to sync. */}
+            {/* Zone — the company to sync. */}
             {isMember ? (
               <BlockStack gap="300">
                 <BlockStack gap="100">
-                  <Text as="span" tone="subdued" variant="bodySm" fontWeight="medium">Shopify company to sync</Text>
-                  <InlineStack align="space-between" blockAlign="center" wrap={false}>
-                    <Text as="span" variant="headingMd">{company?.name}</Text>
-                    <Badge>Shopify company</Badge>
-                  </InlineStack>
+                  <Text as="span" tone="subdued" variant="bodySm" fontWeight="medium">Company</Text>
+                  <Text as="span" variant="headingMd">{company?.name}</Text>
                 </BlockStack>
-                <InlineGrid columns={{ xs: 1, sm: 2 }} gap="300">
-                  <KvItem label="Shopify Company ID" value={company?.shopifyId} />
-                  <KvItem label="Current requester" value={buyer} />
+                <InlineGrid columns={{ xs: 1, sm: 3 }} gap="300">
+                  <KvItem align="start" label="Shopify Company ID" value={company?.shopifyId} />
+                  <KvItem align="center" label="Main contact" value={buyer} />
+                  <KvItem align="end" label="Locations" value={`${locCount} location${locCount === 1 ? '' : 's'}`} />
                 </InlineGrid>
               </BlockStack>
             ) : (
@@ -119,25 +105,6 @@ export function SyncFlowModals() {
                 Select the Shopify company this requester belongs to, or create a new one.
               </Text>
             )}
-
-            {company && !companyAutoSyncs ? (
-              <Box paddingBlockStart="100">
-                <Checkbox
-                  label={`Automatically sync future quotes from ${company.name}`}
-                  checked={sf.autoSync}
-                  onChange={(v) => dispatch({ type: 'SYNC_PATCH', patch: { autoSync: v } })}
-                />
-                {/* Help text rendered separately + indented so the checkbox aligns
-                    with its single-line label (Polaris top-aligns it otherwise).
-                    Pulled tight under the label since it's smaller type. */}
-                <div style={{ paddingInlineStart: 'var(--p-space-600)', marginBlockStart: 'calc(var(--p-space-050) * -1)' }}>
-                  <Text as="span" tone="subdued" variant="bodySm">{`Future quotes from any buyer, across all ${locCount} location${locCount === 1 ? '' : 's'}, sync to B2B.`}</Text>
-                </div>
-              </Box>
-            ) : null}
-            {company && companyAutoSyncs ? (
-              <Text as="p" tone="subdued" variant="bodySm">Future quotes from this company already sync to B2B automatically.</Text>
-            ) : null}
 
             {/* Zone 3 — create-company fallback (independent only; god file inline row). */}
             {isIndependent ? (
@@ -303,11 +270,11 @@ function Kv({ label, value }) {
 }
 
 // A key/value cell for the sync modal's company grid.
-function KvItem({ label, value }) {
+function KvItem({ label, value, align = 'start' }) {
   return (
-    <BlockStack gap="050">
-      <Text as="span" tone="subdued" variant="bodySm">{label}</Text>
-      <Text as="span" variant="bodyMd">{value || '—'}</Text>
+    <BlockStack gap="050" inlineAlign={align}>
+      <Text as="span" tone="subdued" variant="bodySm" alignment={align}>{label}</Text>
+      <Text as="span" variant="bodyMd" alignment={align}>{value || '—'}</Text>
     </BlockStack>
   );
 }

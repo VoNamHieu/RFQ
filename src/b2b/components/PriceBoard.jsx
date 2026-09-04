@@ -1,15 +1,18 @@
-import React from 'react';
-import { Modal, BlockStack, TextField, IndexTable, Badge, Text, Box, InlineStack } from '@shopify/polaris';
+import React, { useState } from 'react';
+import { Modal, BlockStack, TextField, IndexTable, Badge, Text, Box, InlineStack, Button } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
 import { resolveDetail } from '../pricing.js';
 import { money } from '../format.js';
+import { PriceWhyContent } from './PricePreviewModal.jsx';
 
-const LAYER_TONE = { override: 'info', rule: 'success', shopify: undefined };
+const LAYER_TONE = { override: 'info', rule: undefined, shopify: undefined };
 
 // Resolved-prices board (spec §2.7): every in-scope product with the layer that
-// decided its B2B price and the buyer-pays / off% columns.
+// decided its B2B price and the buyer-pays / off% columns. Each row drills into a
+// "Why this price" breakdown (same modal, view switches; Back returns to the board).
 export function PriceBoard() {
   const { state, dispatch } = useStore();
+  const [detailSku, setDetailSku] = useState(null);
   const pb = state.priceBoard;
   if (!pb) return null;
   const company = state.db.companies.find((c) => c.id === pb.companyId);
@@ -17,6 +20,8 @@ export function PriceBoard() {
   const products = state.db.products.filter(
     (p) => !q || p.title.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q),
   );
+  const closeBoard = () => dispatch({ type: 'CLOSE_PRICE_BOARD' });
+  const detailProduct = detailSku ? state.db.products.find((p) => p.sku === detailSku) : null;
 
   const rows = products.map((p, i) => {
     const d = resolveDetail(company, p, state.db.policies);
@@ -43,9 +48,14 @@ export function PriceBoard() {
           </Text>
         </IndexTable.Cell>
         <IndexTable.Cell>
-          <Text as="span" tone={off > 0 ? 'success' : undefined}>
+          <Text as="span">
             {off > 0 ? `${off}% off` : '—'}
           </Text>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <InlineStack align="end">
+            <Button size="slim" onClick={() => setDetailSku(p.sku)}>Why this price</Button>
+          </InlineStack>
         </IndexTable.Cell>
       </IndexTable.Row>
     );
@@ -54,39 +64,48 @@ export function PriceBoard() {
   return (
     <Modal
       open
-      onClose={() => dispatch({ type: 'CLOSE_PRICE_BOARD' })}
-      title={`Resolved prices · ${company?.name || ''}`}
-      size="large"
-      secondaryActions={[{ content: 'Close', onAction: () => dispatch({ type: 'CLOSE_PRICE_BOARD' }) }]}
+      onClose={detailProduct ? () => setDetailSku(null) : closeBoard}
+      title={detailProduct ? 'Why this price' : `Resolved prices · ${company?.name || ''}`}
+      size={detailProduct ? undefined : 'large'}
+      secondaryActions={[
+        detailProduct
+          ? { content: 'Back', onAction: () => setDetailSku(null) }
+          : { content: 'Close', onAction: closeBoard },
+      ]}
     >
       <Modal.Section>
-        <BlockStack gap="300">
-          <Text as="p" tone="subdued" variant="bodySm">
-            What a buyer at this company pays for each product, and which pricing layer decided it.
-          </Text>
-          <TextField
-            label="Search"
-            labelHidden
-            placeholder="Search products"
-            value={pb.search}
-            onChange={(v) => dispatch({ type: 'PRICE_BOARD_PATCH', patch: { search: v } })}
-            autoComplete="off"
-          />
-          <IndexTable
-            resourceName={{ singular: 'product', plural: 'products' }}
-            itemCount={products.length}
-            selectable={false}
-            headings={[
-              { title: 'Product' },
-              { title: 'Shopify price' },
-              { title: 'Decided by' },
-              { title: 'Buyer pays' },
-              { title: 'Off' },
-            ]}
-          >
-            {rows}
-          </IndexTable>
-        </BlockStack>
+        {detailProduct ? (
+          <PriceWhyContent key={detailSku} company={company} location={null} policies={state.db.policies} product={detailProduct} />
+        ) : (
+          <BlockStack gap="300">
+            <Text as="p" tone="subdued" variant="bodySm">
+              What a buyer at this company pays for each product, and which pricing layer decided it.
+            </Text>
+            <TextField
+              label="Search"
+              labelHidden
+              placeholder="Search products"
+              value={pb.search}
+              onChange={(v) => dispatch({ type: 'PRICE_BOARD_PATCH', patch: { search: v } })}
+              autoComplete="off"
+            />
+            <IndexTable
+              resourceName={{ singular: 'product', plural: 'products' }}
+              itemCount={products.length}
+              selectable={false}
+              headings={[
+                { title: 'Product' },
+                { title: 'Shopify price' },
+                { title: 'Decided by' },
+                { title: 'Buyer pays' },
+                { title: 'Off' },
+                { title: '' },
+              ]}
+            >
+              {rows}
+            </IndexTable>
+          </BlockStack>
+        )}
       </Modal.Section>
     </Modal>
   );

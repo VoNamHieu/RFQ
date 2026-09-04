@@ -16,15 +16,14 @@ import {
   Checkbox,
   TextField,
   Modal,
-  Tooltip,
 } from '@shopify/polaris';
-import { EditIcon, RefreshIcon, DeleteIcon } from '@shopify/polaris-icons';
+import { EditIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { locationPricingEntries, scopeLabel, policyStatus } from '../pricing.js';
-import { versionFlags } from '../../shared/versions.js';
 import { money } from '../format.js';
 
-import { OverrideModal, AssignBuyerModal, GeneralModal, ShippingModal, PAYMENT_TERM_OPTIONS, TAX_SETTINGS, COUNTRY_NAMES } from '../components/LocationModals.jsx';
+import { AssignBuyerModal, GeneralModal, ShippingModal, PAYMENT_TERM_OPTIONS, TAX_SETTINGS, COUNTRY_NAMES } from '../components/LocationModals.jsx';
+import { PricePreviewModal } from '../components/PricePreviewModal.jsx';
 
 const ORDER_TONE = {
   Fulfilled: 'success',
@@ -40,14 +39,13 @@ export function LocationDetail() {
   const { state, dispatch } = useStore();
   const company = state.db.companies.find((c) => c.id === state.selectedCompany);
   const location = company?.locations?.find((l) => l.id === state.selectedLocation);
-  const [override, setOverride] = useState(null); // { kind } — location pricing override modal
   const [assignOpen, setAssignOpen] = useState(false);
   const [editGeneral, setEditGeneral] = useState(false);
   const [editShipping, setEditShipping] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   if (!company || !location) return null;
 
   const policies = state.db.policies;
-  const canOverride = versionFlags().locationPricing; // v4 downgrades to read-only inherited
   const { bases, quantity } = locationPricingEntries(company, location, policies);
   const buyers = (company.contacts || []).filter((c) => c.locations === location.name);
   const locOrders = (company.orders || [])
@@ -71,10 +69,7 @@ export function LocationDetail() {
     .filter(Boolean);
   const shipPreview = shipParts.length ? [...shipParts, COUNTRY_NAMES[ship.country] || ''].filter(Boolean) : [];
 
-  // Pricing rows: resolved base(s) + quantity, with per-row edit / override / revert.
-  const editPolicy = (policy) =>
-    dispatch({ type: 'OPEN_EDITOR', policy, context: { mode: 'edit', companyId: company.id, locationId: location.id } });
-
+  // Pricing rows: resolved base(s) + quantity — read-only (inherited from company).
   const pricingRows = [];
   if (bases.length) {
     bases.forEach((e, i) => {
@@ -95,13 +90,6 @@ export function LocationDetail() {
           <IndexTable.Cell>
             <Badge tone={policyStatus(e.policy, state.db).tone}>{policyStatus(e.policy, state.db).label}</Badge>
           </IndexTable.Cell>
-          <IndexTable.Cell>
-            <RowActions
-              onEdit={() => editPolicy(e.policy)}
-              onOverride={i === 0 && canOverride ? () => setOverride({ kind: 'base' }) : null}
-              onRevert={i === 0 && canOverride && e.source === 'LOCATION' ? () => dispatch({ type: 'SET_LOCATION_PRICING', companyId: company.id, locationId: location.id, kind: 'base', policyId: null }) : null}
-            />
-          </IndexTable.Cell>
         </IndexTable.Row>,
       );
     });
@@ -112,7 +100,6 @@ export function LocationDetail() {
         <IndexTable.Cell><Badge tone="warning">Not set</Badge></IndexTable.Cell>
         <IndexTable.Cell>—</IndexTable.Cell>
         <IndexTable.Cell>—</IndexTable.Cell>
-        <IndexTable.Cell>{canOverride ? <Button size="micro" onClick={() => setOverride({ kind: 'base' })}>Assign</Button> : null}</IndexTable.Cell>
       </IndexTable.Row>,
     );
   }
@@ -135,19 +122,6 @@ export function LocationDetail() {
       </IndexTable.Cell>
       <IndexTable.Cell>{quantity ? scopeLabel(quantity.policy) : '—'}</IndexTable.Cell>
       <IndexTable.Cell>{quantity ? <Badge tone={policyStatus(quantity.policy, state.db).tone}>{policyStatus(quantity.policy, state.db).label}</Badge> : '—'}</IndexTable.Cell>
-      <IndexTable.Cell>
-        {quantity ? (
-          <RowActions
-            onEdit={() => editPolicy(quantity.policy)}
-            onOverride={canOverride ? () => setOverride({ kind: 'quantity' }) : null}
-            onRevert={canOverride && quantity.source === 'LOCATION' ? () => dispatch({ type: 'SET_LOCATION_PRICING', companyId: company.id, locationId: location.id, kind: 'quantity', policyId: null }) : null}
-          />
-        ) : canOverride ? (
-          <Button size="micro" onClick={() => setOverride({ kind: 'quantity' })}>Assign</Button>
-        ) : (
-          <Text as="span" tone="subdued" variant="bodySm">Inherited</Text>
-        )}
-      </IndexTable.Cell>
     </IndexTable.Row>,
   );
 
@@ -214,14 +188,14 @@ export function LocationDetail() {
               <Box padding="300" paddingBlockEnd="0">
                 <InlineStack align="space-between" blockAlign="center">
                   <Text as="h2" variant="headingSm">Pricing</Text>
-                  <Text as="span" tone="subdued" variant="bodySm">Assign per type on the row</Text>
+                  <Button size="slim" onClick={() => setPreviewOpen(true)}>Preview price</Button>
                 </InlineStack>
               </Box>
               <IndexTable
                 resourceName={{ singular: 'pricing', plural: 'pricings' }}
                 itemCount={pricingRows.length}
                 selectable={false}
-                headings={[{ title: 'Type' }, { title: 'Pricing' }, { title: 'Products' }, { title: 'Status' }, { title: '' }]}
+                headings={[{ title: 'Type' }, { title: 'Pricing' }, { title: 'Products' }, { title: 'Status' }]}
               >
                 {pricingRows}
               </IndexTable>
@@ -376,14 +350,6 @@ export function LocationDetail() {
         </Layout.Section>
       </Layout>
 
-      {override && (
-        <OverrideModal
-          company={company}
-          location={location}
-          kind={override.kind}
-          onClose={() => setOverride(null)}
-        />
-      )}
       {assignOpen && (
         <AssignBuyerModal company={company} location={location} onClose={() => setAssignOpen(false)} />
       )}
@@ -393,17 +359,10 @@ export function LocationDetail() {
       {editShipping && (
         <ShippingModal location={location} onClose={() => setEditShipping(false)} onSave={(patch) => { setField(patch); setEditShipping(false); }} />
       )}
+      {previewOpen && (
+        <PricePreviewModal company={company} location={location} db={state.db} onClose={() => setPreviewOpen(false)} />
+      )}
     </Page>
-  );
-}
-
-function RowActions({ onEdit, onOverride, onRevert }) {
-  return (
-    <InlineStack gap="100" wrap={false}>
-      <Tooltip content="Edit pricing"><Button size="micro" icon={EditIcon} onClick={onEdit} accessibilityLabel="Edit pricing" /></Tooltip>
-      {onOverride && <Tooltip content="Override for this location"><Button size="micro" icon={RefreshIcon} onClick={onOverride} accessibilityLabel="Override for this location" /></Tooltip>}
-      {onRevert && <Tooltip content="Remove location override"><Button size="micro" tone="critical" icon={DeleteIcon} onClick={onRevert} accessibilityLabel="Remove location override" /></Tooltip>}
-    </InlineStack>
   );
 }
 

@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Modal, BlockStack, InlineStack, Box, Text, Select, TextField, Checkbox } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
 
-// Shared location constants + the four location-detail modals (pricing override,
-// assign buyer, edit general, edit shipping). Split out of LocationDetail.jsx.
+// Shared location constants + the location-detail modals (assign buyer,
+// edit general, edit shipping). Split out of LocationDetail.jsx.
 export const PAYMENT_TERM_OPTIONS = ['No payment terms', 'Due immediately', 'Due on receipt', 'Net 7', 'Net 15', 'Net 30', 'Net 45', 'Net 60', 'Net 90'];
 export const TAX_SETTINGS = [
   { value: 'collect', label: 'Collect tax' },
@@ -12,43 +12,6 @@ export const TAX_SETTINGS = [
 ];
 export const COUNTRY_NAMES = { VN: 'Vietnam', US: 'United States', GB: 'United Kingdom', SG: 'Singapore', AU: 'Australia' };
 export const ROLE_OPTIONS = ['Ordering only', 'Location admin'];
-
-export function OverrideModal({ company, location, kind, onClose }) {
-  const { state, dispatch } = useStore();
-  const current = (location.pricing || {})[kind] || '';
-  const [sel, setSel] = useState(current);
-  const options = [
-    { label: 'Use company pricing (inherit)', value: '' },
-    ...state.db.policies
-      .filter((p) => (kind === 'base' ? p.priceKind !== 'quantity' : p.priceKind === 'quantity') && p.audienceType === 'b2b')
-      .map((p) => ({ label: p.name, value: p.id })),
-  ];
-  const kindName = kind === 'base' ? 'base' : 'quantity';
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={`Override ${kindName} pricing for ${location.name}`}
-      primaryAction={{
-        content: 'Save',
-        onAction: () => {
-          dispatch({ type: 'SET_LOCATION_PRICING', companyId: company.id, locationId: location.id, kind, policyId: sel || null });
-          onClose();
-        },
-      }}
-      secondaryActions={[{ content: 'Cancel', onAction: onClose }]}
-    >
-      <Modal.Section>
-        <BlockStack gap="300">
-          <Text as="p" tone="subdued" variant="bodySm">
-            A location override replaces the inherited company {kindName} pricing for buyers at {location.name} only. Choose “Use company pricing” to inherit again.
-          </Text>
-          <Select label={`${kindName} pricing`} options={options} value={sel} onChange={setSel} />
-        </BlockStack>
-      </Modal.Section>
-    </Modal>
-  );
-}
 
 export function AssignBuyerModal({ company, location, onClose }) {
   const { dispatch } = useStore();

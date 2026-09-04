@@ -24,7 +24,7 @@ const products = [
 const companies = [
   {
     id: 'c1', name: 'ABC Construction', mainContact: 'John Nguyen', source: 'QuoteSnap RFQ',
-    pricing: { base: [{ id: 'p1', priority: 1 }, { id: 'p8', priority: 2 }, { id: 'p20', priority: 3 }, { id: 'p21', priority: 4 }, { id: 'p22', priority: 5 }, { id: 'p23', priority: 6 }, { id: 'p24', priority: 7 }, { id: 'p25', priority: 8 }, { id: 'p26', priority: 9 }, { id: 'p27', priority: 10 }, { id: 'p28', priority: 11 }, { id: 'p29', priority: 12 }], quantity: 'p6' }, revenue: 124000,
+    pricing: { base: [{ id: 'p1', priority: 1 }, { id: 'p30', priority: 5 }, { id: 'p8', priority: 2 }, { id: 'p20', priority: 3 }, { id: 'p21', priority: 4 }, { id: 'p22', priority: 5 }, { id: 'p23', priority: 6 }, { id: 'p24', priority: 7 }, { id: 'p25', priority: 8 }, { id: 'p26', priority: 9 }, { id: 'p27', priority: 10 }, { id: 'p28', priority: 11 }, { id: 'p29', priority: 12 }], quantity: 'p6' }, revenue: 124000,
     locations: [
       { id: 'l1', name: 'Hanoi', ordering: 'Buys directly', terms: 'Net 30', lastOrder: '2026-07-15', buyers: 2 },
       { id: 'l2', name: 'Bac Ninh site', ordering: 'You approve first', terms: 'Due on receipt', lastOrder: '2026-06-28', buyers: 1 }
@@ -110,6 +110,10 @@ const policies = [
   { id: 'p27', name: 'Fleet Discount', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 10, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 14, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
   { id: 'p28', name: 'Clearance Base', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 11, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 30, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
   { id: 'p29', name: 'New Year Promo', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 12, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 25, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  // Demo: an account-specific price pointed only at Ball valve 40mm (VLV-40). It
+  // loses to the higher-priority Distributor Tier 2, so it surfaces under "Also
+  // covers this product" in Preview price — the "why isn't my pricing applied?" case.
+  { id: 'p30', name: 'VLV-40 Contract Price', type: 'Account-specific', status: 'Active', audienceType: 'b2b', priority: 5, priceKind: 'base', scopeType: 'products', collection: '', selectedProducts: ['VLV-40'], pricingRule: 'decrease', valueType: 'percentage', value: 20, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
   {
     id: 'p1', name: 'Distributor Tier 2', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 1,
     priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: ['FIL-XL', 'FIL-STD', 'SEA-30', 'HOS-12', 'VLV-40'],

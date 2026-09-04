@@ -411,7 +411,7 @@ export function CreateQuote() {
                         Cancel
                       </Button>
                     ) : (
-                      <Button variant="plain" onClick={() => setChangingCustomer(true)}>
+                      <Button variant="plain" disabled={lines.length > 0} onClick={() => setChangingCustomer(true)}>
                         Change
                       </Button>
                     ))}

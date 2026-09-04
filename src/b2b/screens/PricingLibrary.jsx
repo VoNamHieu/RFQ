@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Page,
   Card,
@@ -16,7 +16,7 @@ import {
   Modal,
   Tooltip,
 } from '@shopify/polaris';
-import { EditIcon, DeleteIcon, SearchIcon } from '@shopify/polaris-icons';
+import { EditIcon, DeleteIcon, SearchIcon, PlusCircleIcon, ToggleOnIcon, ToggleOffIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { policyStatus, scopeTypeLabel, policyUsage, policyUsageCount } from '../pricing.js';
 
@@ -26,6 +26,8 @@ const AUDIENCE = [
   { id: 'd2c', label: 'Customers' },
 ];
 
+const PAGE_SIZE = 10;
+
 export function PricingLibrary() {
   const { state, dispatch } = useStore();
   const [audience, setAudience] = useState('all');
@@ -33,7 +35,11 @@ export function PricingLibrary() {
   const [kind, setKind] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sort, setSort] = useState('name');
+  const [page, setPage] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(null);
+
+  // Jump back to the first page whenever the result set changes.
+  useEffect(() => { setPage(0); }, [audience, search, kind, statusFilter, sort]);
 
   const q = search.trim().toLowerCase();
   let policies = state.db.policies.filter((p) => {
@@ -47,7 +53,14 @@ export function PricingLibrary() {
     sort === 'assigned' ? policyUsageCount(b, state.db) - policyUsageCount(a, state.db) || a.name.localeCompare(b.name) : a.name.localeCompare(b.name),
   );
 
-  const rows = policies.map((p, index) => {
+  const total = policies.length;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const current = Math.min(page, pageCount - 1);
+  const start = current * PAGE_SIZE;
+  const pagePolicies = policies.slice(start, start + PAGE_SIZE);
+  const pageLabel = total === 0 ? '0 of 0' : `${start + 1}–${start + pagePolicies.length} of ${total}`;
+
+  const rows = pagePolicies.map((p, index) => {
     const st = policyStatus(p, state.db);
     const canToggle = policyUsageCount(p, state.db) > 0;
     const isOff = p.status === 'Inactive';
@@ -68,13 +81,13 @@ export function PricingLibrary() {
         <IndexTable.Cell><Text as="span" tone="subdued" variant="bodySm">{policyUsage(p, state.db)}</Text></IndexTable.Cell>
         <IndexTable.Cell>
           <InlineStack gap="100" align="end" wrap={false}>
-            <Button variant="tertiary" onClick={() => dispatch({ type: 'OPEN_MULTI_ASSIGN', policyId: p.id })}>
-              Assign
-            </Button>
+            <Tooltip content="Assign">
+              <Button icon={PlusCircleIcon} variant="tertiary" accessibilityLabel="Assign" onClick={() => dispatch({ type: 'OPEN_MULTI_ASSIGN', policyId: p.id })} />
+            </Tooltip>
             {canToggle && (
-              <Button variant="tertiary" onClick={() => dispatch({ type: 'TOGGLE_POLICY_STATUS', id: p.id })}>
-                {isOff ? 'Turn on' : 'Turn off'}
-              </Button>
+              <Tooltip content={isOff ? 'Turn on' : 'Turn off'}>
+                <Button icon={isOff ? ToggleOffIcon : ToggleOnIcon} variant="tertiary" accessibilityLabel={isOff ? 'Turn on' : 'Turn off'} onClick={() => dispatch({ type: 'TOGGLE_POLICY_STATUS', id: p.id })} />
+              </Tooltip>
             )}
             <Tooltip content="Edit pricing">
               <Button icon={EditIcon} variant="tertiary" accessibilityLabel="Edit pricing" onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: p, context: { mode: 'edit' } })} />
@@ -146,6 +159,13 @@ export function PricingLibrary() {
             { title: 'Assigned to' },
             { title: '', alignment: 'end' },
           ]}
+          pagination={{
+            hasNext: current < pageCount - 1,
+            hasPrevious: current > 0,
+            onNext: () => setPage((p) => Math.min(p + 1, pageCount - 1)),
+            onPrevious: () => setPage((p) => Math.max(p - 1, 0)),
+            label: pageLabel,
+          }}
         >
           {rows}
         </IndexTable>
