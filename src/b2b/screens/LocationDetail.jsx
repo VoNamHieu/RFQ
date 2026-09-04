@@ -23,7 +23,6 @@ import { locationPricingEntries, scopeLabel, policyStatus } from '../pricing.js'
 import { money } from '../format.js';
 
 import { AssignBuyerModal, GeneralModal, ShippingModal, PAYMENT_TERM_OPTIONS, TAX_SETTINGS, COUNTRY_NAMES } from '../components/LocationModals.jsx';
-import { PricePreviewModal } from '../components/PricePreviewModal.jsx';
 
 const ORDER_TONE = {
   Fulfilled: 'success',
@@ -34,6 +33,8 @@ const ORDER_TONE = {
 };
 const orderTone = (s) => ORDER_TONE[s];
 const QUOTE_TONE = { 'New Received': 'attention', Read: undefined, Updated: 'info', 'Deal Closed': 'success', 'Deal Rejected': 'critical' };
+const PRICING_PAGE_SIZE = 5;
+const HISTORY_PAGE_SIZE = 5;
 
 export function LocationDetail() {
   const { state, dispatch } = useStore();
@@ -42,7 +43,9 @@ export function LocationDetail() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [editGeneral, setEditGeneral] = useState(false);
   const [editShipping, setEditShipping] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [pricingPage, setPricingPage] = useState(0);
+  const [quotesPage, setQuotesPage] = useState(0);
+  const [ordersPage, setOrdersPage] = useState(0);
   if (!company || !location) return null;
 
   const policies = state.db.policies;
@@ -52,7 +55,6 @@ export function LocationDetail() {
     .filter((o) => o.location === location.name)
     .slice()
     .sort((a, b) => String(b.date).localeCompare(String(a.date)));
-  const recentOrders = locOrders.slice(0, 5);
   const totalSales = locOrders.reduce((s, o) => s + (o.amount || 0), 0);
   const locQuotes = (state.db.quotes || [])
     .filter((q) => q.company === company.id && q.location === location.name)
@@ -125,6 +127,33 @@ export function LocationDetail() {
     </IndexTable.Row>,
   );
 
+  // Pricing table pagination.
+  const pricingPageCount = Math.max(1, Math.ceil(pricingRows.length / PRICING_PAGE_SIZE));
+  const pricingCurrent = Math.min(pricingPage, pricingPageCount - 1);
+  const pricingStart = pricingCurrent * PRICING_PAGE_SIZE;
+  const pagePricingRows = pricingRows.slice(pricingStart, pricingStart + PRICING_PAGE_SIZE);
+  const pricingPageLabel = pricingRows.length
+    ? `${pricingStart + 1}–${pricingStart + pagePricingRows.length} of ${pricingRows.length}`
+    : '0 of 0';
+
+  // Quotes table pagination.
+  const quotesPageCount = Math.max(1, Math.ceil(locQuotes.length / HISTORY_PAGE_SIZE));
+  const quotesCurrent = Math.min(quotesPage, quotesPageCount - 1);
+  const quotesStart = quotesCurrent * HISTORY_PAGE_SIZE;
+  const pageQuotes = locQuotes.slice(quotesStart, quotesStart + HISTORY_PAGE_SIZE);
+  const quotesPageLabel = locQuotes.length
+    ? `${quotesStart + 1}–${quotesStart + pageQuotes.length} of ${locQuotes.length}`
+    : '0 of 0';
+
+  // Order history pagination.
+  const ordersPageCount = Math.max(1, Math.ceil(locOrders.length / HISTORY_PAGE_SIZE));
+  const ordersCurrent = Math.min(ordersPage, ordersPageCount - 1);
+  const ordersStart = ordersCurrent * HISTORY_PAGE_SIZE;
+  const pageOrders = locOrders.slice(ordersStart, ordersStart + HISTORY_PAGE_SIZE);
+  const ordersPageLabel = locOrders.length
+    ? `${ordersStart + 1}–${ordersStart + pageOrders.length} of ${locOrders.length}`
+    : '0 of 0';
+
   return (
     <Page
       fullWidth
@@ -186,18 +215,22 @@ export function LocationDetail() {
             {/* Pricing */}
             <Card padding="0">
               <Box padding="300" paddingBlockEnd="0">
-                <InlineStack align="space-between" blockAlign="center">
-                  <Text as="h2" variant="headingSm">Pricing</Text>
-                  <Button size="slim" onClick={() => setPreviewOpen(true)}>Preview price</Button>
-                </InlineStack>
+                <Text as="h2" variant="headingSm">Pricing</Text>
               </Box>
               <IndexTable
                 resourceName={{ singular: 'pricing', plural: 'pricings' }}
-                itemCount={pricingRows.length}
+                itemCount={pagePricingRows.length}
                 selectable={false}
                 headings={[{ title: 'Type' }, { title: 'Pricing' }, { title: 'Products' }, { title: 'Status' }]}
+                pagination={{
+                  hasNext: pricingCurrent < pricingPageCount - 1,
+                  hasPrevious: pricingCurrent > 0,
+                  onNext: () => setPricingPage((p) => Math.min(p + 1, pricingPageCount - 1)),
+                  onPrevious: () => setPricingPage((p) => Math.max(p - 1, 0)),
+                  label: pricingPageLabel,
+                }}
               >
-                {pricingRows}
+                {pagePricingRows}
               </IndexTable>
             </Card>
 
@@ -211,16 +244,23 @@ export function LocationDetail() {
               </Box>
               <IndexTable
                 resourceName={{ singular: 'quote', plural: 'quotes' }}
-                itemCount={locQuotes.length}
+                itemCount={pageQuotes.length}
                 selectable={false}
                 headings={[{ title: 'Quote' }, { title: 'Buyer' }, { title: 'Created' }, { title: 'Status' }]}
+                pagination={{
+                  hasNext: quotesCurrent < quotesPageCount - 1,
+                  hasPrevious: quotesCurrent > 0,
+                  onNext: () => setQuotesPage((p) => Math.min(p + 1, quotesPageCount - 1)),
+                  onPrevious: () => setQuotesPage((p) => Math.max(p - 1, 0)),
+                  label: quotesPageLabel,
+                }}
                 emptyState={
                   <Box padding="400">
                     <Text as="p" alignment="center" tone="subdued">No quotes from this location yet.</Text>
                   </Box>
                 }
               >
-                {locQuotes.map((q, i) => (
+                {pageQuotes.map((q, i) => (
                   <IndexTable.Row id={q.id} key={q.id} position={i} onClick={() => dispatch({ type: 'OPEN_QUOTE', id: q.id })}>
                     <IndexTable.Cell><Text as="span" variant="bodyMd" fontWeight="medium">{q.id}</Text></IndexTable.Cell>
                     <IndexTable.Cell>{q.buyer}</IndexTable.Cell>
@@ -241,16 +281,23 @@ export function LocationDetail() {
               </Box>
               <IndexTable
                 resourceName={{ singular: 'order', plural: 'orders' }}
-                itemCount={recentOrders.length}
+                itemCount={pageOrders.length}
                 selectable={false}
                 headings={[{ title: 'Order' }, { title: 'Buyer' }, { title: 'Date' }, { title: 'Total', alignment: 'end' }, { title: 'Status' }]}
+                pagination={{
+                  hasNext: ordersCurrent < ordersPageCount - 1,
+                  hasPrevious: ordersCurrent > 0,
+                  onNext: () => setOrdersPage((p) => Math.min(p + 1, ordersPageCount - 1)),
+                  onPrevious: () => setOrdersPage((p) => Math.max(p - 1, 0)),
+                  label: ordersPageLabel,
+                }}
                 emptyState={
                   <Box padding="400">
                     <Text as="p" alignment="center" tone="subdued">No orders from this location yet.</Text>
                   </Box>
                 }
               >
-                {recentOrders.map((o, i) => (
+                {pageOrders.map((o, i) => (
                   <IndexTable.Row id={o.id} key={o.id} position={i}>
                     <IndexTable.Cell>
                       <BlockStack gap="050">
@@ -265,11 +312,6 @@ export function LocationDetail() {
                   </IndexTable.Row>
                 ))}
               </IndexTable>
-              {locOrders.length > recentOrders.length && (
-                <Box padding="300" borderBlockStartWidth="025" borderColor="border">
-                  <Text as="span" tone="subdued" variant="bodySm">Showing the {recentOrders.length} most recent — View all company orders for the rest.</Text>
-                </Box>
-              )}
             </Card>
           </BlockStack>
         </Layout.Section>
@@ -358,9 +400,6 @@ export function LocationDetail() {
       )}
       {editShipping && (
         <ShippingModal location={location} onClose={() => setEditShipping(false)} onSave={(patch) => { setField(patch); setEditShipping(false); }} />
-      )}
-      {previewOpen && (
-        <PricePreviewModal company={company} location={location} db={state.db} onClose={() => setPreviewOpen(false)} />
       )}
     </Page>
   );
