@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, IndexTable, Badge, Text, BlockStack, Box, InlineStack, Button, Modal, TextField, Select } from '@shopify/polaris';
+import { Card, IndexTable, Badge, Text, BlockStack, Box, InlineStack, Button, Modal, TextField, Select, Tooltip } from '@shopify/polaris';
 import { PlusIcon } from '@shopify/polaris-icons';
 import { useStore } from '../../store.jsx';
 import { locationPricingEntries } from '../../pricing.js';
@@ -39,12 +39,21 @@ export function LocationsTab({ company }) {
         <IndexTable.Cell>{l.ordering || (l.purchasingMode === 'REQUIRE_APPROVAL' ? 'You approve first' : 'Buys directly')}</IndexTable.Cell>
         <IndexTable.Cell>
           <BlockStack gap="050">
-            <Text as="span" variant="bodySm">{names.length ? names.join(', ') : 'Not set'}</Text>
+            {names.length ? (
+              <InlineStack gap="100" blockAlign="center">
+                <Text as="span" variant="bodySm">{names.slice(0, 3).join(', ')}</Text>
+                {names.length > 3 ? (
+                  <Tooltip content={names.slice(3).join(', ')}>
+                    <Badge size="small">{`+${names.length - 3}`}</Badge>
+                  </Tooltip>
+                ) : null}
+              </InlineStack>
+            ) : (
+              <Text as="span" variant="bodySm">Not set</Text>
+            )}
             {override ? (
               <Badge tone="info" size="small">Location override</Badge>
-            ) : (
-              <Text as="span" tone="subdued" variant="bodySm">Inherited from company</Text>
-            )}
+            ) : null}
           </BlockStack>
         </IndexTable.Cell>
         <IndexTable.Cell>{buyers}</IndexTable.Cell>
