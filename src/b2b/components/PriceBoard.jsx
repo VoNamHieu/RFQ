@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Modal, BlockStack, TextField, IndexTable, Badge, Text, Box, InlineStack, Button } from '@shopify/polaris';
+import { ViewIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { resolveDetail } from '../pricing.js';
 import { money } from '../format.js';
@@ -54,7 +55,7 @@ export function PriceBoard() {
         </IndexTable.Cell>
         <IndexTable.Cell>
           <InlineStack align="end">
-            <Button size="slim" onClick={() => setDetailSku(p.sku)}>Why this price</Button>
+            <Button icon={ViewIcon} variant="tertiary" accessibilityLabel="Why this price" onClick={() => setDetailSku(p.sku)} />
           </InlineStack>
         </IndexTable.Cell>
       </IndexTable.Row>

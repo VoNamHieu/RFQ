@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Modal, Select, BlockStack, InlineStack, Box, Text, Badge, Divider, IndexTable, Button, TextField, Icon, Scrollable } from '@shopify/polaris';
-import { SearchIcon } from '@shopify/polaris-icons';
+import { SearchIcon, ViewIcon } from '@shopify/polaris-icons';
 import { money } from '../format.js';
 import {
   locationPricingEntries,
@@ -138,7 +138,7 @@ export function PricePreviewModal({ company, location, db, onClose }) {
         </IndexTable.Cell>
         <IndexTable.Cell>
           <InlineStack align="end">
-            <Button size="slim" onClick={() => setDetailSku(p.sku)}>Why this price</Button>
+            <Button icon={ViewIcon} variant="tertiary" accessibilityLabel="Why this price" onClick={() => setDetailSku(p.sku)} />
           </InlineStack>
         </IndexTable.Cell>
       </IndexTable.Row>
