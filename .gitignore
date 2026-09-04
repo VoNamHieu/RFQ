@@ -4,3 +4,6 @@ node_modules/
 *.log
 .vercel
 dist/
+
+# Godfile (legacy prototype) — kept local only, not on GitHub
+/index.html
