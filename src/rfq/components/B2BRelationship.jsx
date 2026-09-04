@@ -47,45 +47,51 @@ export function B2BRelationshipCard({ quote }) {
     return (
       <Card>
         <BlockStack gap="300">
-          <Text as="h2" variant="headingSm">
-            Wholesale B2B Solution
-          </Text>
-          <Badge>App not installed</Badge>
+          <InlineStack align="space-between" blockAlign="center">
+            <Text as="h2" variant="headingSm">B2B relationship</Text>
+            <Badge>App not installed</Badge>
+          </InlineStack>
           <Text as="p" tone="subdued" variant="bodySm">
-            Install the B2B app to turn this requester into a managed company with its own pricing.
+            Install QuoteSnap B2B to manage this buyer as a company with shared pricing and quote history.
           </Text>
           <InlineGrid columns={2} gap="200">
-            <Stat label="Open quotes" value="12" />
-            <Stat label="Est. B2B revenue" value="$48k" />
+            <Stat label="Quotes" value={String(quote.quoteCount ?? 1)} />
+            <Stat label="Quoted value" value={money2(quoteValueOf(quote))} />
           </InlineGrid>
           <InlineStack gap="200">
-            <Button variant="primary" onClick={() => dispatch({ type: 'INSTALL_B2B', id: quote.number })}>
-              Install
-            </Button>
-            <Button variant="tertiary" onClick={() => dispatch({ type: 'TOAST', message: 'Learn more' })}>
-              Learn more
-            </Button>
+            <Button onClick={() => dispatch({ type: 'INSTALL_B2B', id: quote.number })}>Install QuoteSnap B2B</Button>
+            <Button variant="tertiary" onClick={() => dispatch({ type: 'TOAST', message: 'Learn more' })}>Learn more</Button>
           </InlineStack>
+          <Text as="p" tone="subdued" variant="bodySm">Prefills your first company on install — nothing created automatically.</Text>
         </BlockStack>
       </Card>
     );
   }
 
   if (state === 'new') {
-    const named = quote.syncMode === 'fixed' && company;
+    // Member (syncMode 'fixed') → the company is deterministic; independent
+    // (selector) → the merchant still has to pick, so it reads "not identified"
+    // and does NOT assert the company's B2B status (mirrors the god file).
+    const isMember = quote.syncMode === 'fixed';
+    const memberCompany = isMember ? company : null;
     return (
       <Card>
         <BlockStack gap="300">
-          <Text as="h2" variant="headingSm">
-            B2B
-          </Text>
-          <Badge tone="attention">Not in B2B app</Badge>
+          <InlineStack align="space-between" blockAlign="center">
+            <Text as="h2" variant="headingSm">B2B relationship</Text>
+            <Badge tone={isMember ? 'attention' : 'info'}>{isMember ? 'Not in B2B app' : 'Company not identified'}</Badge>
+          </InlineStack>
           <Text as="p" tone="subdued" variant="bodySm">
-            {named
-              ? `${company.name} is a Shopify company but isn’t in the B2B app yet. Sync it to manage its pricing.`
-              : 'This requester’s company isn’t in the B2B app yet. Identify or create it to manage pricing.'}
+            {isMember && memberCompany
+              ? `Sync ${memberCompany.name} to QuoteSnap B2B app to bring in the full company, including company information, locations, and buyers.`
+              : 'No company has been identified for this requester yet. Select a Shopify company to continue syncing to QuoteSnap B2B app.'}
           </Text>
-          <Button variant="primary" onClick={() => dispatch({ type: 'SYNC_OPEN', id: quote.number })}>
+          <InlineGrid columns={3} gap="200">
+            <Stat label="Quotes" value={String(quote.quoteCount ?? 1)} />
+            <Stat label="Quoted value" value={money2(quoteValueOf(quote))} />
+            <Stat label="Company" value={isMember && memberCompany ? memberCompany.name : 'Not selected'} />
+          </InlineGrid>
+          <Button onClick={() => dispatch({ type: 'SYNC_OPEN', id: quote.number })}>
             Sync to B2B app
           </Button>
         </BlockStack>
@@ -127,7 +133,7 @@ export function B2BRelationshipCard({ quote }) {
         {managedBanner}
         <Divider />
         <InlineStack gap="200">
-          <Button variant="primary" onClick={() => handoffToB2B(rfqState, quote.number)}>
+          <Button onClick={() => handoffToB2B(rfqState, quote.number)}>
             {state === 'linked' ? 'View in B2B app' : 'Open in B2B app'}
           </Button>
           <Button variant="tertiary" onClick={() => dispatch({ type: 'TOAST', message: 'Opens in Shopify' })}>

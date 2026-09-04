@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, BlockStack, InlineStack, Box, Text, Button, Checkbox, TextField, IndexTable } from '@shopify/polaris';
+import { Modal, BlockStack, InlineStack, Box, Text, Button, Checkbox, TextField, IndexTable, Banner } from '@shopify/polaris';
 import { money } from '../utils.js';
 import { RFQ_CATALOG, RFQ_PRICING_OPTIONS, RFQ_TEMPLATE_PRODUCTS } from '../data/catalog.js';
 
@@ -7,7 +7,7 @@ import { RFQ_CATALOG, RFQ_PRICING_OPTIONS, RFQ_TEMPLATE_PRODUCTS } from '../data
 // browser, both with checkbox + editable price + qty. Split out of CreateQuote.jsx.
 const catBySku = (sku) => RFQ_CATALOG.find((p) => p.sku === sku);
 
-export function PickerModal({ picker, setPicker, customer, onAdd }) {
+export function PickerModal({ picker, setPicker, customer, onAdd, onCreatePricing, appInstalled = true }) {
   const isCat = picker.mode === 'catalog';
   const templates = customer ? RFQ_PRICING_OPTIONS[customer.companyKey] || [] : [];
 
@@ -65,14 +65,26 @@ export function PickerModal({ picker, setPicker, customer, onAdd }) {
         secondaryActions={[{ content: 'Cancel', onAction: () => setPicker(null) }]}
       >
         <Modal.Section>
-          <BlockStack gap="200">
+          <BlockStack gap="300">
             <Text as="p" tone="subdued" variant="bodySm">
-              Choose a base pricing attached to {customer?.company} in Shopify, then pick products.
+              Choose a base pricing attached to {customer?.company} in the B2B app, then pick products.
             </Text>
             {templates.length === 0 ? (
-              <Text as="p" tone="subdued">
-                No base pricing attached to this company.
-              </Text>
+              <Banner
+                tone="warning"
+                title={
+                  appInstalled
+                    ? `${customer?.company || customer?.name || 'This customer'} has no B2B pricing yet`
+                    : 'Wholesale B2B app isn’t installed'
+                }
+                action={onCreatePricing ? { content: appInstalled ? 'Create pricing' : 'Install B2B app', onAction: onCreatePricing } : undefined}
+              >
+                <p>
+                  {appInstalled
+                    ? 'No pricing has been created in the B2B app yet. Create a price so this customer gets the right price on this and future quotes — or use “Add product” instead.'
+                    : 'Install the Wholesale B2B app to set contract pricing for this customer. You can still quote using “Add product”.'}
+                </p>
+              </Banner>
             ) : (
               templates.map((t) => (
                 <Box

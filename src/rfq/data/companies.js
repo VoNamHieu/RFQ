@@ -16,6 +16,23 @@ export const shopifyCompanyDirectory = {
     contactEmail: 'hieuvu0106vn@gmail.com',
     locationSummary: 'Ho Chi Minh City'
   },
+  // TEST MOCK — Wholesale B2B app CHƯA CÀI. Dùng để test luồng "chưa cài app":
+  // banner trong modal "Add custom priced items" phải hiện "Install B2B app" thay vì
+  // "Create pricing". `b2bAppInstalled: false` là cờ nhận biết (mặc định coi là đã cài).
+  testnoapp: {
+    name: 'Test Co (no B2B app)',
+    shopifyId: '999001',
+    inB2B: false,
+    b2bAppInstalled: false,
+    recommended: false,
+    score: '',
+    signals: [],
+    locations: 1,
+    buyers: 1,
+    mainContact: 'Test User',
+    contactEmail: 'test.noapp@example.com',
+    locationSummary: 'Hanoi'
+  },
   // ABC — đã ở B2B, multi-location. Company của Case 4 (1051080 · Mai).
   // mainContact John Nguyen là member sẵn có (không phải requester) — requester được
   // add khi link; buyers/locations của ABC giữ nguyên.
@@ -122,3 +139,19 @@ export const shopifyCompanyDirectory = {
     locationSummary: 'Hanoi'
   }
 };
+
+// DEV/QA helper: which RFQ↔B2B sync scenario a quote exercises. Surfaced as a
+// dev-mode badge in the submission list so QA can tell the scenarios apart.
+// `tag` is the short badge label (state-based, no case numbers); `label` is the
+// fuller description shown in the badge's tooltip.
+export function syncCaseOf(quote) {
+  if (!quote) return null;
+  if (quote.state === 'uninstalled') return { tag: 'No install', label: 'B2B app not installed' };
+  if (quote.state === 'linked') return { tag: 'Managed', label: 'Member · already in B2B (view only)' };
+  const key = quote.fixedCompanyKey || quote.recommendedKey || quote.syncedCompanyKey || quote.previewCompanyKey;
+  const inB2B = !!(key && shopifyCompanyDirectory[key]?.inB2B);
+  if (quote.syncMode === 'fixed') return { tag: 'No sync', label: 'Member · company not in B2B' };
+  return inB2B
+    ? { tag: 'Add buyer', label: 'Independent · already in B2B' }
+    : { tag: 'No sync', label: 'Independent · company not in B2B' };
+}

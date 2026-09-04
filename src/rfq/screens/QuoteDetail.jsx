@@ -55,7 +55,7 @@ function Thumb() {
 }
 
 // Left column: the editable Products card (spec §5.4 renderQuote).
-function ProductsCard({ lines, setLines, dispatch }) {
+function ProductsCard({ lines, setLines, dispatch, showSavePrices, onSavePrices }) {
   const setLine = (i, patch) => setLines(lines.map((l, k) => (k === i ? { ...l, ...patch } : l)));
   const removeLine = (i) => setLines(lines.filter((_, k) => k !== i));
   const [skuOpen, setSkuOpen] = useState(() => new Set());
@@ -136,6 +136,14 @@ function ProductsCard({ lines, setLines, dispatch }) {
             );
           })}
         </BlockStack>
+
+        {showSavePrices && (
+          <Box paddingBlockStart="200">
+            <InlineStack align="end">
+              <Button onClick={onSavePrices}>Save prices to B2B</Button>
+            </InlineStack>
+          </Box>
+        )}
       </BlockStack>
     </Card>
   );
@@ -263,7 +271,7 @@ function AiCard({ dispatch }) {
         <Text as="p" tone="subdued" variant="bodySm">
           Analyze this quote with AI: customer history, margin and the safest price to offer.
         </Text>
-        <Button variant="primary" fullWidth icon={MagicIcon} onClick={() => dispatch({ type: 'TOAST', message: 'Analyzing quote…' })}>
+        <Button fullWidth icon={MagicIcon} onClick={() => dispatch({ type: 'TOAST', message: 'Analyzing quote…' })}>
           Analyze quote
         </Button>
       </BlockStack>
@@ -304,12 +312,13 @@ export function QuoteDetail() {
         <Layout>
           <Layout.Section>
             <BlockStack gap="300">
-              <ProductsCard lines={lines} setLines={setLines} dispatch={dispatch} />
-              {isDealClosed && (
-                <InlineStack>
-                  <Button variant="primary" onClick={() => setSaveOpen(true)}>Save prices to B2B</Button>
-                </InlineStack>
-              )}
+              <ProductsCard
+                lines={lines}
+                setLines={setLines}
+                dispatch={dispatch}
+                showSavePrices={isDealClosed}
+                onSavePrices={() => setSaveOpen(true)}
+              />
               <PaymentCard
                 subtotal={subtotal}
                 dispatch={dispatch}
@@ -321,8 +330,8 @@ export function QuoteDetail() {
           <Layout.Section variant="oneThird">
             <BlockStack gap="300">
               <CustomerCard quote={quote} />
-              <AiCard dispatch={dispatch} />
               <B2BRelationshipCard quote={quote} />
+              <AiCard dispatch={dispatch} />
             </BlockStack>
           </Layout.Section>
         </Layout>

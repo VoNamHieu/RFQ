@@ -83,6 +83,11 @@ export function b2bPayloadForQuote(state, quoteId) {
   const dir = shopifyCompanyDirectory[key] || {};
   const company = created || dir;
   const locSummary = company.locationSummary && company.locationSummary !== 'Company location' ? company.locationSummary : '';
+  // Locations created during the sync flow (SYNC_LOCATION_ADD) are merged in so the
+  // B2B app materializes them and the buyer's assignedLocation can point at one.
+  const createdLocs = (quote.createdLocations || []).map((l) => l.name).filter(Boolean);
+  const baseLocs = company.locationList || (locSummary ? [locSummary] : []);
+  const mergedLocs = createdLocs.length ? [...baseLocs, ...createdLocs] : company.locationList || null;
   return {
     id: key,
     name: company.name || quote.customer?.name || '',
@@ -92,7 +97,7 @@ export function b2bPayloadForQuote(state, quoteId) {
     locationName: locSummary || created?.locationName || '',
     terms: created?.terms || 'Not set',
     assignedLocation: quote.assignedLocation || '',
-    locationList: company.locationList || null,
+    locationList: mergedLocs,
     buyerList: company.buyerList || null,
     quote: {
       id: quote.number,
@@ -253,7 +258,7 @@ function reducer(state, action) {
         const q = action.quote;
         const companyKey = q.fixedCompanyKey || q.recommendedKey || q.previewCompanyKey || q.linkedCompanyKey || null;
         if (companyKey) {
-          next.syncFlow = { step: 'sync', quoteId: action.id, companyKey, autoSync: false, location: '', role: 'Ordering only' };
+          next.syncFlow = { step: 'sync', quoteId: action.id, companyKey, autoSync: false, location: '', role: 'Ordering only', createdLocations: [], newLocation: null };
         }
       }
       return next;
@@ -265,10 +270,13 @@ function reducer(state, action) {
     }
     case 'SYNC_OPEN': {
       const q = state.quotes[action.id];
-      const companyKey = q.recommendedKey || q.fixedCompanyKey || q.previewCompanyKey || 'abc';
+      // Member (syncMode 'fixed') → the company is deterministic (fixedCompanyKey).
+      // Independent (selector) → the recommended company, or none (merchant must pick).
+      const isMember = q.syncMode === 'fixed';
+      const companyKey = isMember ? q.fixedCompanyKey || '' : q.recommendedKey || '';
       return {
         ...state,
-        syncFlow: { step: 'sync', quoteId: action.id, companyKey, autoSync: false, location: '', role: 'Ordering only' },
+        syncFlow: { step: 'sync', quoteId: action.id, companyKey, autoSync: false, location: '', role: 'Ordering only', createdLocations: [], newLocation: null },
       };
     }
     case 'SYNC_PATCH':
@@ -277,6 +285,48 @@ function reducer(state, action) {
       return { ...state, syncFlow: { ...state.syncFlow, step: action.step } };
     case 'SYNC_CLOSE':
       return { ...state, syncFlow: null };
+    // ----- Create a new location during the sync flow -----
+    case 'SYNC_LOCATION_NEW': {
+      const sf = state.syncFlow;
+      const q = state.quotes[sf.quoteId];
+      const parsed = parseQuoteShipping(q?.customer?.shipping);
+      return {
+        ...state,
+        syncFlow: {
+          ...sf,
+          step: 'createLocation',
+          newLocation: {
+            name: '',
+            locationId: '',
+            address1: parsed.address1,
+            city: parsed.city,
+            postal: parsed.postal,
+            country: parsed.country || 'Vietnam',
+            phone: q?.customer?.phone || '',
+            checkoutToDraft: false,
+            paymentTerms: 'No payment terms',
+          },
+        },
+      };
+    }
+    case 'SYNC_LOCATION_PATCH':
+      return { ...state, syncFlow: { ...state.syncFlow, newLocation: { ...state.syncFlow.newLocation, ...action.patch } } };
+    case 'SYNC_LOCATION_ADD': {
+      const sf = state.syncFlow;
+      const nl = sf.newLocation || {};
+      const name = (nl.name || '').trim();
+      if (!name) return state;
+      return {
+        ...state,
+        syncFlow: {
+          ...sf,
+          step: 'review',
+          location: name,
+          createdLocations: [...(sf.createdLocations || []), { ...nl, name }],
+          newLocation: null,
+        },
+      };
+    }
     case 'OPEN_CREATE_COMPANY': {
       const q = state.quotes[action.quoteId];
       const email = q?.customer?.email || '';
@@ -371,15 +421,28 @@ function reducer(state, action) {
     }
     case 'SYNC_CONFIRM': {
       const sf = state.syncFlow;
+      // Resolve the buyer's location: whatever was picked, else the company's first
+      // (covers members with no picker, and independents who didn't change it).
+      const company = shopifyCompanyDirectory[sf.companyKey] || null;
+      const baseLocs = company
+        ? company.locationList || (company.locationSummary && company.locationSummary !== 'Company location' ? [company.locationSummary] : [])
+        : [];
+      const allLocs = [...baseLocs, ...(sf.createdLocations || []).map((l) => l.name)];
+      const location = sf.location || allLocs[0] || '';
       const q = {
         ...state.quotes[sf.quoteId],
         state: 'shopifySynced',
         syncedCompanyKey: sf.companyKey,
-        assignedLocation: sf.location,
+        assignedLocation: location,
         assignedRole: sf.role,
         quoteAutoSyncEnabled: sf.autoSync,
+        createdLocations: sf.createdLocations && sf.createdLocations.length ? sf.createdLocations : undefined,
       };
-      return { ...state, quotes: { ...state.quotes, [sf.quoteId]: q }, syncFlow: { ...sf, step: 'success' } };
+      // Persist company-level auto-sync so reopening reflects "already auto-syncs".
+      const autoSyncCompanies = sf.autoSync
+        ? { ...(state.autoSyncCompanies || {}), [sf.companyKey]: true }
+        : state.autoSyncCompanies || {};
+      return { ...state, quotes: { ...state.quotes, [sf.quoteId]: q }, autoSyncCompanies, syncFlow: { ...sf, location, step: 'success' } };
     }
     case 'TOAST':
       return { ...state, toast: action.message };

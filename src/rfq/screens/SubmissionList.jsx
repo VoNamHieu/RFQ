@@ -13,9 +13,23 @@ import {
   BlockStack,
   InlineStack,
   Box,
+  Tooltip,
 } from '@shopify/polaris';
 import { ChevronDownIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
+import { syncCaseOf } from '../data/companies.js';
+import { DEMO_STATE_KEY } from '../../shared/persistence.js';
+
+// Dev/QA: wipe the persisted demo state so every quote returns to its seed
+// scenario (e.g. 1051074 back to "No install"). Mirrors the god file's Reset data.
+function resetDemoData() {
+  try {
+    localStorage.removeItem(DEMO_STATE_KEY);
+  } catch {
+    /* ignore */
+  }
+  window.location.reload();
+}
 import { money2, quoteAmount } from '../utils.js';
 import { SUBMISSION_TABS, SUBMISSION_TAB_STATUS } from '../data/submissions.js';
 
@@ -78,6 +92,7 @@ export function SubmissionList() {
     const quote = state.quotes[id];
     const meta = state.meta[id] || {};
     const customer = quote?.customer || {};
+    const devCase = syncCaseOf(quote); // dev/QA-only sync-case signal
     return (
       <IndexTable.Row
         id={id}
@@ -100,6 +115,11 @@ export function SubmissionList() {
               <Badge tone="info" size="small">
                 B2B
               </Badge>
+            ) : null}
+            {devCase ? (
+              <Tooltip content={`DEV / QA · ${devCase.label}`}>
+                <Badge tone="attention" size="small">{`⚙ ${devCase.tag}`}</Badge>
+              </Tooltip>
             ) : null}
             <Icon source={ChevronDownIcon} tone="subdued" />
           </InlineStack>
@@ -146,6 +166,7 @@ export function SubmissionList() {
       title="Submission list"
       primaryAction={{ content: 'Create a quote', onAction: () => dispatch({ type: 'START_CREATE_QUOTE' }) }}
       secondaryActions={[
+        { content: 'Reset demo data', onAction: resetDemoData },
         { content: 'Export', onAction: () => dispatch({ type: 'TOAST', message: 'Demo only' }) },
         { content: 'Edit', disclosure: true, onAction: () => {} },
         { content: 'Remove', disclosure: true, onAction: () => {} },

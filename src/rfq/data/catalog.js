@@ -2,12 +2,12 @@
 // the default and its id === the sku, so a quote line (product-level) maps to the
 // default variant when its prices sync into a B2B variant-level base pricing.
 export const RFQ_CATALOG = [
-  {sku:'FIL-STD', title:'Industrial filter, standard', list:62, stock:1200, variants:[{id:'FIL-STD', title:'Standard', list:62}]},
-  {sku:'FIL-XL',  title:'Industrial filter, XL',       list:96, stock:840, variants:[{id:'FIL-XL', title:'Standard', list:96},{id:'FIL-XL-HD', title:'Heavy-duty', list:118}]},
-  {sku:'SEA-30',  title:'Sealant cartridge 300ml',     list:8, stock:2600, variants:[{id:'SEA-30', title:'300 ml', list:8}]},
-  {sku:'HOS-12',  title:'Reinforced hose, 12m',        list:145, stock:210, variants:[{id:'HOS-12', title:'12 m', list:145},{id:'HOS-12-18M', title:'18 m', list:205},{id:'HOS-12-24M', title:'24 m', list:265}]},
-  {sku:'VLV-40',  title:'Ball valve 40mm',             list:52, stock:670, variants:[{id:'VLV-40', title:'40 mm', list:52}]},
-  {sku:'MCFC-TRAINING-JACKET', title:'Manchester City Team Training Jacket', list:1240, stock:120, variants:[{id:'MCFC-TRAINING-JACKET', title:'M', list:1240},{id:'MCFC-JACKET-L', title:'L', list:1240},{id:'MCFC-JACKET-XL', title:'XL', list:1290}]}
+  {sku:'FIL-STD', title:'Industrial filter, standard', list:62, stock:1200, variants:[{id:'FIL-STD', title:'Standard', list:62, stock:1200}]},
+  {sku:'FIL-XL',  title:'Industrial filter, XL',       list:96, stock:840, variants:[{id:'FIL-XL', title:'Standard', list:96, stock:840},{id:'FIL-XL-HD', title:'Heavy-duty', list:118, stock:0}]},
+  {sku:'SEA-30',  title:'Sealant cartridge 300ml',     list:8, stock:2600, variants:[{id:'SEA-30', title:'300 ml', list:8, stock:2600}]},
+  {sku:'HOS-12',  title:'Reinforced hose, 12m',        list:145, stock:210, variants:[{id:'HOS-12', title:'12 m', list:145, stock:120},{id:'HOS-12-18M', title:'18 m', list:205, stock:60},{id:'HOS-12-24M', title:'24 m', list:265, stock:30}]},
+  {sku:'VLV-40',  title:'Ball valve 40mm',             list:52, stock:670, variants:[{id:'VLV-40', title:'40 mm', list:52, stock:670}]},
+  {sku:'MCFC-TRAINING-JACKET', title:'Manchester City Team Training Jacket', list:1240, stock:120, variants:[{id:'MCFC-TRAINING-JACKET', title:'M', list:1240, stock:40},{id:'MCFC-JACKET-L', title:'L', list:1240, stock:60},{id:'MCFC-JACKET-XL', title:'XL', list:1290, stock:20}]}
 ];
 
 /* Sản phẩm + giá B2B theo TỪNG base price template (id khớp RFQ_PRICING_OPTIONS). */
@@ -29,14 +29,34 @@ export const RFQ_CUSTOMERS = [
   { key:'apex',       name:'Le Quan',      email:'quan@apextools.vn',            companyKey:'apex',       company:'Apex Tools Vietnam',   shipping:'Le Quan\nHo Chi Minh City\nVietnam',                                          note:"The quote's special note" },
   { key:'watson',     name:'Watson James', email:'watson.james@watsonco.com',    companyKey:'watson',     company:'Watson Co',            shipping:'Watson James\nWatson Co\nVietnam',                                            note:"The quote's special note" },
   { key:'vinhphat',   name:'Bui Quang',    email:'quang@vinhphat.vn',            companyKey:'vinhphat',   company:'Vinh Phat Trading',    shipping:'Bui Quang\nDa Nang\nVietnam',                                                 note:"The quote's special note" },
-  { key:'songhong',   name:'Do Lan',       email:'lan@songhong.vn',              companyKey:'songhong',   company:'Song Hong Interiors',  shipping:'Do Lan\nHanoi\nVietnam',                                                      note:"The quote's special note" }
+  { key:'songhong',   name:'Do Lan',       email:'lan@songhong.vn',              companyKey:'songhong',   company:'Song Hong Interiors',  shipping:'Do Lan\nHanoi\nVietnam',                                                      note:"The quote's special note" },
+  // TEST MOCK — B2B app chưa cài (companyKey 'testnoapp', b2bAppInstalled:false).
+  { key:'testnoapp',  name:'Test User',    email:'test.noapp@example.com',       companyKey:'testnoapp',  company:'Test Co (no B2B app)', shipping:'Test User\nHanoi\nVietnam',                                                   note:"TEST: chưa cài app B2B" }
 ];
 
 /* Existing B2B base pricings per company — a snapshot mirroring the B2B app so
    the merchant can select or create the destination on the RFQ side. Ids match
-   the B2B app's policy ids. */
+   the B2B app's policy ids. This is the "Add custom priced items" source. */
 export const RFQ_PRICING_OPTIONS = {
   abc:      [{id:'p1', name:'Distributor Tier 2', priority:1}, {id:'p8', name:'Contract Base', priority:2}],
   vinhphat: [{id:'p1', name:'Distributor Tier 2', priority:1}],
   songhong: [{id:'p1', name:'Distributor Tier 2', priority:1}]
+};
+
+/* Native Shopify B2B catalogs assigned to a company — a DIFFERENT source from the
+   B2B app pricing above. A Shopify catalog = publication (which variants are
+   available) + price list (the catalog price). `prices` is keyed by variant id;
+   only variants listed here are in the catalog, so it's a curated subset of the
+   store (e.g. HOS-12-24M is deliberately excluded from ABC's Wholesale catalog).
+   A company location can have several catalogs (Shopify allows up to 25), so this
+   is an ARRAY per company; the picker chooses one first. "Add product from
+   catalog" source. */
+export const RFQ_SHOPIFY_CATALOGS = {
+  abc: [
+    { id:'cat-abc-wholesale', name:'ABC Wholesale Catalog', prices:{ 'FIL-STD':54, 'FIL-XL':84, 'FIL-XL-HD':104, 'HOS-12':130, 'HOS-12-18M':185 } },
+    { id:'cat-abc-project',   name:'ABC Project Catalog',   prices:{ 'VLV-40':47, 'SEA-30':6.9, 'MCFC-TRAINING-JACKET':960, 'MCFC-JACKET-L':960, 'MCFC-JACKET-XL':1010 } }
+  ],
+  delta: [
+    { id:'cat-delta', name:'Delta Mechanical Catalog', prices:{ 'VLV-40':46, 'SEA-30':6.8, 'HOS-12':135 } }
+  ]
 };

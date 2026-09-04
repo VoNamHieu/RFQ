@@ -17,7 +17,8 @@ import {
   Divider,
   Checkbox,
   Icon,
-  Banner,
+  Popover,
+  ActionList,
 } from '@shopify/polaris';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import { PlusIcon, XIcon } from '@shopify/polaris-icons';
@@ -32,9 +33,19 @@ import {
 } from '../data/catalog.js';
 import { shopifyCompanyDirectory } from '../data/companies.js';
 import { PickerModal } from '../components/PickerModal.jsx';
+import { CatalogPickerModal } from '../components/CatalogPickerModal.jsx';
+import { ProductPickerModal } from '../components/ProductPickerModal.jsx';
 
 const catBySku = (sku) => RFQ_CATALOG.find((p) => p.sku === sku);
 const lineTitle = (l) => l.title || catBySku(l.sku)?.title || l.sku;
+
+// Whole-store products, normalized for the shared ProductPickerModal (list price).
+const STORE_PRODUCTS = RFQ_CATALOG.map((p) => ({
+  sku: p.sku,
+  title: p.title,
+  stock: p.stock,
+  variants: (p.variants || []).map((v) => ({ id: v.id, title: v.title, price: v.list, stock: v.stock })),
+}));
 
 function LockedCustomerCard({ customer }) {
   const co = shopifyCompanyDirectory[customer.companyKey];
@@ -99,6 +110,8 @@ export function CreateQuote() {
   const cq = state.createQuote;
   const customer = RFQ_CUSTOMERS.find((c) => c.key === cq.customerKey) || null;
   const lines = cq.lines;
+  // Variants already on the quote — the pickers show these as "Added" (locked).
+  const quoteVariantIds = new Set(lines.map((l) => l.sku).filter(Boolean));
   const subtotal = subtotalOf(lines.map((l) => ({ price: l.price, qty: l.qty })));
 
   // B2B pricing status for the selected company (mirrors the B2B app). If the
@@ -110,9 +123,27 @@ export function CreateQuote() {
   // Hieu / Hieu Sports Retail) — not B2B, so it isn't pushed into B2B setup.
   const isB2BCompany = !!company && company.inB2B !== false;
   const companyHasPricing = customer ? (RFQ_PRICING_OPTIONS[customer.companyKey] || []).length > 0 : true;
-  const showPricingPrompt = !!customer && !companyHasPricing;
+  // Whether the Wholesale B2B app is installed for this customer's company (mock
+  // flag on the company; defaults to installed). Drives the modal's warning copy.
+  const appInstalled = company ? company.b2bAppInstalled !== false : true;
 
   const [picker, setPicker] = useState(null); // {mode:'priced'|'catalog', templateId, picks:{}, search}
+  const [catalogPicker, setCatalogPicker] = useState(false); // Shopify B2B catalog picker
+  const [addMenu, setAddMenu] = useState(false); // "Add product" source menu (catalog / whole store)
+  const [storePicker, setStorePicker] = useState(false); // whole-store (Shopify) picker
+
+  // Send the merchant to the B2B app to create pricing for this customer — shared
+  // by the top banner and the "Add custom priced items" modal's no-pricing notice.
+  const goCreatePricing = () => {
+    if (!customer) return;
+    if (isB2BCompany) {
+      handoffCompanyToB2B(state, customer.companyKey, customer, { openPricing: true });
+      return;
+    }
+    const v = activeVersion();
+    const base = v === 'latest' ? '/b2b' : `/b2b?v=${v}`;
+    window.location.href = `${base}#/b2b/pricing`;
+  };
 
   const setLines = (next) => dispatch({ type: 'CQ_PATCH', patch: { lines: next } });
   const patchLine = (i, patch) => setLines(lines.map((l, k) => (k === i ? { ...l, ...patch } : l)));
@@ -255,47 +286,6 @@ export function CreateQuote() {
       title="Create quote"
       primaryAction={{ content: 'Create quote', disabled: !canCreate, onAction: () => cqCreate() }}
     >
-      {showPricingPrompt && (
-        <Box paddingBlockEnd="400">
-          <Banner
-            tone="warning"
-            title={
-              companyInB2B
-                ? `${customer.company} has no B2B pricing yet`
-                : isB2BCompany
-                ? `${customer.company} isn’t set up in the B2B app`
-                : `${customer.name} has no pricing yet`
-            }
-            action={{
-              content: companyInB2B
-                ? 'Create pricing in B2B app'
-                : isB2BCompany
-                ? 'Set up in B2B app'
-                : 'Create pricing',
-              onAction: () => {
-                if (isB2BCompany) {
-                  // Managed, or a syncable B2B company → into the B2B app on its
-                  // Pricing tab (created there first if it isn't in B2B yet).
-                  handoffCompanyToB2B(state, customer.companyKey, customer, { openPricing: true });
-                  return;
-                }
-                // A regular customer → the B2B app's Pricing library to create a price.
-                const v = activeVersion();
-                const base = v === 'latest' ? '/b2b' : `/b2b?v=${v}`;
-                window.location.href = `${base}#/b2b/pricing`;
-              },
-            }}
-          >
-            <p>
-              {companyInB2B
-                ? `This quote will use manually entered prices. Set up pricing in the B2B app so ${customer.company}’s buyers automatically get contract prices on future orders.`
-                : isB2BCompany
-                ? `${customer.company} isn’t a managed B2B company yet. Add it in the B2B app and set its pricing so its buyers get contract prices automatically.`
-                : `No pricing has been created for ${customer.name} yet. Create a price in the B2B app so they get the right price on this and future quotes.`}
-            </p>
-          </Banner>
-        </Box>
-      )}
       <Layout>
         <Layout.Section>
           <Card padding="0">
@@ -306,21 +296,47 @@ export function CreateQuote() {
                 </Text>
                 <ButtonGroup>
                   <Button
-                    variant="primary"
                     icon={PlusIcon}
-                    disabled={!customer || !companyHasPricing}
+                    disabled={!customer}
                     onClick={() => setPicker({ mode: 'priced', templateId: null, picks: {}, search: '' })}
                   >
                     Add custom priced items
                   </Button>
-                  <Button onClick={() => setPicker({ mode: 'catalog', templateId: '__catalog__', picks: {}, search: '' })}>
-                    Add product
-                  </Button>
-                  <Button
-                    onClick={() => setLines([...lines, { custom: true, title: '', price: 0, qty: 1 }])}
+                  {/* Add product = the whole Shopify store (list price), a direct button. */}
+                  <Button onClick={() => setStorePicker(true)}>Add product</Button>
+                  {/* Secondary sources grouped under "More actions". */}
+                  <Popover
+                    active={addMenu}
+                    onClose={() => setAddMenu(false)}
+                    preferredAlignment="left"
+                    activator={
+                      <Button disclosure onClick={() => setAddMenu((v) => !v)}>
+                        More actions
+                      </Button>
+                    }
                   >
-                    Add custom item
-                  </Button>
+                    <ActionList
+                      items={[
+                        {
+                          content: 'Add product from catalog',
+                          helpText: 'The company’s Shopify catalog',
+                          disabled: !customer,
+                          onAction: () => {
+                            setAddMenu(false);
+                            setCatalogPicker(true);
+                          },
+                        },
+                        {
+                          content: 'Add custom item',
+                          helpText: 'A free-form line with your own price',
+                          onAction: () => {
+                            setAddMenu(false);
+                            setLines([...lines, { custom: true, title: '', price: 0, qty: 1 }]);
+                          },
+                        },
+                      ]}
+                    />
+                  </Popover>
                 </ButtonGroup>
               </InlineStack>
             </Box>
@@ -416,9 +432,35 @@ export function CreateQuote() {
           picker={picker}
           setPicker={setPicker}
           customer={customer}
+          appInstalled={appInstalled}
+          onCreatePricing={goCreatePricing}
           onAdd={(additions) => {
             mergeLines(additions);
             setPicker(null);
+          }}
+        />
+      )}
+      {catalogPicker && (
+        <CatalogPickerModal
+          customer={customer}
+          initialSelected={quoteVariantIds}
+          onClose={() => setCatalogPicker(false)}
+          onAdd={(additions) => {
+            mergeLines(additions);
+            setCatalogPicker(false);
+          }}
+        />
+      )}
+      {storePicker && (
+        <ProductPickerModal
+          title="Add products"
+          products={STORE_PRODUCTS}
+          priceHeader="Price"
+          initialSelected={quoteVariantIds}
+          onClose={() => setStorePicker(false)}
+          onAdd={(additions) => {
+            mergeLines(additions);
+            setStorePicker(false);
           }}
         />
       )}
