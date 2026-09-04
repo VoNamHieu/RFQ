@@ -128,6 +128,8 @@ export function CreateQuote() {
   const appInstalled = company ? company.b2bAppInstalled !== false : true;
 
   const [picker, setPicker] = useState(null); // {mode:'priced'|'catalog', templateId, picks:{}, search}
+  const [changingCustomer, setChangingCustomer] = useState(false); // re-open the customer picker after selection
+  const [pendingCustomerKey, setPendingCustomerKey] = useState(null); // confirm reset when switching company with lines
   const [catalogPicker, setCatalogPicker] = useState(false); // Shopify B2B catalog picker
   const [addMenu, setAddMenu] = useState(false); // "Add product" source menu (catalog / whole store)
   const [storePicker, setStorePicker] = useState(false); // whole-store (Shopify) picker
@@ -163,6 +165,24 @@ export function CreateQuote() {
   const pickCustomer = (key) => {
     const c = RFQ_CUSTOMERS.find((x) => x.key === key);
     dispatch({ type: 'CQ_PATCH', patch: { customerKey: key, message: c?.note || '' } });
+    setChangingCustomer(false);
+  };
+
+  // Switching to a different company with products already added wipes the lines
+  // (pricing is company-specific) — confirm first so it isn't a surprise.
+  const requestPickCustomer = (key) => {
+    if (customer && key !== customer.key && lines.length > 0) {
+      setPendingCustomerKey(key);
+      return;
+    }
+    pickCustomer(key);
+  };
+
+  const confirmChangeCustomer = () => {
+    if (!pendingCustomerKey) return;
+    setLines([]);
+    pickCustomer(pendingCustomerKey);
+    setPendingCustomerKey(null);
   };
 
   // Drop blank/invalid lines and create from the rest (legacy filters invalid).
@@ -381,17 +401,29 @@ export function CreateQuote() {
           <BlockStack gap="400">
             <Card>
               <BlockStack gap="300">
-                <Text as="h2" variant="headingSm">
-                  Customer
-                </Text>
-                {!customer ? (
+                <InlineStack align="space-between" blockAlign="center">
+                  <Text as="h2" variant="headingSm">
+                    Customer
+                  </Text>
+                  {customer &&
+                    (changingCustomer ? (
+                      <Button variant="plain" onClick={() => setChangingCustomer(false)}>
+                        Cancel
+                      </Button>
+                    ) : (
+                      <Button variant="plain" onClick={() => setChangingCustomer(true)}>
+                        Change
+                      </Button>
+                    ))}
+                </InlineStack>
+                {!customer || changingCustomer ? (
                   <Select
                     label="Choose a customer"
                     labelHidden
                     placeholder="Select a customer…"
                     options={RFQ_CUSTOMERS.map((c) => ({ label: `${c.name} — ${c.company}`, value: c.key }))}
-                    value=""
-                    onChange={pickCustomer}
+                    value={customer?.key || ''}
+                    onChange={requestPickCustomer}
                   />
                 ) : (
                   <>
@@ -463,6 +495,23 @@ export function CreateQuote() {
             setStorePicker(false);
           }}
         />
+      )}
+      {pendingCustomerKey && (
+        <Modal
+          open
+          onClose={() => setPendingCustomerKey(null)}
+          title="Change company?"
+          primaryAction={{ content: 'Change and clear items', destructive: true, onAction: confirmChangeCustomer }}
+          secondaryActions={[{ content: 'Cancel', onAction: () => setPendingCustomerKey(null) }]}
+        >
+          <Modal.Section>
+            <Text as="p">
+              Switching to {RFQ_CUSTOMERS.find((c) => c.key === pendingCustomerKey)?.company} will remove the{' '}
+              {lines.length} product{lines.length === 1 ? '' : 's'} you’ve added, because pricing is specific to each
+              company.
+            </Text>
+          </Modal.Section>
+        </Modal>
       )}
     </Page>
   );
