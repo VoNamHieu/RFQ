@@ -185,7 +185,24 @@ function reducer(state, action) {
     }
     // ----- Add-company wizard -----
     case 'OPEN_ADD_COMPANY':
-      return { ...state, addCompany: { step: 1, shopifyId: null, baseId: '', quantityId: '', search: '', termsExpanded: false } };
+      return {
+        ...state,
+        addCompany: {
+          step: 1,
+          shopifyId: null,
+          baseId: '',
+          quantityId: '',
+          search: '',
+          termsExpanded: false,
+          // Assign-pricing chooser (mirrors god file): which kind's chooser is
+          // open, the not-yet-committed selection in it, whether it was just
+          // built here, and which committed kinds were created in this flow.
+          addKind: null,
+          draftPolicy: '',
+          draftIsNew: false,
+          createdHere: {},
+        },
+      };
     case 'ADD_COMPANY_PATCH':
       return { ...state, addCompany: { ...state.addCompany, ...action.patch } };
     case 'ADD_COMPANY_STEP':
@@ -315,10 +332,10 @@ function reducer(state, action) {
         const id = `pN${db.policies.length + 1}`;
         db.policies.push({ ...newBaseBuilder(), ...draft, id });
         // Created from the Add-company wizard (the company doesn't exist yet):
-        // hand the new policy back to the wizard's pricing step, don't assign.
+        // hand the new policy back to the wizard's chooser as an uncommitted
+        // draft (the merchant reviews it, then Save commits it into the slot).
         const setupKind = state.editorContext?.setupKind;
         if (setupKind && state.addCompany) {
-          const key = setupKind === 'quantity' ? 'quantityId' : 'baseId';
           return {
             ...state,
             db,
@@ -326,7 +343,7 @@ function reducer(state, action) {
             ruleEdit: null,
             addRuleMenu: false,
             editorContext: null,
-            addCompany: { ...state.addCompany, [key]: id, step: 2 },
+            addCompany: { ...state.addCompany, addKind: setupKind, draftPolicy: id, draftIsNew: true, step: 2 },
             toast: 'Pricing created',
           };
         }
