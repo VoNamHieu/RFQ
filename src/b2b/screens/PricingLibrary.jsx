@@ -8,16 +8,15 @@ import {
   ChoiceList,
   Badge,
   Text,
-  BlockStack,
   InlineStack,
   Button,
   Box,
   Modal,
   Tooltip,
 } from '@shopify/polaris';
-import { EditIcon, DeleteIcon, PlusCircleIcon, ToggleOnIcon, ToggleOffIcon } from '@shopify/polaris-icons';
+import { EditIcon, DeleteIcon, ToggleOnIcon, ToggleOffIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
-import { policyStatus, scopeTypeLabel, policyUsage, policyUsageCount } from '../pricing.js';
+import { policyStatus, policyUsage, policyUsageCount } from '../pricing.js';
 
 const AUDIENCE = [
   { id: 'all', label: 'All' },
@@ -84,23 +83,16 @@ export function PricingLibrary() {
     return (
       <IndexTable.Row id={p.id} key={p.id} position={index} onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: p, context: { mode: 'edit' } })}>
         <IndexTable.Cell>
-          <BlockStack gap="050">
-            <Text as="span" variant="bodyMd" fontWeight="semibold">{p.name}</Text>
-            <Text as="span" tone="subdued" variant="bodySm">{p.type}</Text>
-          </BlockStack>
+          <Text as="span" variant="bodyMd" fontWeight="semibold">{p.name}</Text>
         </IndexTable.Cell>
         <IndexTable.Cell>{p.priceKind === 'quantity' ? 'Quantity pricing' : 'Base pricing'}</IndexTable.Cell>
         <IndexTable.Cell>
           <Badge tone={p.audienceType === 'b2b' ? 'info' : undefined}>{p.audienceType === 'b2b' ? 'Companies' : 'Customers'}</Badge>
         </IndexTable.Cell>
-        <IndexTable.Cell><Text as="span" variant="bodySm">{scopeTypeLabel(p)}</Text></IndexTable.Cell>
         <IndexTable.Cell><Badge tone={st.tone}>{st.label}</Badge></IndexTable.Cell>
-        <IndexTable.Cell><Text as="span" tone="subdued" variant="bodySm">{policyUsage(p, state.db)}</Text></IndexTable.Cell>
+        <IndexTable.Cell><Text as="span" variant="bodyMd">{p.priority ?? 0}</Text></IndexTable.Cell>
         <IndexTable.Cell>
           <InlineStack gap="100" align="end" wrap={false}>
-            <Tooltip content="Assign">
-              <Button icon={PlusCircleIcon} variant="tertiary" accessibilityLabel="Assign" onClick={() => dispatch({ type: 'OPEN_MULTI_ASSIGN', policyId: p.id })} />
-            </Tooltip>
             {canToggle && (
               <Tooltip content={isOff ? 'Turn on' : 'Turn off'}>
                 <Button icon={isOff ? ToggleOffIcon : ToggleOnIcon} variant="tertiary" accessibilityLabel={isOff ? 'Turn on' : 'Turn off'} onClick={() => dispatch({ type: 'TOGGLE_POLICY_STATUS', id: p.id })} />
@@ -121,29 +113,28 @@ export function PricingLibrary() {
   const tabs = AUDIENCE.map((a, i) => ({ id: `aud-${a.id}`, content: a.label, index: i }));
   const selectedTab = Math.max(0, AUDIENCE.findIndex((a) => a.id === audience));
 
+  // Both filters live behind a single "Add filter" disclosure (unpinned), so the
+  // filter bar shows one "Add filter +" that lists Pricing type / Status — instead
+  // of two always-on filter buttons.
   const filters = [
     {
       key: 'kind',
-      label: 'Type',
-      pinned: true,
-      filter: <ChoiceList title="Type" titleHidden choices={TYPE_CHOICES} selected={[kind]} onChange={(v) => setKind(v[0])} />,
+      label: 'Pricing type',
+      filter: <ChoiceList title="Pricing type" titleHidden choices={TYPE_CHOICES} selected={[kind]} onChange={(v) => setKind(v[0])} />,
     },
     {
       key: 'status',
       label: 'Status',
-      pinned: true,
       filter: <ChoiceList title="Status" titleHidden choices={STATUS_CHOICES} selected={[statusFilter]} onChange={(v) => setStatusFilter(v[0])} />,
     },
   ];
   const appliedFilters = [];
-  if (kind !== 'all') appliedFilters.push({ key: 'kind', label: `Type: ${labelOf(TYPE_CHOICES, kind)}`, onRemove: () => setKind('all') });
+  if (kind !== 'all') appliedFilters.push({ key: 'kind', label: `Pricing type: ${labelOf(TYPE_CHOICES, kind)}`, onRemove: () => setKind('all') });
   if (statusFilter !== 'all') appliedFilters.push({ key: 'status', label: `Status: ${labelOf(STATUS_CHOICES, statusFilter)}`, onRemove: () => setStatusFilter('all') });
 
   return (
     <Page
-      fullWidth
-      title="Pricing"
-      subtitle="Make a price once, then assign it to companies or customers."
+      title="Pricing settings"
       primaryAction={{ content: 'Create base pricing', onAction: () => dispatch({ type: 'OPEN_EDITOR', policy: null, kind: 'base', context: { mode: 'add-base' } }) }}
       secondaryActions={[
         { content: 'Create quantity pricing', onAction: () => dispatch({ type: 'OPEN_EDITOR', policy: null, kind: 'quantity', context: { mode: 'add-quantity' } }) },
@@ -177,10 +168,9 @@ export function PricingLibrary() {
           headings={[
             { title: 'Name' },
             { title: 'Pricing type' },
-            { title: 'Serves' },
-            { title: 'Products' },
-            { title: 'Status' },
             { title: 'Assigned to' },
+            { title: 'Status' },
+            { title: 'Priority' },
             { title: '', alignment: 'end' },
           ]}
           pagination={{
