@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Modal, BlockStack, Box, Text, Button, InlineStack, Combobox, Listbox, Icon, Checkbox, Tag } from '@shopify/polaris';
-import { PlusIcon, ChevronDownIcon } from '@shopify/polaris-icons';
+import React from 'react';
+import { Modal, BlockStack, Box, Text, Button, InlineStack } from '@shopify/polaris';
+import { PlusIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { companyBaseEntries, companyQuantityPolicy, scopeTypeLabel } from '../pricing.js';
+import { PricingCombobox } from './PricingCombobox.jsx';
 
 const fmtDate = (d) =>
   d ? new Date(`${d}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
@@ -32,7 +33,6 @@ function SummaryRow({ label, value }) {
 // swap are single-slot.
 export function AssignModal() {
   const { state, dispatch } = useStore();
-  const [inputValue, setInputValue] = useState('');
   const a = state.assign;
   if (!a) return null;
   const isQuantity = a.kind === 'quantity';
@@ -58,16 +58,6 @@ export function AssignModal() {
 
   const optionLabel = (p) =>
     isQuantity ? `${p.name} · ${scopeTypeLabel(p)}` : `${p.name} · Priority ${p.priority ?? '—'} · ${scopeTypeLabel(p)}`;
-
-  const q = inputValue.trim().toLowerCase();
-  const filtered = q ? candidates.filter((p) => p.name.toLowerCase().includes(q)) : candidates;
-
-  const handleSelect = (id) => {
-    const on = selectedIds.includes(id);
-    const next = single ? (on ? [] : [id]) : on ? selectedIds.filter((x) => x !== id) : [...selectedIds, id];
-    dispatch({ type: 'ASSIGN_SET', ids: next });
-    if (single) setInputValue('');
-  };
 
   const createNew = () => {
     dispatch({ type: 'CLOSE_ASSIGN' });
@@ -101,53 +91,16 @@ export function AssignModal() {
               <Text as="p" tone="subdued">{`No other ${kindName} available — create a new one below.`}</Text>
             ) : (
               <>
-                <Combobox
-                  allowMultiple={!single}
-                  activator={
-                    <Combobox.TextField
-                      autoComplete="off"
-                      label={`Use an existing ${kindName}`}
-                      labelHidden
-                      value={inputValue}
-                      suffix={<Icon source={ChevronDownIcon} tone="subdued" />}
-                      placeholder={`Select ${kindName}`}
-                      onChange={setInputValue}
-                    />
-                  }
-                >
-                  {filtered.length > 0 ? (
-                    <Listbox onSelect={handleSelect}>
-                      {filtered.map((p) => {
-                        const on = selectedIds.includes(p.id);
-                        return (
-                          <Listbox.Option key={p.id} value={p.id} selected={on} accessibilityLabel={p.name}>
-                            <InlineStack gap="200" blockAlign="center" wrap={false}>
-                              <span style={{ pointerEvents: 'none', display: 'inline-flex' }}>
-                                <Checkbox label="" labelHidden checked={on} onChange={() => {}} />
-                              </span>
-                              <Text as="span" variant="bodyMd">{optionLabel(p)}</Text>
-                            </InlineStack>
-                          </Listbox.Option>
-                        );
-                      })}
-                    </Listbox>
-                  ) : (
-                    <Listbox>
-                      <Listbox.Option value="__none" accessibilityLabel="No matches" disabled>
-                        No matching {kindName}
-                      </Listbox.Option>
-                    </Listbox>
-                  )}
-                </Combobox>
-                {selectedPolicies.length > 0 && (
-                  <InlineStack gap="150">
-                    {selectedPolicies.map((p) => (
-                      <Tag key={p.id} onRemove={() => dispatch({ type: 'ASSIGN_SET', ids: selectedIds.filter((id) => id !== p.id) })}>
-                        {p.name}
-                      </Tag>
-                    ))}
-                  </InlineStack>
-                )}
+                <PricingCombobox
+                  label={`Use an existing ${kindName}`}
+                  placeholder={`Select ${kindName}`}
+                  candidates={candidates}
+                  selectedIds={selectedIds}
+                  onChange={(ids) => dispatch({ type: 'ASSIGN_SET', ids })}
+                  single={single}
+                  optionLabel={optionLabel}
+                  emptyText={`No matching ${kindName}`}
+                />
                 {!single && (
                   <Text as="p" tone="subdued" variant="bodySm">Pick one or more — the lowest priority applies first.</Text>
                 )}

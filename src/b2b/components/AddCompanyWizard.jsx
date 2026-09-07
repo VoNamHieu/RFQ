@@ -1,9 +1,10 @@
 import React from 'react';
-import { Modal, BlockStack, InlineStack, Box, Text, Badge, TextField, Select, Divider, Banner, Button, Icon, Avatar, ChoiceList } from '@shopify/polaris';
+import { Modal, BlockStack, InlineStack, Box, Text, Badge, TextField, Select, Divider, Banner, Button, Icon, Avatar } from '@shopify/polaris';
 import { SearchIcon, PlusIcon, EditIcon, ExchangeIcon, XIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { shopifyCompanyDirectory } from '../data/directory.js';
-import { kindOf, scopeLabel, ruleAdjustmentLabel, policyUsage, policyUsageCount } from '../pricing.js';
+import { kindOf, scopeLabel, scopeTypeLabel, ruleAdjustmentLabel, policyUsage, policyUsageCount } from '../pricing.js';
+import { PricingCombobox } from './PricingCombobox.jsx';
 
 // Add a Shopify company to B2B — mirrors the god file's two-modal flow
 // ("Add company from Shopify" → "Set up Shopify company"). Three steps, not
@@ -212,28 +213,40 @@ export function AddCompanyWizard() {
                 {`Every location of ${chosen?.name || 'the company'} shares this pricing. Base pricing can hold several profiles; quantity pricing holds one.`}
               </Text>
 
-              {/* Committed base profiles (many) */}
-              {baseIds.map((id) => {
-                const p = setupPolicy(id);
-                if (!p) return null;
-                const madeHere = createdIds.includes(id);
-                return (
-                  <Box key={id} padding="300" borderWidth="025" borderColor="border" borderRadius="200">
-                    <InlineStack align="space-between" blockAlign="center" gap="200">
-                      <BlockStack gap="025">
-                        <Text as="span" variant="bodyMd" fontWeight="medium">{p.name}</Text>
-                        <Text as="span" tone="subdued" variant="bodySm">Base pricing</Text>
-                      </BlockStack>
-                      <InlineStack gap="100">
-                        {madeHere ? (
-                          <Button icon={EditIcon} variant="tertiary" accessibilityLabel="Edit base pricing" onClick={() => editBase(id)} />
-                        ) : null}
-                        <Button icon={XIcon} variant="tertiary" tone="critical" accessibilityLabel="Remove base pricing" onClick={() => removeBase(id)} />
-                      </InlineStack>
-                    </InlineStack>
+              {/* Committed base profiles — one compact, scrollable list (a company
+                  can hold many, so keep it dense instead of a card per profile). */}
+              {baseIds.length > 0 ? (
+                <BlockStack gap="150">
+                  <Text as="span" tone="subdued" variant="bodySm">
+                    {`Base pricing · ${baseIds.length} profile${baseIds.length === 1 ? '' : 's'}`}
+                  </Text>
+                  <Box borderWidth="025" borderColor="border" borderRadius="200">
+                    <div style={{ maxHeight: 224, overflowY: 'auto' }}>
+                      {baseIds.map((id, idx) => {
+                        const p = setupPolicy(id);
+                        if (!p) return null;
+                        const madeHere = createdIds.includes(id);
+                        return (
+                          <React.Fragment key={id}>
+                            {idx > 0 ? <Divider /> : null}
+                            <Box paddingInline="300" paddingBlock="200">
+                              <InlineStack align="space-between" blockAlign="center" gap="200" wrap={false}>
+                                <Text as="span" variant="bodyMd" fontWeight="medium" truncate>{p.name}</Text>
+                                <InlineStack gap="050" blockAlign="center" wrap={false}>
+                                  {madeHere ? (
+                                    <Button icon={EditIcon} variant="tertiary" size="micro" accessibilityLabel={`Edit ${p.name}`} onClick={() => editBase(id)} />
+                                  ) : null}
+                                  <Button icon={XIcon} variant="tertiary" size="micro" tone="critical" accessibilityLabel={`Remove ${p.name}`} onClick={() => removeBase(id)} />
+                                </InlineStack>
+                              </InlineStack>
+                            </Box>
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
                   </Box>
-                );
-              })}
+                </BlockStack>
+              ) : null}
 
               {/* Committed quantity profile (one; not the one being edited) */}
               {qPolicy && addKind !== 'quantity' ? (
@@ -261,8 +274,6 @@ export function AddCompanyWizard() {
                   options={b2bBy('base').filter((p) => !baseIds.includes(p.id))}
                   selected={draftBaseIds}
                   onChange={(ids) => patch({ draftBaseIds: ids })}
-                  scopeLabel={scopeLabel}
-                  priceCalcLabel={priceCalcLabel}
                   onDiscard={discardBase}
                   onSave={saveBase}
                   onCreateNew={createNewBase}
@@ -387,10 +398,12 @@ export function AddCompanyWizard() {
   );
 }
 
-// Base-pricing chooser: a company can hold several base profiles, so this is a
-// multi-select of existing profiles (add them all at once). "Create a new" still
-// builds exactly one and drops it straight into the committed list.
-function BaseChooser({ options, selected, onChange, scopeLabel, priceCalcLabel, onDiscard, onSave, onCreateNew }) {
+// Base-pricing chooser: a company can hold several base profiles, so this reuses
+// the company section's multi-select dropdown (PricingCombobox — checkable options
+// + removable tags). "Create a new" still builds exactly one and drops it straight
+// into the committed list.
+function BaseChooser({ options, selected, onChange, onDiscard, onSave, onCreateNew }) {
+  const optionLabel = (p) => `${p.name} · Priority ${p.priority ?? '—'} · ${scopeTypeLabel(p)}`;
   return (
     <Box padding="300" background="bg-surface-secondary" borderWidth="025" borderColor="border" borderRadius="200">
       <BlockStack gap="300">
@@ -405,17 +418,18 @@ function BaseChooser({ options, selected, onChange, scopeLabel, priceCalcLabel, 
         </InlineStack>
 
         {options.length ? (
-          <ChoiceList
-            allowMultiple
-            title="Use existing base pricing"
-            choices={options.map((p) => ({
-              label: p.name,
-              value: p.id,
-              helpText: `${scopeLabel(p)} · ${priceCalcLabel(p)}`,
-            }))}
-            selected={selected}
-            onChange={onChange}
-          />
+          <>
+            <PricingCombobox
+              label="Use an existing base pricing"
+              placeholder="Select base pricing"
+              candidates={options}
+              selectedIds={selected}
+              onChange={onChange}
+              optionLabel={optionLabel}
+              emptyText="No matching base pricing"
+            />
+            <Text as="p" tone="subdued" variant="bodySm">Pick one or more — the lowest priority applies first.</Text>
+          </>
         ) : (
           <Text as="span" tone="subdued" variant="bodySm">
             No base pricing serves companies yet, or every one is already added. Create a new one below.
