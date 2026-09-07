@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Modal, Select, BlockStack, InlineStack, Box, Text, Badge, Divider, IndexTable, Button, TextField, Icon, Scrollable } from '@shopify/polaris';
-import { SearchIcon, ViewIcon } from '@shopify/polaris-icons';
+import { Modal, Select, BlockStack, InlineStack, Box, Text, Badge, Divider, Button, Scrollable } from '@shopify/polaris';
+import { ViewIcon } from '@shopify/polaris-icons';
 import { money } from '../format.js';
 import {
   locationPricingEntries,
@@ -13,6 +13,17 @@ import {
   ruleTypeLabel,
   ruleValuesSummary,
 } from '../pricing.js';
+import { ProductPriceTable } from './ProductPriceTable.jsx';
+
+const PREVIEW_SORTS = [
+  { label: 'Product A–Z', value: 'title-asc' },
+  { label: 'Product Z–A', value: 'title-desc' },
+  { label: 'List: low to high', value: 'list-asc' },
+  { label: 'List: high to low', value: 'list-desc' },
+  { label: 'Buyer pays: low to high', value: 'final-asc' },
+  { label: 'Buyer pays: high to low', value: 'final-desc' },
+  { label: 'Biggest discount', value: 'off-desc' },
+];
 
 // The profile-level default adjustment as a short label ("12% off", "Set $75").
 const defaultAdjLabel = (p) =>
@@ -94,8 +105,7 @@ export function PricePreviewModal({ company, location, db, onClose }) {
   const products = db.products || [];
   const [detailSku, setDetailSku] = useState(null);
   const [query, setQuery] = useState('');
-  const [sortIndex, setSortIndex] = useState(0);
-  const [sortDir, setSortDir] = useState('ascending'); // 'ascending' | 'descending'
+  const [sort, setSort] = useState('title-asc');
 
   // Resolve each product once, then search + sort the derived list.
   const entries = products.map((p) => {
@@ -108,42 +118,30 @@ export function PricePreviewModal({ company, location, db, onClose }) {
     ? entries.filter((e) => e.p.title.toLowerCase().includes(q) || e.p.sku.toLowerCase().includes(q))
     : entries;
   const sorted = [...filtered].sort((a, b) => {
-    let cmp = 0;
-    if (sortIndex === 0) cmp = a.p.title.localeCompare(b.p.title);
-    else if (sortIndex === 1) cmp = a.list - b.list;
-    else if (sortIndex === 2) cmp = a.finalPrice - b.finalPrice;
-    return sortDir === 'descending' ? -cmp : cmp;
+    switch (sort) {
+      case 'title-desc': return b.p.title.localeCompare(a.p.title);
+      case 'list-asc': return a.list - b.list;
+      case 'list-desc': return b.list - a.list;
+      case 'final-asc': return a.finalPrice - b.finalPrice;
+      case 'final-desc': return b.finalPrice - a.finalPrice;
+      case 'off-desc': return b.pctOff - a.pctOff;
+      default: return a.p.title.localeCompare(b.p.title);
+    }
   });
 
-  const rows = sorted.map((e, i) => {
-    const { p, finalPrice, list, pctOff, nVariants } = e;
-    return (
-      <IndexTable.Row id={p.sku} key={p.sku} position={i}>
-        <IndexTable.Cell>
-          <BlockStack gap="050">
-            <Text as="span" variant="bodyMd" fontWeight="medium">{p.title}</Text>
-            <Text as="span" tone="subdued" variant="bodySm">
-              {p.sku}{nVariants > 1 ? ` · ${nVariants} variants` : ''}
-            </Text>
-          </BlockStack>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
-          <Text as="span" tone="subdued" alignment="end">{money(list)}</Text>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
-          <InlineStack gap="150" blockAlign="center" align="end">
-            <Text as="span" variant="bodyMd" fontWeight="semibold">{money(finalPrice)}</Text>
-            <DiscountBadge pctOff={pctOff} />
-          </InlineStack>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
-          <InlineStack align="end">
-            <Button icon={ViewIcon} variant="tertiary" accessibilityLabel="Why this price" onClick={() => setDetailSku(p.sku)} />
-          </InlineStack>
-        </IndexTable.Cell>
-      </IndexTable.Row>
-    );
-  });
+  const rows = sorted.map((e) => ({
+    key: e.p.sku,
+    title: e.p.title,
+    subtitle: `${e.p.sku}${e.nVariants > 1 ? ` · ${e.nVariants} variants` : ''}`,
+    cells: [
+      <Text as="span" tone="subdued">{money(e.list)}</Text>,
+      <InlineStack gap="150" blockAlign="center">
+        <Text as="span" variant="bodyMd" fontWeight="semibold">{money(e.finalPrice)}</Text>
+        <DiscountBadge pctOff={e.pctOff} />
+      </InlineStack>,
+    ],
+    action: <Button icon={ViewIcon} variant="tertiary" accessibilityLabel="Why this price" onClick={() => setDetailSku(e.p.sku)} />,
+  }));
 
   const detailProduct = detailSku ? products.find((p) => p.sku === detailSku) : null;
 
@@ -169,42 +167,19 @@ export function PricePreviewModal({ company, location, db, onClose }) {
             <Text as="span" tone="subdued" variant="bodySm">
               What buyers at {location.name} pay. Prices shown for the default variant.
             </Text>
-            <TextField
-              label="Search products"
-              labelHidden
-              value={query}
-              onChange={setQuery}
-              placeholder="Search by product name or SKU"
-              prefix={<Icon source={SearchIcon} tone="subdued" />}
-              autoComplete="off"
-              clearButton
-              onClearButtonClick={() => setQuery('')}
-            />
-            <IndexTable
-              resourceName={{ singular: 'product', plural: 'products' }}
-              itemCount={sorted.length}
-              selectable={false}
-              sortable={[true, true, true, false]}
-              sortColumnIndex={sortIndex}
-              sortDirection={sortDir}
-              onSort={(index, direction) => {
-                setSortIndex(index);
-                setSortDir(direction);
-              }}
-              headings={[
-                { title: 'Product' },
-                { title: 'List', alignment: 'end' },
-                { title: 'Buyer pays', alignment: 'end' },
-                { title: '' },
+            <ProductPriceTable
+              search={query}
+              onSearch={setQuery}
+              sort={sort}
+              onSort={setSort}
+              sortOptions={PREVIEW_SORTS}
+              columns={[
+                { title: 'List', width: '96px', align: 'end' },
+                { title: 'Buyer pays', width: '160px', align: 'end' },
               ]}
-              emptyState={
-                <Box padding="400">
-                  <Text as="p" alignment="center" tone="subdued">No products match “{query}”.</Text>
-                </Box>
-              }
-            >
-              {rows}
-            </IndexTable>
+              rows={rows}
+              emptyLabel={`No products match “${query}”.`}
+            />
           </BlockStack>
         )}
       </Modal.Section>

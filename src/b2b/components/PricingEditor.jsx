@@ -16,7 +16,6 @@ import {
   Banner,
   Divider,
   Tabs,
-  IndexTable,
 } from '@shopify/polaris';
 import { DeleteIcon, XIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
@@ -27,6 +26,7 @@ import { versionFlags } from '../../shared/versions.js';
 import { COLLECTIONS } from '../data/constants.js';
 import { money } from '../format.js';
 import { ActiveDatesCard, ProductScopeCard, VolumeBasisCard, ProductOverridesCard } from './pricingEditorCards.jsx';
+import { ProductPriceTable } from './ProductPriceTable.jsx';
 import { policyUsageCount, companyBaseEntries, companyQuantityPolicy, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, ruleValuesSummary } from '../pricing.js';
 
 // Fullscreen-ish pricing editor (spec §2.6). Open whenever state.builder is set.
@@ -336,15 +336,22 @@ function ResolutionCard({ builder, products }) {
 // covers, the layer that decides each price, and what the buyer pays — computed
 // from the DRAFT builder, so it reflects unsaved rule/override edits. This is the
 // per-rule counterpart to the company-level PriceBoard (which reads saved policies).
+const PREVIEW_SORTS = [
+  { label: 'Product A–Z', value: 'title-asc' },
+  { label: 'Product Z–A', value: 'title-desc' },
+  { label: 'Shopify price: low to high', value: 'shopify-asc' },
+  { label: 'Shopify price: high to low', value: 'shopify-desc' },
+  { label: 'Buyer pays: low to high', value: 'final-asc' },
+  { label: 'Buyer pays: high to low', value: 'final-desc' },
+  { label: 'Biggest discount', value: 'off-desc' },
+];
+
 function BuilderPricePreview({ builder, products, onClose }) {
   const [query, setQuery] = useState('');
+  const [sort, setSort] = useState('title-asc');
   const inScope = products.filter((p) => policyPriceBreakdown(builder, p)?.inScope);
-  const q = query.trim().toLowerCase();
-  const filtered = q
-    ? inScope.filter((p) => p.title.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q))
-    : inScope;
 
-  const rows = filtered.map((p, i) => {
+  const entries = inScope.map((p) => {
     const bd = policyPriceBreakdown(builder, p);
     const layer = bd.override != null ? 'override' : bd.rule ? 'rule' : 'default';
     const rule = bd.rule ? (builder.conditionalRules || [])[bd.rule.index] : null;
@@ -355,29 +362,34 @@ function BuilderPricePreview({ builder, products, onClose }) {
           ? `Rule ${bd.rule.index + 1} · ${ruleTypeLabel(rule)}`
           : 'Default';
     const off = bd.shopify > 0 ? Math.round((1 - bd.final / bd.shopify) * 100) : 0;
-    return (
-      <IndexTable.Row id={p.sku} key={p.sku} position={i}>
-        <IndexTable.Cell>
-          <BlockStack gap="050">
-            <Text as="span" variant="bodyMd" fontWeight="medium">{p.title}</Text>
-            <Text as="span" tone="subdued" variant="bodySm">{p.sku}</Text>
-          </BlockStack>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
-          <Text as="span" tone="subdued" alignment="end">{money(bd.shopify)}</Text>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
-          <Badge tone={layer === 'override' ? 'info' : undefined}>{decidedBy}</Badge>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
-          <Text as="span" fontWeight="semibold" alignment="end">{money(bd.final)}</Text>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
-          <Text as="span" alignment="end">{off > 0 ? `${off}% off` : off < 0 ? `${-off}% over` : '—'}</Text>
-        </IndexTable.Cell>
-      </IndexTable.Row>
-    );
+    return { p, bd, layer, decidedBy, off };
   });
+
+  const q = query.trim().toLowerCase();
+  const filtered = q ? entries.filter((e) => e.p.title.toLowerCase().includes(q) || e.p.sku.toLowerCase().includes(q)) : entries;
+  const sorted = [...filtered].sort((a, b) => {
+    switch (sort) {
+      case 'title-desc': return b.p.title.localeCompare(a.p.title);
+      case 'shopify-asc': return a.bd.shopify - b.bd.shopify;
+      case 'shopify-desc': return b.bd.shopify - a.bd.shopify;
+      case 'final-asc': return a.bd.final - b.bd.final;
+      case 'final-desc': return b.bd.final - a.bd.final;
+      case 'off-desc': return b.off - a.off;
+      default: return a.p.title.localeCompare(b.p.title);
+    }
+  });
+
+  const rows = sorted.map((e) => ({
+    key: e.p.sku,
+    title: e.p.title,
+    subtitle: e.p.sku,
+    cells: [
+      <Text as="span" tone="subdued">{money(e.bd.shopify)}</Text>,
+      <Badge tone={e.layer === 'override' ? 'info' : undefined}>{e.decidedBy}</Badge>,
+      <Text as="span" fontWeight="semibold">{money(e.bd.final)}</Text>,
+      <Text as="span">{e.off > 0 ? `${e.off}% off` : e.off < 0 ? `${-e.off}% over` : '—'}</Text>,
+    ],
+  }));
 
   return (
     <Modal
@@ -392,37 +404,21 @@ function BuilderPricePreview({ builder, products, onClose }) {
           <Text as="p" tone="subdued" variant="bodySm">
             Every product this pricing covers, with the layer that decides each price. Reflects your unsaved edits.
           </Text>
-          <TextField
-            label="Search"
-            labelHidden
-            placeholder="Search by product name or SKU"
-            value={query}
-            onChange={setQuery}
-            autoComplete="off"
-            clearButton
-            onClearButtonClick={() => setQuery('')}
-          />
-          <IndexTable
-            resourceName={{ singular: 'product', plural: 'products' }}
-            itemCount={filtered.length}
-            selectable={false}
-            headings={[
-              { title: 'Product' },
-              { title: 'Shopify price', alignment: 'end' },
-              { title: 'Decided by' },
-              { title: 'Buyer pays', alignment: 'end' },
-              { title: 'Off', alignment: 'end' },
+          <ProductPriceTable
+            search={query}
+            onSearch={setQuery}
+            sort={sort}
+            onSort={setSort}
+            sortOptions={PREVIEW_SORTS}
+            columns={[
+              { title: 'Shopify price', width: '96px', align: 'end' },
+              { title: 'Decided by', width: '160px', align: 'start' },
+              { title: 'Buyer pays', width: '96px', align: 'end' },
+              { title: 'Off', width: '72px', align: 'end' },
             ]}
-            emptyState={
-              <Box padding="400">
-                <Text as="p" alignment="center" tone="subdued">
-                  {inScope.length === 0 ? 'This pricing covers no products yet.' : `No products match “${query}”.`}
-                </Text>
-              </Box>
-            }
-          >
-            {rows}
-          </IndexTable>
+            rows={rows}
+            emptyLabel={inScope.length === 0 ? 'This pricing covers no products yet.' : `No products match “${query}”.`}
+          />
         </BlockStack>
       </Modal.Section>
     </Modal>

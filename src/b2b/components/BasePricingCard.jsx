@@ -21,6 +21,7 @@ import { companyBaseEntries, policyStatus } from '../pricing.js';
 import { openBuildFromQuotes } from './BuildFromQuotes.jsx';
 import { versionFlags } from '../../shared/versions.js';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
+import basePricingArt from '../assets/base-pricing-empty.png';
 
 const PAGE_SIZES = [5, 10, 20, 100];
 
@@ -126,6 +127,8 @@ export function BasePricingCard({ company }) {
             Base pricing
           </Text>
           <EmptyBlock
+            image={basePricingArt}
+            imageAlt="A price list with a dollar amount on each line, next to boxes and a price tag"
             heading="No base pricing yet"
             action={{ content: 'Add base pricing', onAction: () => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'add' }) }}
             secondaryAction={
