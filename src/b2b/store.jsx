@@ -116,32 +116,42 @@ function reducer(state, action) {
       return { ...state, priceBoard: null };
     // ----- Assign / swap base pricing -----
     case 'OPEN_ASSIGN':
-      return { ...state, assign: { companyId: action.companyId, mode: action.mode, kind: action.kind || 'base', swapId: action.swapId || null, selectedId: null } };
-    case 'ASSIGN_SELECT':
-      return { ...state, assign: { ...state.assign, selectedId: action.id } };
+      return { ...state, assign: { companyId: action.companyId, mode: action.mode, kind: action.kind || 'base', swapId: action.swapId || null, selectedIds: [] } };
+    case 'ASSIGN_SET':
+      // The picker's OptionList returns the full selection; base add is multi,
+      // swap/quantity are single-slot (allowMultiple off ⇒ at most one id).
+      return { ...state, assign: { ...state.assign, selectedIds: action.ids || [] } };
     case 'CLOSE_ASSIGN':
       return { ...state, assign: null };
     case 'ASSIGN_CONFIRM': {
       const a = state.assign;
       const db = clone(state.db);
       const c = db.companies.find((x) => x.id === a.companyId);
-      if (c && a.selectedId) {
+      const ids = a.selectedIds || [];
+      if (c && ids.length) {
         c.pricing = c.pricing || { base: null, quantity: null };
         if (a.kind === 'quantity') {
-          c.pricing.quantity = a.selectedId;
+          c.pricing.quantity = ids[0];
         } else {
           if (!Array.isArray(c.pricing.base)) c.pricing.base = c.pricing.base ? [{ id: c.pricing.base, priority: 1 }] : [];
-          const pol = db.policies.find((p) => p.id === a.selectedId);
           if (a.mode === 'swap') {
+            const pol = db.policies.find((p) => p.id === ids[0]);
             const idx = c.pricing.base.findIndex((e) => e.id === a.swapId);
-            if (idx >= 0) c.pricing.base[idx] = { id: a.selectedId, priority: pol?.priority ?? c.pricing.base[idx].priority };
-          } else if (!c.pricing.base.some((e) => e.id === a.selectedId)) {
-            c.pricing.base.push({ id: a.selectedId, priority: pol?.priority ?? c.pricing.base.length + 1 });
+            if (idx >= 0) c.pricing.base[idx] = { id: ids[0], priority: pol?.priority ?? c.pricing.base[idx].priority };
+          } else {
+            // Multi-select: add each picked base pricing that isn't already assigned.
+            ids.forEach((id) => {
+              if (!c.pricing.base.some((e) => e.id === id)) {
+                const pol = db.policies.find((p) => p.id === id);
+                c.pricing.base.push({ id, priority: pol?.priority ?? c.pricing.base.length + 1 });
+              }
+            });
           }
         }
       }
       const label = a.kind === 'quantity' ? 'Quantity pricing' : 'Base pricing';
-      return { ...state, db, assign: null, toast: a.mode === 'swap' ? `${label} changed` : `${label} added` };
+      const toast = a.mode === 'swap' ? `${label} changed` : `${ids.length > 1 ? `${ids.length} ${label}s` : label} added`;
+      return { ...state, db, assign: null, toast };
     }
     case 'REMOVE_COMPANY_QUANTITY': {
       const db = clone(state.db);
@@ -190,17 +200,17 @@ function reducer(state, action) {
         addCompany: {
           step: 1,
           shopifyId: null,
-          baseId: '',
+          baseIds: [],
           quantityId: '',
           search: '',
-          termsExpanded: false,
-          // Assign-pricing chooser (mirrors god file): which kind's chooser is
-          // open, the not-yet-committed selection in it, whether it was just
-          // built here, and which committed kinds were created in this flow.
+          // Assign-pricing chooser: which kind's chooser is open (addKind); base
+          // drafts into draftBaseIds (multi-select), quantity into draftPolicy
+          // (single); createdIds are profiles built in this flow (Edit vs Change).
           addKind: null,
+          draftBaseIds: [],
           draftPolicy: '',
           draftIsNew: false,
-          createdHere: {},
+          createdIds: [],
         },
       };
     case 'ADD_COMPANY_PATCH':
@@ -220,7 +230,10 @@ function reducer(state, action) {
         name: shp.name,
         mainContact: shp.contacts?.[0]?.name || '',
         source: 'Company application',
-        pricing: { base: ac.baseId ? [{ id: ac.baseId, priority: 1 }] : null, quantity: ac.quantityId || null },
+        pricing: {
+          base: ac.baseIds && ac.baseIds.length ? ac.baseIds.map((bid, i) => ({ id: bid, priority: i + 1 })) : null,
+          quantity: ac.quantityId || null,
+        },
         revenue: 0,
         locations: (shp.locations || []).map((l) => ({ id: l.id, name: l.name, terms: l.terms, ordering: l.ordering, buyers: 0, lastOrder: '—' })),
         contacts: (shp.contacts || []).map((c) => ({ name: c.name, email: c.email, role: c.role, access: c.access, locations: c.location })),
@@ -336,16 +349,18 @@ function reducer(state, action) {
         // draft (the merchant reviews it, then Save commits it into the slot).
         const setupKind = state.editorContext?.setupKind;
         if (setupKind && state.addCompany) {
-          return {
-            ...state,
-            db,
-            builder: null,
-            ruleEdit: null,
-            addRuleMenu: false,
-            editorContext: null,
-            addCompany: { ...state.addCompany, addKind: setupKind, draftPolicy: id, draftIsNew: true, step: 2 },
-            toast: 'Pricing created',
-          };
+          const ac = state.addCompany;
+          const done = { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: 'Pricing created' };
+          if (setupKind === 'base') {
+            // Base is multi-select: the new profile joins the committed list at
+            // once (alongside anything ticked in the chooser), then it closes.
+            const baseIds = [...new Set([...(ac.baseIds || []), ...(ac.draftBaseIds || []), id])];
+            const createdIds = [...new Set([...(ac.createdIds || []), id])];
+            return { ...done, addCompany: { ...ac, addKind: null, draftBaseIds: [], baseIds, createdIds, step: 2 } };
+          }
+          // Quantity is single: hand the new profile back as an uncommitted draft
+          // for the merchant to review, then Save commits it into the slot.
+          return { ...done, addCompany: { ...ac, addKind: setupKind, draftPolicy: id, draftIsNew: true, step: 2 } };
         }
         const c = db.companies.find((x) => x.id === (state.editorContext?.companyId || state.selectedCompany));
         if (c) addCompanyBase(c, id, draft.priority);

@@ -10,6 +10,7 @@ import {
   Banner,
   IndexTable,
   Badge,
+  Divider,
 } from '@shopify/polaris';
 import { money, marginPct, estimatedCost } from '../utils.js';
 import { RFQ_CATALOG, RFQ_PRICING_OPTIONS } from '../data/catalog.js';
@@ -116,6 +117,81 @@ export function SaveToB2B({ quote, onClose, onDone }) {
               : 'Saves onto a company base pricing — every location using that base gets these prices right away.'}
           </Text>
 
+          {anyOver && (
+            <Banner tone="critical">B2B pricing can’t be higher than the Shopify price — lower them first.</Banner>
+          )}
+          {!anyOver && anyBelowCost && (
+            <Banner tone="warning">Some prices are below cost — you’d sell at a loss.</Banner>
+          )}
+
+          <div style={{ maxHeight: 340, overflowY: 'auto', border: '1px solid var(--p-color-border)', borderRadius: 'var(--p-border-radius-200)' }}>
+          <IndexTable
+            resourceName={{ singular: 'product', plural: 'products' }}
+            itemCount={rows.length}
+            selectable={false}
+            headings={[
+              { title: 'Product' },
+              { title: 'Shopify' },
+              { title: 'Cost' },
+              { title: 'Quoted' },
+              {
+                title: 'Price to save',
+                tooltipContent: 'Saved as this product’s B2B base price. Defaults to the quoted price — edit if needed.',
+              },
+              { title: 'Margin' },
+            ]}
+          >
+            {rows.map((r, i) => {
+              const m = marginPct(r.base, r.cost);
+              const belowCost = r.base < r.cost;
+              const over = r.base > r.shopify;
+              return (
+                <IndexTable.Row id={r.sku || String(i)} key={i} position={i}>
+                  <IndexTable.Cell>
+                    <BlockStack gap="050">
+                      <Text as="span" variant="bodyMd" fontWeight="medium">
+                        {r.title}
+                      </Text>
+                      {r.sku ? (
+                        <Text as="span" tone="subdued" variant="bodySm">
+                          {r.sku}
+                        </Text>
+                      ) : null}
+                    </BlockStack>
+                  </IndexTable.Cell>
+                  <IndexTable.Cell>{money(r.shopify)}</IndexTable.Cell>
+                  <IndexTable.Cell>{money(r.cost)}</IndexTable.Cell>
+                  <IndexTable.Cell>
+                    <Text as="span" fontWeight="semibold">{money(r.quoted)}</Text>
+                  </IndexTable.Cell>
+                  <IndexTable.Cell>
+                    <div style={{ width: 110 }}>
+                      <TextField
+                        label="Price to save"
+                        labelHidden
+                        type="number"
+                        min={0}
+                        prefix="$"
+                        value={String(r.base)}
+                        onChange={(v) => setBase(i, v)}
+                        error={over}
+                        autoComplete="off"
+                      />
+                    </div>
+                  </IndexTable.Cell>
+                  <IndexTable.Cell>
+                    <Text as="span" tone={belowCost ? 'critical' : undefined}>
+                      {`${m}%${belowCost ? ' · below cost' : ''}`}
+                    </Text>
+                  </IndexTable.Cell>
+                </IndexTable.Row>
+              );
+            })}
+          </IndexTable>
+          </div>
+
+          <Divider />
+
           <Select
             label={versionFlags().crossSyncScope === 'location' ? "Add to this location’s pricing" : 'Add to base pricing'}
             options={destOptions}
@@ -156,77 +232,6 @@ export function SaveToB2B({ quote, onClose, onDone }) {
               </BlockStack>
             </Box>
           )}
-
-          {anyOver && (
-            <Banner tone="critical">B2B pricing can’t be higher than the Shopify price — lower them first.</Banner>
-          )}
-          {!anyOver && anyBelowCost && (
-            <Banner tone="warning">Some prices are below cost — you’d sell at a loss.</Banner>
-          )}
-
-          <IndexTable
-            resourceName={{ singular: 'product', plural: 'products' }}
-            itemCount={rows.length}
-            selectable={false}
-            headings={[
-              { title: 'Product' },
-              { title: 'Shopify' },
-              { title: 'Cost' },
-              { title: 'Quoted' },
-              {
-                title: 'Base price',
-                tooltipContent: 'Saved as this product’s B2B base price. Defaults to the quoted price — edit if needed.',
-              },
-              { title: 'Margin' },
-            ]}
-          >
-            {rows.map((r, i) => {
-              const m = marginPct(r.base, r.cost);
-              const belowCost = r.base < r.cost;
-              const over = r.base > r.shopify;
-              return (
-                <IndexTable.Row id={r.sku || String(i)} key={i} position={i}>
-                  <IndexTable.Cell>
-                    <BlockStack gap="050">
-                      <Text as="span" variant="bodyMd" fontWeight="medium">
-                        {r.title}
-                      </Text>
-                      {r.sku ? (
-                        <Text as="span" tone="subdued" variant="bodySm">
-                          {r.sku}
-                        </Text>
-                      ) : null}
-                    </BlockStack>
-                  </IndexTable.Cell>
-                  <IndexTable.Cell>{money(r.shopify)}</IndexTable.Cell>
-                  <IndexTable.Cell>{money(r.cost)}</IndexTable.Cell>
-                  <IndexTable.Cell>
-                    <Text as="span" fontWeight="semibold">{money(r.quoted)}</Text>
-                  </IndexTable.Cell>
-                  <IndexTable.Cell>
-                    <div style={{ width: 110 }}>
-                      <TextField
-                        label="Base price"
-                        labelHidden
-                        type="number"
-                        min={0}
-                        prefix="$"
-                        value={String(r.base)}
-                        onChange={(v) => setBase(i, v)}
-                        error={over}
-                        autoComplete="off"
-                      />
-                    </div>
-                  </IndexTable.Cell>
-                  <IndexTable.Cell>
-                    <Text as="span" tone={belowCost ? 'critical' : undefined}>
-                      {`${m}%${belowCost ? ' · below cost' : ''}`}
-                    </Text>
-                  </IndexTable.Cell>
-                </IndexTable.Row>
-              );
-            })}
-          </IndexTable>
         </BlockStack>
       </Modal.Section>
     </Modal>

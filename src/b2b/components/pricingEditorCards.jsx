@@ -1,27 +1,48 @@
 import React, { useState, useMemo } from 'react';
-import { Card, BlockStack, InlineGrid, InlineStack, TextField, Text, Box, Button, Select, ChoiceList, RadioButton, Badge, Icon, Checkbox } from '@shopify/polaris';
+import { Card, BlockStack, InlineGrid, InlineStack, TextField, Text, Box, Button, Select, ChoiceList, Badge, Icon, Checkbox } from '@shopify/polaris';
 import { SearchIcon, ImageIcon, ChevronDownIcon, ChevronRightIcon } from '@shopify/polaris-icons';
 import { COLLECTIONS } from '../data/constants.js';
 import { money } from '../format.js';
 import { productVariants, applyAdjustment } from '../pricing.js';
 import { VariantPicker } from './VariantPicker.jsx';
 
+// Timezone options mirror the B2B god file's Active dates card.
+const TIMEZONES = [
+  '(GMT+07:00) Indochina Time - Bangkok',
+  '(GMT+00:00) UTC',
+  '(GMT-05:00) Eastern Time - New York',
+  '(GMT+10:00) AEST - Sydney',
+];
+
 // Cards used by the pricing editor: status/dates, product scope, quantity discount
 // basis, and per-variant price overrides. Split out of PricingEditor for readability.
+// Active dates: timezone + start date/time, with an optional end date (god-file parity).
 export function ActiveDatesCard({ builder, patch }) {
-  const dated = builder.validityType === 'dated';
+  // Seed policies carry an endDate without an explicit flag — treat that as "has end".
+  const hasEnd = builder.hasEndDate ?? !!builder.endDate;
   return (
     <Card>
       <BlockStack gap="300">
         <Text as="h3" variant="headingSm">Active dates</Text>
-        <BlockStack gap="150">
-          <RadioButton label="Always on" checked={!dated} id="valid-evergreen" name="validity" onChange={() => patch({ validityType: 'evergreen' })} />
-          <RadioButton label="Set a start / end date" checked={dated} id="valid-dated" name="validity" onChange={() => patch({ validityType: 'dated' })} />
-        </BlockStack>
-        {dated && (
+        <Select
+          label="Timezone"
+          options={TIMEZONES.map((tz) => ({ label: tz, value: tz }))}
+          value={builder.timezone || TIMEZONES[0]}
+          onChange={(v) => patch({ timezone: v })}
+        />
+        <InlineGrid columns={{ xs: 1, sm: 2 }} gap="300">
+          <TextField label="Start date" type="date" value={builder.startDate || ''} onChange={(v) => patch({ startDate: v })} autoComplete="off" />
+          <TextField label="Start time" value={builder.startTime || '12:00 AM'} onChange={(v) => patch({ startTime: v })} autoComplete="off" />
+        </InlineGrid>
+        <Checkbox
+          label="Set end date"
+          checked={hasEnd}
+          onChange={(v) => patch(v ? { hasEndDate: true } : { hasEndDate: false, endDate: '', endTime: '' })}
+        />
+        {hasEnd && (
           <InlineGrid columns={{ xs: 1, sm: 2 }} gap="300">
-            <TextField label="Start date" type="date" value={builder.startDate || ''} onChange={(v) => patch({ startDate: v })} autoComplete="off" />
             <TextField label="End date" type="date" value={builder.endDate || ''} onChange={(v) => patch({ endDate: v })} autoComplete="off" />
+            <TextField label="End time" value={builder.endTime || '12:00 AM'} onChange={(v) => patch({ endTime: v })} autoComplete="off" />
           </InlineGrid>
         )}
       </BlockStack>

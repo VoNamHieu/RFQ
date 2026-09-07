@@ -7,7 +7,7 @@ import { COLLECTIONS } from './data/constants.js';
 
 // Demo "today" anchor for dated validity (legacy TODAY = new Date('2026-07-28')).
 // Dates are plain YYYY-MM-DD, so lexical string comparison matches Date order.
-const TODAY = '2026-07-28';
+export const TODAY = '2026-07-28';
 
 export const KIND_ORDER = ['base', 'quantity'];
 export const kindOf = (p) => (p?.priceKind === 'quantity' ? 'quantity' : 'base');
@@ -45,10 +45,10 @@ export function companyBaseEntries(company, policies) {
 // it has one. Scheduled/expired bases step aside so the next priority applies.
 export function basePriceableNow(policy) {
   if (!policy || policy.status === 'Inactive') return false;
-  if (policy.validityType === 'dated') {
-    if (policy.startDate && policy.startDate > TODAY) return false;
-    if (policy.endDate && policy.endDate < TODAY) return false;
-  }
+  // Dated window (god-file model): active from startDate, optionally until endDate.
+  // Backward compatible with seed policies that carry startDate/endDate directly.
+  if (policy.startDate && policy.startDate > TODAY) return false;
+  if (policy.endDate && policy.endDate < TODAY) return false;
   return true;
 }
 export function companyActiveBasePolicies(company, policies) {
@@ -309,7 +309,7 @@ export function policyStatus(policy, db) {
   if (!policy) return { label: 'Not set', tone: undefined };
   if (policy.status === 'Inactive') return { label: 'Inactive', tone: undefined };
   if (db && policyUsageCount(policy, db) === 0) return { label: 'Inactive', tone: undefined };
-  if (policy.validityType === 'dated' && policy.startDate && policy.startDate > TODAY) {
+  if (policy.startDate && policy.startDate > TODAY) {
     return { label: 'Scheduled', tone: 'info' };
   }
   return { label: 'Active', tone: 'success' };

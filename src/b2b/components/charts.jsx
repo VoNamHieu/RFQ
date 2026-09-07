@@ -110,7 +110,13 @@ export function LineChart({ data, compare = null, height = 200, prefix = '$', la
           ))}
           {active && (() => {
             const rows = [active.label, fmt(active.value, prefix)];
-            if (hasCompare) rows.push(`prev ${fmt(compareVals[hover], prefix)}`);
+            if (hasCompare) {
+              // Comparison line is aligned by slot, so this point's real date differs
+              // from the axis label — show that actual previous-period date (matches
+              // Shopify's period-over-period tooltip), falling back to "prev".
+              const prevLabel = compare[hover]?.label;
+              rows.push(`${prevLabel ? `${prevLabel} · ` : 'prev '}${fmt(compareVals[hover], prefix)}`);
+            }
             const tw = 104;
             const th = 12 + rows.length * 15;
             const cx = x(hover);

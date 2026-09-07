@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, BlockStack, InlineStack, Box, Text, Badge, TextField, Select, Divider, Banner, Button, Icon } from '@shopify/polaris';
+import { Modal, BlockStack, InlineStack, Box, Text, Badge, TextField, Select, Divider, Banner, Button, Icon, Avatar, ChoiceList } from '@shopify/polaris';
 import { SearchIcon, PlusIcon, EditIcon, ExchangeIcon, XIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { shopifyCompanyDirectory } from '../data/directory.js';
@@ -10,15 +10,17 @@ import { kindOf, scopeLabel, ruleAdjustmentLabel, policyUsage, policyUsageCount 
 // four: the Company's Shopify Locations all come with it, so there is no
 // Location choice to make — setup is Company, then pricing, then review.
 const STEPS = ['Company', 'Assign pricing', 'Review'];
-const KIND_ORDER = ['base', 'quantity'];
 const KIND_META = {
   base: { name: 'Base pricing', purpose: 'The list price B2B buyers pay before quantity breaks.' },
   quantity: { name: 'Quantity pricing', purpose: 'An extra discount as the order quantity grows.' },
 };
 const kindName = (k) => KIND_META[k].name;
 const kindPurpose = (k) => KIND_META[k].purpose;
-const keyOf = (k) => (k === 'quantity' ? 'quantityId' : 'baseId');
-const TERMS_PREVIEW = 3;
+// Two-letter monogram for the company avatar (e.g. "Watson Co" → "Wa").
+const initialsOf = (name) => {
+  const clean = (name || '').trim();
+  return clean ? clean[0].toUpperCase() + (clean[1] || '').toLowerCase() : '?';
+};
 
 export function AddCompanyWizard() {
   const { state, dispatch } = useStore();
@@ -31,6 +33,7 @@ export function AddCompanyWizard() {
   const available = Object.values(shopifyCompanyDirectory).filter((shp) => !linkedNames.has(shp.name));
   const chosen = ac.shopifyId ? Object.values(shopifyCompanyDirectory).find((s) => s.id === ac.shopifyId) : null;
   const isEmpty = available.length === 0;
+  const hiddenCount = Object.values(shopifyCompanyDirectory).length - available.length;
 
   const q = (ac.search || '').trim().toLowerCase();
   const filtered = q
@@ -50,38 +53,49 @@ export function AddCompanyWizard() {
       ? 'Volume price breaks'
       : ruleAdjustmentLabel({ rule: p.pricingRule, valueType: p.valueType, value: p.value });
 
-  // Assign-pricing state (god-file parity): committed selection per kind, plus
-  // the open chooser (addKind), its uncommitted draft, and which committed kinds
-  // were built in this flow (so they show Edit rather than Change).
-  const policyByKind = { base: ac.baseId, quantity: ac.quantityId };
-  const createdHere = ac.createdHere || {};
+  // Assign-pricing state: base pricing holds MANY profiles (multi-select), quantity
+  // holds one. `createdIds` are profiles built in this flow (they show Edit, not
+  // Change). `addKind` is the open chooser; base drafts into `draftBaseIds` (a
+  // multi-select), quantity into `draftPolicy` (single, god-file parity).
+  const baseIds = ac.baseIds || [];
+  const quantityId = ac.quantityId || '';
+  const qPolicy = quantityId ? setupPolicy(quantityId) : null;
+  const createdIds = ac.createdIds || [];
   const addKind = ac.addKind || null;
-  const addedCount = KIND_ORDER.filter((k) => policyByKind[k]).length;
-  const anyPricing = addedCount > 0;
-  const pending = !!(addKind && ac.draftPolicy);
+  const draftBaseIds = ac.draftBaseIds || [];
+  const anyPricing = baseIds.length > 0 || !!quantityId;
+  // An open chooser with an uncommitted selection blocks Continue — Save or Discard first.
+  const pending = addKind === 'base' ? draftBaseIds.length > 0 : addKind === 'quantity' && !!ac.draftPolicy;
 
   const patch = (p) => dispatch({ type: 'ADD_COMPANY_PATCH', patch: p });
   const setStep = (step) => dispatch({ type: 'ADD_COMPANY_STEP', step });
   const close = () => dispatch({ type: 'CLOSE_ADD_COMPANY' });
+  const openEditor = (policy, k) =>
+    dispatch({ type: 'OPEN_EDITOR', policy, kind: k, context: { setupKind: k } });
 
-  // Chooser handlers.
-  const openAdd = (k) => patch({ addKind: k, draftPolicy: policyByKind[k] || '', draftIsNew: !!createdHere[k] });
-  const selectDraft = (id) => patch({ draftPolicy: id, draftIsNew: false });
-  const discardKind = () => patch({ addKind: null, draftPolicy: '', draftIsNew: false });
-  const saveKind = () =>
+  // Base pricing (multi-select; create adds exactly one).
+  const openAddBase = () => patch({ addKind: 'base', draftBaseIds: [] });
+  const discardBase = () => patch({ addKind: null, draftBaseIds: [] });
+  const saveBase = () => patch({ baseIds: [...new Set([...baseIds, ...draftBaseIds])], addKind: null, draftBaseIds: [] });
+  const removeBase = (id) => patch({ baseIds: baseIds.filter((x) => x !== id), createdIds: createdIds.filter((x) => x !== id) });
+  const editBase = (id) => openEditor(setupPolicy(id), 'base');
+  const createNewBase = () => openEditor(null, 'base');
+
+  // Quantity pricing (single, god-file parity).
+  const openAddQuantity = () => patch({ addKind: 'quantity', draftPolicy: quantityId, draftIsNew: createdIds.includes(quantityId) });
+  const selectDraftQuantity = (id) => patch({ draftPolicy: id, draftIsNew: false });
+  const discardQuantity = () => patch({ addKind: null, draftPolicy: '', draftIsNew: false });
+  const saveQuantity = () =>
     patch({
-      [keyOf(addKind)]: ac.draftPolicy,
-      createdHere: { ...createdHere, [addKind]: !!ac.draftIsNew },
+      quantityId: ac.draftPolicy,
+      createdIds: ac.draftIsNew ? [...new Set([...createdIds, ac.draftPolicy])] : createdIds,
       addKind: null,
       draftPolicy: '',
       draftIsNew: false,
     });
-  const removeKind = (k) => patch({ [keyOf(k)]: '', createdHere: { ...createdHere, [k]: false } });
-  const openEditor = (policy, k) =>
-    dispatch({ type: 'OPEN_EDITOR', policy, kind: k, context: { setupKind: k } });
-  const editDraft = () => openEditor(setupPolicy(ac.draftPolicy), addKind);
-  const editCommitted = (k) => openEditor(setupPolicy(policyByKind[k]), k);
-  const createNew = () => openEditor(null, addKind);
+  const removeQuantity = () => patch({ quantityId: '', createdIds: createdIds.filter((x) => x !== quantityId) });
+  const editQuantity = () => openEditor(setupPolicy(quantityId), 'quantity');
+  const editDraftQuantity = () => openEditor(setupPolicy(ac.draftPolicy), 'quantity');
 
   let primaryAction;
   let secondaryActions;
@@ -94,104 +108,99 @@ export function AddCompanyWizard() {
       onAction: () => setStep(3),
       disabled: pending,
     };
-    secondaryActions = [{ content: 'Back', onAction: () => setStep(1) }, { content: 'Cancel', onAction: close }];
+    secondaryActions = [{ content: 'Back', onAction: () => setStep(1) }];
   } else {
     primaryAction = {
       content: anyPricing ? 'Add company and apply pricing' : 'Add company without pricing',
       onAction: () => dispatch({ type: 'ADD_COMPANY_CONFIRM' }),
     };
-    secondaryActions = [{ content: 'Back', onAction: () => setStep(2) }, { content: 'Cancel', onAction: close }];
+    secondaryActions = [{ content: 'Back', onAction: () => setStep(2) }];
   }
 
   const locs = chosen?.locations || [];
-  const termsShown = ac.termsExpanded ? locs : locs.slice(0, TERMS_PREVIEW);
-  const termsHidden = Math.max(0, locs.length - termsShown.length);
-
-  const addedKinds = KIND_ORDER.filter((k) => policyByKind[k] && k !== addKind);
 
   return (
     <Modal
       open
       onClose={close}
-      title={ac.step === 1 ? 'Add company from Shopify' : 'Set up Shopify company'}
+      title="Set up Shopify company"
       size="large"
       primaryAction={primaryAction}
       secondaryActions={secondaryActions}
     >
       <Modal.Section>
         <BlockStack gap="400">
-          <InlineStack gap="150" wrap>
-            {STEPS.map((s, i) => (
-              <Badge key={s} tone={i + 1 === ac.step ? 'info' : i + 1 < ac.step ? 'success' : undefined}>
-                {`${i + 1}. ${s}`}
-              </Badge>
-            ))}
-          </InlineStack>
-          <Divider />
+          <Stepper steps={STEPS} current={ac.step} />
 
           {/* STEP 1 — pick a Shopify company (searchable directory) */}
           {ac.step === 1 &&
             (isEmpty ? (
               <Banner tone="info">Every Shopify company is already in the B2B app.</Banner>
             ) : (
-              <BlockStack gap="300">
+              <BlockStack gap="400">
+                {hiddenCount > 0 ? (
+                  <Banner tone="info">
+                    {`${hiddenCount} ${hiddenCount === 1 ? 'company' : 'companies'} already added ${hiddenCount === 1 ? 'is' : 'are'} hidden.`}
+                  </Banner>
+                ) : null}
                 <TextField
                   label="Search"
                   labelHidden
-                  placeholder="Search company, location or buyer email"
+                  placeholder="Search by company name"
                   value={ac.search || ''}
                   onChange={(v) => patch({ search: v })}
                   prefix={<Icon source={SearchIcon} tone="subdued" />}
                   autoComplete="off"
                 />
-                <Text as="span" tone="subdued" variant="bodySm">{`${filtered.length} available`}</Text>
-                {filtered.length === 0 ? (
-                  <Text as="p" tone="subdued">No Shopify company matches your search.</Text>
-                ) : (
-                  <BlockStack gap="200">
-                    {filtered.map((shp) => {
-                      const sel = ac.shopifyId === shp.id;
-                      return (
-                        <button
-                          key={shp.id}
-                          type="button"
-                          onClick={() => patch({ shopifyId: shp.id })}
-                          style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%' }}
-                        >
-                          <Box
-                            padding="300"
-                            borderWidth="025"
-                            borderRadius="200"
-                            borderColor={sel ? 'border-emphasis' : 'border'}
-                          >
-                            <InlineStack align="space-between" blockAlign="center" wrap={false}>
-                              <BlockStack gap="050">
-                                <Text as="span" variant="bodyMd" fontWeight="medium">
-                                  {shp.name}
-                                </Text>
-                                <Text as="span" tone="subdued" variant="bodySm">
-                                  {`${(shp.locations || []).length} location${(shp.locations || []).length === 1 ? '' : 's'} · ${(shp.contacts || []).length} contact${(shp.contacts || []).length === 1 ? '' : 's'}`}
-                                </Text>
-                              </BlockStack>
-                              {sel ? <Badge tone="success">Selected</Badge> : null}
-                            </InlineStack>
-                          </Box>
-                        </button>
-                      );
-                    })}
-                  </BlockStack>
-                )}
-                <Text as="p" tone="subdued" variant="bodySm">
-                  {chosen ? (
-                    <>
-                      <Text as="span" fontWeight="semibold">
-                        {chosen.name}
-                      </Text>
-                      {' selected. Continue to set its pricing and review.'}
-                    </>
+                <div>
+                  <Box paddingBlockEnd="200">
+                    <Text as="span" tone="subdued" variant="bodySm">
+                      {`Showing ${filtered.length} ${filtered.length === 1 ? 'company' : 'companies'}`}
+                    </Text>
+                  </Box>
+                  <Divider />
+                  {filtered.length === 0 ? (
+                    <Box paddingBlockStart="300">
+                      <Text as="p" tone="subdued">No Shopify company matches your search.</Text>
+                    </Box>
                   ) : (
-                    'Select a company to link it to the B2B app. All of its Shopify locations come with it.'
+                    filtered.map((shp, idx) => {
+                      const sel = ac.shopifyId === shp.id;
+                      const main = (shp.contacts || [])[0] || null;
+                      const nLoc = (shp.locations || []).length;
+                      const nCon = (shp.contacts || []).length;
+                      return (
+                        <React.Fragment key={shp.id}>
+                          {idx > 0 ? <Divider /> : null}
+                          <button
+                            type="button"
+                            onClick={() => patch({ shopifyId: shp.id })}
+                            style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%' }}
+                          >
+                            <Box paddingBlock="300">
+                              <InlineStack gap="300" blockAlign="center" wrap={false}>
+                                <Radio checked={sel} />
+                                <Avatar size="md" initials={initialsOf(shp.name)} name={shp.name} />
+                                <BlockStack gap="050">
+                                  <Text as="span" variant="bodyMd" fontWeight="semibold">{shp.name}</Text>
+                                  {main ? (
+                                    <Text as="span" tone="subdued" variant="bodySm">{`${main.name} · ${main.email}`}</Text>
+                                  ) : null}
+                                  <Text as="span" tone="subdued" variant="bodySm">
+                                    {`${nLoc} location${nLoc === 1 ? '' : 's'} · ${nCon} contact${nCon === 1 ? '' : 's'}`}
+                                  </Text>
+                                </BlockStack>
+                              </InlineStack>
+                            </Box>
+                          </button>
+                        </React.Fragment>
+                      );
+                    })
                   )}
+                  <Divider />
+                </div>
+                <Text as="p" tone="subdued" variant="bodySm">
+                  Select a company to link. You assign its pricing in the next step.
                 </Text>
               </BlockStack>
             ))}
@@ -200,56 +209,69 @@ export function AddCompanyWizard() {
           {ac.step === 2 && (
             <BlockStack gap="300">
               <Text as="p" tone="subdued" variant="bodySm">
-                {`Every location of ${chosen?.name || 'the company'} shares one pricing. A company can hold one profile per pricing type.`}
+                {`Every location of ${chosen?.name || 'the company'} shares this pricing. Base pricing can hold several profiles; quantity pricing holds one.`}
               </Text>
 
-              {/* Committed pricings (not the one being edited) */}
-              {addedKinds.map((k) => {
-                const p = setupPolicy(policyByKind[k]);
+              {/* Committed base profiles (many) */}
+              {baseIds.map((id) => {
+                const p = setupPolicy(id);
                 if (!p) return null;
-                const madeHere = !!createdHere[k];
+                const madeHere = createdIds.includes(id);
                 return (
-                  <Box key={k} padding="300" borderWidth="025" borderColor="border" borderRadius="200">
+                  <Box key={id} padding="300" borderWidth="025" borderColor="border" borderRadius="200">
                     <InlineStack align="space-between" blockAlign="center" gap="200">
                       <BlockStack gap="025">
                         <Text as="span" variant="bodyMd" fontWeight="medium">{p.name}</Text>
-                        <Text as="span" tone="subdued" variant="bodySm">{kindName(k)}</Text>
+                        <Text as="span" tone="subdued" variant="bodySm">Base pricing</Text>
                       </BlockStack>
                       <InlineStack gap="100">
                         {madeHere ? (
-                          <Button icon={EditIcon} variant="tertiary" accessibilityLabel="Edit pricing" onClick={() => editCommitted(k)} />
-                        ) : (
-                          <Button
-                            icon={ExchangeIcon}
-                            variant="tertiary"
-                            accessibilityLabel={`Change ${kindName(k).toLowerCase()}`}
-                            onClick={() => openAdd(k)}
-                          />
-                        )}
-                        <Button
-                          icon={XIcon}
-                          variant="tertiary"
-                          tone="critical"
-                          accessibilityLabel={`Remove ${kindName(k).toLowerCase()}`}
-                          onClick={() => removeKind(k)}
-                        />
+                          <Button icon={EditIcon} variant="tertiary" accessibilityLabel="Edit base pricing" onClick={() => editBase(id)} />
+                        ) : null}
+                        <Button icon={XIcon} variant="tertiary" tone="critical" accessibilityLabel="Remove base pricing" onClick={() => removeBase(id)} />
                       </InlineStack>
                     </InlineStack>
                   </Box>
                 );
               })}
-              {KIND_ORDER.some((k) => createdHere[k] && policyByKind[k] && k !== addKind) ? (
-                <Text as="span" tone="subdued" variant="bodySm">
-                  A pricing created here can’t be swapped for a template. Remove it to pick a template, or edit it.
-                </Text>
+
+              {/* Committed quantity profile (one; not the one being edited) */}
+              {qPolicy && addKind !== 'quantity' ? (
+                <Box padding="300" borderWidth="025" borderColor="border" borderRadius="200">
+                  <InlineStack align="space-between" blockAlign="center" gap="200">
+                    <BlockStack gap="025">
+                      <Text as="span" variant="bodyMd" fontWeight="medium">{qPolicy.name}</Text>
+                      <Text as="span" tone="subdued" variant="bodySm">Quantity pricing</Text>
+                    </BlockStack>
+                    <InlineStack gap="100">
+                      {createdIds.includes(quantityId) ? (
+                        <Button icon={EditIcon} variant="tertiary" accessibilityLabel="Edit quantity pricing" onClick={editQuantity} />
+                      ) : (
+                        <Button icon={ExchangeIcon} variant="tertiary" accessibilityLabel="Change quantity pricing" onClick={openAddQuantity} />
+                      )}
+                      <Button icon={XIcon} variant="tertiary" tone="critical" accessibilityLabel="Remove quantity pricing" onClick={removeQuantity} />
+                    </InlineStack>
+                  </InlineStack>
+                </Box>
               ) : null}
 
-              {/* Chooser | type cards | both-set note */}
-              {addKind ? (
+              {/* Chooser | type cards */}
+              {addKind === 'base' ? (
+                <BaseChooser
+                  options={b2bBy('base').filter((p) => !baseIds.includes(p.id))}
+                  selected={draftBaseIds}
+                  onChange={(ids) => patch({ draftBaseIds: ids })}
+                  scopeLabel={scopeLabel}
+                  priceCalcLabel={priceCalcLabel}
+                  onDiscard={discardBase}
+                  onSave={saveBase}
+                  onCreateNew={createNewBase}
+                />
+              ) : addKind === 'quantity' ? (
                 <PricingChooser
-                  addKind={addKind}
-                  taken={!!policyByKind[addKind]}
-                  options={b2bBy(addKind)}
+                  addKind="quantity"
+                  taken={!!quantityId}
+                  options={b2bBy('quantity')}
                   cur={ac.draftPolicy || ''}
                   sel={setupPolicy(ac.draftPolicy)}
                   justBuilt={!!(setupPolicy(ac.draftPolicy) && ac.draftIsNew)}
@@ -257,50 +279,59 @@ export function AddCompanyWizard() {
                   priceCalcLabel={priceCalcLabel}
                   usageCount={(p) => policyUsageCount(p, state.db)}
                   usageLabel={(p) => policyUsage(p, state.db)}
-                  onSelect={selectDraft}
-                  onEditDraft={editDraft}
-                  onDiscard={discardKind}
-                  onSave={saveKind}
-                  onCreateNew={createNew}
+                  onSelect={selectDraftQuantity}
+                  onEditDraft={editDraftQuantity}
+                  onDiscard={discardQuantity}
+                  onSave={saveQuantity}
+                  onCreateNew={() => openEditor(null, 'quantity')}
                 />
-              ) : addedCount < KIND_ORDER.length ? (
-                <InlineStack gap="200" wrap>
-                  {KIND_ORDER.map((k) => {
-                    const taken = !!policyByKind[k];
-                    return (
-                      <div key={k} style={{ flex: '1 1 220px', minWidth: 200 }}>
-                        <button
-                          type="button"
-                          disabled={taken}
-                          onClick={taken ? undefined : () => openAdd(k)}
-                          style={{ all: 'unset', display: 'block', width: '100%', cursor: taken ? 'default' : 'pointer' }}
-                        >
-                          <Box
-                            padding="300"
-                            borderWidth="025"
-                            borderRadius="200"
-                            borderColor={taken ? 'border-disabled' : 'border'}
-                            background={taken ? 'bg-surface-secondary' : undefined}
-                          >
-                            <BlockStack gap="050">
-                              <Text as="span" variant="bodyMd" fontWeight="medium" tone={taken ? 'subdued' : undefined}>
-                                {`${taken ? '✓' : '+'} ${kindName(k)}`}
-                              </Text>
-                              <Text as="span" tone="subdued" variant="bodySm">
-                                {taken ? 'Already added' : kindPurpose(k)}
-                              </Text>
-                            </BlockStack>
-                          </Box>
-                        </button>
-                      </div>
-                    );
-                  })}
-                </InlineStack>
               ) : (
-                <Text as="span" tone="subdued" variant="bodySm">Both pricing types are set.</Text>
+                <InlineStack gap="200" wrap>
+                  {/* Base pricing — always addable (a company can hold several) */}
+                  <div style={{ flex: '1 1 220px', minWidth: 200 }}>
+                    <button
+                      type="button"
+                      onClick={openAddBase}
+                      style={{ all: 'unset', display: 'block', width: '100%', cursor: 'pointer' }}
+                    >
+                      <Box padding="300" borderWidth="025" borderRadius="200" borderColor="border">
+                        <BlockStack gap="050">
+                          <Text as="span" variant="bodyMd" fontWeight="medium">{`+ ${kindName('base')}`}</Text>
+                          <Text as="span" tone="subdued" variant="bodySm">{kindPurpose('base')}</Text>
+                        </BlockStack>
+                      </Box>
+                    </button>
+                  </div>
+                  {/* Quantity pricing — one per company */}
+                  <div style={{ flex: '1 1 220px', minWidth: 200 }}>
+                    <button
+                      type="button"
+                      disabled={!!quantityId}
+                      onClick={quantityId ? undefined : openAddQuantity}
+                      style={{ all: 'unset', display: 'block', width: '100%', cursor: quantityId ? 'default' : 'pointer' }}
+                    >
+                      <Box
+                        padding="300"
+                        borderWidth="025"
+                        borderRadius="200"
+                        borderColor={quantityId ? 'border-disabled' : 'border'}
+                        background={quantityId ? 'bg-surface-secondary' : undefined}
+                      >
+                        <BlockStack gap="050">
+                          <Text as="span" variant="bodyMd" fontWeight="medium" tone={quantityId ? 'subdued' : undefined}>
+                            {`${quantityId ? '✓' : '+'} ${kindName('quantity')}`}
+                          </Text>
+                          <Text as="span" tone="subdued" variant="bodySm">
+                            {quantityId ? 'Already added' : kindPurpose('quantity')}
+                          </Text>
+                        </BlockStack>
+                      </Box>
+                    </button>
+                  </div>
+                </InlineStack>
               )}
 
-              {addedCount === 0 && !addKind ? (
+              {!anyPricing && !addKind ? (
                 <Banner tone="warning" title="No pricing yet">
                   <p>
                     You can still finish setup. The company and its locations are added, but buyers can’t order until
@@ -315,72 +346,92 @@ export function AddCompanyWizard() {
           {ac.step === 3 && chosen && (
             <BlockStack gap="300">
               <ReviewBlock head="Company and locations">
-                <Kv label="Company" value={chosen.name} />
-                <Kv label="Locations" value={locs.map((l) => l.name).join(', ')} />
-                <Kv label="Contacts of company" value={String((chosen.contacts || []).length)} />
-                <Kv label="Main contact" value={chosen.contacts?.[0]?.name || 'None on this company'} />
-              </ReviewBlock>
-
-              <ReviewBlock head="Pricing setup">
-                {anyPricing ? (
-                  <BlockStack gap="150">
-                    {ac.baseId ? <PriceRow name={policyName(ac.baseId)} kind="Base pricing" /> : null}
-                    {ac.quantityId ? <PriceRow name={policyName(ac.quantityId)} kind="Quantity pricing" /> : null}
-                  </BlockStack>
-                ) : (
-                  <InlineStack align="space-between" blockAlign="center">
-                    <BlockStack gap="025">
-                      <Text as="span" variant="bodyMd">
-                        No pricing yet
-                      </Text>
-                      <Text as="span" tone="subdued" variant="bodySm">
-                        Assign a profile from the Pricing page after setup.
-                      </Text>
-                    </BlockStack>
-                    <Badge tone="warning">Assign later</Badge>
-                  </InlineStack>
-                )}
-              </ReviewBlock>
-
-              <ReviewBlock head="Ordering and payment terms">
-                <BlockStack gap="150">
-                  {termsShown.map((l) => (
-                    <BlockStack key={l.id} gap="025">
-                      <Text as="span" variant="bodyMd">
-                        {l.name}
-                      </Text>
-                      <Text as="span" tone="subdued" variant="bodySm">
-                        {`${l.ordering || 'Buys directly'} · ${l.terms || 'Net 30'}`}
-                      </Text>
-                    </BlockStack>
-                  ))}
-                  {(termsHidden > 0 || ac.termsExpanded) && (
-                    <Box>
-                      <Button variant="plain" onClick={() => patch({ termsExpanded: !ac.termsExpanded })}>
-                        {ac.termsExpanded
-                          ? 'Show fewer locations'
-                          : `Show ${termsHidden} more location${termsHidden === 1 ? '' : 's'}`}
-                      </Button>
-                    </Box>
-                  )}
+                <BlockStack gap="100">
+                  <Text as="span" variant="bodyMd" fontWeight="semibold">{chosen.name}</Text>
+                  <Text as="span" tone="subdued" variant="bodySm">
+                    {`${locs.length} location${locs.length === 1 ? '' : 's'}, ${(chosen.contacts || []).length} contact${(chosen.contacts || []).length === 1 ? '' : 's'}`}
+                  </Text>
+                  <Text as="span" tone="subdued" variant="bodySm">
+                    {chosen.contacts?.[0]
+                      ? `Main contact: ${chosen.contacts[0].name}${chosen.contacts[0].email ? ` (${chosen.contacts[0].email})` : ''}`
+                      : 'Main contact: None on this company'}
+                  </Text>
                 </BlockStack>
               </ReviewBlock>
 
-              <Banner
-                tone={anyPricing ? 'success' : 'warning'}
-                title={anyPricing ? 'Ready to add and apply' : 'Ready to add without pricing'}
-              >
-                <p>
-                  {anyPricing
-                    ? `Pricing will apply to all ${locs.length} location${locs.length === 1 ? '' : 's'}.`
-                    : 'The company and its locations are added now. Buyers can’t order until pricing is assigned from the Pricing page.'}
-                </p>
-              </Banner>
+              <ReviewBlock head="Pricing setup">
+                <BlockStack gap="200">
+                  <InlineStack align="space-between" blockAlign="center" gap="200">
+                    <Text as="span" variant="bodyMd">Base pricing</Text>
+                    {baseIds.length ? (
+                      <InlineStack gap="100" wrap>
+                        {baseIds.map((id) => (
+                          <Badge key={id} tone="success">{policyName(id)}</Badge>
+                        ))}
+                      </InlineStack>
+                    ) : (
+                      <Badge>Not set</Badge>
+                    )}
+                  </InlineStack>
+                  <InlineStack align="space-between" blockAlign="center" gap="200">
+                    <Text as="span" variant="bodyMd">Quantity pricing</Text>
+                    {quantityId ? <Badge tone="success">{policyName(quantityId)}</Badge> : <Badge>Not set</Badge>}
+                  </InlineStack>
+                </BlockStack>
+              </ReviewBlock>
             </BlockStack>
           )}
         </BlockStack>
       </Modal.Section>
     </Modal>
+  );
+}
+
+// Base-pricing chooser: a company can hold several base profiles, so this is a
+// multi-select of existing profiles (add them all at once). "Create a new" still
+// builds exactly one and drops it straight into the committed list.
+function BaseChooser({ options, selected, onChange, scopeLabel, priceCalcLabel, onDiscard, onSave, onCreateNew }) {
+  return (
+    <Box padding="300" background="bg-surface-secondary" borderWidth="025" borderColor="border" borderRadius="200">
+      <BlockStack gap="300">
+        <InlineStack align="space-between" blockAlign="center" gap="200">
+          <Text as="h3" variant="headingSm">Add base pricing</Text>
+          <InlineStack gap="100">
+            <Button size="slim" onClick={onDiscard}>Discard</Button>
+            <Button variant="primary" size="slim" disabled={!selected.length} onClick={onSave}>
+              {selected.length > 1 ? `Add ${selected.length}` : 'Add'}
+            </Button>
+          </InlineStack>
+        </InlineStack>
+
+        {options.length ? (
+          <ChoiceList
+            allowMultiple
+            title="Use existing base pricing"
+            choices={options.map((p) => ({
+              label: p.name,
+              value: p.id,
+              helpText: `${scopeLabel(p)} · ${priceCalcLabel(p)}`,
+            }))}
+            selected={selected}
+            onChange={onChange}
+          />
+        ) : (
+          <Text as="span" tone="subdued" variant="bodySm">
+            No base pricing serves companies yet, or every one is already added. Create a new one below.
+          </Text>
+        )}
+
+        <BlockStack gap="150">
+          {options.length ? (
+            <InlineStack align="center">
+              <Text as="span" tone="subdued" variant="bodySm">or</Text>
+            </InlineStack>
+          ) : null}
+          <Button icon={PlusIcon} onClick={onCreateNew}>Create a new base pricing</Button>
+        </BlockStack>
+      </BlockStack>
+    </Box>
   );
 }
 
@@ -480,14 +531,103 @@ function ReviewBlock({ head, children }) {
   );
 }
 
-function PriceRow({ name, kind }) {
+// Segmented progress bar across the wizard's three steps: a filled pill for the
+// active step, a green check for finished ones, a muted number for what's ahead.
+function Stepper({ steps, current }) {
   return (
-    <InlineStack align="space-between" blockAlign="center">
-      <Text as="span" variant="bodyMd">
-        {name}
-      </Text>
-      <Badge tone="info">{kind}</Badge>
-    </InlineStack>
+    <div
+      style={{
+        display: 'flex',
+        gap: 4,
+        padding: 4,
+        borderRadius: 12,
+        background: 'var(--p-color-bg-surface-secondary, #f1f1f1)',
+      }}
+    >
+      {steps.map((label, i) => {
+        const n = i + 1;
+        const active = n === current;
+        const done = n < current;
+        return (
+          <div
+            key={label}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '8px 12px',
+              borderRadius: 8,
+              background: active ? 'var(--p-color-bg-surface, #ffffff)' : 'transparent',
+              boxShadow: active ? 'var(--p-shadow-200, 0 1px 3px rgba(0,0,0,0.15))' : 'none',
+            }}
+          >
+            <span
+              style={{
+                width: 22,
+                height: 22,
+                flex: '0 0 auto',
+                borderRadius: '50%',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 12,
+                fontWeight: 600,
+                lineHeight: 1,
+                background: done
+                  ? 'var(--p-color-bg-fill-success, #29845a)'
+                  : active
+                    ? 'var(--p-color-bg-fill-info-secondary, #d1e3fb)'
+                    : 'var(--p-color-bg-fill-tertiary, #e3e3e3)',
+                color: done
+                  ? '#ffffff'
+                  : active
+                    ? 'var(--p-color-text-info, #0a4ea2)'
+                    : 'var(--p-color-text-secondary, #616161)',
+              }}
+            >
+              {done ? '✓' : n}
+            </span>
+            <span
+              style={{
+                fontSize: 13,
+                fontWeight: active ? 600 : 500,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                color: active ? 'var(--p-color-text, #303030)' : 'var(--p-color-text-secondary, #616161)',
+              }}
+            >
+              {label}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Visual-only radio dot for the company rows (the row's <button> owns the click).
+function Radio({ checked }) {
+  const color = checked ? 'var(--p-color-input-border-active, #303030)' : 'var(--p-color-input-border, #8a8a8a)';
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: 18,
+        height: 18,
+        flex: '0 0 auto',
+        boxSizing: 'border-box',
+        borderRadius: '50%',
+        border: `2px solid ${color}`,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      {checked ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: color }} /> : null}
+    </span>
   );
 }
 
