@@ -60,9 +60,11 @@ export function SaveToB2B({ quote, onClose, onDone }) {
 
   const setBase = (i, v) => setRows(rows.map((r, k) => (k === i ? { ...r, base: Number(v) } : r)));
 
+  // "Create a new base pricing" is the first option (not buried at the bottom),
+  // matching the B2B build-pricing modal.
   const destOptions = [
-    ...bases.map((b) => ({ label: `${b.name} (priority ${b.priority})`, value: b.id })),
     { label: 'Create a new base pricing…', value: '__new__' },
+    ...bases.map((b) => ({ label: `${b.name} (priority ${b.priority})`, value: b.id })),
   ];
 
   if (phase === 'done') {

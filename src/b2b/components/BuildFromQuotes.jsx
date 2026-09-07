@@ -2,17 +2,13 @@ import React from 'react';
 import {
   Modal,
   BlockStack,
-  InlineStack,
   Box,
   Text,
   Select,
   TextField,
-  Button,
   IndexTable,
-  Link,
-  Icon,
+  Divider,
 } from '@shopify/polaris';
-import { XCircleIcon } from '@shopify/polaris-icons';
 import { useStore, newBaseBuilder } from '../store.jsx';
 import { companyBaseEntries } from '../pricing.js';
 import { money } from '../format.js';
@@ -57,13 +53,13 @@ export function BuildFromQuotes() {
     const rows = bq.rows.map((r, k) => (k === i ? { ...r, ...patch } : r));
     dispatch({ type: 'BUILD_QUOTES_PATCH', patch: { rows } });
   };
-  const removeRow = (i) =>
-    dispatch({ type: 'BUILD_QUOTES_PATCH', patch: { rows: bq.rows.filter((_, k) => k !== i) } });
-
+  // "Create a new base pricing" is the FIRST dropdown option (not buried at the
+  // bottom), so it's easy to find no matter how many pricings the company has.
   const destOptions = [
-    ...bases.map((e) => ({ label: e.policy.name, value: e.policy.id })),
     { label: 'Create a new base pricing…', value: '__new__' },
+    ...bases.map((e) => ({ label: e.policy.name, value: e.policy.id })),
   ];
+  const hasProposed = bq.rows.some((r) => Number(r.proposed) > 0);
 
   const onSave = () => {
     if (bq.dest === '__new__') {
@@ -81,49 +77,45 @@ export function BuildFromQuotes() {
     }
   };
 
-  const rows = bq.rows.map((r, i) => (
-    <IndexTable.Row id={r.sku} key={r.sku} position={i}>
-      <IndexTable.Cell>
-        <BlockStack gap="050">
-          <Text as="span" variant="bodyMd" fontWeight="medium">
-            {skuTitle(r.sku)}
-          </Text>
-          <Text as="span" tone="subdued" variant="bodySm">
-            {r.sku}
-          </Text>
-        </BlockStack>
-      </IndexTable.Cell>
-      <IndexTable.Cell>{shopifyPrice(r.sku) != null ? money(shopifyPrice(r.sku)) : '—'}</IndexTable.Cell>
-      <IndexTable.Cell>{money(r.quoted)}</IndexTable.Cell>
-      <IndexTable.Cell>
-        <div style={{ width: 110 }}>
-          <TextField
-            label="Base price"
-            labelHidden
-            type="number"
-            min={0}
-            prefix="$"
-            value={String(r.proposed ?? '')}
-            onChange={(v) => patchRow(i, { proposed: Number(v) })}
-            autoComplete="off"
-          />
-        </div>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <Link
-          onClick={() => {
-            // God-file parity: close this modal and open the source quote in the
-            // B2B app (§b2b/index.html data-build-goto handler).
-            dispatch({ type: 'CLOSE_BUILD_QUOTES' });
-            dispatch({ type: 'OPEN_QUOTE', id: r.from });
-          }}
-        >{`from #${r.from}`}</Link>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <Button icon={XCircleIcon} variant="tertiary" tone="critical" accessibilityLabel="Remove row" onClick={() => removeRow(i)} />
-      </IndexTable.Cell>
-    </IndexTable.Row>
-  ));
+  // Estimated cost ≈ 60% of the quoted price (no real cost on the product);
+  // margin tracks the editable base price, matching the Save-to-B2B modal.
+  const rows = bq.rows.map((r, i) => {
+    const shopify = shopifyPrice(r.sku);
+    const cost = Math.round((Number(r.quoted) || 0) * 0.6);
+    const proposed = Number(r.proposed) || 0;
+    const margin = proposed ? Math.round(((proposed - cost) / proposed) * 100) : 0;
+    const belowCost = proposed > 0 && proposed < cost;
+    return (
+      <IndexTable.Row id={r.sku} key={r.sku} position={i}>
+        <IndexTable.Cell>
+          <BlockStack gap="050">
+            <Text as="span" variant="bodyMd" fontWeight="medium">{skuTitle(r.sku)}</Text>
+            <Text as="span" tone="subdued" variant="bodySm">{r.sku}</Text>
+          </BlockStack>
+        </IndexTable.Cell>
+        <IndexTable.Cell>{shopify != null ? money(shopify) : '—'}</IndexTable.Cell>
+        <IndexTable.Cell>{money(cost)}</IndexTable.Cell>
+        <IndexTable.Cell><Text as="span" fontWeight="semibold">{money(r.quoted)}</Text></IndexTable.Cell>
+        <IndexTable.Cell>
+          <div style={{ width: 110 }}>
+            <TextField
+              label="Price to save"
+              labelHidden
+              type="number"
+              min={0}
+              prefix="$"
+              value={String(r.proposed ?? '')}
+              onChange={(v) => patchRow(i, { proposed: Number(v) })}
+              autoComplete="off"
+            />
+          </div>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <Text as="span" tone={belowCost ? 'critical' : undefined}>{`${margin}%${belowCost ? ' · below cost' : ''}`}</Text>
+        </IndexTable.Cell>
+      </IndexTable.Row>
+    );
+  });
 
   return (
     <Modal
@@ -132,9 +124,9 @@ export function BuildFromQuotes() {
       title="Build pricing from closed quotes"
       size="large"
       primaryAction={{
-        content: bq.dest === '__new__' ? 'Create base pricing' : 'Add to base pricing',
+        content: bq.dest === '__new__' ? 'Create base pricing' : 'Add prices',
         onAction: onSave,
-        disabled: !bq.rows.some((r) => Number(r.proposed) > 0),
+        disabled: !hasProposed,
       }}
       secondaryActions={[{ content: 'Cancel', onAction: () => dispatch({ type: 'CLOSE_BUILD_QUOTES' }) }]}
     >
@@ -143,20 +135,6 @@ export function BuildFromQuotes() {
           <Text as="p" tone="subdued" variant="bodySm">
             Prices come from each product’s most recently closed quote. Review, edit, then add them to a base pricing.
           </Text>
-          <InlineStack gap="200" blockAlign="center">
-            <Text as="span" variant="bodyMd">
-              Add to
-            </Text>
-            <div style={{ minWidth: 260 }}>
-              <Select
-                labelHidden
-                label="Add to"
-                options={destOptions}
-                value={bq.dest}
-                onChange={(v) => dispatch({ type: 'BUILD_QUOTES_PATCH', patch: { dest: v } })}
-              />
-            </div>
-          </InlineStack>
           <Box borderWidth="025" borderColor="border" borderRadius="200" overflowX="hidden">
             <div style={{ maxHeight: 320, overflowY: 'auto' }}>
               <IndexTable
@@ -165,20 +143,27 @@ export function BuildFromQuotes() {
                 selectable={false}
                 headings={[
                   { title: 'Product' },
-                  { title: 'Shopify price' },
-                  { title: 'Quoted price' },
+                  { title: 'Shopify' },
+                  { title: 'Cost' },
+                  { title: 'Quoted' },
                   {
-                    title: 'Base price',
-                    tooltipContent: 'This price is saved as the product’s base price in the selected pricing.',
+                    title: 'Price to save',
+                    tooltipContent: 'Saved as this product’s base price in the selected pricing. Defaults to the quoted price — edit if needed.',
                   },
-                  { title: 'Source' },
-                  { title: '' },
+                  { title: 'Margin' },
                 ]}
               >
                 {rows}
               </IndexTable>
             </div>
           </Box>
+          <Divider />
+          <Select
+            label="Add to this company’s pricing"
+            options={destOptions}
+            value={bq.dest}
+            onChange={(v) => dispatch({ type: 'BUILD_QUOTES_PATCH', patch: { dest: v } })}
+          />
         </BlockStack>
       </Modal.Section>
     </Modal>
