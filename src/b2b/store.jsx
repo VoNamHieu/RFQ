@@ -21,6 +21,84 @@ import {
 // Re-exported so screens keep one import surface (e.g. BuildFromQuotes needs newBaseBuilder).
 export { newRule, newBaseBuilder, newQuantityBuilder } from './builders.js';
 
+// ----- "Who this pricing serves" (god-file assignmentAdapter) -----
+// Read a saved policy's current assignment back into builder fields, so opening it
+// shows who it serves and re-saving preserves that unless the merchant changes it.
+function seedAssignment(policy, db) {
+  const kind = policy.priceKind === 'quantity' ? 'quantity' : 'base';
+  if (policy.audienceType !== 'd2c') {
+    // Read-only: this runs on the live state.db, so don't call companyBaseArray
+    // (it normalizes c.pricing.base in place). Read the base list defensively.
+    const holdsBase = (c) => {
+      const base = c.pricing?.base;
+      if (Array.isArray(base)) return base.some((e) => e.id === policy.id);
+      return base === policy.id;
+    };
+    const b2bCompanyIds = (db.companies || [])
+      .filter((c) => (kind === 'quantity' ? c.pricing?.quantity === policy.id : holdsBase(c)))
+      .map((c) => c.id);
+    return { b2bCompanyIds, customerTarget: 'none', assignmentTargetIds: [] };
+  }
+  const tags = (db.tagPricing || []).filter((t) => t.defaultPolicyId === policy.id).map((t) => t.id);
+  if (tags.length) return { b2bCompanyIds: [], customerTarget: 'tags', assignmentTargetIds: tags };
+  const specific = (db.customers || []).filter((cu) => cu.policyId === policy.id).map((cu) => cu.id);
+  if (specific.length) return { b2bCompanyIds: [], customerTarget: 'specific', assignmentTargetIds: specific };
+  if (db.defaults?.wholesalePolicyId === policy.id) return { b2bCompanyIds: [], customerTarget: 'all', assignmentTargetIds: [] };
+  return { b2bCompanyIds: [], customerTarget: 'none', assignmentTargetIds: [] };
+}
+
+// Push the builder's assignment choices into the db on save. B2B syncs the exact
+// set of Companies that hold this pricing (of its kind); D2C sets the chosen
+// customer / tag / global target. A full sync — unticking removes the pricing —
+// and it is cleared from the other audience so a policy is never assigned as both.
+function applyAssignment(db, policyId, b) {
+  const kind = b.priceKind === 'quantity' ? 'quantity' : 'base';
+  const audience = b.audienceType === 'd2c' ? 'd2c' : 'b2b';
+
+  if (audience !== 'b2b') {
+    (db.companies || []).forEach((c) => {
+      if (!c.pricing) return;
+      if (c.pricing.quantity === policyId) c.pricing.quantity = null;
+      if (Array.isArray(c.pricing.base)) removeCompanyBase(c, policyId);
+    });
+  }
+  if (audience !== 'd2c') {
+    (db.customers || []).forEach((cu) => { if (cu.policyId === policyId) cu.policyId = null; });
+    (db.tagPricing || []).forEach((t) => { if (t.defaultPolicyId === policyId) t.defaultPolicyId = null; });
+    if (db.defaults?.wholesalePolicyId === policyId) db.defaults.wholesalePolicyId = null;
+  }
+
+  if (audience === 'b2b') {
+    const want = new Set(b.b2bCompanyIds || []);
+    (db.companies || []).forEach((c) => {
+      c.pricing = c.pricing || { base: null, quantity: null };
+      const holds = kind === 'quantity' ? c.pricing.quantity === policyId : companyBaseArray(c).some((e) => e.id === policyId);
+      if (want.has(c.id) && !holds) {
+        if (kind === 'quantity') c.pricing.quantity = policyId;
+        else addCompanyBase(c, policyId, b.priority);
+      } else if (!want.has(c.id) && holds) {
+        if (kind === 'quantity') c.pricing.quantity = null;
+        else removeCompanyBase(c, policyId);
+      }
+    });
+    return;
+  }
+
+  const target = b.customerTarget || 'none';
+  const ids = new Set(b.assignmentTargetIds || []);
+  (db.customers || []).forEach((cu) => {
+    if (target === 'specific') cu.policyId = ids.has(cu.id) ? policyId : cu.policyId === policyId ? null : cu.policyId;
+    else if (cu.policyId === policyId) cu.policyId = null;
+  });
+  (db.tagPricing || []).forEach((t) => {
+    if (target === 'tags') t.defaultPolicyId = ids.has(t.id) ? policyId : t.defaultPolicyId === policyId ? null : t.defaultPolicyId;
+    else if (t.defaultPolicyId === policyId) t.defaultPolicyId = null;
+  });
+  db.defaults = db.defaults || {};
+  if (['all', 'logged_in', 'logged_out'].includes(target)) db.defaults.wholesalePolicyId = policyId;
+  else if (db.defaults.wholesalePolicyId === policyId) db.defaults.wholesalePolicyId = null;
+}
+
 function reducer(state, action) {
   switch (action.type) {
     case 'NAVIGATE':
@@ -271,19 +349,21 @@ function reducer(state, action) {
     case 'BASE_PAGE':
       return { ...state, basePage: action.page };
     // ----- Pricing editor -----
-    case 'OPEN_EDITOR':
+    case 'OPEN_EDITOR': {
+      const builder = action.policy
+        ? { ...clone(action.policy), ...seedAssignment(action.policy, state.db) }
+        : action.kind === 'quantity'
+        ? newQuantityBuilder()
+        : newBaseBuilder();
       return {
         ...state,
-        builder: action.policy
-          ? clone(action.policy)
-          : action.kind === 'quantity'
-          ? newQuantityBuilder()
-          : newBaseBuilder(),
+        builder,
         pricingBuilderTab: 'settings', // always land on Settings when the editor opens
         ruleEdit: null,
         addRuleMenu: false,
         editorContext: action.context || null,
       };
+    }
     case 'SET_BUILDER_TAB':
       return { ...state, pricingBuilderTab: action.tab };
     case 'CLOSE_EDITOR':
@@ -362,8 +442,15 @@ function reducer(state, action) {
           // for the merchant to review, then Save commits it into the slot.
           return { ...done, addCompany: { ...ac, addKind: setupKind, draftPolicy: id, draftIsNew: true, step: 2 } };
         }
-        const c = db.companies.find((x) => x.id === (state.editorContext?.companyId || state.selectedCompany));
-        if (c) addCompanyBase(c, id, draft.priority);
+        // Created from a Company page → land in that Company's slot (existing
+        // behavior). From the Pricing library → apply the "Who this pricing serves"
+        // choices the merchant made in the builder.
+        if (state.editorContext?.companyId) {
+          const c = db.companies.find((x) => x.id === state.editorContext.companyId);
+          if (c) addCompanyBase(c, id, draft.priority);
+        } else {
+          applyAssignment(db, id, draft);
+        }
         return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: 'Pricing saved' };
       }
       // Editing an existing profile. If it is SHARED (assigned beyond the company
@@ -386,6 +473,8 @@ function reducer(state, action) {
         return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: `Forked into ${fork.name}` };
       }
       Object.assign(existing, draft, { id: existing.id });
+      // Library edit (not scoped to a Company) → sync the assignment choices.
+      if (!state.editorContext?.companyId) applyAssignment(db, existing.id, draft);
       return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: 'Pricing saved' };
     }
     // ----- Pricing library actions -----

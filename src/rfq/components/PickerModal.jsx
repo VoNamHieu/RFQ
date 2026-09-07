@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Modal, BlockStack, InlineStack, Box, Text, Button, Checkbox, TextField, IndexTable, Banner } from '@shopify/polaris';
+import { ChevronRightIcon } from '@shopify/polaris-icons';
 import { money } from '../utils.js';
 import { RFQ_CATALOG, RFQ_PRICING_OPTIONS, RFQ_TEMPLATE_PRODUCTS } from '../data/catalog.js';
 
@@ -103,7 +104,7 @@ export function PickerModal({ picker, setPicker, customer, onAdd, onCreatePricin
                         {`Priority ${t.priority}`}
                       </Text>
                     </BlockStack>
-                    <Button onClick={() => setPicker({ ...picker, templateId: t.id })}>Select</Button>
+                    <Button icon={ChevronRightIcon} variant="tertiary" accessibilityLabel={`Select ${t.name}`} onClick={() => setPicker({ ...picker, templateId: t.id })} />
                   </InlineStack>
                 </Box>
               ))

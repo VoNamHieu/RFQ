@@ -193,7 +193,7 @@ export function SaveToB2B({ quote, onClose, onDone }) {
           <Divider />
 
           <Select
-            label={versionFlags().crossSyncScope === 'location' ? "Add to this location’s pricing" : 'Add to base pricing'}
+            label={versionFlags().crossSyncScope === 'location' ? "Add to this company’s pricing" : 'Add to base pricing'}
             options={destOptions}
             value={dest}
             onChange={setDest}

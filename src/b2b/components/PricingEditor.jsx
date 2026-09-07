@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Modal,
+  Page,
   BlockStack,
   InlineGrid,
   InlineStack,
@@ -17,7 +18,7 @@ import {
   Divider,
   Tabs,
 } from '@shopify/polaris';
-import { DeleteIcon, XIcon } from '@shopify/polaris-icons';
+import { XIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { RuleBuilderCard } from './RuleBuilderCard.jsx';
 import { VolumeRangesCard } from './VolumeRangesCard.jsx';
@@ -27,17 +28,19 @@ import { COLLECTIONS } from '../data/constants.js';
 import { money } from '../format.js';
 import { ActiveDatesCard, ProductScopeCard, VolumeBasisCard, ProductOverridesCard } from './pricingEditorCards.jsx';
 import { ProductPriceTable } from './ProductPriceTable.jsx';
+import { AssignmentCard } from './AssignmentCard.jsx';
 import { policyUsageCount, companyBaseEntries, companyQuantityPolicy, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, ruleValuesSummary } from '../pricing.js';
 
-// Fullscreen-ish pricing editor (spec §2.6). Open whenever state.builder is set.
-export function PricingEditor() {
+// Pricing editor (spec §2.6). Open whenever state.builder is set. Rendered as an
+// in-frame page when opened from the Pricing screen (asPage), and as a full-screen
+// overlay/modal when opened from a button on any other screen.
+export function PricingEditor({ asPage = false }) {
   const { state, dispatch } = useStore();
   const [forkConfirm, setForkConfirm] = useState(false);
   const builder = state.builder;
-  const isOpen = !!builder;
-  // Full-page overlay: lock body scroll and close on Escape while open.
+  // Overlay mode only: lock body scroll and close on Escape while open.
   useEffect(() => {
-    if (!isOpen) return undefined;
+    if (!builder || asPage) return undefined;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKey = (e) => {
@@ -48,7 +51,7 @@ export function PricingEditor() {
       document.body.style.overflow = prev;
       window.removeEventListener('keydown', onKey);
     };
-  }, [isOpen, dispatch]);
+  }, [builder, asPage, dispatch]);
   if (!builder) return null;
 
   const isNew = !builder.id;
@@ -63,6 +66,10 @@ export function PricingEditor() {
   const scopeCompany = state.editorContext?.companyId
     ? state.db.companies.find((c) => c.id === state.editorContext.companyId)
     : null;
+  // "Who this pricing serves" applies only to the library flow (create/edit from
+  // Pricing). Opened from a Company page or the Add-company wizard, the target is
+  // already fixed, so the card is hidden there — matching the god file's locked state.
+  const showAssignment = !state.editorContext?.companyId && !state.editorContext?.setupKind;
   const usesHere =
     scopeCompany &&
     (companyBaseEntries(scopeCompany, state.db.policies).some((e) => e.policy.id === builder.id) ||
@@ -76,67 +83,8 @@ export function PricingEditor() {
   };
 
   const editorTitle = isNew ? `Create ${isQuantity ? 'quantity' : 'base'} pricing` : `Edit pricing: ${builder.name}`;
-  return (
-    <>
-      {forkConfirm && (
-        <Modal
-          open
-          onClose={() => setForkConfirm(false)}
-          title="This pricing is shared"
-          primaryAction={{
-            content: `Save a copy for ${scopeCompany.name}`,
-            onAction: () => {
-              setForkConfirm(false);
-              dispatch({ type: 'SAVE_EDITOR' }); // default path forks for this company
-            },
-          }}
-          secondaryActions={[
-            {
-              content: `Apply to all ${sharedCount + 1}`,
-              onAction: () => {
-                setForkConfirm(false);
-                dispatch({ type: 'SAVE_EDITOR', applyToAll: true });
-              },
-            },
-            { content: 'Cancel', onAction: () => setForkConfirm(false) },
-          ]}
-        >
-          <Modal.Section>
-            <Text as="p">
-              “{builder.name}” is assigned to {sharedCount} other {sharedCount === 1 ? 'account' : 'accounts'}. Saving a copy
-              changes the price only for {scopeCompany.name}; the others keep the original. Choose “Apply to all” to change
-              it everywhere it’s assigned.
-            </Text>
-          </Modal.Section>
-        </Modal>
-      )}
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={editorTitle}
-        style={{ position: 'fixed', inset: 0, zIndex: 517, display: 'flex', flexDirection: 'column', background: 'var(--p-color-bg, #f1f1f1)' }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            padding: '10px 20px',
-            background: 'var(--p-color-bg-surface, #fff)',
-            borderBottom: '1px solid var(--p-color-border, #e3e3e3)',
-            flex: '0 0 auto',
-          }}
-        >
-          <Text as="h2" variant="headingMd">{editorTitle}</Text>
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Button onClick={() => dispatch({ type: 'CLOSE_EDITOR' })}>Cancel</Button>
-            <Button variant="primary" onClick={onSave}>{isNew ? 'Create pricing' : 'Save'}</Button>
-            <Button variant="tertiary" icon={XIcon} accessibilityLabel="Close" onClick={() => dispatch({ type: 'CLOSE_EDITOR' })} />
-          </div>
-        </div>
-        <div style={{ flex: '1 1 auto', overflowY: 'auto' }}>
-          <div style={{ maxWidth: 1160, margin: '0 auto', padding: '20px 20px 64px' }}>
-        <BlockStack gap="400">
+  const editorBody = (
+    <BlockStack gap="400">
           {sharedElsewhere && (
             <Banner tone="info">
               {`This pricing is also assigned to ${sharedCount} other ${sharedCount === 1 ? 'account' : 'accounts'}. Saving will offer to fork a copy for ${scopeCompany.name} or apply to all.`}
@@ -201,6 +149,8 @@ export function PricingEditor() {
                     </BlockStack>
                   </Card>
 
+                  {showAssignment && <AssignmentCard builder={builder} patch={patch} db={state.db} isNew={isNew} />}
+
                   {isQuantity ? (
                     <>
                       <VolumeRangesCard />
@@ -235,10 +185,84 @@ export function PricingEditor() {
               <SummaryCard builder={builder} isQuantity={isQuantity} />
             </BlockStack>
           </InlineGrid>
-        </BlockStack>
+    </BlockStack>
+  );
+
+  return (
+    <>
+      {forkConfirm && (
+        <Modal
+          open
+          onClose={() => setForkConfirm(false)}
+          title="This pricing is shared"
+          primaryAction={{
+            content: `Save a copy for ${scopeCompany.name}`,
+            onAction: () => {
+              setForkConfirm(false);
+              dispatch({ type: 'SAVE_EDITOR' }); // default path forks for this company
+            },
+          }}
+          secondaryActions={[
+            {
+              content: `Apply to all ${sharedCount + 1}`,
+              onAction: () => {
+                setForkConfirm(false);
+                dispatch({ type: 'SAVE_EDITOR', applyToAll: true });
+              },
+            },
+            { content: 'Cancel', onAction: () => setForkConfirm(false) },
+          ]}
+        >
+          <Modal.Section>
+            <Text as="p">
+              “{builder.name}” is assigned to {sharedCount} other {sharedCount === 1 ? 'account' : 'accounts'}. Saving a copy
+              changes the price only for {scopeCompany.name}; the others keep the original. Choose “Apply to all” to change
+              it everywhere it’s assigned.
+            </Text>
+          </Modal.Section>
+        </Modal>
+      )}
+      {asPage ? (
+        <Page
+          title={editorTitle}
+          backAction={{ content: 'Back', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }}
+          primaryAction={{ content: isNew ? 'Create pricing' : 'Save', onAction: onSave }}
+          secondaryActions={[{ content: 'Cancel', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }]}
+        >
+          {editorBody}
+        </Page>
+      ) : (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={editorTitle}
+          style={{ position: 'fixed', inset: 0, zIndex: 517, display: 'flex', flexDirection: 'column', background: 'var(--p-color-bg, #f1f1f1)' }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '10px 20px',
+              background: 'var(--p-color-bg-surface, #fff)',
+              borderBottom: '1px solid var(--p-color-border, #e3e3e3)',
+              flex: '0 0 auto',
+            }}
+          >
+            <Text as="h2" variant="headingMd">{editorTitle}</Text>
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Button onClick={() => dispatch({ type: 'CLOSE_EDITOR' })}>Cancel</Button>
+              <Button variant="primary" onClick={onSave}>{isNew ? 'Create pricing' : 'Save'}</Button>
+              <Button variant="tertiary" icon={XIcon} accessibilityLabel="Close" onClick={() => dispatch({ type: 'CLOSE_EDITOR' })} />
+            </div>
+          </div>
+          <div style={{ flex: '1 1 auto', overflowY: 'auto' }}>
+            <div style={{ maxWidth: 1160, margin: '0 auto', padding: '20px 20px 64px' }}>
+              {editorBody}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </>
   );
 }

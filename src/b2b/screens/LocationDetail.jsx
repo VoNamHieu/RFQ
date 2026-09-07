@@ -17,7 +17,7 @@ import {
   TextField,
   Modal,
 } from '@shopify/polaris';
-import { EditIcon } from '@shopify/polaris-icons';
+import { EditIcon, XIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { locationPricingEntries, scopeLabel, policyStatus } from '../pricing.js';
 import { money } from '../format.js';
@@ -205,7 +205,7 @@ export function LocationDetail() {
                     </IndexTable.Cell>
                     <IndexTable.Cell>{b.role || 'Ordering only'}</IndexTable.Cell>
                     <IndexTable.Cell>
-                      <Button size="micro" onClick={() => dispatch({ type: 'UNASSIGN_BUYER', companyId: company.id, locationId: location.id, email: b.email })}>Remove</Button>
+                      <Button icon={XIcon} variant="tertiary" accessibilityLabel="Remove buyer" onClick={() => dispatch({ type: 'UNASSIGN_BUYER', companyId: company.id, locationId: location.id, email: b.email })} />
                     </IndexTable.Cell>
                   </IndexTable.Row>
                 ))}

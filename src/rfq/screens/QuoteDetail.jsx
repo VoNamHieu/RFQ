@@ -29,7 +29,7 @@ import { useStore, handoffToB2B } from '../store.jsx';
 import { money, money2 } from '../utils.js';
 import { shopifyCompanyDirectory } from '../data/companies.js';
 import { SaveToB2B } from '../components/SaveToB2B.jsx';
-import { B2BRelationshipCard, SyncFlowModals, CreateCompanyModal } from '../components/B2BRelationship.jsx';
+import { B2BRelationshipCard, SyncFlowModals, CreateCompanyModal, CompanyCreatedModal } from '../components/B2BRelationship.jsx';
 import { versionFlags } from '../../shared/versions.js';
 
 function quoteCompanyKey(quote) {
@@ -356,6 +356,7 @@ export function QuoteDetail() {
       )}
       <SyncFlowModals />
       <CreateCompanyModal />
+      <CompanyCreatedModal />
     </>
   );
 }

@@ -38,6 +38,12 @@ export function newBaseBuilder() {
     startTime: '12:00 AM',
     hasEndDate: false,
     endDate: '',
+    // Who this pricing serves (god-file assignmentAdapter). B2B → the Companies
+    // that get it; D2C → a customer target (all/logged_in/logged_out/specific/tags)
+    // plus the specific customer/tag ids. Applied to the db on save.
+    b2bCompanyIds: [],
+    customerTarget: 'none',
+    assignmentTargetIds: [],
   };
 }
 

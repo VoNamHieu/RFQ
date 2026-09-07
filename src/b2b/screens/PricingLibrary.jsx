@@ -8,7 +8,9 @@ import {
   ChoiceList,
   Badge,
   Text,
+  BlockStack,
   InlineStack,
+  InlineGrid,
   Button,
   Box,
   Modal,
@@ -17,6 +19,8 @@ import {
 import { EditIcon, DeleteIcon, ToggleOnIcon, ToggleOffIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { policyStatus, policyUsage, policyUsageCount } from '../pricing.js';
+import basePricingArt from '../assets/base-pricing-empty.png';
+import quantityPricingArt from '../assets/quantity-pricing-empty.png';
 
 const AUDIENCE = [
   { id: 'all', label: 'All' },
@@ -43,6 +47,49 @@ const labelOf = (choices, value) => choices.find((c) => c.value === value)?.labe
 
 const PAGE_SIZE = 10;
 
+const PRICING_TYPES = [
+  {
+    kind: 'base',
+    mode: 'add-base',
+    image: basePricingArt,
+    title: 'Base pricing',
+    description: 'A price that covers the whole catalog, with optional rules and per-product overrides.',
+  },
+  {
+    kind: 'quantity',
+    mode: 'add-quantity',
+    image: quantityPricingArt,
+    title: 'Quantity pricing',
+    description: 'Volume discounts that kick in above a quantity threshold, on selected products.',
+  },
+];
+
+// Full-page "Select pricing type" step shown before the editor: pick a type
+// card, then set it up. Opened from the list's "Create pricing" action; the
+// back action returns to the list.
+function PricingTypeChooser({ onBack, onPick }) {
+  return (
+    <Page title="Select pricing type" backAction={{ content: 'Pricing settings', onAction: onBack }}>
+      <InlineGrid columns={{ xs: 1, sm: 2 }} gap="400">
+        {PRICING_TYPES.map((t) => (
+          <Card key={t.kind}>
+            <BlockStack gap="400">
+              <img src={t.image} alt="" style={{ display: 'block', width: '100%', height: 'auto', borderRadius: 12 }} />
+              <BlockStack gap="150">
+                <Text as="h3" variant="headingMd">{t.title}</Text>
+                <Text as="p" tone="subdued">{t.description}</Text>
+              </BlockStack>
+              <InlineStack>
+                <Button onClick={() => onPick(t.kind, t.mode)}>Create pricing</Button>
+              </InlineStack>
+            </BlockStack>
+          </Card>
+        ))}
+      </InlineGrid>
+    </Page>
+  );
+}
+
 export function PricingLibrary() {
   const { state, dispatch } = useStore();
   const [audience, setAudience] = useState('all');
@@ -52,10 +99,24 @@ export function PricingLibrary() {
   const [sort, setSort] = useState('name');
   const [page, setPage] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [chooserOpen, setChooserOpen] = useState(false);
   const { mode, setMode } = useSetIndexFiltersMode();
 
   // Jump back to the first page whenever the result set changes.
   useEffect(() => { setPage(0); }, [audience, search, kind, statusFilter, sort]);
+
+  // "Create pricing" opens the type chooser first; picking a card opens the editor.
+  if (chooserOpen) {
+    return (
+      <PricingTypeChooser
+        onBack={() => setChooserOpen(false)}
+        onPick={(kind, editorMode) => {
+          setChooserOpen(false);
+          dispatch({ type: 'OPEN_EDITOR', policy: null, kind, context: { mode: editorMode } });
+        }}
+      />
+    );
+  }
 
   const q = search.trim().toLowerCase();
   let policies = state.db.policies.filter((p) => {
@@ -78,7 +139,6 @@ export function PricingLibrary() {
 
   const rows = pagePolicies.map((p, index) => {
     const st = policyStatus(p, state.db);
-    const canToggle = policyUsageCount(p, state.db) > 0;
     const isOff = p.status === 'Inactive';
     return (
       <IndexTable.Row id={p.id} key={p.id} position={index} onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: p, context: { mode: 'edit' } })}>
@@ -93,11 +153,9 @@ export function PricingLibrary() {
         <IndexTable.Cell><Text as="span" variant="bodyMd">{p.priority ?? 0}</Text></IndexTable.Cell>
         <IndexTable.Cell>
           <InlineStack gap="100" align="end" wrap={false}>
-            {canToggle && (
-              <Tooltip content={isOff ? 'Turn on' : 'Turn off'}>
-                <Button icon={isOff ? ToggleOffIcon : ToggleOnIcon} variant="tertiary" accessibilityLabel={isOff ? 'Turn on' : 'Turn off'} onClick={() => dispatch({ type: 'TOGGLE_POLICY_STATUS', id: p.id })} />
-              </Tooltip>
-            )}
+            <Tooltip content={isOff ? 'Turn on' : 'Turn off'}>
+              <Button icon={isOff ? ToggleOffIcon : ToggleOnIcon} variant="tertiary" accessibilityLabel={isOff ? 'Turn on' : 'Turn off'} onClick={() => dispatch({ type: 'TOGGLE_POLICY_STATUS', id: p.id })} />
+            </Tooltip>
             <Tooltip content="Edit pricing">
               <Button icon={EditIcon} variant="tertiary" accessibilityLabel="Edit pricing" onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: p, context: { mode: 'edit' } })} />
             </Tooltip>
@@ -135,10 +193,7 @@ export function PricingLibrary() {
   return (
     <Page
       title="Pricing settings"
-      primaryAction={{ content: 'Create base pricing', onAction: () => dispatch({ type: 'OPEN_EDITOR', policy: null, kind: 'base', context: { mode: 'add-base' } }) }}
-      secondaryActions={[
-        { content: 'Create quantity pricing', onAction: () => dispatch({ type: 'OPEN_EDITOR', policy: null, kind: 'quantity', context: { mode: 'add-quantity' } }) },
-      ]}
+      primaryAction={{ content: 'Create pricing', onAction: () => setChooserOpen(true) }}
     >
       <Card padding="0">
         <IndexFilters

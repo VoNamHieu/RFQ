@@ -51,6 +51,7 @@ const initialState = {
   cqSeq: 0,
   syncFlow: null, // { step:'sync'|'review'|'success', quoteId, companyKey, autoSync, location, role }
   createCompany: null, // { quoteId, name, externalId, shipCity, shipAddress, autoSync, contactName, contactEmail }
+  companyCreated: null, // { name, quoteId } — drives the "Company created" success modal after a create
   createdCompanies: {}, // created_<quoteId> → snapshot of the company created from a quote (mirrors legacy shopifyCompanyDirectory[created_*])
   toast: null,
 };
@@ -369,6 +370,8 @@ function reducer(state, action) {
       return { ...state, createCompany: { ...state.createCompany, ...action.patch } };
     case 'CLOSE_CREATE_COMPANY':
       return { ...state, createCompany: null };
+    case 'CLOSE_COMPANY_CREATED':
+      return { ...state, companyCreated: null };
     case 'CREATE_COMPANY_CONFIRM': {
       const cc = state.createCompany;
       const key = `created_${cc.quoteId}`;
@@ -416,7 +419,9 @@ function reducer(state, action) {
         quotes: { ...state.quotes, [cc.quoteId]: q },
         createdCompanies: { ...state.createdCompanies, [key]: snapshot },
         createCompany: null,
-        toast: `${cc.name || 'Company'} created in the B2B app`,
+        // Re-imported god-file success modal (the "Company created" step) instead
+        // of a bare toast — see CompanyCreatedModal.
+        companyCreated: { name: cc.name || 'Company', quoteId: cc.quoteId },
       };
     }
     case 'SYNC_CONFIRM': {

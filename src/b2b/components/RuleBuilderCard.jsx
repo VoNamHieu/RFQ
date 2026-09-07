@@ -139,9 +139,13 @@ export function RuleBuilderCard() {
               </Text>
             </div>
             <Badge tone={tone}>{disc}</Badge>
-            <Button size="slim" onClick={() => dispatch({ type: 'SET_RULE_EDIT', index: i })}>
-              Edit
-            </Button>
+            <Button
+              size="slim"
+              icon={EditIcon}
+              variant="tertiary"
+              accessibilityLabel="Edit rule"
+              onClick={() => dispatch({ type: 'SET_RULE_EDIT', index: i })}
+            />
             <Button
               size="slim"
               icon={DeleteIcon}

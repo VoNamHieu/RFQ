@@ -24,6 +24,7 @@ function SummaryRow({ label, value }) {
 // launches live in sibling files; re-exported so callers keep one import.
 export { SyncFlowModals } from './SyncFlowModals.jsx';
 export { CreateCompanyModal } from './CreateCompanyModal.jsx';
+export { CompanyCreatedModal } from './CompanyCreatedModal.jsx';
 
 function companyKeyOf(quote) {
   return (

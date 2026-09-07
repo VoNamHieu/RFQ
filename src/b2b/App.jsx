@@ -58,6 +58,8 @@ function CurrentView() {
 export function App() {
   const { state, dispatch } = useStore();
   const companyActive = ['customers', 'company', 'quote', 'location'].includes(state.view);
+  // The editor shows as an in-frame page only when opened from the Pricing screen.
+  const editorAsPage = !!state.builder && state.view === 'pricing';
 
   const sections = [
     {
@@ -103,8 +105,11 @@ export function App() {
 
   return (
     <AdminFrame app="b2b" location="#/b2b/company" sections={sections} searchPlaceholder="Search customers, prices and issues">
-      <CurrentView />
-      <PricingEditor />
+      {/* Opened from the Pricing screen, the editor is an in-frame page that
+          replaces the current view; opened from a button on any other screen it
+          stays a full-screen overlay on top of that screen. */}
+      {editorAsPage ? <PricingEditor asPage /> : <CurrentView />}
+      {!editorAsPage && <PricingEditor />}
       <BuildFromQuotes />
       <PriceBoard />
       <AssignModal />

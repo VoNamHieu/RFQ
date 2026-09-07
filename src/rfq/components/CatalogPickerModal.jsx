@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Modal, Text, InlineStack, BlockStack, Box, Button, Banner } from '@shopify/polaris';
+import { ChevronRightIcon } from '@shopify/polaris-icons';
 import { RFQ_CATALOG, RFQ_SHOPIFY_CATALOGS } from '../data/catalog.js';
 import { ProductPickerModal } from './ProductPickerModal.jsx';
 
@@ -62,7 +63,7 @@ export function CatalogPickerModal({ customer, onClose, onAdd, initialSelected }
                     <Text as="span" variant="bodyMd" fontWeight="medium">{c.name}</Text>
                     <Text as="span" tone="subdued" variant="bodySm">{`${catalogProductCount(c)} products`}</Text>
                   </BlockStack>
-                  <Button onClick={() => setCatalogId(c.id)}>Select</Button>
+                  <Button icon={ChevronRightIcon} variant="tertiary" accessibilityLabel={`Select ${c.name}`} onClick={() => setCatalogId(c.id)} />
                 </InlineStack>
               </Box>
             ))}
