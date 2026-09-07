@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, BlockStack, InlineStack, Box, Text, Badge, TextField, Select, Divider, Banner, Button, Icon, Avatar } from '@shopify/polaris';
+import { Modal, BlockStack, InlineStack, Box, Text, Badge, TextField, Select, Divider, Banner, Button, Icon, Avatar, Tooltip } from '@shopify/polaris';
 import { SearchIcon, PlusIcon, EditIcon, ExchangeIcon, XIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { shopifyCompanyDirectory } from '../data/directory.js';
@@ -125,7 +125,6 @@ export function AddCompanyWizard() {
       open
       onClose={close}
       title="Set up Shopify company"
-      size="large"
       primaryAction={primaryAction}
       secondaryActions={secondaryActions}
     >
@@ -210,7 +209,7 @@ export function AddCompanyWizard() {
           {ac.step === 2 && (
             <BlockStack gap="300">
               <Text as="p" tone="subdued" variant="bodySm">
-                {`Every location of ${chosen?.name || 'the company'} shares this pricing. Base pricing can hold several profiles; quantity pricing holds one.`}
+                {`Every location of ${chosen?.name || 'the company'} shares this pricing. Base pricing can hold several; quantity pricing holds one.`}
               </Text>
 
               {/* Committed base profiles — one compact, scrollable list (a company
@@ -218,7 +217,7 @@ export function AddCompanyWizard() {
               {baseIds.length > 0 ? (
                 <BlockStack gap="150">
                   <Text as="span" tone="subdued" variant="bodySm">
-                    {`Base pricing · ${baseIds.length} profile${baseIds.length === 1 ? '' : 's'}`}
+                    {`Base pricing · ${baseIds.length} pricing`}
                   </Text>
                   <Box borderWidth="025" borderColor="border" borderRadius="200">
                     <div style={{ maxHeight: 224, overflowY: 'auto' }}>
@@ -372,19 +371,26 @@ export function AddCompanyWizard() {
 
               <ReviewBlock head="Pricing setup">
                 <BlockStack gap="200">
-                  <InlineStack align="space-between" blockAlign="center" gap="200">
+                  <InlineStack align="space-between" blockAlign="center" gap="200" wrap={false}>
                     <Text as="span" variant="bodyMd">Base pricing</Text>
                     {baseIds.length ? (
-                      <InlineStack gap="100" wrap>
-                        {baseIds.map((id) => (
+                      <InlineStack gap="100" blockAlign="center" wrap={false}>
+                        {baseIds.slice(0, 3).map((id) => (
                           <Badge key={id} tone="success">{policyName(id)}</Badge>
                         ))}
+                        {baseIds.length > 3 ? (
+                          <Tooltip content={baseIds.slice(3).map((id) => policyName(id)).join(', ')}>
+                            <span style={{ display: 'inline-flex', cursor: 'default' }}>
+                              <Badge>{`+${baseIds.length - 3}`}</Badge>
+                            </span>
+                          </Tooltip>
+                        ) : null}
                       </InlineStack>
                     ) : (
                       <Badge>Not set</Badge>
                     )}
                   </InlineStack>
-                  <InlineStack align="space-between" blockAlign="center" gap="200">
+                  <InlineStack align="space-between" blockAlign="center" gap="200" wrap={false}>
                     <Text as="span" variant="bodyMd">Quantity pricing</Text>
                     {quantityId ? <Badge tone="success">{policyName(quantityId)}</Badge> : <Badge>Not set</Badge>}
                   </InlineStack>
