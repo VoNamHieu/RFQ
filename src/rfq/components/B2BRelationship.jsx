@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, BlockStack, InlineStack, InlineGrid, Box, Text, Badge, Button, Banner, Divider } from '@shopify/polaris';
+import { Card, BlockStack, InlineStack, InlineGrid, Box, Text, Badge, Button, Divider } from '@shopify/polaris';
 import { useStore, handoffToB2B } from '../store.jsx';
 import { shopifyCompanyDirectory } from '../data/companies.js';
 import { money2 } from '../utils.js';
@@ -104,14 +104,6 @@ export function B2BRelationshipCard({ quote }) {
   const companyName = company?.name || quote.createdCompanyName || '—';
   const locations = company?.locations ?? 1;
   const buyers = company?.buyers ?? 1;
-  const managedBanner =
-    state === 'shopifySynced' ? (
-      <Banner tone="success">
-        {quote.quoteAutoSyncEnabled
-          ? `${companyName} is available in B2B. Future quotes from any buyer across all Company locations sync automatically.`
-          : `${companyName} is available in B2B. This RFQ and future quotes stay in QuoteSnap RFQ until quote sync is enabled.`}
-      </Banner>
-    ) : null;
 
   return (
     <Card>
@@ -131,7 +123,6 @@ export function B2BRelationshipCard({ quote }) {
             <Text as="span" tone="subdued" variant="bodySm">Newly created company</Text>
           )}
         </BlockStack>
-        {managedBanner}
         <Divider />
         <InlineStack gap="200">
           <Button onClick={() => handoffToB2B(rfqState, quote.number)}>
