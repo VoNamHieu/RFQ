@@ -26,7 +26,8 @@ import { versionFlags } from '../../shared/versions.js';
 import { COLLECTIONS } from '../data/constants.js';
 import { money } from '../format.js';
 import { ActiveDatesCard, ProductScopeCard, VolumeBasisCard, ProductOverridesCard } from './pricingEditorCards.jsx';
-import { policyUsageCount, companyBaseEntries, companyQuantityPolicy, policyPriceBreakdown, scopeLabel, kindOf } from '../pricing.js';
+import { ProductPriceTable } from './ProductPriceTable.jsx';
+import { policyUsageCount, companyBaseEntries, companyQuantityPolicy, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, ruleValuesSummary } from '../pricing.js';
 
 // Fullscreen-ish pricing editor (spec §2.6). Open whenever state.builder is set.
 export function PricingEditor() {
@@ -260,39 +261,167 @@ function RuleStatusCard({ builder, patch }) {
   );
 }
 
-// "How the price resolves" (god-file resolutionPreview): for a sample in-scope
-// product, Shopify price → default adjustment → matching rule → explicit price →
-// what the buyer pays. Base pricing only.
+// The winning layer for a base profile on one product (god-file priceTierFor).
+function tierOf(builder, product) {
+  const bd = policyPriceBreakdown(builder, product);
+  if (!bd) return null;
+  return bd.override != null ? 'override' : bd.rule ? 'rule' : 'default';
+}
+
+// "How the price resolves" (god-file resolutionPreview): for ONE illustrative
+// in-scope product, Shopify price → default adjustment → matching rule → explicit
+// override → what the buyer pays, highlighting the layer that actually wins so a
+// merchant reads "most specific wins" without learning the precedence. Base only.
 function ResolutionCard({ builder, products }) {
-  const product = products.find((p) => policyPriceBreakdown(builder, p)?.inScope) || products[0];
+  const [previewOpen, setPreviewOpen] = useState(false);
+  // Prefer a product that exercises a product override, then one matched by a
+  // rule, then any in-scope product — so the card demonstrates the resolution
+  // instead of showing a flat default (god file picks the most-specific example).
+  const inScope = products.filter((p) => policyPriceBreakdown(builder, p)?.inScope);
+  const product =
+    inScope.find((p) => tierOf(builder, p) === 'override') ||
+    inScope.find((p) => tierOf(builder, p) === 'rule') ||
+    inScope[0] ||
+    products[0];
   const bd = product ? policyPriceBreakdown(builder, product) : null;
   if (!bd) return null;
-  const Row = ({ label, value, strong, active }) => (
-    <InlineStack align="space-between" blockAlign="center">
-      <Text as="span" tone={active || strong ? undefined : 'subdued'} variant="bodySm" fontWeight={strong ? 'semibold' : undefined}>
-        {label}
-      </Text>
-      <Text as="span" variant="bodyMd" fontWeight={strong ? 'semibold' : undefined}>
-        {value}
-      </Text>
-    </InlineStack>
+  const tier = bd.override != null ? 'override' : bd.rule ? 'rule' : 'default';
+  const rule = bd.rule ? (builder.conditionalRules || [])[bd.rule.index] : null;
+  const ruleLabel = rule ? `Rule · ${ruleTypeLabel(rule)} · ${ruleValuesSummary(rule)}` : `Rule ${bd.rule?.index + 1}`;
+
+  // The winning row bleeds into the card padding with a sunken background, like
+  // the god file's `margin:0 -8px`; losing rows below the winner dim out.
+  const HILITE = { background: 'var(--p-color-bg-surface-secondary, #f6f6f7)', margin: '0 -8px', padding: '6px 8px', borderRadius: 8 };
+  const Row = ({ label, value, active, dim, strong }) => (
+    <div style={active ? HILITE : undefined}>
+      <InlineStack align="space-between" blockAlign="center" gap="200" wrap={false}>
+        <Text as="span" variant="bodySm" tone={!active && dim ? 'subdued' : undefined} fontWeight={active ? 'medium' : undefined}>
+          {label}
+        </Text>
+        <Text as="span" variant="bodyMd" tone={active || strong ? undefined : 'subdued'} fontWeight={active || strong ? 'semibold' : undefined}>
+          {value}
+        </Text>
+      </InlineStack>
+    </div>
   );
-  const overridden = bd.override != null;
+
   return (
     <Card>
       <BlockStack gap="200">
-        <Text as="h3" variant="headingSm">How the price resolves</Text>
-        <Text as="p" tone="subdued" variant="bodySm">{product.title}</Text>
+        <InlineStack align="space-between" blockAlign="center" gap="200" wrap={false}>
+          <Text as="h3" variant="headingSm">How the price resolves</Text>
+          <Button variant="plain" onClick={() => setPreviewOpen(true)}>Preview all prices</Button>
+        </InlineStack>
+        <InlineStack gap="150" blockAlign="center" wrap={false}>
+          <Text as="span" tone="subdued" variant="bodySm">{product.title}</Text>
+          <span style={{ fontFamily: 'var(--p-font-family-mono, monospace)', fontSize: 12, color: 'var(--p-color-text-subdued, #6d7175)' }}>
+            {product.sku}
+          </span>
+        </InlineStack>
         <BlockStack gap="150">
           <Row label="Shopify price" value={money(bd.shopify)} />
-          <Row label="Default adjustment" value={money(bd.defaultPrice)} active={!overridden && !bd.rule} />
-          {bd.rule ? <Row label={`Rule ${bd.rule.index + 1}`} value={money(bd.rule.price)} active={!overridden} /> : null}
-          {overridden ? <Row label="Explicit price" value={money(bd.override)} active /> : null}
+          <Row label="Default" value={money(bd.defaultPrice)} active={tier === 'default'} dim={tier !== 'default'} />
+          {bd.rule ? <Row label={ruleLabel} value={money(bd.rule.price)} active={tier === 'rule'} dim={tier === 'override'} /> : null}
+          {bd.override != null ? <Row label="Product override" value={money(bd.override)} active={tier === 'override'} /> : null}
           <Divider />
           <Row label="Buyer pays" value={money(bd.final)} strong />
         </BlockStack>
       </BlockStack>
+      {previewOpen && <BuilderPricePreview builder={builder} products={products} onClose={() => setPreviewOpen(false)} />}
     </Card>
+  );
+}
+
+// The full table behind "Preview all prices": every product this base pricing
+// covers, the layer that decides each price, and what the buyer pays — computed
+// from the DRAFT builder, so it reflects unsaved rule/override edits. This is the
+// per-rule counterpart to the company-level PriceBoard (which reads saved policies).
+const PREVIEW_SORTS = [
+  { label: 'Product A–Z', value: 'title-asc' },
+  { label: 'Product Z–A', value: 'title-desc' },
+  { label: 'Shopify price: low to high', value: 'shopify-asc' },
+  { label: 'Shopify price: high to low', value: 'shopify-desc' },
+  { label: 'Buyer pays: low to high', value: 'final-asc' },
+  { label: 'Buyer pays: high to low', value: 'final-desc' },
+  { label: 'Biggest discount', value: 'off-desc' },
+];
+
+function BuilderPricePreview({ builder, products, onClose }) {
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState('title-asc');
+  const inScope = products.filter((p) => policyPriceBreakdown(builder, p)?.inScope);
+
+  const entries = inScope.map((p) => {
+    const bd = policyPriceBreakdown(builder, p);
+    const layer = bd.override != null ? 'override' : bd.rule ? 'rule' : 'default';
+    const rule = bd.rule ? (builder.conditionalRules || [])[bd.rule.index] : null;
+    const decidedBy =
+      layer === 'override'
+        ? 'Product override'
+        : layer === 'rule'
+          ? `Rule ${bd.rule.index + 1} · ${ruleTypeLabel(rule)}`
+          : 'Default';
+    const off = bd.shopify > 0 ? Math.round((1 - bd.final / bd.shopify) * 100) : 0;
+    return { p, bd, layer, decidedBy, off };
+  });
+
+  const q = query.trim().toLowerCase();
+  const filtered = q ? entries.filter((e) => e.p.title.toLowerCase().includes(q) || e.p.sku.toLowerCase().includes(q)) : entries;
+  const sorted = [...filtered].sort((a, b) => {
+    switch (sort) {
+      case 'title-desc': return b.p.title.localeCompare(a.p.title);
+      case 'shopify-asc': return a.bd.shopify - b.bd.shopify;
+      case 'shopify-desc': return b.bd.shopify - a.bd.shopify;
+      case 'final-asc': return a.bd.final - b.bd.final;
+      case 'final-desc': return b.bd.final - a.bd.final;
+      case 'off-desc': return b.off - a.off;
+      default: return a.p.title.localeCompare(b.p.title);
+    }
+  });
+
+  const rows = sorted.map((e) => ({
+    key: e.p.sku,
+    title: e.p.title,
+    subtitle: e.p.sku,
+    cells: [
+      <Text as="span" tone="subdued">{money(e.bd.shopify)}</Text>,
+      <Badge tone={e.layer === 'override' ? 'info' : undefined}>{e.decidedBy}</Badge>,
+      <Text as="span" fontWeight="semibold">{money(e.bd.final)}</Text>,
+      <Text as="span">{e.off > 0 ? `${e.off}% off` : e.off < 0 ? `${-e.off}% over` : '—'}</Text>,
+    ],
+  }));
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="large"
+      title={`Preview prices · ${builder.name || 'This pricing'}`}
+      secondaryActions={[{ content: 'Close', onAction: onClose }]}
+    >
+      <Modal.Section>
+        <BlockStack gap="300">
+          <Text as="p" tone="subdued" variant="bodySm">
+            Every product this pricing covers, with the layer that decides each price. Reflects your unsaved edits.
+          </Text>
+          <ProductPriceTable
+            search={query}
+            onSearch={setQuery}
+            sort={sort}
+            onSort={setSort}
+            sortOptions={PREVIEW_SORTS}
+            columns={[
+              { title: 'Shopify price', width: '96px', align: 'end' },
+              { title: 'Decided by', width: '160px', align: 'start' },
+              { title: 'Buyer pays', width: '96px', align: 'end' },
+              { title: 'Off', width: '72px', align: 'end' },
+            ]}
+            rows={rows}
+            emptyLabel={inScope.length === 0 ? 'This pricing covers no products yet.' : `No products match “${query}”.`}
+          />
+        </BlockStack>
+      </Modal.Section>
+    </Modal>
   );
 }
 

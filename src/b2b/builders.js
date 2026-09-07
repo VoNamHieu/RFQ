@@ -1,6 +1,7 @@
 // Factory functions for editable working copies (the pricing "builder" the editor
 // mutates, and a new conditional rule). Kept separate from the store so screens
 // can import a fresh builder without pulling in the whole reducer.
+import { TODAY } from './pricing.js';
 
 let _ruleSeq = 1;
 export function newRule(field) {
@@ -32,8 +33,10 @@ export function newBaseBuilder() {
     variantAdjustments: {},
     explicitEnabled: false,
     conditionalRules: [],
-    validityType: 'evergreen',
-    startDate: '',
+    timezone: '(GMT+07:00) Indochina Time - Bangkok',
+    startDate: TODAY,
+    startTime: '12:00 AM',
+    hasEndDate: false,
     endDate: '',
   };
 }

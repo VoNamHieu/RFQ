@@ -172,7 +172,7 @@ export function Analytics({ embeddedCompanyId = null }) {
 
   const [companyFilter, setCompanyFilter] = useState(embeddedCompanyId || 'all');
   const [locationFilter, setLocationFilter] = useState('all');
-  const [period, setPeriod] = useState('90'); // 30 | 60 | 90 | 9999
+  const [period, setPeriod] = useState('3'); // 3 | 6 | 12 | 9999 (whole months)
   const [compare, setCompare] = useState('none'); // none | previous
   const [tab, setTab] = useState(0);
   const [primaryMode, setPrimaryMode] = useState('trend'); // trend | breakdown
@@ -186,19 +186,32 @@ export function Analytics({ embeddedCompanyId = null }) {
 
   const productBySku = (sku) => products.find((p) => p.sku === sku);
 
-  // ── period windows ─────────────────────────────────────────────────────────
-  const periodDays = Number(period);
-  const cutoff = periodDays === 9999 ? null : new Date(TODAY.getTime() - periodDays * DAY);
-  const inPeriod = (d) => !cutoff || (toDate(d) && toDate(d) >= cutoff);
+  // ── period windows (whole calendar months) ──────────────────────────────────
+  // The trend is bucketed by calendar month, so the window is defined in whole
+  // months too. A day-precise window (e.g. "last 90 days") cut through the middle
+  // of a month, which put that same calendar month in BOTH the current and the
+  // previous series — hover showed "May $0" and "May $7,275" at once. Aligning to
+  // whole months keeps the two series from ever sharing a month.
+  const periodMonths = period === '9999' ? null : Number(period); // 3 | 6 | 12 | all
+  const hasPrev = periodMonths != null;
+  const monthAt = (base, delta) => new Date(base.getFullYear(), base.getMonth() + delta, 1);
+  // N calendar months ending at TODAY's month (oldest first); the current month is month-to-date.
+  const currentMonths = hasPrev ? Array.from({ length: periodMonths }, (_, i) => monthAt(TODAY, i - (periodMonths - 1))) : null;
+  // The N whole months immediately before the current block — never overlaps it.
+  const previousMonths = hasPrev ? Array.from({ length: periodMonths }, (_, i) => monthAt(currentMonths[0], i - periodMonths)) : [];
+  const currentKeys = hasPrev ? new Set(currentMonths.map(monthKey)) : null;
+  const monthKeyOf = (d) => String(d || '').slice(0, 7);
+  const inPeriod = (d) => !hasPrev || currentKeys.has(monthKeyOf(d));
   const inDateRange = (d, start, end) => {
     const dt = toDate(d);
     return !!dt && (!start || dt >= start) && (!end || dt <= end);
   };
-  const hasPrev = periodDays !== 9999;
+  // Day boundaries kept for the range-sum helpers below. Current end = TODAY (MTD).
+  const cutoff = hasPrev ? currentMonths[0] : null;
   const currentPeriodStart = cutoff;
   const currentPeriodEnd = TODAY;
+  const previousPeriodStart = hasPrev ? previousMonths[0] : null;
   const previousPeriodEnd = hasPrev ? new Date(cutoff.getTime() - DAY) : null;
-  const previousPeriodStart = hasPrev ? new Date(previousPeriodEnd.getTime() - (periodDays - 1) * DAY) : null;
   const compareEnabled = compare === 'previous' && hasPrev;
   const sumRevenueInRange = (rows, start, end) => rows.filter((o) => inDateRange(o.date, start, end)).reduce((a, o) => a + (Number(o.amount) || 0), 0);
 
@@ -257,15 +270,20 @@ export function Analytics({ embeddedCompanyId = null }) {
     .filter((x) => x != null);
 
   // ── monthly series ──────────────────────────────────────────────────────────
-  const currentMonths = monthsBetween(cutoff || new Date(TODAY.getFullYear(), TODAY.getMonth() - 3, 1), TODAY);
-  const monthly = currentMonths.map((d) => {
+  // hasPrev → the fixed N-month window (from the period block); all-time → every
+  // month back to the earliest order in scope.
+  const trendMonths = currentMonths || monthsBetween(
+    orders.reduce((min, o) => { const dt = toDate(o.date); return dt && (!min || dt < min) ? dt : min; }, null) || new Date(TODAY.getFullYear(), TODAY.getMonth() - 3, 1),
+    TODAY,
+  );
+  const monthly = trendMonths.map((d) => {
     const key = monthKey(d);
     const os = orders.filter((o) => String(o.date || '').startsWith(key));
     const rev = os.reduce((a, o) => a + (Number(o.amount) || 0), 0);
     return { key, label: monthLabel(d), sales: rev, orders: os.length };
   });
   const previousMonthly = compareEnabled
-    ? monthsBetween(previousPeriodStart, previousPeriodEnd).map((d) => {
+    ? previousMonths.map((d) => {
         const key = monthKey(d);
         const os = previousOrders.filter((o) => String(o.date || '').startsWith(key));
         return { key, label: monthLabel(d), sales: os.reduce((a, o) => a + (Number(o.amount) || 0), 0), orders: os.length };
@@ -530,21 +548,21 @@ export function Analytics({ embeddedCompanyId = null }) {
     ...scopedCompanies.flatMap((c) => (c.locations || []).map((l) => ({ label: selected ? l.name : `${l.name} · ${c.name}`, value: `${c.id}::${l.name}` }))),
   ];
   const periodOptions = [
-    { label: 'Last 30 days', value: '30' },
-    { label: 'Last 60 days', value: '60' },
-    { label: 'Last 90 days', value: '90' },
+    { label: 'Last 3 months', value: '3' },
+    { label: 'Last 6 months', value: '6' },
+    { label: 'Last 12 months', value: '12' },
     { label: 'All available', value: '9999' },
   ];
   const compareOptions = [
     { label: 'No comparison', value: 'none' },
-    { label: 'Previous period', value: 'previous', disabled: periodDays === 9999 },
+    { label: 'Previous period', value: 'previous', disabled: period === '9999' },
   ];
   const scopeText = selected ? `Filtered to ${selected.name}` : `Across ${companies.length} managed companies`;
-  const showClear = selected || locationFilter !== 'all' || periodDays !== 90 || compare !== 'none';
+  const showClear = selected || locationFilter !== 'all' || period !== '3' || compare !== 'none';
   const clearFilters = () => {
     setCompanyFilter(embeddedCompanyId || 'all');
     setLocationFilter('all');
-    setPeriod('90');
+    setPeriod('3');
     setCompare('none');
   };
 
@@ -634,7 +652,7 @@ export function Analytics({ embeddedCompanyId = null }) {
         }
       >
         {primaryMode === 'trend' ? (
-          <LineChart data={monthly.map((m) => ({ label: m.label, value: m.sales }))} compare={compareEnabled ? previousMonthly.map((m) => ({ value: m.sales })) : null} />
+          <LineChart data={monthly.map((m) => ({ label: m.label, value: m.sales }))} compare={compareEnabled ? previousMonthly.map((m) => ({ value: m.sales, label: m.label })) : null} />
         ) : (
           <RankBars rows={rankRowsFor(breakdownRows, measure, 8)} empty="No data in this filter." />
         )}

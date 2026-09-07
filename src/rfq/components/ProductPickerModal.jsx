@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, TextField, Checkbox, Text, InlineStack, Box, Icon, Badge } from '@shopify/polaris';
+import { Modal, TextField, Select, Checkbox, Text, InlineStack, Box, Icon, Badge } from '@shopify/polaris';
 import { SearchIcon, ImageIcon, ChevronDownIcon, ChevronRightIcon, AlertTriangleIcon } from '@shopify/polaris-icons';
 import { money } from '../utils.js';
 
@@ -14,6 +14,14 @@ import { money } from '../utils.js';
 const GRID = { display: 'grid', gridTemplateColumns: 'auto minmax(140px, 1fr) 118px 96px', gap: 12, alignItems: 'center' };
 const THUMB = { width: 32, height: 32, borderRadius: 6, background: 'var(--p-color-bg-surface-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' };
 const CARET = { all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', flex: '0 0 auto', width: 20 };
+// Sort options mirror Shopify's product index (title / price / inventory).
+const SORT_OPTIONS = [
+  { label: 'Product A–Z', value: 'title-asc' },
+  { label: 'Product Z–A', value: 'title-desc' },
+  { label: 'Price: low to high', value: 'price-asc' },
+  { label: 'Price: high to low', value: 'price-desc' },
+  { label: 'Available: high to low', value: 'avail-desc' },
+];
 
 const variantStock = (v, p) => (v.stock != null ? v.stock : p.stock != null ? p.stock : 0);
 const productStock = (p) =>
@@ -36,9 +44,20 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', pri
   const [selected, setSelected] = useState(() => new Set(locked));
   const [expanded, setExpanded] = useState(() => new Set());
   const [query, setQuery] = useState('');
+  const [sort, setSort] = useState('title-asc');
 
   const q = query.trim().toLowerCase();
-  const shown = q ? products.filter((p) => [p.title, p.sku].join(' ').toLowerCase().includes(q)) : products;
+  const filtered = q ? products.filter((p) => [p.title, p.sku].join(' ').toLowerCase().includes(q)) : products;
+  const productPrice = (p) => Math.min(...p.variants.map((v) => v.price));
+  const shown = [...filtered].sort((a, b) => {
+    switch (sort) {
+      case 'title-desc': return b.title.localeCompare(a.title);
+      case 'price-asc': return productPrice(a) - productPrice(b);
+      case 'price-desc': return productPrice(b) - productPrice(a);
+      case 'avail-desc': return productStock(b) - productStock(a);
+      default: return a.title.localeCompare(b.title);
+    }
+  });
 
   const toggleVariant = (vid) => {
     if (locked.has(vid)) return;
@@ -107,17 +126,24 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', pri
       secondaryActions={[backAction || { content: 'Cancel', onAction: onClose }]}
     >
       <Modal.Section>
-        <TextField
-          label="Search products"
-          labelHidden
-          value={query}
-          onChange={setQuery}
-          prefix={<Icon source={SearchIcon} tone="subdued" />}
-          placeholder="Search products by name or SKU"
-          autoComplete="off"
-          clearButton
-          onClearButtonClick={() => setQuery('')}
-        />
+        <InlineStack gap="200" blockAlign="center" wrap={false}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <TextField
+              label="Search products"
+              labelHidden
+              value={query}
+              onChange={setQuery}
+              prefix={<Icon source={SearchIcon} tone="subdued" />}
+              placeholder="Search products by name or SKU"
+              autoComplete="off"
+              clearButton
+              onClearButtonClick={() => setQuery('')}
+            />
+          </div>
+          <div style={{ width: 210, flex: '0 0 auto' }}>
+            <Select label="Sort by" labelHidden options={SORT_OPTIONS} value={sort} onChange={setSort} />
+          </div>
+        </InlineStack>
       </Modal.Section>
       <Modal.Section flush>
         <Box background="bg-surface-secondary" borderBlockEndWidth="025" borderColor="border" paddingBlock="150" paddingInline="400">

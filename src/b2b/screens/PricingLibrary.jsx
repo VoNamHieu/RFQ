@@ -3,20 +3,19 @@ import {
   Page,
   Card,
   IndexTable,
+  IndexFilters,
+  useSetIndexFiltersMode,
+  ChoiceList,
   Badge,
   Text,
   BlockStack,
   InlineStack,
   Button,
-  ButtonGroup,
   Box,
-  TextField,
-  Select,
-  Icon,
   Modal,
   Tooltip,
 } from '@shopify/polaris';
-import { EditIcon, DeleteIcon, SearchIcon, PlusCircleIcon, ToggleOnIcon, ToggleOffIcon } from '@shopify/polaris-icons';
+import { EditIcon, DeleteIcon, PlusCircleIcon, ToggleOnIcon, ToggleOffIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { policyStatus, scopeTypeLabel, policyUsage, policyUsageCount } from '../pricing.js';
 
@@ -25,6 +24,23 @@ const AUDIENCE = [
   { id: 'b2b', label: 'Companies' },
   { id: 'd2c', label: 'Customers' },
 ];
+
+const TYPE_CHOICES = [
+  { label: 'All types', value: 'all' },
+  { label: 'Base pricing', value: 'base' },
+  { label: 'Quantity pricing', value: 'quantity' },
+];
+const STATUS_CHOICES = [
+  { label: 'Any status', value: 'all' },
+  { label: 'Active', value: 'active' },
+  { label: 'Scheduled', value: 'scheduled' },
+  { label: 'Inactive', value: 'inactive' },
+];
+const SORT_OPTIONS = [
+  { label: 'Name', value: 'name', directionLabel: 'A–Z' },
+  { label: 'Most assigned', value: 'assigned', directionLabel: 'Most first' },
+];
+const labelOf = (choices, value) => choices.find((c) => c.value === value)?.label ?? value;
 
 const PAGE_SIZE = 10;
 
@@ -37,6 +53,7 @@ export function PricingLibrary() {
   const [sort, setSort] = useState('name');
   const [page, setPage] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const { mode, setMode } = useSetIndexFiltersMode();
 
   // Jump back to the first page whenever the result set changes.
   useEffect(() => { setPage(0); }, [audience, search, kind, statusFilter, sort]);
@@ -101,6 +118,27 @@ export function PricingLibrary() {
     );
   });
 
+  const tabs = AUDIENCE.map((a, i) => ({ id: `aud-${a.id}`, content: a.label, index: i }));
+  const selectedTab = Math.max(0, AUDIENCE.findIndex((a) => a.id === audience));
+
+  const filters = [
+    {
+      key: 'kind',
+      label: 'Type',
+      pinned: true,
+      filter: <ChoiceList title="Type" titleHidden choices={TYPE_CHOICES} selected={[kind]} onChange={(v) => setKind(v[0])} />,
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      pinned: true,
+      filter: <ChoiceList title="Status" titleHidden choices={STATUS_CHOICES} selected={[statusFilter]} onChange={(v) => setStatusFilter(v[0])} />,
+    },
+  ];
+  const appliedFilters = [];
+  if (kind !== 'all') appliedFilters.push({ key: 'kind', label: `Type: ${labelOf(TYPE_CHOICES, kind)}`, onRemove: () => setKind('all') });
+  if (statusFilter !== 'all') appliedFilters.push({ key: 'status', label: `Status: ${labelOf(STATUS_CHOICES, statusFilter)}`, onRemove: () => setStatusFilter('all') });
+
   return (
     <Page
       fullWidth
@@ -112,39 +150,25 @@ export function PricingLibrary() {
       ]}
     >
       <Card padding="0">
-        <Box padding="300" paddingBlockEnd="200">
-          <BlockStack gap="300">
-            <InlineStack align="space-between" blockAlign="center" gap="200" wrap>
-              <ButtonGroup variant="segmented">
-                {AUDIENCE.map((a) => (
-                  <Button key={a.id} pressed={audience === a.id} onClick={() => setAudience(a.id)}>{a.label}</Button>
-                ))}
-              </ButtonGroup>
-              <InlineStack gap="200">
-                <Box minWidth="150px">
-                  <Select label="Type" labelHidden options={[{ label: 'All types', value: 'all' }, { label: 'Base pricing', value: 'base' }, { label: 'Quantity pricing', value: 'quantity' }]} value={kind} onChange={setKind} />
-                </Box>
-                <Box minWidth="150px">
-                  <Select label="Status" labelHidden options={[{ label: 'Any status', value: 'all' }, { label: 'Active', value: 'active' }, { label: 'Scheduled', value: 'scheduled' }, { label: 'Inactive', value: 'inactive' }]} value={statusFilter} onChange={setStatusFilter} />
-                </Box>
-                <Box minWidth="150px">
-                  <Select label="Sort" labelHidden options={[{ label: 'Name', value: 'name' }, { label: 'Most assigned', value: 'assigned' }]} value={sort} onChange={setSort} />
-                </Box>
-              </InlineStack>
-            </InlineStack>
-            <TextField
-              label="Search pricing"
-              labelHidden
-              value={search}
-              onChange={setSearch}
-              prefix={<Icon source={SearchIcon} tone="subdued" />}
-              placeholder="Search pricing by name"
-              clearButton
-              onClearButtonClick={() => setSearch('')}
-              autoComplete="off"
-            />
-          </BlockStack>
-        </Box>
+        <IndexFilters
+          queryValue={search}
+          queryPlaceholder="Search pricing by name"
+          onQueryChange={setSearch}
+          onQueryClear={() => setSearch('')}
+          tabs={tabs}
+          selected={selectedTab}
+          onSelect={(i) => setAudience(AUDIENCE[i].id)}
+          sortOptions={SORT_OPTIONS}
+          sortSelected={[sort]}
+          onSort={(v) => setSort(v[0])}
+          filters={filters}
+          appliedFilters={appliedFilters}
+          onClearAll={() => { setKind('all'); setStatusFilter('all'); }}
+          mode={mode}
+          setMode={setMode}
+          cancelAction={{ onAction: () => setSearch('') }}
+          canCreateNewView={false}
+        />
         <IndexTable
           resourceName={{ singular: 'pricing', plural: 'pricings' }}
           itemCount={rows.length}

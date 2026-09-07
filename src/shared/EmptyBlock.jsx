@@ -5,10 +5,19 @@ import { BlockStack, InlineStack, Box, Text, Button } from '@shopify/polaris';
 // renders a circular SkeletonImage placeholder (border-radius 9999px) that
 // flashes in the middle whenever no real image is supplied (image=""). This
 // keeps the same heading / text / actions with none of that flash.
-export function EmptyBlock({ heading, children, action, secondaryAction }) {
+//
+// `image` (optional) is a bundled illustration URL — pass one to show art above
+// the heading. Unlike Polaris EmptyState it renders nothing when omitted, so
+// there is still no placeholder/flash for the text-only empty states.
+export function EmptyBlock({ heading, children, action, secondaryAction, image, imageAlt }) {
   return (
     <Box padding="800">
       <BlockStack gap="200" inlineAlign="center">
+        {image ? (
+          <Box maxWidth="260px" paddingBlockEnd="200">
+            <img src={image} alt={imageAlt || ''} style={{ display: 'block', width: '100%', height: 'auto', borderRadius: 12 }} />
+          </Box>
+        ) : null}
         {heading ? (
           <Text as="h3" variant="headingSm" alignment="center">
             {heading}
