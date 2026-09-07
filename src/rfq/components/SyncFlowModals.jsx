@@ -231,6 +231,7 @@ export function SyncFlowModals() {
   return (
     <Modal
       open
+      size="small"
       onClose={close}
       title={alreadyInB2B ? 'Buyer added' : 'Sync complete'}
       primaryAction={{ content: 'View in B2B app', onAction: () => handoffToB2B(state, sf.quoteId) }}

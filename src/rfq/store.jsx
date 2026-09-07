@@ -420,8 +420,9 @@ function reducer(state, action) {
         createdCompanies: { ...state.createdCompanies, [key]: snapshot },
         createCompany: null,
         // Re-imported god-file success modal (the "Company created" step) instead
-        // of a bare toast — see CompanyCreatedModal.
-        companyCreated: { name: cc.name || 'Company', quoteId: cc.quoteId },
+        // of a bare toast — see CompanyCreatedModal. A freshly created company has
+        // one location and one buyer (the requester).
+        companyCreated: { name: cc.name || 'Company', quoteId: cc.quoteId, locations: 1, buyers: 1 },
       };
     }
     case 'SYNC_CONFIRM': {

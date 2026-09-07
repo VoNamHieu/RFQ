@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, BlockStack, Text } from '@shopify/polaris';
+import { Modal, BlockStack, InlineStack, Badge, Text } from '@shopify/polaris';
 import { useStore, handoffToB2B } from '../store.jsx';
 
 // The god-file "Company created" success modal, shown after creating a new company
@@ -10,9 +10,12 @@ export function CompanyCreatedModal() {
   const cc = state.companyCreated;
   if (!cc) return null;
   const close = () => dispatch({ type: 'CLOSE_COMPANY_CREATED' });
+  const locations = cc.locations ?? 1;
+  const buyers = cc.buyers ?? 1;
   return (
     <Modal
       open
+      size="small"
       onClose={close}
       title="Company created"
       primaryAction={{ content: 'View in B2B app', onAction: () => handoffToB2B(state, cc.quoteId) }}
@@ -24,6 +27,10 @@ export function CompanyCreatedModal() {
           <Text as="p" tone="subdued">
             The full Shopify company is now available in the QuoteSnap B2B app.
           </Text>
+          <InlineStack gap="200" blockAlign="center">
+            <Badge>{`${locations} location${locations === 1 ? '' : 's'}`}</Badge>
+            <Badge>{`${buyers} buyer${buyers === 1 ? '' : 's'}`}</Badge>
+          </InlineStack>
         </BlockStack>
       </Modal.Section>
     </Modal>
