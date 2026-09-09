@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, BlockStack, InlineStack, Box, Text, Button, Checkbox, TextField, IndexTable, Banner, Icon } from '@shopify/polaris';
+import { Modal, BlockStack, InlineStack, Box, Text, Button, Checkbox, TextField, IndexTable, Banner, List, Icon } from '@shopify/polaris';
 import { ChevronRightIcon, ChevronDownIcon } from '@shopify/polaris-icons';
 import { money } from '../utils.js';
 import { RFQ_CATALOG, RFQ_PRICING_OPTIONS, RFQ_TEMPLATE_PRODUCTS } from '../data/catalog.js';
@@ -107,19 +107,33 @@ export function PickerModal({ picker, setPicker, customer, onAdd, onCreatePricin
             )}
             {templates.length === 0 ? (
               <Banner
-                tone="warning"
+                tone={appInstalled ? 'warning' : 'info'}
                 title={
                   appInstalled
                     ? `${customer?.company || customer?.name || 'This customer'} has no B2B pricing yet`
-                    : 'Wholesale B2B app isn’t installed'
+                    : 'Win repeat orders with the Wholesale B2B app'
                 }
                 action={onCreatePricing ? { content: appInstalled ? 'Create pricing' : 'Install B2B app', onAction: onCreatePricing } : undefined}
               >
-                <p>
-                  {appInstalled
-                    ? 'No pricing has been created in the B2B app yet. Create a price so this customer gets the right price on this and future quotes — or use “Add product” instead.'
-                    : 'Install the Wholesale B2B app to set contract pricing for this customer. You can still quote using “Add product”.'}
-                </p>
+                {appInstalled ? (
+                  <p>
+                    No pricing has been created in the B2B app yet. Create a price so this customer gets the right price on this and future quotes — or use “Add product” instead.
+                  </p>
+                ) : (
+                  <BlockStack gap="200">
+                    <Text as="p">
+                      Turn one-off buyers like {customer?.company || 'this one'} into managed B2B companies with their own contract pricing — so you stop re-quoting the same prices every time and win the reorders.
+                    </Text>
+                    <List>
+                      <List.Item>Company accounts with multiple locations, buyers and roles</List.Item>
+                      <List.Item>Wholesale &amp; contract pricing, quantity breaks and per-product price lists</List.Item>
+                      <List.Item>Buyers reorder on their own at agreed prices, with full quote &amp; order history</List.Item>
+                    </List>
+                    <Text as="span" tone="subdued" variant="bodySm">
+                      You can still quote now using “Add product”.
+                    </Text>
+                  </BlockStack>
+                )}
               </Banner>
             ) : (
               templates.map((t) => (
