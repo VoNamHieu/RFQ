@@ -153,6 +153,24 @@ export const shopifyCompanyDirectory = {
     mainContact: 'Tran Minh',
     contactEmail: 'minh@mekongsupply.vn',
     locationSummary: 'Can Tho'
+  },
+  // A Shopify company with the B2B app installed but NOT yet synced to B2B. `inB2B`
+  // is omitted (undefined) on purpose: the tri-state treats that as a syncable B2B
+  // prospect (isB2BCompany true, companyInB2B false), so a quote created for it lands
+  // in the "Not in B2B app" → "Sync to B2B app" flow — distinct from inB2B:false,
+  // which marks a plain retail requester.
+  brightbuild: {
+    name: 'Bright Build Materials',
+    shopifyId: '661500',
+    recommended: false,
+    score: '',
+    signals: [],
+    locations: 2,
+    locationList: ['Ho Chi Minh City', 'Binh Duong'],
+    buyers: 2,
+    mainContact: 'Le Thanh',
+    contactEmail: 'thanh@brightbuild.vn',
+    locationSummary: 'Ho Chi Minh City'
   }
 };
 

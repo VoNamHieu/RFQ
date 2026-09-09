@@ -33,7 +33,9 @@ export const RFQ_CUSTOMERS = [
   // TEST MOCK — B2B app chưa cài (companyKey 'testnoapp', b2bAppInstalled:false).
   { key:'testnoapp',  name:'Test User',    email:'test.noapp@example.com',       companyKey:'testnoapp',  company:'Test Co (no B2B app)', shipping:'Test User\nHanoi\nVietnam',                                                   note:"TEST: chưa cài app B2B" },
   // TEST MOCK #2 — B2B app chưa cài (companyKey 'mekongsupply', b2bAppInstalled:false).
-  { key:'mekongsupply', name:'Tran Minh',  email:'minh@mekongsupply.vn',         companyKey:'mekongsupply', company:'Mekong Supply Co',   shipping:'Tran Minh\nCan Tho\nVietnam',                                                 note:"TEST: chưa cài app B2B" }
+  { key:'mekongsupply', name:'Tran Minh',  email:'minh@mekongsupply.vn',         companyKey:'mekongsupply', company:'Mekong Supply Co',   shipping:'Tran Minh\nCan Tho\nVietnam',                                                 note:"TEST: chưa cài app B2B" },
+  // TEST MOCK #3 — B2B app đã cài nhưng company CHƯA sync vào B2B (companyKey 'brightbuild', inB2B omitted → syncable prospect).
+  { key:'brightbuild', name:'Le Thanh',    email:'thanh@brightbuild.vn',         companyKey:'brightbuild',  company:'Bright Build Materials', shipping:'Le Thanh\nHo Chi Minh City\nVietnam',                                       note:"TEST: chưa sync vào B2B" }
 ];
 
 /* Existing B2B base pricings per company — a snapshot mirroring the B2B app so
