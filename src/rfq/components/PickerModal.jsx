@@ -111,7 +111,7 @@ export function PickerModal({ picker, setPicker, customer, onAdd, onCreatePricin
                 title={
                   appInstalled
                     ? `${customer?.company || customer?.name || 'This customer'} has no B2B pricing yet`
-                    : 'Win repeat orders with the Wholesale B2B app'
+                    : 'Turn one-time buyers into repeat B2B customers'
                 }
                 action={onCreatePricing ? { content: appInstalled ? 'Create pricing' : 'Install B2B app', onAction: onCreatePricing } : undefined}
               >
@@ -122,15 +122,15 @@ export function PickerModal({ picker, setPicker, customer, onAdd, onCreatePricin
                 ) : (
                   <BlockStack gap="200">
                     <Text as="p">
-                      Turn one-off buyers like {customer?.company || 'this one'} into managed B2B companies with their own contract pricing — so you stop re-quoting the same prices every time and win the reorders.
+                      Convert buyers like <Text as="span" fontWeight="semibold">{customer?.company || 'this one'}</Text> into managed B2B companies with agreed pricing — so you don’t have to re-quote the same products and prices every time they reorder.
                     </Text>
                     <List>
-                      <List.Item>Company accounts with multiple locations, buyers and roles</List.Item>
-                      <List.Item>Wholesale &amp; contract pricing, quantity breaks and per-product price lists</List.Item>
-                      <List.Item>Buyers reorder on their own at agreed prices, with full quote &amp; order history</List.Item>
+                      <List.Item>Manage company accounts with multiple locations, buyers, and roles</List.Item>
+                      <List.Item>Set contract pricing, quantity breaks, and product-specific prices</List.Item>
+                      <List.Item>Let buyers reorder at agreed prices with access to their quote and order history</List.Item>
                     </List>
                     <Text as="span" tone="subdued" variant="bodySm">
-                      You can still quote now using “Add product”.
+                      You can still create this quote now using <Text as="span" fontWeight="semibold">Add product</Text>.
                     </Text>
                   </BlockStack>
                 )}
