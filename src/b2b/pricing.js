@@ -140,14 +140,14 @@ function matchConditionalRuleIndex(profile, product) {
   return -1;
 }
 
-// Apply an adjustment to a base price. Rounds to 2dp; a decrease may go negative
-// (legacy allows it so save-time validation can flag "below cost / above list").
+// Apply an adjustment to a base price. Rounds to 2dp. A decrease bigger than the
+// base clamps to 0 — a price can't be negative (buyers pay 0, not a refund).
 export function applyAdjustment(rule, valueType, value, base) {
   const round = (x) => Math.round(x * 100) / 100;
   const val = Number(value ?? 0);
   if (rule === 'keep') return base;
   if (rule === 'set') return round(val);
-  if (rule === 'decrease') return round(valueType === 'percentage' ? base * (1 - val / 100) : base - val);
+  if (rule === 'decrease') return round(Math.max(0, valueType === 'percentage' ? base * (1 - val / 100) : base - val));
   if (rule === 'increase') return round(valueType === 'percentage' ? base * (1 + val / 100) : base + val);
   return base;
 }

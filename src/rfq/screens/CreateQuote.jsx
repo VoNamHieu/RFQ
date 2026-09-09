@@ -194,15 +194,17 @@ export function CreateQuote() {
     const id = String(1052001 + state.cqSeq);
     const valid = lines.filter(isValidLine);
     const first = valid[0];
-    // A company already in the B2B app is linked (managed); one that isn't yet is a
-    // "new" B2B relationship the merchant syncs from the quote detail's sync flow.
+    // A company already in the B2B app is linked (managed); one whose Wholesale B2B
+    // app isn't installed gets the "uninstalled" (Install CTA) card; otherwise it's a
+    // "new" relationship the merchant syncs from the quote detail's sync flow.
+    const relState = companyInB2B ? 'linked' : appInstalled ? 'new' : 'uninstalled';
     const quote = {
       number: id,
       title: `Quote No.${id}`,
-      scenario: 'Merchant created',
+      scenario: relState === 'uninstalled' ? 'Merchant created — B2B app not installed' : 'Merchant created',
       received: 'Received by Aug 29 2026, 10:00 AM',
       dueDate: cq.dueDate || '',
-      state: companyInB2B ? 'linked' : 'new',
+      state: relState,
       ...(companyInB2B
         ? { linkedCompanyKey: customer.companyKey }
         : { fixedCompanyKey: customer.companyKey, syncMode: 'fixed' }),
@@ -225,7 +227,7 @@ export function CreateQuote() {
     };
     // openSync (only meaningful for a not-in-B2B company): create the quote, then
     // launch the Sync-to-B2B flow on it so the company is set up with location/role.
-    dispatch({ type: 'CREATE_QUOTE', id, quote, meta, openSync: openSync && !companyInB2B });
+    dispatch({ type: 'CREATE_QUOTE', id, quote, meta, openSync: openSync && !companyInB2B && appInstalled });
   };
 
   // ---- Line table ----

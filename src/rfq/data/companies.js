@@ -137,6 +137,22 @@ export const shopifyCompanyDirectory = {
     mainContact: 'Do Lan',
     contactEmail: 'lan@songhong.vn',
     locationSummary: 'Hanoi'
+  },
+  // TEST MOCK #2 — Wholesale B2B app CHƯA CÀI (b2bAppInstalled:false). A second
+  // "app not installed" company so the create-quote flow has more than one example.
+  mekongsupply: {
+    name: 'Mekong Supply Co',
+    shopifyId: '999002',
+    inB2B: false,
+    b2bAppInstalled: false,
+    recommended: false,
+    score: '',
+    signals: [],
+    locations: 1,
+    buyers: 1,
+    mainContact: 'Tran Minh',
+    contactEmail: 'minh@mekongsupply.vn',
+    locationSummary: 'Can Tho'
   }
 };
 

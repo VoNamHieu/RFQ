@@ -53,7 +53,9 @@ export function B2BRelationshipCard({ quote }) {
             <Badge>App not installed</Badge>
           </InlineStack>
           <Text as="p" tone="subdued" variant="bodySm">
-            Install QuoteSnap B2B to manage this buyer as a company with shared pricing and quote history.
+            {quote.scenario === 'Merchant created — B2B app not installed'
+              ? `${company?.name || 'This company'} isn’t on the Wholesale B2B app yet, so this quote stays in QuoteSnap RFQ. Install the app to manage this buyer as a company with shared pricing and quote history.`
+              : 'Install QuoteSnap B2B to manage this buyer as a company with shared pricing and quote history.'}
           </Text>
           <InlineGrid columns={2} gap="200">
             <Stat label="Quotes" value={String(quote.quoteCount ?? 1)} />
