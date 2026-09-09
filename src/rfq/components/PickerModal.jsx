@@ -98,9 +98,13 @@ export function PickerModal({ picker, setPicker, customer, onAdd, onCreatePricin
       >
         <Modal.Section>
           <BlockStack gap="300">
-            <Text as="p" tone="subdued" variant="bodySm">
-              Choose a base pricing attached to {customer?.company} in the B2B app, then pick products.
-            </Text>
+            {/* Only meaningful when there's actually a pricing to choose — otherwise
+                the banner below carries the "no pricing / not installed" message. */}
+            {templates.length > 0 && (
+              <Text as="p" tone="subdued" variant="bodySm">
+                Choose a base pricing attached to {customer?.company} in the B2B app, then pick products.
+              </Text>
+            )}
             {templates.length === 0 ? (
               <Banner
                 tone="warning"
