@@ -233,78 +233,118 @@ export function CreateQuote() {
   };
 
   // ---- Line table ----
-  const lineRows = lines.map((l, i) => (
-    <IndexTable.Row id={String(i)} key={i} position={i}>
-      <IndexTable.Cell>
-        {l.custom ? (
+  // A line's catalog product, for grouping variant lines under one product.
+  const productOfVariant = (vid) =>
+    RFQ_CATALOG.find((p) => (p.variants || []).some((v) => v.id === vid)) ||
+    RFQ_CATALOG.find((p) => p.sku === vid) ||
+    null;
+
+  // Group lines by parent product so variants nest under a product header instead
+  // of showing as flat rows. Custom / single-variant lines stand on their own.
+  const lineGroups = [];
+  const groupOf = {};
+  lines.forEach((l, i) => {
+    const product = l.custom ? null : productOfVariant(l.sku);
+    const key = product ? `p:${product.sku}` : `l:${i}`;
+    if (groupOf[key] == null) {
+      groupOf[key] = lineGroups.length;
+      lineGroups.push({ product, items: [] });
+    }
+    lineGroups[groupOf[key]].items.push({ l, i });
+  });
+
+  const productCell = (l, { title, subtitle, indent }) => (
+    <div style={indent ? { paddingInlineStart: 28 } : undefined}>
+      {l.custom ? (
+        <BlockStack gap="050">
+          <InlineStack gap="150" blockAlign="center" wrap={false}>
+            <Text as="span" variant="bodyMd" fontWeight="medium">{title || 'Custom item'}</Text>
+            <Badge size="small">Custom</Badge>
+          </InlineStack>
+          {l.physical ? (
+            <Text as="span" tone="subdued" variant="bodySm">{`Physical${l.weight ? ` · ${l.weight} ${l.weightUnit}` : ''}`}</Text>
+          ) : null}
+        </BlockStack>
+      ) : (
+        <BlockStack gap="050">
+          <Text as="span" variant="bodyMd" fontWeight="medium">{title}</Text>
+          <InlineStack gap="100">
+            {subtitle ? <Text as="span" tone="subdued" variant="bodySm">{subtitle}</Text> : null}
+            {l.priced ? <Text as="span" tone="subdued" variant="bodySm">· B2B price</Text> : null}
+          </InlineStack>
+        </BlockStack>
+      )}
+    </div>
+  );
+
+  // Price / Qty / Total / Remove cells for one editable line.
+  const editCells = (l, i) => [
+    <IndexTable.Cell key="price">
+      <div style={{ width: 96 }}>
+        <TextField label="Price" labelHidden type="number" min={0} prefix="$" value={String(l.price ?? '')} onChange={(v) => patchLine(i, { price: Number(v) })} autoComplete="off" />
+      </div>
+    </IndexTable.Cell>,
+    <IndexTable.Cell key="qty">
+      <div style={{ width: 72 }}>
+        <TextField label="Qty" labelHidden type="number" min={1} value={String(l.qty ?? '')} onChange={(v) => patchLine(i, { qty: Number(v) })} autoComplete="off" />
+      </div>
+    </IndexTable.Cell>,
+    <IndexTable.Cell key="total">
+      <Text as="span" alignment="end">{money((Number(l.price) || 0) * (Number(l.qty) || 0))}</Text>
+    </IndexTable.Cell>,
+    <IndexTable.Cell key="remove">
+      <Button icon={XIcon} variant="tertiary" accessibilityLabel="Remove line" onClick={() => removeLine(i)} />
+    </IndexTable.Cell>,
+  ];
+
+  const lineRows = [];
+  let rowPos = 0;
+  lineGroups.forEach((g) => {
+    const { product, items } = g;
+    const isVariantGroup = product && (items.length > 1 || items[0].l.sku !== product.sku);
+    if (!isVariantGroup) {
+      const { l, i } = items[0];
+      lineRows.push(
+        <IndexTable.Row id={`l-${i}`} key={`l-${i}`} position={rowPos++}>
+          <IndexTable.Cell>{productCell(l, { title: l.custom ? l.title || 'Custom item' : lineTitle(l), subtitle: l.sku })}</IndexTable.Cell>
+          {editCells(l, i)}
+        </IndexTable.Row>,
+      );
+      return;
+    }
+    // Product header row (name + variant count + group total + remove-all).
+    const groupTotal = items.reduce((s, it) => s + (Number(it.l.price) || 0) * (Number(it.l.qty) || 0), 0);
+    const groupSkus = new Set(items.map((it) => it.l.sku));
+    lineRows.push(
+      <IndexTable.Row id={`h-${product.sku}`} key={`h-${product.sku}`} position={rowPos++}>
+        <IndexTable.Cell>
           <BlockStack gap="050">
-            <InlineStack gap="150" blockAlign="center" wrap={false}>
-              <Text as="span" variant="bodyMd" fontWeight="medium">{l.title || 'Custom item'}</Text>
-              <Badge size="small">Custom</Badge>
-            </InlineStack>
-            {l.physical ? (
-              <Text as="span" tone="subdued" variant="bodySm">
-                {`Physical${l.weight ? ` · ${l.weight} ${l.weightUnit}` : ''}`}
-              </Text>
-            ) : null}
+            <Text as="span" variant="bodyMd" fontWeight="semibold">{product.title}</Text>
+            <Text as="span" tone="subdued" variant="bodySm">{`${items.length} variants`}</Text>
           </BlockStack>
-        ) : (
-          <BlockStack gap="050">
-            <Text as="span" variant="bodyMd" fontWeight="medium">
-              {lineTitle(l)}
-            </Text>
-            <InlineStack gap="100">
-              {l.sku ? (
-                <Text as="span" tone="subdued" variant="bodySm">
-                  {l.sku}
-                </Text>
-              ) : null}
-              {l.priced ? (
-                <Text as="span" tone="subdued" variant="bodySm">
-                  · B2B price
-                </Text>
-              ) : null}
-            </InlineStack>
-          </BlockStack>
-        )}
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <div style={{ width: 96 }}>
-          <TextField
-            label="Price"
-            labelHidden
-            type="number"
-            min={0}
-            prefix="$"
-            value={String(l.price ?? '')}
-            onChange={(v) => patchLine(i, { price: Number(v) })}
-            autoComplete="off"
-          />
-        </div>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <div style={{ width: 72 }}>
-          <TextField
-            label="Qty"
-            labelHidden
-            type="number"
-            min={1}
-            value={String(l.qty ?? '')}
-            onChange={(v) => patchLine(i, { qty: Number(v) })}
-            autoComplete="off"
-          />
-        </div>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <Text as="span" alignment="end">
-          {money((Number(l.price) || 0) * (Number(l.qty) || 0))}
-        </Text>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <Button icon={XIcon} variant="tertiary" accessibilityLabel="Remove line" onClick={() => removeLine(i)} />
-      </IndexTable.Cell>
-    </IndexTable.Row>
-  ));
+        </IndexTable.Cell>
+        <IndexTable.Cell> </IndexTable.Cell>
+        <IndexTable.Cell> </IndexTable.Cell>
+        <IndexTable.Cell>
+          <Text as="span" alignment="end" fontWeight="medium">{money(groupTotal)}</Text>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <Button icon={XIcon} variant="tertiary" accessibilityLabel={`Remove all ${product.title} variants`} onClick={() => setLines(lines.filter((x) => !groupSkus.has(x.sku)))} />
+        </IndexTable.Cell>
+      </IndexTable.Row>,
+    );
+    // Indented variant sub-rows.
+    items.forEach(({ l, i }) => {
+      const variant = product.variants?.find((v) => v.id === l.sku);
+      const vTitle = variant?.title || (l.title || '').split(' — ').slice(1).join(' — ') || l.sku;
+      lineRows.push(
+        <IndexTable.Row id={`l-${i}`} key={`l-${i}`} position={rowPos++}>
+          <IndexTable.Cell>{productCell(l, { title: vTitle, subtitle: l.sku, indent: true })}</IndexTable.Cell>
+          {editCells(l, i)}
+        </IndexTable.Row>,
+      );
+    });
+  });
 
   return (
     <Page
@@ -377,7 +417,7 @@ export function CreateQuote() {
               <>
                 <IndexTable
                   resourceName={{ singular: 'line', plural: 'lines' }}
-                  itemCount={lines.length}
+                  itemCount={lineRows.length}
                   selectable={false}
                   headings={[
                     { title: 'Product' },
