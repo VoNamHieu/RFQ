@@ -12,6 +12,8 @@ import { money } from '../utils.js';
 //
 // `products`: [{ sku, title, stock?, variants:[{ id, title, price, stock? }] }]
 const GRID = { display: 'grid', gridTemplateColumns: 'auto minmax(140px, 1fr) 118px 96px', gap: 12, alignItems: 'center' };
+// Same, plus a trailing Qty column, for the editable (custom-priced) mode.
+const GRID_EDIT = { display: 'grid', gridTemplateColumns: 'auto minmax(140px, 1fr) 118px 96px 72px', gap: 12, alignItems: 'center' };
 const THUMB = { width: 32, height: 32, borderRadius: 6, background: 'var(--p-color-bg-surface-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' };
 const CARET = { all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', flex: '0 0 auto', width: 20 };
 // Sort options mirror Shopify's product index (title / price / inventory).
@@ -39,12 +41,18 @@ function AvailCell({ n }) {
   return <Text as="span" variant="bodyMd" alignment="end" tone="subdued">{n.toLocaleString('en-US')}</Text>;
 }
 
-export function ProductPickerModal({ title, products, priceHeader = 'Price', priced = false, initialSelected, onClose, onAdd, backAction, max = 500 }) {
+export function ProductPickerModal({ title, products, priceHeader = 'Price', qtyHeader = 'Qty', priced = false, editable = false, size = 'large', initialSelected, onClose, onAdd, backAction, max = 500 }) {
   const locked = initialSelected || new Set();
   const [selected, setSelected] = useState(() => new Set(locked));
   const [expanded, setExpanded] = useState(() => new Set());
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('title-asc');
+  // Editable mode: per-variant price/qty overrides (price defaults to the variant
+  // price, qty to 1). Used by the "Add custom priced items" flow.
+  const [edits, setEdits] = useState({});
+  const grid = editable ? GRID_EDIT : GRID;
+  const editOf = (v) => ({ price: v.price, qty: 1, ...(edits[v.id] || {}) });
+  const setEdit = (vid, patch) => setEdits((e) => ({ ...e, [vid]: { ...(e[vid] || {}), ...patch } }));
 
   const q = query.trim().toLowerCase();
   const filtered = q ? products.filter((p) => [p.title, p.sku].join(' ').toLowerCase().includes(q)) : products;
@@ -111,7 +119,14 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', pri
       const single = p.variants.length === 1 && p.variants[0].id === p.sku;
       p.variants.forEach((v) => {
         if (!selected.has(v.id) || locked.has(v.id)) return;
-        additions.push({ sku: v.id, title: single ? p.title : `${p.title} — ${v.title}`, price: v.price, qty: 1, priced });
+        const e = editable ? editOf(v) : null;
+        additions.push({
+          sku: v.id,
+          title: single ? p.title : `${p.title} — ${v.title}`,
+          price: e ? Number(e.price) : v.price,
+          qty: e ? Number(e.qty) : 1,
+          priced,
+        });
       });
     });
     onAdd(additions);
@@ -120,6 +135,7 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', pri
   return (
     <Modal
       open
+      size={size}
       onClose={onClose}
       title={title}
       primaryAction={{ content: newCount ? `Add ${newCount} variant${newCount === 1 ? '' : 's'}` : 'Done', onAction: doAdd, disabled: newCount === 0 }}
@@ -147,11 +163,12 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', pri
       </Modal.Section>
       <Modal.Section flush>
         <Box background="bg-surface-secondary" borderBlockEndWidth="025" borderColor="border" paddingBlock="150" paddingInline="400">
-          <div style={GRID}>
+          <div style={grid}>
             <Checkbox label="" labelHidden checked={allShownSel ? true : someShownSel ? 'indeterminate' : false} onChange={toggleAllShown} />
             <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium">Product</Text>
             <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium" alignment="end">Available</Text>
             <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium" alignment="end">{priceHeader}</Text>
+            {editable ? <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium" alignment="end">{qtyHeader}</Text> : null}
           </div>
         </Box>
         <div style={{ maxHeight: 420, overflowY: 'auto', overflowX: 'hidden' }}>
@@ -170,7 +187,7 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', pri
               const added = locked.has(v.id);
               return (
                 <Box key={p.sku} paddingBlock="200" paddingInline="400" borderBlockStartWidth={topBorder} borderColor="border">
-                  <div style={GRID}>
+                  <div style={grid}>
                     <Checkbox label="" labelHidden checked={selected.has(v.id)} disabled={added} onChange={() => toggleVariant(v.id)} />
                     <InlineStack gap="200" blockAlign="center" wrap={false}>
                       <span style={{ width: 20, flex: '0 0 auto' }} />
@@ -184,7 +201,18 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', pri
                       </div>
                     </InlineStack>
                     <AvailCell n={variantStock(v, p)} />
-                    <Text as="span" variant="bodyMd" alignment="end">{money(v.price)}</Text>
+                    {editable ? (
+                      <div style={{ width: 96, justifySelf: 'end' }}>
+                        <TextField label="Price" labelHidden type="number" min={0} prefix="$" value={String(editOf(v).price)} onChange={(val) => setEdit(v.id, { price: Number(val) })} autoComplete="off" />
+                      </div>
+                    ) : (
+                      <Text as="span" variant="bodyMd" alignment="end">{money(v.price)}</Text>
+                    )}
+                    {editable ? (
+                      <div style={{ width: 72, justifySelf: 'end' }}>
+                        <TextField label="Qty" labelHidden type="number" min={1} value={String(editOf(v).qty)} onChange={(val) => setEdit(v.id, { qty: Math.max(1, Number(val) || 1) })} autoComplete="off" />
+                      </div>
+                    ) : null}
                   </div>
                 </Box>
               );
@@ -192,7 +220,7 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', pri
             return (
               <Box key={p.sku} borderBlockStartWidth={topBorder} borderColor="border">
                 <Box paddingBlock="200" paddingInline="400">
-                  <div style={GRID}>
+                  <div style={grid}>
                     <Checkbox label="" labelHidden checked={allSel ? true : someSel ? 'indeterminate' : false} disabled={allLocked} onChange={() => toggleProduct(p)} />
                     <button type="button" onClick={() => toggleExpand(p.sku)} style={{ all: 'unset', cursor: 'pointer', display: 'block', minWidth: 0 }}>
                       <InlineStack gap="200" blockAlign="center" wrap={false}>
@@ -206,13 +234,14 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', pri
                     </button>
                     <AvailCell n={productStock(p)} />
                     <Text as="span" variant="bodyMd" alignment="end">{priceLabel(p.variants)}</Text>
+                    {editable ? <span /> : null}
                   </div>
                 </Box>
                 {isExp && p.variants.map((v) => {
                   const added = locked.has(v.id);
                   return (
                     <Box key={v.id} paddingBlock="200" paddingInline="400" borderBlockStartWidth="025" borderColor="border" background="bg-surface-secondary">
-                      <div style={GRID}>
+                      <div style={grid}>
                         <span style={{ paddingInlineStart: 40, display: 'flex', alignItems: 'center' }}>
                           <Checkbox label="" labelHidden checked={selected.has(v.id)} disabled={added} onChange={() => toggleVariant(v.id)} />
                         </span>
@@ -227,7 +256,18 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', pri
                           </div>
                         </InlineStack>
                         <AvailCell n={variantStock(v, p)} />
-                        <Text as="span" variant="bodyMd" alignment="end">{money(v.price)}</Text>
+                        {editable ? (
+                          <div style={{ width: 96, justifySelf: 'end' }}>
+                            <TextField label="Price" labelHidden type="number" min={0} prefix="$" value={String(editOf(v).price)} onChange={(val) => setEdit(v.id, { price: Number(val) })} autoComplete="off" />
+                          </div>
+                        ) : (
+                          <Text as="span" variant="bodyMd" alignment="end">{money(v.price)}</Text>
+                        )}
+                        {editable ? (
+                          <div style={{ width: 72, justifySelf: 'end' }}>
+                            <TextField label="Qty" labelHidden type="number" min={1} value={String(editOf(v).qty)} onChange={(val) => setEdit(v.id, { qty: Math.max(1, Number(val) || 1) })} autoComplete="off" />
+                          </div>
+                        ) : null}
                       </div>
                     </Box>
                   );

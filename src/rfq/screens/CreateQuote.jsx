@@ -34,6 +34,7 @@ import {
 import { shopifyCompanyDirectory } from '../data/companies.js';
 import { PickerModal } from '../components/PickerModal.jsx';
 import { CatalogPickerModal } from '../components/CatalogPickerModal.jsx';
+import { CustomItemModal } from '../components/CustomItemModal.jsx';
 import { ProductPickerModal } from '../components/ProductPickerModal.jsx';
 
 const catBySku = (sku) => RFQ_CATALOG.find((p) => p.sku === sku);
@@ -133,6 +134,7 @@ export function CreateQuote() {
   const [catalogPicker, setCatalogPicker] = useState(false); // Shopify B2B catalog picker
   const [addMenu, setAddMenu] = useState(false); // "Add product" source menu (catalog / whole store)
   const [storePicker, setStorePicker] = useState(false); // whole-store (Shopify) picker
+  const [customItemOpen, setCustomItemOpen] = useState(false); // "Add custom item" dialog
 
   // Send the merchant to the B2B app to create pricing for this customer — shared
   // by the top banner and the "Add custom priced items" modal's no-pricing notice.
@@ -235,14 +237,17 @@ export function CreateQuote() {
     <IndexTable.Row id={String(i)} key={i} position={i}>
       <IndexTable.Cell>
         {l.custom ? (
-          <TextField
-            label="Item"
-            labelHidden
-            placeholder="Custom item name"
-            value={l.title || ''}
-            onChange={(v) => patchLine(i, { title: v })}
-            autoComplete="off"
-          />
+          <BlockStack gap="050">
+            <InlineStack gap="150" blockAlign="center" wrap={false}>
+              <Text as="span" variant="bodyMd" fontWeight="medium">{l.title || 'Custom item'}</Text>
+              <Badge size="small">Custom</Badge>
+            </InlineStack>
+            {l.physical ? (
+              <Text as="span" tone="subdued" variant="bodySm">
+                {`Physical${l.weight ? ` · ${l.weight} ${l.weightUnit}` : ''}`}
+              </Text>
+            ) : null}
+          </BlockStack>
         ) : (
           <BlockStack gap="050">
             <Text as="span" variant="bodyMd" fontWeight="medium">
@@ -353,7 +358,7 @@ export function CreateQuote() {
                           helpText: 'A free-form line with your own price',
                           onAction: () => {
                             setAddMenu(false);
-                            setLines([...lines, { custom: true, title: '', price: 0, qty: 1 }]);
+                            setCustomItemOpen(true);
                           },
                         },
                       ]}
@@ -474,6 +479,14 @@ export function CreateQuote() {
           }}
         />
       )}
+      <CustomItemModal
+        open={customItemOpen}
+        onClose={() => setCustomItemOpen(false)}
+        onAdd={(line) => {
+          setLines([...lines, line]);
+          setCustomItemOpen(false);
+        }}
+      />
       {catalogPicker && (
         <CatalogPickerModal
           customer={customer}
