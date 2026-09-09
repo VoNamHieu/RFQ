@@ -43,9 +43,9 @@ export function PickerModal({ picker, setPicker, customer, onAdd, onCreatePricin
                 action={onCreatePricing ? { content: appInstalled ? 'Create pricing' : 'Install B2B app', onAction: onCreatePricing } : undefined}
               >
                 {appInstalled ? (
-                  <p>
-                    No pricing has been created in the B2B app yet. Create a price so this customer gets the right price on this and future quotes — or use “Add product” instead.
-                  </p>
+                  <Text as="p">
+                    No pricing has been set up for this company yet. Create B2B pricing to quickly add products at agreed prices to this and future quotes, or use <Text as="span" fontWeight="semibold">Add product</Text> instead.
+                  </Text>
                 ) : (
                   <BlockStack gap="200">
                     <Text as="p">
