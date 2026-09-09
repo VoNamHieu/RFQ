@@ -51,15 +51,22 @@ export function buildInitialState() {
   if (handoff) {
     const id = injectRfqCompany(s.db, handoff);
     if (id) {
-      s.view = 'company';
       s.selectedCompany = id;
       const lines = handoff.quote && Array.isArray(handoff.quote.lines) ? handoff.quote.lines : [];
       const hasLines = lines.length > 0;
-      // openPricing: the RFQ "no B2B pricing" prompt sends the merchant straight to
-      // the company's Pricing tab to add a base price.
-      s.companyTab = (hasLines && handoff.pricingTransfer) || handoff.openPricing ? 'pricing' : 'locations';
       if (hasLines && handoff.pricingTransfer) {
+        // Quote → B2B price transfer lands on the company's Pricing tab.
+        s.view = 'company';
+        s.companyTab = 'pricing';
         s.toast = applyQuotePricingTransfer(s.db, id, lines, handoff.pricingTransfer);
+      } else if (handoff.openPricing) {
+        // "Create pricing" from the RFQ "no B2B pricing" prompt → land on the B2B
+        // app's Pricing screen. The company is still created so it can be assigned
+        // a pricing there.
+        s.view = 'pricing';
+      } else {
+        s.view = 'company';
+        s.companyTab = 'locations';
       }
     }
   } else {
