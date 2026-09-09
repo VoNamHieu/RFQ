@@ -21,7 +21,7 @@ import {
   ActionList,
 } from '@shopify/polaris';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
-import { PlusIcon, XIcon } from '@shopify/polaris-icons';
+import { PlusIcon, XIcon, ChevronDownIcon, ChevronRightIcon } from '@shopify/polaris-icons';
 import { useStore, handoffCompanyToB2B } from '../store.jsx';
 import { activeVersion } from '../../shared/versions.js';
 import { money, subtotalOf } from '../utils.js';
@@ -135,6 +135,14 @@ export function CreateQuote() {
   const [addMenu, setAddMenu] = useState(false); // "Add product" source menu (catalog / whole store)
   const [storePicker, setStorePicker] = useState(false); // whole-store (Shopify) picker
   const [customItemOpen, setCustomItemOpen] = useState(false); // "Add custom item" dialog
+  const [expandedGroups, setExpandedGroups] = useState(() => new Set()); // expanded product groups (mix editing)
+  const toggleGroupExpand = (sku) =>
+    setExpandedGroups((s) => {
+      const n = new Set(s);
+      if (n.has(sku)) n.delete(sku);
+      else n.add(sku);
+      return n;
+    });
 
   // Send the merchant to the B2B app to create pricing for this customer — shared
   // by the top banner and the "Add custom priced items" modal's no-pricing notice.
@@ -151,6 +159,11 @@ export function CreateQuote() {
 
   const setLines = (next) => dispatch({ type: 'CQ_PATCH', patch: { lines: next } });
   const patchLine = (i, patch) => setLines(lines.map((l, k) => (k === i ? { ...l, ...patch } : l)));
+  // Bulk-set a field on every line index in a product group (the "group" edit).
+  const patchGroup = (indices, patch) => {
+    const set = new Set(indices);
+    setLines(lines.map((l, k) => (set.has(k) ? { ...l, ...patch } : l)));
+  };
   const removeLine = (i) => setLines(lines.filter((_, k) => k !== i));
 
   const mergeLines = (additions) => {
@@ -312,19 +325,40 @@ export function CreateQuote() {
       );
       return;
     }
-    // Product header row (name + variant count + group total + remove-all).
+    // Collapsible product header. Its Price/Qty bulk-set every variant (the "group"
+    // edit) and show "Mixed" when the variants differ; expand to edit each variant
+    // (the "mix" edit) — mirroring the B2B product-override card.
     const groupTotal = items.reduce((s, it) => s + (Number(it.l.price) || 0) * (Number(it.l.qty) || 0), 0);
     const groupSkus = new Set(items.map((it) => it.l.sku));
+    const indices = items.map((it) => it.i);
+    const prices = items.map((it) => Number(it.l.price));
+    const qtys = items.map((it) => Number(it.l.qty));
+    const sameP = prices.every((x) => x === prices[0]);
+    const sameQ = qtys.every((x) => x === qtys[0]);
+    const isExp = expandedGroups.has(product.sku);
     lineRows.push(
       <IndexTable.Row id={`h-${product.sku}`} key={`h-${product.sku}`} position={rowPos++}>
         <IndexTable.Cell>
-          <BlockStack gap="050">
-            <Text as="span" variant="bodyMd" fontWeight="semibold">{product.title}</Text>
-            <Text as="span" tone="subdued" variant="bodySm">{`${items.length} variants`}</Text>
-          </BlockStack>
+          <button type="button" onClick={() => toggleGroupExpand(product.sku)} style={{ all: 'unset', cursor: 'pointer', display: 'block', minWidth: 0 }}>
+            <InlineStack gap="150" blockAlign="center" wrap={false}>
+              <span style={{ display: 'flex' }}><Icon source={isExp ? ChevronDownIcon : ChevronRightIcon} tone="subdued" /></span>
+              <BlockStack gap="050">
+                <Text as="span" variant="bodyMd" fontWeight="semibold">{product.title}</Text>
+                <Text as="span" tone="subdued" variant="bodySm">{`${items.length} variants${isExp ? '' : sameP ? '' : ' · Mixed prices'}`}</Text>
+              </BlockStack>
+            </InlineStack>
+          </button>
         </IndexTable.Cell>
-        <IndexTable.Cell> </IndexTable.Cell>
-        <IndexTable.Cell> </IndexTable.Cell>
+        <IndexTable.Cell>
+          <div style={{ width: 96 }}>
+            <TextField label="Group price" labelHidden type="number" min={0} prefix="$" value={sameP ? String(prices[0] ?? '') : ''} placeholder={sameP ? undefined : 'Mixed'} onChange={(v) => patchGroup(indices, { price: Number(v) })} autoComplete="off" />
+          </div>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <div style={{ width: 72 }}>
+            <TextField label="Group qty" labelHidden type="number" min={1} value={sameQ ? String(qtys[0] ?? '') : ''} placeholder={sameQ ? undefined : 'Mixed'} onChange={(v) => patchGroup(indices, { qty: Number(v) })} autoComplete="off" />
+          </div>
+        </IndexTable.Cell>
         <IndexTable.Cell>
           <Text as="span" alignment="end" fontWeight="medium">{money(groupTotal)}</Text>
         </IndexTable.Cell>
@@ -333,17 +367,19 @@ export function CreateQuote() {
         </IndexTable.Cell>
       </IndexTable.Row>,
     );
-    // Indented variant sub-rows.
-    items.forEach(({ l, i }) => {
-      const variant = product.variants?.find((v) => v.id === l.sku);
-      const vTitle = variant?.title || (l.title || '').split(' — ').slice(1).join(' — ') || l.sku;
-      lineRows.push(
-        <IndexTable.Row id={`l-${i}`} key={`l-${i}`} position={rowPos++}>
-          <IndexTable.Cell>{productCell(l, { title: vTitle, subtitle: l.sku, indent: true })}</IndexTable.Cell>
-          {editCells(l, i)}
-        </IndexTable.Row>,
-      );
-    });
+    // Indented variant sub-rows — only when expanded (the "mix" per-variant edit).
+    if (isExp) {
+      items.forEach(({ l, i }) => {
+        const variant = product.variants?.find((v) => v.id === l.sku);
+        const vTitle = variant?.title || (l.title || '').split(' — ').slice(1).join(' — ') || l.sku;
+        lineRows.push(
+          <IndexTable.Row id={`l-${i}`} key={`l-${i}`} position={rowPos++}>
+            <IndexTable.Cell>{productCell(l, { title: vTitle, subtitle: l.sku, indent: true })}</IndexTable.Cell>
+            {editCells(l, i)}
+          </IndexTable.Row>,
+        );
+      });
+    }
   });
 
   return (
