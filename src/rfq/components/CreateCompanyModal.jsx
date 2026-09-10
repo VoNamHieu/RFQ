@@ -241,10 +241,10 @@ export function CreateCompanyModal() {
 
       <Modal.Section>
         <Checkbox
-          label="Automatically sync future quotes from this company"
-          helpText="Future quotes from any buyer in this company, across all locations, will automatically sync to the B2B app."
-          checked={!!cc.autoSync}
-          onChange={(v) => patch({ autoSync: v })}
+          label="Also sync past quotes"
+          helpText="Add this customer’s past quotes to the B2B company and its quote history."
+          checked={cc.syncPast !== false}
+          onChange={(v) => patch({ syncPast: v })}
         />
       </Modal.Section>
     </Modal>

@@ -824,13 +824,6 @@ export function Analytics({ embeddedCompanyId = null }) {
   const previousActiveCount = new Set(previousOrders.map((o) => o.companyId)).size;
   const activeDelta = compareEnabled ? activeCompanyIds.size - previousActiveCount : null;
 
-  // Revenue + gross-profit concentration (§3.5).
-  const top5Revenue = companyRows.slice(0, 5).reduce((a, r) => a + (r.revenue || 0), 0);
-  const top5Share = sales ? Math.round((top5Revenue / sales) * 100) : 0;
-  const topCompanyShare = companyRows[0] ? Math.round(companyRows[0].share || 0) : 0;
-  const companiesByGP = companyRows.slice().sort((a, b) => (b.gp || 0) - (a.gp || 0));
-  const top5GP = companiesByGP.slice(0, 5).reduce((a, r) => a + (r.gp || 0), 0);
-  const gpConcentration = grossProfit ? Math.round((top5GP / grossProfit) * 100) : 0;
 
   // Trailing-90-day helpers for Needs attention. Attach line items so GP resolves.
   const t90Start = addDays(TODAY, -89);
@@ -854,7 +847,6 @@ export function Analytics({ embeddedCompanyId = null }) {
   // days since the last update (a proxy for last meaningful activity).
   const staleQuotes = openQuotes.filter((q) => quoteAge(q) > 10).map((q) => quoteVal(q)).sort((a, b) => b - a);
   const staleValue = staleQuotes.reduce((a, v) => a + v, 0);
-  const staleTop3Share = staleValue ? Math.round((staleQuotes.slice(0, 3).reduce((a, v) => a + v, 0) / staleValue) * 100) : 0;
 
   // Margin deterioration — the company whose gross margin fell most vs the previous
   // period (§3.4). Only meaningful when comparing periods.
@@ -899,7 +891,6 @@ export function Analytics({ embeddedCompanyId = null }) {
   const overviewPrevSeries = compareEnabled ? fillBuckets(buildBuckets(previousPeriodStart, previousPeriodEnd), previousOrders) : [];
   const seriesVal = (b) => (trendMetric === 'gp' ? b.gp : trendMetric === 'margin' ? b.margin : b.sales);
 
-  const topCompanyRev = companyRows[0]?.revenue || 0;
   const shownProducts = showAllProducts ? productRows : productRows.slice(0, 5);
 
   const overviewTab = (
@@ -958,9 +949,9 @@ export function Analytics({ embeddedCompanyId = null }) {
               onAction={() => setTab(1)}
             />
             <InsightCard
-              headline="Open quotes with no activity for more than 10 days"
-              value={money(staleValue)}
-              context={staleQuotes.length ? `${staleQuotes.length} quote${staleQuotes.length === 1 ? '' : 's'} · top 3 hold ${staleTop3Share}% of the stale value` : 'No stale open quotes'}
+              headline="Quote value not yet closed"
+              value={money(openQuoteValue)}
+              context={openQuotes.length ? `${openQuotes.length} quote${openQuotes.length === 1 ? '' : 's'} with activity, not yet closed` : 'No open quotes'}
               cta="Review quotes →"
               onAction={() => setTab(2)}
             />
@@ -978,45 +969,36 @@ export function Analytics({ embeddedCompanyId = null }) {
         </BlockStack>
       )}
 
-      {/* §3.5 revenue concentration + §3.2 revenue mix */}
+      {/* §3.6 Top companies + §3.2 revenue mix */}
       {!selected && (
-        <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
-          <ReportCard title="Revenue concentration" subtitle="How much of the business the largest companies carry.">
-            <BlockStack gap="200">
-              <InlineStack gap="500">
-                <BlockStack gap="025"><Text as="span" variant="headingLg">{`${top5Share}%`}</Text><Text as="span" tone="subdued" variant="bodySm">of sales · Top 5</Text></BlockStack>
-                <BlockStack gap="025"><Text as="span" variant="headingLg">{`${gpConcentration}%`}</Text><Text as="span" tone="subdued" variant="bodySm">of gross profit · Top 5</Text></BlockStack>
-              </InlineStack>
-              <RankBars rows={companyRows.slice(0, 5).map((r) => ({ key: r.id, name: r.name, value: r.revenue, valueLabel: `${Math.round(r.share || 0)}%`, width: topCompanyRev ? (r.revenue / topCompanyRev) * 100 : 0 }))} empty="No completed-order data." />
-            </BlockStack>
+        <>
+          <ReportCard
+            title="Top companies"
+            subtitle="Sales, gross profit and margin by company. Click a company to filter, or open the full ranking."
+            controls={<Button variant="plain" onClick={() => setTab(1)}>View all companies</Button>}
+          >
+            <IndexTable
+              resourceName={{ singular: 'company', plural: 'companies' }}
+              itemCount={Math.min(5, companyRows.length)}
+              selectable={false}
+              headings={[{ title: 'Company' }, { title: 'Sales', alignment: 'end' }, { title: 'Gross profit', alignment: 'end' }, { title: 'Margin', alignment: 'end' }, { title: '% of sales', alignment: 'end' }]}
+              emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No completed-order data.</Text></Box>}
+            >
+              {companyRows.slice(0, 5).map((r, i) => (
+                <IndexTable.Row id={r.id} key={r.id} position={i}>
+                  <IndexTable.Cell><CompanyLink id={r.id}>{r.name}</CompanyLink></IndexTable.Cell>
+                  <IndexTable.Cell><Text as="span" alignment="end">{money(r.revenue || 0)}</Text></IndexTable.Cell>
+                  <IndexTable.Cell><Text as="span" alignment="end">{money(r.gp || 0)}</Text></IndexTable.Cell>
+                  <IndexTable.Cell><Text as="span" alignment="end">{`${Math.round(r.margin || 0)}%`}</Text></IndexTable.Cell>
+                  <IndexTable.Cell><Text as="span" alignment="end">{`${Math.round(r.share || 0)}%`}</Text></IndexTable.Cell>
+                </IndexTable.Row>
+              ))}
+            </IndexTable>
           </ReportCard>
           <ReportCard title="New vs existing revenue" subtitle="Revenue from newly activated vs established companies.">
             <StackedBar segments={[{ name: 'Existing companies', value: existingCompanyRevenue }, { name: 'New companies', value: newCompanyRevenue }]} />
           </ReportCard>
-        </InlineGrid>
-      )}
-
-      {/* §3.6 — Top companies */}
-      {!selected && (
-        <ReportCard title="Top companies" subtitle="Sales, gross profit and margin by company. Click a company to filter.">
-          <IndexTable
-            resourceName={{ singular: 'company', plural: 'companies' }}
-            itemCount={Math.min(5, companyRows.length)}
-            selectable={false}
-            headings={[{ title: 'Company' }, { title: 'Sales', alignment: 'end' }, { title: 'Gross profit', alignment: 'end' }, { title: 'Margin', alignment: 'end' }, { title: '% of sales', alignment: 'end' }]}
-            emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No completed-order data.</Text></Box>}
-          >
-            {companyRows.slice(0, 5).map((r, i) => (
-              <IndexTable.Row id={r.id} key={r.id} position={i}>
-                <IndexTable.Cell><CompanyLink id={r.id}>{r.name}</CompanyLink></IndexTable.Cell>
-                <IndexTable.Cell><Text as="span" alignment="end">{money(r.revenue || 0)}</Text></IndexTable.Cell>
-                <IndexTable.Cell><Text as="span" alignment="end">{money(r.gp || 0)}</Text></IndexTable.Cell>
-                <IndexTable.Cell><Text as="span" alignment="end">{`${Math.round(r.margin || 0)}%`}</Text></IndexTable.Cell>
-                <IndexTable.Cell><Text as="span" alignment="end">{`${Math.round(r.share || 0)}%`}</Text></IndexTable.Cell>
-              </IndexTable.Row>
-            ))}
-          </IndexTable>
-        </ReportCard>
+        </>
       )}
 
       {/* §3.7 — Top products */}
@@ -1483,8 +1465,8 @@ export function Analytics({ embeddedCompanyId = null }) {
 
       {/* §5.3 aging + §5.5 cohort funnel */}
       <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
-        <ReportCard title="Open quote aging" subtitle="Open quoted value by age. Bars scale by value, not count.">
-          <RankBars rows={agingBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} open quote${b.count === 1 ? '' : 's'}`, value: b.value, width: (b.value / agingMaxVal) * 100, valueLabel: money(b.value) }))} empty="No open quotes." />
+        <ReportCard title="Didn't close quote aging" subtitle="Value of quotes that haven't closed yet, by age. Bars scale by value, not count.">
+          <RankBars rows={agingBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} quote${b.count === 1 ? '' : 's'} still open`, value: b.value, width: (b.value / agingMaxVal) * 100, valueLabel: money(b.value) }))} empty="No quotes still open." />
         </ReportCard>
         <ReportCard
           title="Pipeline funnel"

@@ -117,9 +117,20 @@ export function VolumeBasisCard({ builder, patch }) {
 // default variant id equals the product sku, so per-SKU pricing is unchanged).
 const OVERRIDE_RULES = [
   { label: 'Set price', value: 'set' },
-  { label: 'Price decrease', value: 'decrease' },
-  { label: 'Price increase', value: 'increase' },
+  { label: 'Decrease by %', value: 'decrease_pct' },
+  { label: 'Decrease by amount', value: 'decrease_amt' },
+  { label: 'Increase by %', value: 'increase_pct' },
+  { label: 'Increase by amount', value: 'increase_amt' },
 ];
+// Map an override's {rule, valueType} to/from the Select option value, so a decrease
+// or increase can be either a percentage or a fixed amount.
+const overrideOptValue = (o) => (!o || !o.rule || o.rule === 'set' ? 'set' : `${o.rule}_${o.valueType === 'percentage' ? 'pct' : 'amt'}`);
+const overrideOptPatch = (val) => {
+  if (val === 'set') return { rule: 'set', valueType: 'amount' };
+  const [rule, unit] = val.split('_');
+  return { rule, valueType: unit === 'pct' ? 'percentage' : 'amount' };
+};
+const isPctOverride = (o) => o?.rule !== 'set' && o?.valueType === 'percentage';
 const ROW_GRID = { display: 'grid', gridTemplateColumns: 'auto minmax(140px, 1fr) 148px 92px 92px', gap: 12, alignItems: 'center' };
 const THUMB = { width: 32, height: 32, borderRadius: 6, background: 'var(--p-color-bg-surface-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' };
 const CARET = { all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', flex: '0 0 auto', width: 20 };
@@ -200,8 +211,8 @@ export function ProductOverridesCard({ builder, patch, products }) {
     const final = applyAdjustment(o.rule || 'set', o.valueType || 'amount', o.value, listPrice);
     return (
       <>
-        <Select label="Options" labelHidden options={OVERRIDE_RULES} value={o.rule || 'set'} onChange={(v) => setField(vid, { rule: v })} />
-        <TextField label="Amount" labelHidden type="number" prefix="$" min={0} value={String(o.value ?? '')} onChange={(v) => setField(vid, { value: Number(v) || 0 })} autoComplete="off" />
+        <Select label="Options" labelHidden options={OVERRIDE_RULES} value={overrideOptValue(o)} onChange={(v) => setField(vid, overrideOptPatch(v))} />
+        <TextField label="Amount" labelHidden type="number" min={0} {...(isPctOverride(o) ? { suffix: '%', max: 100 } : { prefix: '$' })} value={String(o.value ?? '')} onChange={(v) => setField(vid, { value: Number(v) || 0 })} autoComplete="off" />
         <Text as="span" variant="bodyMd" alignment="end" fontWeight="medium">{money(final)}</Text>
       </>
     );
@@ -288,10 +299,11 @@ export function ProductOverridesCard({ builder, patch, products }) {
               // Multiple priced variants → collapsible product row + variant sub-rows.
               // The product row's Options/Amount bulk-set every variant; when the
               // variants differ it shows "Mixed" (edit inline to see per-variant).
-              const rules = g.variants.map((v) => overrides[v.id].rule || 'set');
+              const optVals = g.variants.map((v) => overrideOptValue(overrides[v.id]));
               const vals = g.variants.map((v) => overrides[v.id].value);
-              const sameRule = rules.every((r) => r === rules[0]);
+              const sameRule = optVals.every((r) => r === optVals[0]);
               const sameVal = vals.every((x) => x === vals[0]);
+              const groupPct = sameRule && isPctOverride(overrides[g.variants[0].id]);
               const groupOpts = sameRule ? OVERRIDE_RULES : [{ label: 'Mixed', value: 'mixed', disabled: true }, ...OVERRIDE_RULES];
               // Buyer-pays for the whole product: each variant's actual final price,
               // shown as a low–high range (a single value when they coincide) — even
@@ -318,8 +330,8 @@ export function ProductOverridesCard({ builder, patch, products }) {
                           </div>
                         </InlineStack>
                       </button>
-                      <Select label="Options" labelHidden options={groupOpts} value={sameRule ? rules[0] || 'set' : 'mixed'} onChange={(v) => { if (v !== 'mixed') setGroupField(vids, { rule: v }); }} />
-                      <TextField label="Amount" labelHidden type="number" prefix="$" min={0} value={sameVal ? String(vals[0] ?? '') : ''} placeholder={sameVal ? undefined : 'Mixed'} onChange={(v) => setGroupField(vids, { value: Number(v) || 0 })} autoComplete="off" />
+                      <Select label="Options" labelHidden options={groupOpts} value={sameRule ? optVals[0] : 'mixed'} onChange={(v) => { if (v !== 'mixed') setGroupField(vids, overrideOptPatch(v)); }} />
+                      <TextField label="Amount" labelHidden type="number" min={0} {...(groupPct ? { suffix: '%', max: 100 } : { prefix: '$' })} value={sameVal ? String(vals[0] ?? '') : ''} placeholder={sameVal ? undefined : 'Mixed'} onChange={(v) => setGroupField(vids, { value: Number(v) || 0 })} autoComplete="off" />
                       <Text as="span" variant="bodyMd" alignment="end" fontWeight="medium">{bulkPays}</Text>
                     </div>
                   </Box>

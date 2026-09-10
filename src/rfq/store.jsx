@@ -414,9 +414,24 @@ function reducer(state, action) {
           customized: !!(cc.checkoutToDraft || cc.editableShipping || (cc.taxSettings && cc.taxSettings !== 'collect') || cc.taxRegistrationId || (cc.paymentTerms && cc.paymentTerms !== 'No payment terms')),
         },
       };
+      const quotes = { ...state.quotes, [cc.quoteId]: q };
+      // Back-fill: add the requester's past D2C quotes to the new company + its
+      // quote history (the "Also sync past quotes" checkbox, default on).
+      if (cc.syncPast !== false) {
+        const email = (q.customer?.email || '').toLowerCase();
+        Object.keys(quotes).forEach((num) => {
+          if (num === cc.quoteId || !email) return;
+          const past = quotes[num];
+          if ((past.customer?.email || '').toLowerCase() !== email) return;
+          const linked = past.syncedCompanyKey || past.linkedCompanyKey;
+          if (!linked && past.state !== 'linked' && past.state !== 'shopifySynced') {
+            quotes[num] = { ...past, state: 'shopifySynced', syncedCompanyKey: key, backfilledFrom: cc.quoteId };
+          }
+        });
+      }
       return {
         ...state,
-        quotes: { ...state.quotes, [cc.quoteId]: q },
+        quotes,
         createdCompanies: { ...state.createdCompanies, [key]: snapshot },
         createCompany: null,
         // Re-imported god-file success modal (the "Company created" step) instead
