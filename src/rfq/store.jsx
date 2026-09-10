@@ -274,7 +274,7 @@ function reducer(state, action) {
       // Member (syncMode 'fixed') → the company is deterministic (fixedCompanyKey).
       // Independent (selector) → the recommended company, or none (merchant must pick).
       const isMember = q.syncMode === 'fixed';
-      const companyKey = isMember ? q.fixedCompanyKey || '' : q.recommendedKey || '';
+      const companyKey = action.companyKey || (isMember ? q.fixedCompanyKey || '' : q.recommendedKey || '');
       return {
         ...state,
         syncFlow: { step: 'sync', quoteId: action.id, companyKey, autoSync: false, location: '', role: 'Ordering only', createdLocations: [], newLocation: null },
@@ -435,8 +435,9 @@ function reducer(state, action) {
         : [];
       const allLocs = [...baseLocs, ...(sf.createdLocations || []).map((l) => l.name)];
       const location = sf.location || allLocs[0] || '';
+      const current = state.quotes[sf.quoteId];
       const q = {
-        ...state.quotes[sf.quoteId],
+        ...current,
         state: 'shopifySynced',
         syncedCompanyKey: sf.companyKey,
         assignedLocation: location,
@@ -444,11 +445,57 @@ function reducer(state, action) {
         quoteAutoSyncEnabled: sf.autoSync,
         createdLocations: sf.createdLocations && sf.createdLocations.length ? sf.createdLocations : undefined,
       };
+      const quotes = { ...state.quotes, [sf.quoteId]: q };
+      // Back-fill: move the requester's other D2C quotes into B2B under this company
+      // too, so their full history shows there. Default is on (syncPast !== false),
+      // but NEVER on a company switch — if the requester already belongs to another
+      // company, their history stays there (matches the hidden checkbox).
+      let backfilled = 0;
+      const email = (current?.customer?.email || '').toLowerCase();
+      const isOther = (num) => num !== sf.quoteId && email && (quotes[num].customer?.email || '').toLowerCase() === email;
+      const existingKey =
+        current?.linkedCompanyKey ||
+        Object.keys(quotes).filter(isOther).map((num) => quotes[num].syncedCompanyKey || quotes[num].linkedCompanyKey).find(Boolean) ||
+        null;
+      const isSwitch = !!existingKey && existingKey !== sf.companyKey;
+      if (sf.syncPast !== false && !isSwitch) {
+        Object.keys(quotes).forEach((num) => {
+          if (!isOther(num)) return;
+          const past = quotes[num];
+          const linked = past.syncedCompanyKey || past.linkedCompanyKey;
+          if (!linked && past.state !== 'linked' && past.state !== 'shopifySynced') {
+            quotes[num] = { ...past, state: 'shopifySynced', syncedCompanyKey: sf.companyKey, assignedLocation: location, backfilledFrom: sf.quoteId };
+            backfilled += 1;
+          }
+        });
+      }
       // Persist company-level auto-sync so reopening reflects "already auto-syncs".
       const autoSyncCompanies = sf.autoSync
         ? { ...(state.autoSyncCompanies || {}), [sf.companyKey]: true }
         : state.autoSyncCompanies || {};
-      return { ...state, quotes: { ...state.quotes, [sf.quoteId]: q }, autoSyncCompanies, syncFlow: { ...sf, location, step: 'success' } };
+      return { ...state, quotes, autoSyncCompanies, syncFlow: { ...sf, location, backfilled, step: 'success' } };
+    }
+    case 'LINK_QUOTE_TO_COMPANY': {
+      // The customer is already managed under this company — link the quote directly
+      // using the existing info (their assigned location/role), no picker.
+      const q = state.quotes[action.id];
+      if (!q) return state;
+      const email = (q.customer?.email || '').toLowerCase();
+      const managed = Object.values(state.quotes).find(
+        (x) => (x.customer?.email || '').toLowerCase() === email && (x.syncedCompanyKey || x.linkedCompanyKey) === action.companyKey,
+      );
+      const updated = {
+        ...q,
+        state: 'shopifySynced',
+        syncedCompanyKey: action.companyKey,
+        assignedLocation: managed?.assignedLocation || '',
+        assignedRole: managed?.assignedRole || 'Ordering only',
+      };
+      return {
+        ...state,
+        quotes: { ...state.quotes, [action.id]: updated },
+        toast: `Quote No.${action.id} added to ${shopifyCompanyDirectory[action.companyKey]?.name || 'the company'}.`,
+      };
     }
     case 'TOAST':
       return { ...state, toast: action.message };
@@ -457,6 +504,20 @@ function reducer(state, action) {
     default:
       return state;
   }
+}
+
+// The company a customer (by email) is already managed under in B2B — any of their
+// quotes synced/linked to a company. Lets every quote of that customer agree on
+// their B2B membership instead of each quote deriving it in isolation.
+export function managedCompanyKeyForEmail(quotes, email) {
+  const e = (email || '').toLowerCase();
+  if (!e) return null;
+  for (const q of Object.values(quotes || {})) {
+    if ((q.customer?.email || '').toLowerCase() !== e) continue;
+    const key = q.syncedCompanyKey || q.linkedCompanyKey;
+    if (key) return key;
+  }
+  return null;
 }
 
 const StoreContext = createContext(null);

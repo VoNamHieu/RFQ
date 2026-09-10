@@ -21,7 +21,7 @@ import { companyBaseEntries, policyStatus } from '../pricing.js';
 import { openBuildFromQuotes } from './BuildFromQuotes.jsx';
 import { versionFlags } from '../../shared/versions.js';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
-import basePricingArt from '../assets/base-pricing-empty.png';
+import basePricingArt from '../assets/base-pricing-empty.webp';
 
 const PAGE_SIZES = [5, 10, 20, 100];
 

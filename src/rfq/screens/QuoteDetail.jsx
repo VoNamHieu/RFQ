@@ -25,7 +25,7 @@ import {
   PlusCircleIcon,
   MagicIcon,
 } from '@shopify/polaris-icons';
-import { useStore, handoffToB2B } from '../store.jsx';
+import { useStore, handoffToB2B, managedCompanyKeyForEmail } from '../store.jsx';
 import { money, money2 } from '../utils.js';
 import { shopifyCompanyDirectory } from '../data/companies.js';
 import { SaveToB2B } from '../components/SaveToB2B.jsx';
@@ -193,17 +193,23 @@ function PaymentCard({ subtotal, dispatch, onSendProposal }) {
 
 // Right column: Customer card (email + collapsible info + message).
 function CustomerCard({ quote }) {
+  const { state } = useStore();
   const [open, setOpen] = useState(true);
   const customer = quote.customer || {};
-  const companyKey = quoteCompanyKey(quote);
+  // Fall back to the company this customer is already managed under (via another
+  // quote), so their company shows consistently even on a not-yet-linked quote.
+  const managedKey = managedCompanyKeyForEmail(state.quotes, customer.email);
+  const companyKey = quoteCompanyKey(quote) || managedKey;
   const company = companyKey ? shopifyCompanyDirectory[companyKey] : null;
+  // Once the customer is a managed B2B buyer, the panel reads as Company info.
+  const isCompanyView = !!company && (quote.state === 'shopifySynced' || quote.state === 'linked' || !!managedKey);
   const shipLines = String(customer.shipping || 'Not provided').split('\n');
 
   return (
     <Card>
       <BlockStack gap="200">
         <InlineStack align="space-between" blockAlign="center">
-          <Text as="h2" variant="headingSm">Customer</Text>
+          <Text as="h2" variant="headingSm">{isCompanyView ? 'Company' : 'Customer'}</Text>
           <Button icon={MenuHorizontalIcon} variant="tertiary" accessibilityLabel="Customer actions" />
         </InlineStack>
 
@@ -217,7 +223,7 @@ function CustomerCard({ quote }) {
               style={{ all: 'unset', cursor: 'pointer', width: '100%' }}
             >
               <InlineStack align="space-between" blockAlign="center">
-                <Text as="span" variant="headingSm">Customer Information</Text>
+                <Text as="span" variant="headingSm">{isCompanyView ? 'Company Information' : 'Customer Information'}</Text>
                 <Icon source={open ? ChevronUpIcon : ChevronDownIcon} tone="subdued" />
               </InlineStack>
             </button>
@@ -225,16 +231,34 @@ function CustomerCard({ quote }) {
           <Collapsible id="customer-info" open={open}>
             <Box padding="300" paddingBlockStart="0">
               <BlockStack gap="300">
-                <BlockStack gap="050">
-                  <Text as="span" variant="bodyMd" fontWeight="medium">{customer.name}</Text>
-                  <Text as="span" tone="subdued" variant="bodySm">{customer.email}</Text>
-                </BlockStack>
-                {company ? (
-                  <BlockStack gap="050">
-                    <Text as="span" tone="subdued" variant="bodySm">Company</Text>
-                    <Text as="span" variant="bodyMd">{company.name}</Text>
-                  </BlockStack>
-                ) : null}
+                {isCompanyView ? (
+                  <>
+                    <BlockStack gap="050">
+                      <Text as="span" variant="bodyMd" fontWeight="medium">{company.name}</Text>
+                      {company.shopifyId ? (
+                        <Text as="span" tone="subdued" variant="bodySm">{`Shopify company ${company.shopifyId}`}</Text>
+                      ) : null}
+                    </BlockStack>
+                    <BlockStack gap="050">
+                      <Text as="span" tone="subdued" variant="bodySm">Contact person</Text>
+                      <Text as="span" variant="bodyMd">{customer.name}</Text>
+                      <Text as="span" tone="subdued" variant="bodySm">{customer.email}</Text>
+                    </BlockStack>
+                  </>
+                ) : (
+                  <>
+                    <BlockStack gap="050">
+                      <Text as="span" variant="bodyMd" fontWeight="medium">{customer.name}</Text>
+                      <Text as="span" tone="subdued" variant="bodySm">{customer.email}</Text>
+                    </BlockStack>
+                    {company ? (
+                      <BlockStack gap="050">
+                        <Text as="span" tone="subdued" variant="bodySm">Company</Text>
+                        <Text as="span" variant="bodyMd">{company.name}</Text>
+                      </BlockStack>
+                    ) : null}
+                  </>
+                )}
                 <BlockStack gap="050">
                   <Text as="span" tone="subdued" variant="bodySm">Shipping address</Text>
                   <BlockStack gap="0">

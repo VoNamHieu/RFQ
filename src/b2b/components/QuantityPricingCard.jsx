@@ -4,7 +4,7 @@ import { EditIcon, ExchangeIcon, XCircleIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { companyQuantityPolicy, policyStatus, scopeTypeLabel } from '../pricing.js';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
-import quantityPricingArt from '../assets/quantity-pricing-empty.png';
+import quantityPricingArt from '../assets/quantity-pricing-empty.webp';
 
 export function QuantityPricingCard({ company }) {
   const { state, dispatch } = useStore();

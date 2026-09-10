@@ -35,6 +35,23 @@ export function SyncFlowModals() {
   const isReco = isIndependent && !!sf.companyKey && sf.companyKey === quote?.recommendedKey;
   const showAssign = isIndependent; // location picker only for independent requesters
 
+  // "D2C with history": the same requester (by email) has other quotes not yet tied
+  // to a company. Those can be back-filled into B2B under this company — unless this
+  // is a company switch (the requester already belongs to a different company), in
+  // which case their history stays where it is and no back-fill is offered.
+  const requesterEmail = (quote?.customer?.email || '').toLowerCase();
+  const companyKeyOfQuote = (q) => q.syncedCompanyKey || q.linkedCompanyKey || null;
+  const otherQuotes = requesterEmail
+    ? Object.values(state.quotes).filter((q) => q.number !== sf.quoteId && (q.customer?.email || '').toLowerCase() === requesterEmail)
+    : [];
+  const existingCompanyKey = quote?.linkedCompanyKey || otherQuotes.map(companyKeyOfQuote).find(Boolean) || null;
+  const isSwitch = !!existingCompanyKey && existingCompanyKey !== sf.companyKey;
+  const pastD2CQuotes = otherQuotes.filter(
+    (q) => !companyKeyOfQuote(q) && q.state !== 'linked' && q.state !== 'shopifySynced',
+  );
+  const showSyncPast = isIndependent && !isSwitch && pastD2CQuotes.length > 0;
+  const syncPast = showSyncPast && sf.syncPast !== false; // default: checked (opt-out)
+
   const close = () => dispatch({ type: 'SYNC_CLOSE' });
 
   // ── Step 1: choose / confirm the company ───────────────────────────────────
@@ -221,6 +238,18 @@ export function SyncFlowModals() {
                 </Box>
               </>
             ) : null}
+
+            {showSyncPast ? (
+              <>
+                <Divider />
+                <Checkbox
+                  label="Also sync past quotes"
+                  helpText="Move previous quotes from this customer to the B2B company, so their full quote history stays together. Turn this off to sync only the current quote."
+                  checked={syncPast}
+                  onChange={(v) => dispatch({ type: 'SYNC_PATCH', patch: { syncPast: v } })}
+                />
+              </>
+            ) : null}
           </BlockStack>
         </Modal.Section>
       </Modal>
@@ -250,6 +279,11 @@ export function SyncFlowModals() {
               <Badge>{`${locCount} location${locCount === 1 ? '' : 's'}`}</Badge>
               <Badge>{`${buyersPill} buyer${buyersPill === 1 ? '' : 's'}`}</Badge>
             </InlineStack>
+          ) : null}
+          {sf.backfilled > 0 ? (
+            <Text as="p" alignment="center" tone="subdued" variant="bodySm">
+              {`${sf.backfilled} past quote${sf.backfilled === 1 ? '' : 's'} from ${buyer} also moved into B2B under ${company?.name}.`}
+            </Text>
           ) : null}
         </BlockStack>
       </Modal.Section>

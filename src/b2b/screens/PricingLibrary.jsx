@@ -19,8 +19,8 @@ import {
 import { EditIcon, DeleteIcon, ToggleOnIcon, ToggleOffIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { policyStatus, policyUsage, policyUsageCount } from '../pricing.js';
-import basePricingArt from '../assets/base-pricing-empty.png';
-import quantityPricingArt from '../assets/quantity-pricing-empty.png';
+import basePricingArt from '../assets/base-pricing-empty.webp';
+import quantityPricingArt from '../assets/quantity-pricing-empty.webp';
 
 const AUDIENCE = [
   { id: 'all', label: 'All' },
@@ -74,7 +74,7 @@ function PricingTypeChooser({ onBack, onPick }) {
         {PRICING_TYPES.map((t) => (
           <Card key={t.kind}>
             <BlockStack gap="400">
-              <img src={t.image} alt="" style={{ display: 'block', width: '100%', height: 'auto', borderRadius: 12 }} />
+              <img src={t.image} alt="" style={{ display: 'block', height: 140, width: 'auto', maxWidth: '100%', objectFit: 'contain', margin: '0 auto' }} />
               <BlockStack gap="150">
                 <Text as="h3" variant="headingMd">{t.title}</Text>
                 <Text as="p" tone="subdued">{t.description}</Text>

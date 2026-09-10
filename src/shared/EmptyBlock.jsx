@@ -14,8 +14,11 @@ export function EmptyBlock({ heading, children, action, secondaryAction, image, 
     <Box padding="800">
       <BlockStack gap="200" inlineAlign="center">
         {image ? (
-          <Box maxWidth="260px" paddingBlockEnd="200">
-            <img src={image} alt={imageAlt || ''} style={{ display: 'block', width: '100%', height: 'auto', borderRadius: 12 }} />
+          // Size by height (not width) so illustrations with different content
+          // aspect ratios still render at a consistent visual size. Art is trimmed
+          // to its content, so the height maps directly to the drawn subject.
+          <Box maxWidth="320px" paddingBlockEnd="200">
+            <img src={image} alt={imageAlt || ''} style={{ display: 'block', height: 140, width: 'auto', maxWidth: '100%', objectFit: 'contain', margin: '0 auto' }} />
           </Box>
         ) : null}
         {heading ? (

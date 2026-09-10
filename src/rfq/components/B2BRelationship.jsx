@@ -1,6 +1,6 @@
 import React from 'react';
 import { Card, BlockStack, InlineStack, InlineGrid, Box, Text, Badge, Button, Divider } from '@shopify/polaris';
-import { useStore, handoffToB2B } from '../store.jsx';
+import { useStore, handoffToB2B, managedCompanyKeyForEmail } from '../store.jsx';
 import { shopifyCompanyDirectory } from '../data/companies.js';
 import { money2 } from '../utils.js';
 
@@ -66,6 +66,39 @@ export function B2BRelationshipCard({ quote }) {
             <Button variant="tertiary" onClick={() => dispatch({ type: 'TOAST', message: 'Learn more' })}>Learn more</Button>
           </InlineStack>
           <Text as="p" tone="subdued" variant="bodySm">Prefills your first company on install — nothing created automatically.</Text>
+        </BlockStack>
+      </Card>
+    );
+  }
+
+  // The customer is already managed under a company via another quote, but THIS
+  // quote isn't linked yet — show a consistent "in B2B" card (not "not identified")
+  // so all of a customer's quotes agree on their B2B membership.
+  const managedKey = managedCompanyKeyForEmail(rfqState.quotes, quote.customer?.email);
+  const selfLinked = !!(quote.syncedCompanyKey || quote.linkedCompanyKey);
+  if (state !== 'linked' && state !== 'shopifySynced' && managedKey && !selfLinked) {
+    const managed = shopifyCompanyDirectory[managedKey];
+    const buyerName = quote.customer?.name || 'This customer';
+    return (
+      <Card>
+        <BlockStack gap="300">
+          <InlineStack align="space-between" blockAlign="center">
+            <Text as="h2" variant="headingSm">B2B relationship</Text>
+            <Badge tone="info">In B2B app</Badge>
+          </InlineStack>
+          <Text as="p" tone="subdued" variant="bodySm">
+            {`${buyerName} is already a buyer at ${managed?.name || 'a company'} in the B2B app. This quote isn’t part of that company’s history yet — sync it to add it.`}
+          </Text>
+          <BlockStack gap="150">
+            <SummaryRow label="Company" value={managed?.name || '—'} />
+            <SummaryRow label="Quoted value" value={money2(quoteValueOf(quote))} />
+          </BlockStack>
+          <InlineStack gap="200">
+            <Button onClick={() => dispatch({ type: 'LINK_QUOTE_TO_COMPANY', id: quote.number, companyKey: managedKey })}>
+              Update to B2B
+            </Button>
+            <Button variant="tertiary" onClick={() => handoffToB2B(rfqState, quote.number)}>Open in B2B app</Button>
+          </InlineStack>
         </BlockStack>
       </Card>
     );

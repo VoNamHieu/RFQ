@@ -567,6 +567,11 @@ export function CreateQuote() {
         <CatalogPickerModal
           customer={customer}
           initialSelected={quoteVariantIds}
+          onPickFromStore={() => {
+            setCatalogPicker(false);
+            setStorePicker(true);
+          }}
+          onCreateCatalog={() => window.open('https://admin.shopify.com/settings/markets', '_blank', 'noopener,noreferrer')}
           onClose={() => setCatalogPicker(false)}
           onAdd={(additions) => {
             mergeLines(additions);

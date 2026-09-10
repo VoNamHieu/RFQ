@@ -24,21 +24,24 @@ const catalogProducts = (catalog) => {
 const catalogProductCount = (catalog) =>
   RFQ_CATALOG.filter((p) => (p.variants || []).some((v) => catalog.prices[v.id] != null)).length;
 
-export function CatalogPickerModal({ customer, onClose, onAdd, initialSelected }) {
+export function CatalogPickerModal({ customer, onClose, onAdd, initialSelected, onPickFromStore, onCreateCatalog }) {
   const catalogs = (customer && RFQ_SHOPIFY_CATALOGS[customer.companyKey]) || [];
   const [catalogId, setCatalogId] = useState(catalogs.length === 1 ? catalogs[0].id : null);
 
-  // No catalog assigned → an informative empty modal (D2C customers, or a B2B
-  // company without a Shopify catalog yet).
+  const storeAction = onPickFromStore ? { content: 'Add product from Shopify', onAction: onPickFromStore } : undefined;
+  const catalogAction = onCreateCatalog ? { content: 'Set up a catalog', onAction: onCreateCatalog } : undefined;
+
+  // No catalog assigned → an empty-state warning (D2C customers, or a B2B company
+  // without a Shopify catalog yet), with a CTA to the whole-store picker.
   if (catalogs.length === 0) {
     return (
       <Modal open onClose={onClose} title="Add product from catalog" secondaryActions={[{ content: 'Close', onAction: onClose }]}>
         <Modal.Section>
-          <Banner tone="info" title={`No Shopify catalog for ${customer?.company || 'this customer'}`}>
-            <p>
-              This customer has no products published to a Shopify B2B catalog. Use “Add product → Shopify” to pick from
-              the whole store, or assign a catalog in Shopify’s Markets → Catalogs.
-            </p>
+          <Banner tone="info" title={`${customer?.company || 'This company'} has no Shopify catalog yet`} action={storeAction} secondaryAction={catalogAction}>
+            <Text as="p">
+              No Shopify B2B catalog has been assigned to this company yet. Add products from your store to create this
+              quote, or set up a catalog for this company in <Text as="span" fontWeight="semibold">Shopify → Markets → Catalogs</Text>.
+            </Text>
           </Banner>
         </Modal.Section>
       </Modal>
@@ -74,10 +77,29 @@ export function CatalogPickerModal({ customer, onClose, onAdd, initialSelected }
   }
 
   // Step 2: the shared Shopify-style picker for the chosen catalog.
+  const products = catalogProducts(activeCatalog);
+  const backToCatalogs = catalogs.length > 1 ? { content: '← Catalogs', onAction: () => setCatalogId(null) } : { content: 'Close', onAction: onClose };
+
+  // Chosen catalog has no products published → empty-state warning + CTA.
+  if (products.length === 0) {
+    return (
+      <Modal open onClose={onClose} title={`Add from ${activeCatalog.name}`} secondaryActions={[backToCatalogs]}>
+        <Modal.Section>
+          <Banner tone="info" title={`${activeCatalog.name} has no products yet`} action={storeAction} secondaryAction={catalogAction}>
+            <Text as="p">
+              This catalog doesn’t have any products published yet. Add products from your store to create this quote,
+              or add them to this catalog in <Text as="span" fontWeight="semibold">Shopify → Markets → Catalogs</Text>.
+            </Text>
+          </Banner>
+        </Modal.Section>
+      </Modal>
+    );
+  }
+
   return (
     <ProductPickerModal
       title={`Add from ${activeCatalog.name}`}
-      products={catalogProducts(activeCatalog)}
+      products={products}
       priceHeader="Catalog price"
       priced
       initialSelected={initialSelected}
