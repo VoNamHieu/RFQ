@@ -35,6 +35,26 @@ const NOW = new Date('2026-08-24T16:43:00');
 const DAY = 86400000;
 const COMPLETED = new Set(['Fulfilled', 'Paid']);
 
+// ── Dev-only event-basis overlay (toggled by the "Inject test data" dev button) ──
+// The demo seeds only a flat `order.amount` and full line items — there are no
+// discounts or returns, so the PRODUCTION definitions (Net sales = gross − discounts
+// − reversals; COGS reversed on returned units) can't visibly diverge from the proxy.
+// This overlay injects exactly that, keyed by order id, so the divergence is
+// demonstrable in dev without baking it into the default demo. It rewrites both the
+// order `amount` AND the line items, so every downstream metric (Net sales, GP via
+// orderCogs, Top products revenue/units, company/pricing rows, repeat, trailing-90 GP)
+// picks up the event basis with no formula changes. Never applied in a prod build.
+const EVENT_OVERLAY = {
+  // #1039 — a $400 order-level discount: Net sales drops, GP drops by the same $400
+  // (nothing returned, so COGS is unchanged). Demonstrates "− Discounts".
+  '#1039': { discount: 400 },
+  // #1033 — a partial return of SEA-30 (200 of 400 units, $1,250 of the $2,500 line).
+  // Reverses $1,250 of sales AND 200 × $5 = $1,000 of COGS, so GP drops only $250 and
+  // margin recomputes. Also drops SEA-30's Top-products revenue/units. Demonstrates
+  // "− Sales reversals" + Net COGS reversal on the same event.
+  '#1033': { returnSku: 'SEA-30', returnQty: 200, returnValue: 1250 },
+};
+
 // ── small numeric helpers (ported verbatim from the god file) ────────────────
 const toDate = (d) => (d ? new Date(String(d).slice(0, 10) + 'T00:00:00') : null);
 const pct = (n, d) => (d ? Math.round((n / d) * 100) : 0);
@@ -128,7 +148,7 @@ function MiniCompare({ items }) {
 
 // Needs-attention insight card (spec §3.4): a framing line, a big value, the
 // supporting context, and a CTA that jumps to the relevant screen.
-function InsightCard({ headline, value, tone, context, cta, onAction }) {
+function InsightCard({ headline, value, tone, context, note, cta, onAction }) {
   return (
     <Card>
       <BlockStack gap="200">
@@ -137,6 +157,7 @@ function InsightCard({ headline, value, tone, context, cta, onAction }) {
           <Text as="span" variant="headingLg" tone={tone}>{value}</Text>
           {context ? <Text as="p" tone="subdued" variant="bodySm">{context}</Text> : null}
         </BlockStack>
+        {note ? <Text as="span" tone="subdued" variant="bodyXs">{note}</Text> : null}
         {cta ? (
           <Box>
             <Button variant="plain" onClick={onAction}>{cta}</Button>
@@ -257,6 +278,7 @@ export function Analytics({ embeddedCompanyId = null }) {
   const [advancedPricing, setAdvancedPricing] = useState(false); // Pricing §6.5 expander
   const [marginThreshold, setMarginThreshold] = useState('20'); // §6.1 margin-exception threshold
   const [breakdown, setBreakdown] = useState('company'); // company | location | pricing | source
+  const [devInject, setDevInject] = useState(false); // dev-only: inject event-basis test data (returns/discounts)
 
   const activeCompanyId = embeddedCompanyId || companyFilter;
   const scopedCompanies = activeCompanyId === 'all' ? companies.slice() : companies.filter((c) => c.id === activeCompanyId);
@@ -308,7 +330,26 @@ export function Analytics({ embeddedCompanyId = null }) {
   const previousMonths = compareEnabled ? monthsBetween(previousPeriodStart, previousPeriodEnd) : [];
 
   // ── orders / quotes in scope ────────────────────────────────────────────────
-  const attach = (o, c) => ({ ...o, companyId: c.id, companyName: c.name, items: analyticsOrderItems[o.id] || [] });
+  // Dev-only: rewrite an order to its event basis (see EVENT_OVERLAY). Subtracts
+  // discounts and returned value from `amount`, and shrinks the returned line's
+  // qty/revenue so COGS/units follow. A no-op unless the dev toggle is on.
+  const applyEventOverlay = (o) => {
+    const ov = devInject ? EVENT_OVERLAY[o.id] : null;
+    if (!ov) return o;
+    let amount = Number(o.amount) || 0;
+    let items = o.items;
+    if (ov.discount) amount -= ov.discount;
+    if (ov.returnValue) {
+      amount -= ov.returnValue;
+      items = items.map((it) =>
+        it.sku === ov.returnSku
+          ? { ...it, qty: Math.max(0, (Number(it.qty) || 0) - (ov.returnQty || 0)), revenue: Math.max(0, (Number(it.revenue) || 0) - ov.returnValue) }
+          : it,
+      );
+    }
+    return { ...o, amount: Math.max(0, amount), items, _event: ov };
+  };
+  const attach = (o, c) => applyEventOverlay({ ...o, companyId: c.id, companyName: c.name, items: analyticsOrderItems[o.id] || [] });
   let allScopedOrders = scopedCompanies.flatMap((c) => (c.orders || []).map((o) => attach(o, c))).filter((o) => COMPLETED.has(o.status));
   if (locationFilter !== 'all') allScopedOrders = allScopedOrders.filter((o) => `${o.companyId}::${o.location}` === locationFilter);
   const orders = allScopedOrders.filter((o) => inPeriod(o.date));
@@ -320,14 +361,11 @@ export function Analytics({ embeddedCompanyId = null }) {
     quotes = quotes.filter((q) => q.location === loc);
   }
 
-  // Snapshot quotes: every scoped quote regardless of when it was created. Open
-  // value / aging / approval backlog are current-state metrics (spec §2.1), so a
-  // quote opened months before the date range still counts.
-  let snapshotQuotes = allQuotes.filter((q) => scopedIds.has(q.company));
-  if (locationFilter !== 'all') {
-    const loc = locationFilter.split('::')[1];
-    snapshotQuotes = snapshotQuotes.filter((q) => q.location === loc);
-  }
+  // Snapshot quotes: every scoped quote regardless of when it was created. Open value
+  // is a current-state metric — it deliberately ignores BOTH the date range and the
+  // location filter, so the card reads the same no matter how the page is scoped by
+  // time/location (the microcopy on the card says so). Company scope still applies.
+  const snapshotQuotes = allQuotes.filter((q) => scopedIds.has(q.company));
 
   const sales = orders.reduce((a, o) => a + (Number(o.amount) || 0), 0);
   const orderCount = orders.length;
@@ -335,25 +373,54 @@ export function Analytics({ embeddedCompanyId = null }) {
   const activeCompanyIds = new Set(orders.map((o) => o.companyId));
 
   // ── gross profit / margin (spec §3.1) ───────────────────────────────────────
-  // COGS from order-line qty × product cost; orders with no line items fall back
-  // to a portfolio cost ratio so the totals stay whole.
-  const productCost = (sku) => Number(productBySku(sku)?.cost) || 0;
-  const DEFAULT_COST_RATIO = 0.68;
+  // COGS = order-line qty × product unit cost (Shopify InventoryItem.unitCost).
+  // When cost is unknown — a product without a cost, or an order with no line items —
+  // we return null and let GP/Margin stay null instead of fabricating an estimate.
+  // For a financial metric, "not available" (—) beats a guess that looks like a real
+  // number, because GP/Margin flow into the Hero KPIs, product and company analytics.
+  const productCost = (sku) => { const c = productBySku(sku)?.cost; return c == null ? null : (Number(c) || 0); };
   const orderCogs = (o) => {
     const items = o.items || [];
-    return items.length
-      ? items.reduce((a, it) => a + productCost(it.sku) * (Number(it.qty) || 0), 0)
-      : (Number(o.amount) || 0) * DEFAULT_COST_RATIO;
+    if (!items.length) return null;
+    let sum = 0;
+    for (const it of items) {
+      const c = productCost(it.sku);
+      if (c === null) return null; // any line without a cost → whole order is uncosted
+      sum += c * (Number(it.qty) || 0);
+    }
+    return sum;
   };
-  const orderGP = (o) => (Number(o.amount) || 0) - orderCogs(o);
-  const grossProfit = orders.reduce((a, o) => a + orderGP(o), 0);
-  const grossMargin = sales ? (grossProfit / sales) * 100 : 0;
+  const orderGP = (o) => { const c = orderCogs(o); return c === null ? null : (Number(o.amount) || 0) - c; };
+  // GP over a set of orders, computed on the COSTED portion only — no fabricated
+  // estimates. `coverage` = share of the set's sales that has cost data, so a partial
+  // GP/Margin is always shown WITH how complete it is (never as if it were the full total).
+  const gpStats = (os) => {
+    if (!os.length) return { gp: 0, margin: 0, coverage: null }; // no orders → GP is 0, not "unknown"
+    let gp = 0, costedRev = 0, totalRev = 0, n = 0;
+    for (const o of os) {
+      const amt = Number(o.amount) || 0; totalRev += amt;
+      const g = orderGP(o);
+      if (g !== null) { gp += g; costedRev += amt; n += 1; }
+    }
+    return { gp: n ? gp : null, margin: n && costedRev ? (gp / costedRev) * 100 : null, coverage: totalRev ? (costedRev / totalRev) * 100 : null };
+  };
+  const marginOf = (gp, rev) => (gp === null ? null : rev ? (gp / rev) * 100 : 0);
+  const gpAll = gpStats(orders);
+  const grossProfit = gpAll.gp;
+  const grossMargin = gpAll.margin;
+  const costCoverage = gpAll.coverage; // % of net sales that has cost data (100 = fully costed)
+  // Null-safe formatters: an unknown (uncosted) value renders as "—", never as $0 or 0%.
+  const moneyN = (v) => (v == null ? '—' : money(v));
+  const moneyShortN = (v) => (v == null ? '—' : moneyShort(v));
+  const pctN = (v) => (v == null ? '—' : `${Math.round(v)}%`);
+  const pct1N = (v) => (v == null ? '—' : `${v.toFixed(1)}%`);
   const unitsSold = orders.reduce((a, o) => a + (o.items || []).reduce((s, it) => s + (Number(it.qty) || 0), 0), 0);
-  const previousGrossProfit = previousOrders.reduce((a, o) => a + orderGP(o), 0);
+  const gpPrev = gpStats(previousOrders);
+  const previousGrossProfit = gpPrev.gp;
   const previousSalesGP = previousOrders.reduce((a, o) => a + (Number(o.amount) || 0), 0);
-  const previousGrossMargin = previousSalesGP ? (previousGrossProfit / previousSalesGP) * 100 : 0;
-  const gpDelta = compareEnabled && previousGrossProfit ? pctChange(grossProfit, previousGrossProfit) : null;
-  const marginDelta = compareEnabled && previousSalesGP ? Math.round((grossMargin - previousGrossMargin) * 10) / 10 : null; // pp
+  const previousGrossMargin = gpPrev.margin;
+  const gpDelta = compareEnabled && grossProfit !== null && previousGrossProfit ? pctChange(grossProfit, previousGrossProfit) : null;
+  const marginDelta = compareEnabled && grossMargin !== null && previousGrossMargin !== null && previousSalesGP ? Math.round((grossMargin - previousGrossMargin) * 10) / 10 : null; // pp
 
   // Repeat = every completed order after a company's first completed order.
   const repeatKeys = new Set();
@@ -433,8 +500,8 @@ export function Analytics({ embeddedCompanyId = null }) {
       const previousRange = hasPrev ? sumRevenueInRange(scopedHistory, previousPeriodStart, previousPeriodEnd) : 0;
       const last = os.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)))[0]?.date || null;
       const rep = os.filter(isRepeat).reduce((a, o) => a + (Number(o.amount) || 0), 0);
-      const gp = os.reduce((a, o) => a + orderGP(o), 0);
-      return { name: c.name, id: c.id, revenue: rev, orders: os.length, aov: os.length ? rev / os.length : 0, share: sales ? (rev / sales) * 100 : 0, growth: compareEnabled && previousRange ? pctChange(currentRange, previousRange) : null, repeat: rev ? (rep / rev) * 100 : 0, last, gp, margin: rev ? (gp / rev) * 100 : 0 };
+      const st = gpStats(os);
+      return { name: c.name, id: c.id, revenue: rev, orders: os.length, aov: os.length ? rev / os.length : 0, share: sales ? (rev / sales) * 100 : 0, growth: compareEnabled && previousRange ? pctChange(currentRange, previousRange) : null, repeat: rev ? (rep / rev) * 100 : 0, last, gp: st.gp, margin: st.margin, coverage: st.coverage };
     })
     .sort((a, b) => b.revenue - a.revenue);
 
@@ -457,17 +524,17 @@ export function Analytics({ embeddedCompanyId = null }) {
   orders.forEach((o) =>
     (o.items || []).forEach((i) => {
       const p = productBySku(i.sku) || { sku: i.sku, title: i.sku, productType: 'Other' };
-      const cur = productMap.get(i.sku) || { name: p.title, sub: p.productType, sku: i.sku, revenue: 0, cogs: 0, units: 0, orders: 0, companies: new Set() };
+      const cur = productMap.get(i.sku) || { name: p.title, sub: p.productType, sku: i.sku, revenue: 0, cogs: 0, costKnown: true, units: 0, orderIds: new Set(), companies: new Set() };
       cur.revenue += Number(i.revenue) || 0;
-      cur.cogs += productCost(i.sku) * (Number(i.qty) || 0);
+      { const c = productCost(i.sku); if (c === null) cur.costKnown = false; else cur.cogs += c * (Number(i.qty) || 0); }
       cur.units += Number(i.qty) || 0;
-      cur.orders += 1;
+      cur.orderIds.add(o.id); // distinct orders, not line items — a SKU twice in one order counts once
       cur.companies.add(o.companyId);
       productMap.set(i.sku, cur);
     }),
   );
   const productRows = [...productMap.values()]
-    .map((x) => ({ name: x.name, sub: x.sub, sku: x.sku, revenue: x.revenue, units: x.units, orders: x.orders, companies: x.companies.size, gp: x.revenue - x.cogs, margin: x.revenue ? ((x.revenue - x.cogs) / x.revenue) * 100 : 0, aov: x.orders ? x.revenue / x.orders : 0, share: sales ? (x.revenue / sales) * 100 : 0 }))
+    .map((x) => { const gp = x.costKnown ? x.revenue - x.cogs : null; const orders = x.orderIds.size; return { name: x.name, sub: x.sub, sku: x.sku, revenue: x.revenue, units: x.units, orders, companies: x.companies.size, gp, margin: marginOf(gp, x.revenue), aov: orders ? x.revenue / orders : 0, share: sales ? (x.revenue / sales) * 100 : 0 }; })
     .sort((a, b) => b.revenue - a.revenue);
 
   // ── pricing usage / realization ─────────────────────────────────────────────
@@ -478,10 +545,10 @@ export function Analytics({ embeddedCompanyId = null }) {
     // A named pricing profile groups by its own name; an order with no profile
     // (Shopify default or a manual price) groups under its price source instead.
     const k = o.pricing && o.pricing !== 'None' ? o.pricing : srcLabel;
-    const cur = pricingMap.get(k) || { name: k, sub: srcLabel, revenue: 0, reference: 0, cogs: 0, orders: 0, companies: new Set(), locations: new Set() };
+    const cur = pricingMap.get(k) || { name: k, sub: srcLabel, revenue: 0, reference: 0, gp: 0, costedRev: 0, costedN: 0, orders: 0, companies: new Set(), locations: new Set() };
     cur.revenue += Number(o.amount) || 0;
     cur.reference += referenceValueForOrder(o);
-    cur.cogs += orderCogs(o);
+    { const g = orderGP(o); if (g !== null) { cur.gp += g; cur.costedRev += (Number(o.amount) || 0); cur.costedN += 1; } }
     cur.orders += 1;
     cur.companies.add(o.companyId);
     cur.locations.add(`${o.companyId}::${o.location}`);
@@ -507,9 +574,10 @@ export function Analytics({ embeddedCompanyId = null }) {
   const pricingUsage = [...pricingMap.values()]
     .map((x) => {
       const ov = overrideByPricing.get(x.name);
-      return { ...x, companies: x.companies.size, locations: x.locations.size, share: sales ? (x.revenue / sales) * 100 : 0, gp: x.revenue - x.cogs, margin: x.revenue ? ((x.revenue - x.cogs) / x.revenue) * 100 : 0, overrideRate: ov && ov.eligible ? (ov.overridden / ov.eligible) * 100 : null, delta: x.revenue - x.reference, deltaPct: x.reference ? ((x.revenue - x.reference) / x.reference) * 100 : null };
+      const gp = x.costedN ? x.gp : null;
+      return { ...x, companies: x.companies.size, locations: x.locations.size, share: sales ? (x.revenue / sales) * 100 : 0, gp, margin: x.costedN && x.costedRev ? (x.gp / x.costedRev) * 100 : null, overrideRate: ov && ov.eligible ? (ov.overridden / ov.eligible) * 100 : null, delta: x.revenue - x.reference, deltaPct: x.reference ? ((x.revenue - x.reference) / x.reference) * 100 : null };
     })
-    .sort((a, b) => b.gp - a.gp);
+    .sort((a, b) => (b.gp ?? -Infinity) - (a.gp ?? -Infinity));
   const referenceValue = orders.reduce((a, o) => a + referenceValueForOrder(o), 0);
   const realizedPriceDelta = sales - referenceValue;
   const realizedPriceDeltaPct = referenceValue ? (realizedPriceDelta / referenceValue) * 100 : null;
@@ -521,9 +589,10 @@ export function Analytics({ embeddedCompanyId = null }) {
 
   // §6.1 margin exceptions — lines below a configurable minimum margin (exceptions,
   // not averages). §6.2 baseline pricing footprint.
-  const lineMargin = (l) => { const rev = Number(l.revenue) || 0; return rev ? ((rev - productCost(l.sku) * (Number(l.qty) || 0)) / rev) * 100 : 0; };
+  const lineMargin = (l) => { const c = productCost(l.sku); if (c === null) return null; const rev = Number(l.revenue) || 0; return rev ? ((rev - c * (Number(l.qty) || 0)) / rev) * 100 : 0; };
   const marginFloor = Number(marginThreshold) || 20;
-  const marginExceptionLines = orderLines.filter((l) => lineMargin(l) < marginFloor);
+  // Only flag a line as below-threshold when its margin is actually known.
+  const marginExceptionLines = orderLines.filter((l) => { const m = lineMargin(l); return m !== null && m < marginFloor; });
   const marginExceptionSales = marginExceptionLines.reduce((a, l) => a + (Number(l.revenue) || 0), 0);
   const hasPricingFn = (c) => (c?.pricing?.base?.length > 0) || !!c?.pricing?.quantity;
   const activePolicyCount = (state.db.policies || []).filter((p) => p.status !== 'Inactive' && p.audienceType === 'b2b').length;
@@ -564,12 +633,12 @@ export function Analytics({ embeddedCompanyId = null }) {
     .map((s) => {
       const os = orders.filter(s.match);
       const rev = os.reduce((a, o) => a + (Number(o.amount) || 0), 0);
-      const cogs = os.reduce((a, o) => a + orderCogs(o), 0);
-      return { name: s.name, revenue: rev, gp: rev - cogs, margin: rev ? ((rev - cogs) / rev) * 100 : 0, share: sales ? (rev / sales) * 100 : 0 };
+      const st = gpStats(os);
+      return { name: s.name, revenue: rev, gp: st.gp, margin: st.margin, share: sales ? (rev / sales) * 100 : 0 };
     })
     .filter((s) => s.revenue > 0)
     .sort((a, b) => b.revenue - a.revenue);
-  const priceSourceMaxMargin = Math.max(1, ...priceSourceRows.map((s) => s.margin));
+  const priceSourceMaxMargin = Math.max(1, ...priceSourceRows.map((s) => s.margin).filter((m) => m !== null));
 
   // ── quote rows / cadence ────────────────────────────────────────────────────
   const quoteVal = (q) => (q.lines || []).reduce((s, l) => s + (Number(l.quoted) || 0) * (Number(l.qty) || 0), 0);
@@ -634,6 +703,19 @@ export function Analytics({ embeddedCompanyId = null }) {
   const newCompanyRevenue = orders.filter((o) => newCompanyIds.has(o.companyId)).reduce((a, o) => a + (Number(o.amount) || 0), 0);
   const existingCompanyRevenue = Math.max(0, sales - newCompanyRevenue);
   const activeLocations = selected ? new Set(orders.map((o) => o.location)).size : allLocationRows.filter((r) => r.orders).length;
+  // New locations = locations of the selected company whose FIRST completed order falls in
+  // the period — the location-level parallel of "New buying companies". (Not "Active
+  // locations", which is a different activity concept and already shown in the Hero KPI.)
+  const newLocations = selected
+    ? (() => {
+        const firstByLoc = new Map();
+        (selected.orders || []).filter((o) => COMPLETED.has(o.status)).forEach((o) => {
+          const d = String(o.date || '').slice(0, 10);
+          if (d && (!firstByLoc.has(o.location) || d < firstByLoc.get(o.location))) firstByLoc.set(o.location, d);
+        });
+        return [...firstByLoc.values()].filter((d) => new Date(d + 'T00:00:00') >= rangeStart).length;
+      })()
+    : 0;
 
   // ── activation ──────────────────────────────────────────────────────────────
   let activationRows = analyticsCompanyActivation.filter((a) => inPeriod(a.registered));
@@ -834,14 +916,14 @@ export function Analytics({ embeddedCompanyId = null }) {
   };
   const trailing90GP = (id) => {
     const c = companies.find((x) => x.id === id);
-    return (c?.orders || []).filter((o) => COMPLETED.has(o.status) && inDateRange(o.date, t90Start, TODAY)).reduce((a, o) => a + orderGP(rawWithItems(o)), 0);
+    return gpStats((c?.orders || []).filter((o) => COMPLETED.has(o.status) && inDateRange(o.date, t90Start, TODAY)).map(rawWithItems)).gp;
   };
   // "Past their normal buying cycle" = reorder ratio beyond Healthy (Watch/At risk/
   // Inactive). Exposure is stated as trailing-90-day sales AND gross profit — never
   // called "revenue at risk", since there is no predictive model behind it (§4.4).
   const pastCycleCompanies = healthRows.filter((r) => ['Watch', 'At risk', 'Inactive'].includes(r.health));
   const pastCycleSales = pastCycleCompanies.reduce((a, r) => a + trailing90Sales(r.id), 0);
-  const pastCycleGP = pastCycleCompanies.reduce((a, r) => a + trailing90GP(r.id), 0);
+  const pastCycleGP = pastCycleCompanies.reduce((a, r) => { if (a === null) return null; const g = trailing90GP(r.id); return g === null ? null : a + g; }, 0);
 
   // Stale pipeline — open quotes with no activity for >10 days (§3.4). quoteAge =
   // days since the last update (a proxy for last meaningful activity).
@@ -850,14 +932,21 @@ export function Analytics({ embeddedCompanyId = null }) {
 
   // Margin deterioration — the company whose gross margin fell most vs the previous
   // period (§3.4). Only meaningful when comparing periods.
+  // Guardrail: a margin "drop" is only trustworthy when BOTH periods are well-costed.
+  // If e.g. this period is 30% cost-covered, its margin is the margin of that 30% — not
+  // comparable to a 100%-covered prior period, so we suppress the signal rather than
+  // raise a Needs-attention action on incomplete data. When shown, we expose the coverage.
+  const MARGIN_DROP_MIN_COVERAGE = 80;
   const marginDrops = compareEnabled
     ? companyRows
         .map((r) => {
           const c = companies.find((x) => x.id === r.id);
           const prevOs = (c?.orders || []).map(rawWithItems).filter((o) => COMPLETED.has(o.status) && inDateRange(o.date, previousPeriodStart, previousPeriodEnd));
-          const prevRev = prevOs.reduce((a, o) => a + (Number(o.amount) || 0), 0);
-          const prevMargin = prevRev ? (prevOs.reduce((a, o) => a + orderGP(o), 0) / prevRev) * 100 : null;
-          return { name: r.name, id: r.id, drop: prevMargin != null && r.revenue > 0 ? prevMargin - r.margin : null, salesAffected: r.revenue };
+          const prev = gpStats(prevOs);
+          const minCoverage = Math.min(r.coverage ?? 0, prev.coverage ?? 0);
+          const trustworthy = r.coverage != null && prev.coverage != null && r.coverage >= MARGIN_DROP_MIN_COVERAGE && prev.coverage >= MARGIN_DROP_MIN_COVERAGE;
+          const drop = trustworthy && prev.margin != null && r.margin != null && r.revenue > 0 ? prev.margin - r.margin : null;
+          return { name: r.name, id: r.id, drop, salesAffected: r.revenue, coverage: minCoverage };
         })
         .filter((x) => x.drop != null && x.drop >= 1)
         .sort((a, b) => b.drop - a.drop)
@@ -884,8 +973,8 @@ export function Analytics({ embeddedCompanyId = null }) {
     buckets.map((b) => {
       const os = ordersList.filter((o) => inDateRange(o.date, b.from, b.to));
       const bs = os.reduce((a, o) => a + (Number(o.amount) || 0), 0);
-      const bgp = os.reduce((a, o) => a + orderGP(o), 0);
-      return { label: b.label, sales: bs, orders: os.length, gp: bgp, margin: bs ? (bgp / bs) * 100 : 0 };
+      const st = gpStats(os);
+      return { label: b.label, sales: bs, orders: os.length, gp: st.gp, margin: st.margin };
     });
   const overviewSeries = fillBuckets(buildBuckets(rangeStart, rangeEnd), orders);
   const overviewPrevSeries = compareEnabled ? fillBuckets(buildBuckets(previousPeriodStart, previousPeriodEnd), previousOrders) : [];
@@ -899,8 +988,8 @@ export function Analytics({ embeddedCompanyId = null }) {
       <ScoreGrid
         items={[
           { label: 'Net B2B sales', value: money(sales), delta: <DeltaChip v={salesDelta} />, foot: compareEnabled ? 'vs previous period' : 'net completed orders', help: 'Net revenue from completed B2B orders (Fulfilled or Paid) in the selected period. Blocked or unfinished orders are excluded.' },
-          { label: 'Gross profit', value: money(grossProfit), delta: <DeltaChip v={gpDelta} />, foot: compareEnabled ? 'vs previous period' : 'net sales − COGS', help: 'Net sales minus COGS (unit cost × quantity per line, sourced from Shopify InventoryItem.unitCost; a 0.68 cost ratio is used as fallback when a cost is missing).' },
-          { label: 'Gross margin', value: `${grossMargin.toFixed(1)}%`, delta: <DeltaChip v={marginDelta} suffix=" pp" />, foot: compareEnabled ? 'vs previous period' : 'gross profit / net sales', help: 'Gross profit as a share of net sales (gross profit ÷ net sales) for the selected period.' },
+          { label: 'Gross profit', value: moneyN(grossProfit), delta: <DeltaChip v={gpDelta} />, foot: costCoverage != null && costCoverage < 99.5 ? `${Math.round(costCoverage)}% of sales have cost data` : compareEnabled ? 'vs previous period' : 'net sales − COGS', help: 'Net sales minus COGS (unit cost × quantity per line, from Shopify InventoryItem.unitCost). Computed on the costed portion of sales only — no estimate is fabricated. When some orders have no cost, the footer shows what % of sales the figure covers.' },
+          { label: 'Gross margin', value: pct1N(grossMargin), delta: <DeltaChip v={marginDelta} suffix=" pp" />, foot: costCoverage != null && costCoverage < 99.5 ? `on ${Math.round(costCoverage)}% of sales with cost data` : compareEnabled ? 'vs previous period' : 'gross profit / net sales', help: 'Gross profit ÷ the sales it was costed on. When cost data is incomplete, this is the margin of the costed portion (footer shows its coverage), not a store-wide figure.' },
           selected
             ? { label: 'Active locations', value: `${activeLocations} / ${selected?.locations?.length || 0}`, foot: 'locations with an order', help: 'Locations of this company with at least one completed order in the period, out of its total locations.' }
             : { label: 'Active companies', value: String(activeCompanyIds.size), delta: activeDelta != null && activeDelta !== 0 ? <DeltaChip v={activeDelta} suffix="" /> : null, foot: `of ${managedCount} managed companies`, help: 'Managed companies with at least one completed order in the period, out of all the companies you manage.' },
@@ -914,7 +1003,7 @@ export function Analytics({ embeddedCompanyId = null }) {
           { label: 'Orders', value: String(orderCount) },
           { label: 'Average order value', value: money(aov) },
           { label: 'Units sold', value: unitsSold.toLocaleString('en-US') },
-          { label: selected ? 'Active locations' : 'New buying companies', value: selected ? String(activeLocations) : String(newCompanyIds.size) },
+          { label: selected ? 'New locations' : 'New buying companies', value: selected ? String(newLocations) : String(newCompanyIds.size) },
         ]}
       />
 
@@ -942,16 +1031,17 @@ export function Analytics({ embeddedCompanyId = null }) {
           <SectionTitle title="Needs attention" subtitle="Each signal with its financial context and where to act." />
           <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
             <InsightCard
-              headline={`${pastCycleCompanies.length} compan${pastCycleCompanies.length === 1 ? 'y is' : 'ies are'} past their normal reorder cycle`}
-              value={money(pastCycleGP)}
-              context="gross profit from these companies in the trailing 90 days"
+              headline="Past their normal reorder cycle"
+              value={`${pastCycleCompanies.length} compan${pastCycleCompanies.length === 1 ? 'y' : 'ies'}`}
+              context={`${moneyN(pastCycleGP)} gross profit in the last 90 days`}
               cta="Review companies →"
               onAction={() => setTab(1)}
             />
             <InsightCard
-              headline="Quote value not yet closed"
+              headline="Current open quote value"
               value={money(openQuoteValue)}
-              context={openQuotes.length ? `${openQuotes.length} quote${openQuotes.length === 1 ? '' : 's'} with activity, not yet closed` : 'No open quotes'}
+              context={openQuotes.length ? `${openQuotes.length} quote${openQuotes.length === 1 ? '' : 's'} still open` : 'No open quotes'}
+              note="Current snapshot · not affected by date range or location"
               cta="Review quotes →"
               onAction={() => setTab(2)}
             />
@@ -961,6 +1051,7 @@ export function Analytics({ embeddedCompanyId = null }) {
                 value={`↓ ${worstMargin.drop.toFixed(1)} pp`}
                 tone="critical"
                 context={`${money(worstMargin.salesAffected)} sales affected this period`}
+                note={worstMargin.coverage < 99.5 ? `Based on ${Math.round(worstMargin.coverage)}% cost coverage` : undefined}
                 cta="Review pricing →"
                 onAction={() => setTab(3)}
               />
@@ -988,8 +1079,8 @@ export function Analytics({ embeddedCompanyId = null }) {
                 <IndexTable.Row id={r.id} key={r.id} position={i}>
                   <IndexTable.Cell><CompanyLink id={r.id}>{r.name}</CompanyLink></IndexTable.Cell>
                   <IndexTable.Cell><Text as="span" alignment="end">{money(r.revenue || 0)}</Text></IndexTable.Cell>
-                  <IndexTable.Cell><Text as="span" alignment="end">{money(r.gp || 0)}</Text></IndexTable.Cell>
-                  <IndexTable.Cell><Text as="span" alignment="end">{`${Math.round(r.margin || 0)}%`}</Text></IndexTable.Cell>
+                  <IndexTable.Cell><Text as="span" alignment="end">{moneyN(r.gp)}</Text></IndexTable.Cell>
+                  <IndexTable.Cell><Text as="span" alignment="end">{pctN(r.margin)}</Text></IndexTable.Cell>
                   <IndexTable.Cell><Text as="span" alignment="end">{`${Math.round(r.share || 0)}%`}</Text></IndexTable.Cell>
                 </IndexTable.Row>
               ))}
@@ -1025,7 +1116,7 @@ export function Analytics({ embeddedCompanyId = null }) {
               <IndexTable.Cell><Text as="span" alignment="end">{money(r.revenue || 0)}</Text></IndexTable.Cell>
               <IndexTable.Cell><Text as="span" alignment="end">{(r.units || 0).toLocaleString('en-US')}</Text></IndexTable.Cell>
               <IndexTable.Cell><Text as="span" alignment="end">{r.orders || 0}</Text></IndexTable.Cell>
-              <IndexTable.Cell><Text as="span" alignment="end">{`${Math.round(r.margin || 0)}%`}</Text></IndexTable.Cell>
+              <IndexTable.Cell><Text as="span" alignment="end">{pctN(r.margin)}</Text></IndexTable.Cell>
             </IndexTable.Row>
           ))}
         </IndexTable>
@@ -1092,7 +1183,7 @@ export function Analytics({ embeddedCompanyId = null }) {
         { label: 'Companies', value: String(managedCount), foot: 'managed in the B2B app' },
         { label: 'Active', value: String(activeCompanyIds.size), foot: 'completed an order this period' },
         { label: 'New', value: String(newCompanyIds.size), foot: 'first order this period' },
-        { label: 'Past buying cycle', value: String(pastCycleCompanies.length), foot: `${moneyShort(pastCycleGP)} gross profit · trailing 90 days` },
+        { label: 'Past buying cycle', value: String(pastCycleCompanies.length), foot: `${moneyShortN(pastCycleGP)} gross profit · trailing 90 days` },
       ];
 
   const healthCounts = HEALTH_SEGMENTS.map(([name, color]) => ({ name, color, count: countHealth(name) }));
@@ -1122,8 +1213,8 @@ export function Analytics({ embeddedCompanyId = null }) {
         <IndexTable.Row id={r.id} key={r.id} position={i}>
           <IndexTable.Cell><CompanyLink id={r.id}>{r.name}</CompanyLink></IndexTable.Cell>
           <IndexTable.Cell><Text as="span" alignment="end">{money(r.revenue || 0)}</Text></IndexTable.Cell>
-          <IndexTable.Cell><Text as="span" alignment="end">{money(r.gp || 0)}</Text></IndexTable.Cell>
-          <IndexTable.Cell><Text as="span" alignment="end">{`${Math.round(r.margin || 0)}%`}</Text></IndexTable.Cell>
+          <IndexTable.Cell><Text as="span" alignment="end">{moneyN(r.gp)}</Text></IndexTable.Cell>
+          <IndexTable.Cell><Text as="span" alignment="end">{pctN(r.margin)}</Text></IndexTable.Cell>
           {compareEnabled && <IndexTable.Cell><Text as="span" alignment="end">{r.growth == null ? '—' : `${r.growth > 0 ? '+' : ''}${r.growth}%`}</Text></IndexTable.Cell>}
           <IndexTable.Cell><Text as="span" alignment="end">{`${Math.round(r.repeat || 0)}%`}</Text></IndexTable.Cell>
           <IndexTable.Cell><Text as="span" alignment="end">{r.since != null ? `${r.since}d ago${r.overdue ? ` · +${r.overdue}d` : ''}` : '—'}</Text></IndexTable.Cell>
@@ -1156,7 +1247,7 @@ export function Analytics({ embeddedCompanyId = null }) {
             <MiniCompare
               items={[
                 { label: 'Trailing 90-day sales', value: money(pastCycleSales) },
-                { label: 'Trailing 90-day gross profit', value: money(pastCycleGP) },
+                { label: 'Trailing 90-day gross profit', value: moneyN(pastCycleGP) },
               ]}
             />
           </BlockStack>
@@ -1566,7 +1657,7 @@ export function Analytics({ embeddedCompanyId = null }) {
       <ScoreGrid
         items={[
           { label: 'B2B price vs Shopify', value: realizedPriceDeltaPct == null ? '—' : `${Math.abs(realizedPriceDeltaPct).toFixed(1)}% ${realizedPriceDelta >= 0 ? 'higher' : 'lower'}`, foot: `${money(Math.abs(realizedPriceDelta))} ${realizedPriceDelta >= 0 ? 'above' : 'below'} Shopify prices` },
-          { label: 'Gross margin', value: `${grossMargin.toFixed(1)}%`, foot: `${money(grossProfit)} gross profit` },
+          { label: 'Gross margin', value: pct1N(grossMargin), foot: costCoverage != null && costCoverage < 99.5 ? `${moneyN(grossProfit)} GP · ${Math.round(costCoverage)}% cost coverage` : `${moneyN(grossProfit)} gross profit` },
           { label: 'Manual price changes', value: `${overrideRate.toFixed(1)}%`, foot: `${overriddenLines.length} of ${eligibleLines.length} app-priced line${eligibleLines.length === 1 ? '' : 's'}` },
           { label: 'Sales below margin threshold', value: money(marginExceptionSales), foot: `${marginExceptionLines.length} line${marginExceptionLines.length === 1 ? '' : 's'} below ${marginFloor}% margin` },
         ]}
@@ -1595,7 +1686,7 @@ export function Analytics({ embeddedCompanyId = null }) {
           <StackedBar segments={provenanceSegments} />
         </ReportCard>
         <ReportCard title="Margin by price source" subtitle="Gross margin each resolved price source actually earns." controls={<PriceTypeHelp />}>
-          <RankBars rows={priceSourceRows.map((s) => ({ key: s.name, name: s.name, sub: `${money(s.gp)} gross profit · ${money(s.revenue)} sales`, value: s.margin, width: (s.margin / priceSourceMaxMargin) * 100, valueLabel: `${Math.round(s.margin)}%` }))} empty="No completed orders." />
+          <RankBars rows={priceSourceRows.map((s) => ({ key: s.name, name: s.name, sub: `${moneyN(s.gp)} gross profit · ${money(s.revenue)} sales`, value: s.margin ?? 0, width: s.margin == null ? 0 : (s.margin / priceSourceMaxMargin) * 100, valueLabel: pctN(s.margin) }))} empty="No completed orders." />
         </ReportCard>
       </InlineGrid>
 
@@ -1613,8 +1704,8 @@ export function Analytics({ embeddedCompanyId = null }) {
               <IndexTable.Cell>{r.name}</IndexTable.Cell>
               <IndexTable.Cell>{r.sub || '—'}</IndexTable.Cell>
               <IndexTable.Cell><Text as="span" alignment="end">{money(r.revenue)}</Text></IndexTable.Cell>
-              <IndexTable.Cell><Text as="span" alignment="end">{money(r.gp || 0)}</Text></IndexTable.Cell>
-              <IndexTable.Cell><Text as="span" alignment="end">{`${Math.round(r.margin || 0)}%`}</Text></IndexTable.Cell>
+              <IndexTable.Cell><Text as="span" alignment="end">{moneyN(r.gp)}</Text></IndexTable.Cell>
+              <IndexTable.Cell><Text as="span" alignment="end">{pctN(r.margin)}</Text></IndexTable.Cell>
               <IndexTable.Cell><Text as="span" alignment="end">{r.deltaPct == null ? '—' : `${Math.abs(r.deltaPct).toFixed(1)}% ${r.deltaPct >= 0 ? 'higher' : 'lower'}`}</Text></IndexTable.Cell>
               <IndexTable.Cell><Text as="span" alignment="end">{r.overrideRate == null ? '—' : `${Math.round(r.overrideRate)}%`}</Text></IndexTable.Cell>
               <IndexTable.Cell><Text as="span" alignment="end">{r.orders}</Text></IndexTable.Cell>
@@ -1702,6 +1793,21 @@ export function Analytics({ embeddedCompanyId = null }) {
 
   const content = (
     <BlockStack gap="400">
+      {import.meta.env.DEV && (
+        <Box background="bg-surface-secondary" borderColor="border" borderWidth="025" borderRadius="200" padding="200">
+          <InlineStack gap="200" blockAlign="center" wrap>
+            <Badge tone="info">Dev</Badge>
+            <Text as="span" variant="bodySm" tone="subdued">
+              {devInject
+                ? 'Event-basis test data injected: #1039 −$400 discount, #1033 SEA-30 return (−$1,250 sales / −$1,000 COGS). Net sales, GP and Top products reflect it.'
+                : 'Inject event-basis test data (a discount + a return) to demo the production Net sales / GP / Top-products definitions.'}
+            </Text>
+            <Button size="slim" pressed={devInject} onClick={() => setDevInject((v) => !v)}>
+              {devInject ? 'Reset test data' : 'Inject test data'}
+            </Button>
+          </InlineStack>
+        </Box>
+      )}
       <Card>
         <BlockStack gap="300">
           <InlineStack gap="300" wrap blockAlign="end">

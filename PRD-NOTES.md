@@ -3,6 +3,7 @@
 > File này ghi lại các quyết định về **định nghĩa metric, taxonomy và data model** trong quá trình
 > build lại màn **Analytics** và tinh chỉnh thuật ngữ pricing. Dùng làm nguyên liệu viết PRD.
 > Nhãn UI (label/metric name) để nguyên tiếng Anh đúng như hiển thị trong app.
+> Chi tiết **công thức tính từng chỉ số ở tab Overview** xem file riêng: `OVERVIEW-METRICS.md`.
 >
 > Cập nhật lần cuối: 2026-09-10 · Branch: `react-migration` · Stack: Vite + React + @shopify/polaris
 
@@ -20,10 +21,10 @@
 - Phân biệt hai loại chỉ số:
   - **Period metrics** — lọc theo kỳ đang chọn (`inPeriod`).
   - **Snapshot metrics** — all-time, chỉ tôn trọng filter company/location (không lọc theo ngày). Ví dụ: quan hệ khách hàng, reorder health.
-- **Gross profit / Gross margin** dùng **COGS từ product cost**:
+- **Gross profit / Gross margin** dùng **COGS từ product cost** — công thức chi tiết xem `OVERVIEW-METRICS.md`:
   - Nguồn thật: Shopify Admin API `InventoryItem.unitCost` (cost per unit). → Trong demo mỗi product có field `cost`.
-  - `orderCogs(order)` = Σ (qty × cost) theo từng line. Fallback khi thiếu cost: **ratio 0.68** (COGS ≈ 68% doanh thu).
-  - Gross profit = Net sales − COGS. Gross margin = Gross profit / Net sales.
+  - `orderCogs` = Σ (qty × cost) theo từng line. **Thiếu cost → COGS/GP/Margin = `null` (KHÔNG ước lượng).** *(Đã bỏ fallback 0.68 — với metric tài chính, "không biết" tốt hơn số giả trông như thật.)*
+  - GP/Margin tính trên **phần sales đã costed** (`gpStats`), kèm **cost coverage %** hiện ở footer khi < 100%. GP = costed sales − COGS; Margin = GP / costed sales.
 
 ## 3. Price source taxonomy (tab Pricing)
 
@@ -54,19 +55,19 @@ Phân biệt theo **nguồn gốc của pricing** (không phải "cách checkout
   - Rate = overridden lines / eligible lines. Per-profile: gom theo pricing profile.
   - Data: cờ `overridden: true` trên line item (map với custom line price của Shopify draft order). Production sẽ suy ra bằng cách so **đơn giá thực tế của line ≠ giá catalog/price-list gán**.
   - Khác với **vs Shopify**: "vs Shopify" so với list price; "Manual price changes" so với **giá app đáng lẽ tính ra**.
-- **Revenue on negotiated pricing / Orders on negotiated pricing**: chỉ đếm **B2B app's pricing + Quoted pricing** (không tính Other/manual/Shopify default).
+- **Revenue on negotiated pricing / Orders on negotiated pricing**: chỉ đếm **Price created on B2B + Price synced from quotes** (không tính Other/manual/Shopify default).
 - **Sales below margin threshold**: số line có margin dưới ngưỡng cấu hình được (mặc định 30%, có control chỉnh), là exception chứ không phải trung bình.
 
 ## 5. Data model đã thêm cho demo (map sang Shopify khi lên production)
 
 - `product.cost` cho 6 sản phẩm (map `InventoryItem.unitCost`): FIL-XL 62, FIL-STD 44, SEA-30 5, HOS-12 104, VLV-40 33, MCFC 880.
 - Line item field `overridden: true` — đánh dấu giá bị sửa tay (drive **Manual price changes**). Hiện gắn ở 3 line: #1044 (VLV-40), #1017 (HOS-12), #1033 (SEA-30).
-- `order.pricingSource` các giá trị: `Company price`, `Location price` (→ B2B app's pricing); `Previous agreement` (→ Quoted pricing); `Manual price`, `None`, `Shopify price` (→ Other price).
+- `order.pricingSource` các giá trị: `Company price`, `Location price` (→ **Price created on B2B**); `Previous agreement` (→ **Price synced from quotes**); `Manual price`, `None`, `Shopify price` (→ **Other price**).
 - **Seed order minh hoạ Other price**: #1055 — giá custom keyed tay trên draft order (HOS-12 $130 vs $145 list), gắn vào Vinh Phat Trading để không phá tín hiệu reorder-cycle của ABC Construction.
 
 ## 6. Chỉ số Overview / Companies / Quotes (tóm tắt định nghĩa)
 
-- **Overview**: Net B2B sales, Gross profit, Gross margin, Active companies, Repeat revenue + hàng phụ (Orders, AOV, Units sold, New buying companies). Card **Needs attention** gom các tín hiệu kèm bối cảnh tài chính (reorder cycle, stale quotes...).
+- **Overview**: Net B2B sales, Gross profit, Gross margin, Active companies, Repeat revenue + hàng phụ (Orders, AOV, Units sold, New buying companies). Card **Needs attention** gom các tín hiệu kèm bối cảnh tài chính (reorder cycle → hero là **số company**, current open quote value...).
 - **Companies** (nhãn tab; tab id nội bộ vẫn là `accounts`): tách **lifecycle** khỏi **relationship health**. Health model **5 trạng thái**: Healthy (≤1.25× median interval) / Watch (≤1.5×) / At risk (≤2×) / Inactive (>2×) / Insufficient history (cần ≥4 order, ≥3 interval). Reorder ratio = days-since-last-order / median-interval.
 - **Quotes**: funnel **3 trạng thái** khớp app quote hiện tại — **RFQ received → Negotiating → Won**, cộng nhánh **Lost** (terminal). (Đã bỏ ý tưởng 5-stage và bỏ "Lost reasons".)
 

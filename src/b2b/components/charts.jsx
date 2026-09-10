@@ -51,11 +51,13 @@ export function LineChart({ data, compare = null, height = 200, prefix = '$', la
   const iw = w - pad.l - pad.r;
   const ih = h - pad.t - pad.b;
   const compareVals = hasCompare ? data.map((_, i) => Number(compare[i]?.value ?? compare[i] ?? 0)) : [];
-  const max = Math.max(1, ...data.map((d) => d.value), ...compareVals);
+  // Keep only points with a known value — an unknown (null) bucket is a gap, not a 0.
+  const pts = data.map((d, i) => ({ i, v: d.value })).filter((p) => p.v != null);
+  const max = Math.max(1, ...pts.map((p) => p.v), ...compareVals);
   const x = (i) => pad.l + (data.length <= 1 ? iw / 2 : (i / (data.length - 1)) * iw);
   const y = (v) => pad.t + ih - (v / max) * ih;
-  const line = data.map((d, i) => `${x(i)},${y(d.value)}`).join(' ');
-  const area = `${x(0)},${pad.t + ih} ${line} ${x(data.length - 1)},${pad.t + ih}`;
+  const line = pts.map((p) => `${x(p.i)},${y(p.v)}`).join(' ');
+  const area = pts.length ? `${x(pts[0].i)},${pad.t + ih} ${line} ${x(pts[pts.length - 1].i)},${pad.t + ih}` : '';
   const cline = hasCompare ? compareVals.map((v, i) => `${x(i)},${y(v)}`).join(' ') : '';
   const ticks = [0, 0.5, 1].map((f) => ({ v: max * f, yy: y(max * f) }));
   const active = hover != null ? data[hover] : null;
@@ -94,7 +96,7 @@ export function LineChart({ data, compare = null, height = 200, prefix = '$', la
             compareVals.map((v, i) => <circle key={`c${i}`} cx={x(i)} cy={y(v)} r={hover === i ? 4 : 3} fill="var(--p-color-bg-surface)" stroke={COMPARE} strokeWidth="1.5" />)}
           {data.map((d, i) => (
             <g key={i}>
-              <circle cx={x(i)} cy={y(d.value)} r={hover === i ? 5 : 3.5} fill={BRAND} stroke="var(--p-color-bg-surface)" strokeWidth="1.5" />
+              {d.value != null && <circle cx={x(i)} cy={y(d.value)} r={hover === i ? 5 : 3.5} fill={BRAND} stroke="var(--p-color-bg-surface)" strokeWidth="1.5" />}
               <text x={x(i)} y={h - 8} textAnchor="middle" fontSize="10" fill={AXIS}>{d.label}</text>
               <rect
                 x={x(i) - iw / (data.length * 2 || 1)}
@@ -109,7 +111,7 @@ export function LineChart({ data, compare = null, height = 200, prefix = '$', la
             </g>
           ))}
           {active && (() => {
-            const rows = [active.label, fmt(active.value, prefix)];
+            const rows = [active.label, active.value == null ? '—' : fmt(active.value, prefix)];
             if (hasCompare) {
               // Comparison line is aligned by slot, so this point's real date differs
               // from the axis label — show that actual previous-period date (matches
