@@ -244,7 +244,7 @@ export function SyncFlowModals() {
                 <Divider />
                 <Checkbox
                   label="Also sync past quotes"
-                  helpText="Move previous quotes from this customer to the B2B company, so their full quote history stays together. Turn this off to sync only the current quote."
+                  helpText="Add this customer’s past quotes to the B2B company and its quote history."
                   checked={syncPast}
                   onChange={(v) => dispatch({ type: 'SYNC_PATCH', patch: { syncPast: v } })}
                 />
