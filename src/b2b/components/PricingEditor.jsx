@@ -481,8 +481,10 @@ function SummaryCard({ builder, isQuantity }) {
 // The Appearance tab (god-file appearanceEditor): how the price shows on the
 // storefront, plus a live product preview. Does not affect price calculation.
 function AppearanceTab({ builder, patch, kindWord, product }) {
-  const list = product?.list ?? 62;
-  const now = Math.round(list * 0.85 * 100) / 100; // illustrative preview discount
+  // Illustrative preview, mirroring the god-file appearanceEditor ($30 → $22.50).
+  const list = product?.list ?? 30;
+  const now = Math.round(list * 0.75 * 100) / 100;
+  const badge = builder.appearanceLabel || 'Special price';
   return (
     <Card>
       <BlockStack gap="300">
@@ -491,8 +493,8 @@ function AppearanceTab({ builder, patch, kindWord, product }) {
           {`How this ${kindWord} is presented on the storefront. It does not change price calculation or assignment.`}
         </Text>
         <InlineGrid columns={{ xs: 1, sm: 2 }} gap="300">
-          <TextField label="Display title" value={builder.displayTitle ?? ''} placeholder={builder.name} onChange={(v) => patch({ displayTitle: v })} autoComplete="off" />
-          <TextField label="Price badge" value={builder.priceBadge ?? ''} placeholder="B2B price" onChange={(v) => patch({ priceBadge: v })} autoComplete="off" />
+          <TextField label="Display title" value={builder.appearanceTitle ?? ''} onChange={(v) => patch({ appearanceTitle: v })} autoComplete="off" />
+          <TextField label="Price badge" value={builder.appearanceLabel ?? ''} onChange={(v) => patch({ appearanceLabel: v })} autoComplete="off" />
         </InlineGrid>
         <Box borderWidth="025" borderColor="border" borderRadius="200" padding="300">
           <InlineStack gap="300" blockAlign="center" wrap={false}>
@@ -502,12 +504,11 @@ function AppearanceTab({ builder, patch, kindWord, product }) {
               </div>
             </Box>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <BlockStack gap="050">
-                <Text as="span" variant="bodyMd" fontWeight="medium">{product?.title || 'Sample product'}</Text>
-                <InlineStack gap="150" blockAlign="center">
-                  <Text as="span" tone="subdued" variant="bodySm">{builder.displayTitle || builder.name}</Text>
-                  <Badge tone="info">{builder.priceBadge || 'B2B price'}</Badge>
-                </InlineStack>
+              <BlockStack gap="100">
+                <Text as="span" variant="bodyMd" fontWeight="medium">{product?.title || 'Cotton T-Shirt'}</Text>
+                <Box>
+                  <Badge tone="info">{badge}</Badge>
+                </Box>
               </BlockStack>
             </div>
             <div style={{ textAlign: 'right' }}>

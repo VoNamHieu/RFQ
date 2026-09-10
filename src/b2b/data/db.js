@@ -6,18 +6,20 @@ const defaults = { b2bPolicyId: null, wholesalePolicyId: null };
 // Each product carries its variants. The FIRST variant is the default and its
 // id equals the product SKU, so per-SKU pricing (seed overrides, RFQ→B2B sync)
 // keeps resolving to the default variant unchanged; extra variants get new ids.
+// `cost` is unit COGS, used by Analytics for gross profit / margin. Kept a bit
+// below list so realized (post-B2B-discount) margins land in a believable band.
 const products = [
-  { sku: 'FIL-XL', title: 'Industrial filter, XL', list: 96, stock: 840, vendor: 'FilterCo', productType: 'Filters', tags: ['industrial'],
+  { sku: 'FIL-XL', title: 'Industrial filter, XL', list: 96, cost: 62, stock: 840, vendor: 'FilterCo', productType: 'Filters', tags: ['industrial'],
     variants: [{ id: 'FIL-XL', title: 'Standard', list: 96 }, { id: 'FIL-XL-HD', title: 'Heavy-duty', list: 118 }] },
-  { sku: 'FIL-STD', title: 'Industrial filter, standard', list: 62, stock: 1200, vendor: 'FilterCo', productType: 'Filters', tags: ['industrial', 'clearance'],
+  { sku: 'FIL-STD', title: 'Industrial filter, standard', list: 62, cost: 44, stock: 1200, vendor: 'FilterCo', productType: 'Filters', tags: ['industrial', 'clearance'],
     variants: [{ id: 'FIL-STD', title: 'Standard', list: 62 }] },
-  { sku: 'SEA-30', title: 'Sealant cartridge 300ml', list: 8, stock: 2600, vendor: 'SealPro', productType: 'Sealants', tags: ['consumable'],
+  { sku: 'SEA-30', title: 'Sealant cartridge 300ml', list: 8, cost: 5, stock: 2600, vendor: 'SealPro', productType: 'Sealants', tags: ['consumable'],
     variants: [{ id: 'SEA-30', title: '300 ml', list: 8 }] },
-  { sku: 'HOS-12', title: 'Reinforced hose, 12m', list: 145, stock: 210, vendor: 'HydroMax', productType: 'Hoses', tags: ['industrial', 'premium'],
+  { sku: 'HOS-12', title: 'Reinforced hose, 12m', list: 145, cost: 104, stock: 210, vendor: 'HydroMax', productType: 'Hoses', tags: ['industrial', 'premium'],
     variants: [{ id: 'HOS-12', title: '12 m', list: 145 }, { id: 'HOS-12-18M', title: '18 m', list: 205 }, { id: 'HOS-12-24M', title: '24 m', list: 265 }] },
-  { sku: 'VLV-40', title: 'Ball valve 40mm', list: 52, stock: 670, vendor: 'HydroMax', productType: 'Valves', tags: ['premium', 'clearance'],
+  { sku: 'VLV-40', title: 'Ball valve 40mm', list: 52, cost: 33, stock: 670, vendor: 'HydroMax', productType: 'Valves', tags: ['premium', 'clearance'],
     variants: [{ id: 'VLV-40', title: '40 mm', list: 52 }] },
-  { sku: 'MCFC-TRAINING-JACKET', title: 'Manchester City Team Training Jacket', list: 1240, stock: 120, vendor: 'MCFC', productType: 'Apparel', tags: ['licensed'],
+  { sku: 'MCFC-TRAINING-JACKET', title: 'Manchester City Team Training Jacket', list: 1240, cost: 880, stock: 120, vendor: 'MCFC', productType: 'Apparel', tags: ['licensed'],
     variants: [{ id: 'MCFC-TRAINING-JACKET', title: 'M', list: 1240 }, { id: 'MCFC-JACKET-L', title: 'L', list: 1240 }, { id: 'MCFC-JACKET-XL', title: 'XL', list: 1290 }] }
 ];
 
@@ -329,6 +331,11 @@ export const orderSeed = {
       id: '#1033', location: 'Da Nang', buyer: 'Bui Quang', date: '2026-06-18', amount: 8920, lines: 6, po: 'PO-4432',
       pricing: 'Distributor Tier 2', pricingSource: 'Company price', source: 'Reorder',
       status: 'Paid', shopifyStatus: 'Paid', reason: null
+    },
+    {
+      id: '#1055', location: 'Da Nang', buyer: 'Bui Quang', date: '2026-08-05', amount: 2600, lines: 1, po: 'None',
+      pricing: 'None', pricingSource: 'Manual price', source: 'Sales-assisted',
+      status: 'Fulfilled', shopifyStatus: 'Fulfilled', reason: 'Custom price keyed on the draft order'
     }
   ],
   c3: [],

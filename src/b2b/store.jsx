@@ -351,7 +351,13 @@ function reducer(state, action) {
     // ----- Pricing editor -----
     case 'OPEN_EDITOR': {
       const builder = action.policy
-        ? { ...clone(action.policy), ...seedAssignment(action.policy, state.db) }
+        ? {
+            // God-file appearanceEditor defaults for older policies that lack them.
+            appearanceTitle: 'Wholesale pricing',
+            appearanceLabel: 'Special price',
+            ...clone(action.policy),
+            ...seedAssignment(action.policy, state.db),
+          }
         : action.kind === 'quantity'
         ? newQuantityBuilder()
         : newBaseBuilder();

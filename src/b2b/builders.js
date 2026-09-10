@@ -38,6 +38,10 @@ export function newBaseBuilder() {
     startTime: '12:00 AM',
     hasEndDate: false,
     endDate: '',
+    // Storefront appearance (god-file appearanceEditor): a display title and a price
+    // badge. Presentation only — no effect on price calculation or assignment.
+    appearanceTitle: 'Wholesale pricing',
+    appearanceLabel: 'Special price',
     // Who this pricing serves (god-file assignmentAdapter). B2B → the Companies
     // that get it; D2C → a customer target (all/logged_in/logged_out/specific/tags)
     // plus the specific customer/tag ids. Applied to the db on save.

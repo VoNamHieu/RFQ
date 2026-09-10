@@ -6,14 +6,20 @@
 
 // Order line-items keyed by order id. renderAnalytics attaches these to each
 // completed order via `items: analyticsOrderItems[o.id] || []`.
+// `overridden: true` marks a line whose resolved B2B price was manually edited on
+// the draft order (maps to a Shopify draft-order line-item custom price). It drives
+// the Manual Override Rate — a signal that pricing config may be doing the wrong job.
 export const analyticsOrderItems = {
-  '#1044': [{ sku: 'FIL-XL', qty: 40, revenue: 3100 }, { sku: 'VLV-40', qty: 60, revenue: 2760 }],
+  '#1044': [{ sku: 'FIL-XL', qty: 40, revenue: 3100 }, { sku: 'VLV-40', qty: 60, revenue: 2760, overridden: true }],
   '#1039': [{ sku: 'FIL-XL', qty: 40, revenue: 2900 }, { sku: 'FIL-STD', qty: 40, revenue: 1900 }, { sku: 'SEA-30', qty: 200, revenue: 1320 }],
   '#1028': [{ sku: 'HOS-12', qty: 20, revenue: 2380 }, { sku: 'VLV-40', qty: 30, revenue: 1200 }, { sku: 'SEA-30', qty: 100, revenue: 800 }],
-  '#1017': [{ sku: 'FIL-XL', qty: 40, revenue: 3000 }, { sku: 'FIL-STD', qty: 40, revenue: 1800 }, { sku: 'HOS-12', qty: 11, revenue: 1475 }, { sku: 'SEA-30', qty: 150, revenue: 1000 }],
+  '#1017': [{ sku: 'FIL-XL', qty: 40, revenue: 3000 }, { sku: 'FIL-STD', qty: 40, revenue: 1800 }, { sku: 'HOS-12', qty: 11, revenue: 1475, overridden: true }, { sku: 'SEA-30', qty: 150, revenue: 1000 }],
   '#1041': [{ sku: 'VLV-40', qty: 40, revenue: 1560 }],
-  '#1033': [{ sku: 'HOS-12', qty: 30, revenue: 3600 }, { sku: 'FIL-STD', qty: 60, revenue: 2820 }, { sku: 'SEA-30', qty: 400, revenue: 2500 }],
+  '#1033': [{ sku: 'HOS-12', qty: 30, revenue: 3600 }, { sku: 'FIL-STD', qty: 60, revenue: 2820 }, { sku: 'SEA-30', qty: 400, revenue: 2500, overridden: true }],
   '#1021': [{ sku: 'FIL-STD', qty: 25, revenue: 1200 }, { sku: 'SEA-30', qty: 150, revenue: 940 }, { sku: 'VLV-40', qty: 20, revenue: 800 }],
+  // #1055 — a manual custom price keyed on the draft order (HOS-12 at $130 vs $145 list),
+  // with no quote or app-pricing event behind it: "Other price".
+  '#1055': [{ sku: 'HOS-12', qty: 20, revenue: 2600 }],
 };
 
 // Open order value held by the internal approval workflow.
