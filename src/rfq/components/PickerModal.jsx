@@ -12,7 +12,7 @@ import { ProductPickerModal } from './ProductPickerModal.jsx';
 //            product's variant id === its sku.)
 const catBySku = (sku) => RFQ_CATALOG.find((p) => p.sku === sku);
 
-export function PickerModal({ picker, setPicker, customer, onAdd, onCreatePricing, appInstalled = true, initialSelected }) {
+export function PickerModal({ picker, setPicker, customer, onAdd, onCreatePricing, appInstalled = true, onQuote }) {
   const templates = customer ? RFQ_PRICING_OPTIONS[customer.companyKey] || [] : [];
 
   // Step 1: pick a base-price template.
@@ -99,13 +99,15 @@ export function PickerModal({ picker, setPicker, customer, onAdd, onCreatePricin
     };
   });
 
+  const template = templates.find((t) => t.id === picker.templateId);
   return (
     <ProductPickerModal
       title="Add B2B price"
       products={products}
       priced
       priceHeader="B2B price"
-      initialSelected={initialSelected}
+      onQuote={onQuote}
+      option={{ source: 'b2b', sourceRef: picker.templateId, label: `B2B price · ${template?.name || 'Base pricing'}` }}
       onClose={() => setPicker(null)}
       onAdd={onAdd}
       backAction={{ content: '← Templates', onAction: () => setPicker({ ...picker, templateId: null }) }}

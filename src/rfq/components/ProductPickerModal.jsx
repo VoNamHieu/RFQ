@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, TextField, Select, Checkbox, Text, InlineStack, Box, Icon, Badge } from '@shopify/polaris';
+import { Modal, TextField, Select, Checkbox, Text, InlineStack, BlockStack, Box, Icon, Badge, Banner, Tooltip } from '@shopify/polaris';
 import { SearchIcon, ImageIcon, ChevronDownIcon, ChevronRightIcon, AlertTriangleIcon } from '@shopify/polaris-icons';
 import { money } from '../utils.js';
 
@@ -7,13 +7,19 @@ import { money } from '../utils.js';
 // used by both the catalog picker and the whole-store picker. Features: search,
 // select-all + indeterminate, product rows with a thumbnail / available inventory
 // / price that expand (caret) into indented variant sub-rows, an out-of-stock
-// warning, preselection ("Added" — variants already on the quote are checked,
-// locked and excluded from the add), and a selected-count footer with a max cap.
+// warning, an option-aware "Added" state (see below), and a selected-count footer
+// with a max cap.
+//
+// `onQuote`: Map sku → { source, sourceRef, sourceLabel, price } of lines already on
+// the quote, and `option`: { source, sourceRef, label } identifying THIS picker. A
+// line added by this same option shows ticked "Added" and can be unticked to remove;
+// a line added by another option shows an unticked info "Added" badge that, when
+// re-ticked, overrides that line's price with this option's (one price per sku).
 //
 // `products`: [{ sku, title, stock?, variants:[{ id, title, price, stock? }] }]
-const GRID = { display: 'grid', gridTemplateColumns: 'auto minmax(140px, 1fr) 118px 96px', gap: 12, alignItems: 'center' };
+const GRID = { display: 'grid', gridTemplateColumns: 'auto minmax(140px, 1fr) 118px 96px 96px', gap: 12, alignItems: 'center' };
 // Same, plus a trailing Qty column, for the editable (custom-priced) mode.
-const GRID_EDIT = { display: 'grid', gridTemplateColumns: 'auto minmax(140px, 1fr) 118px 96px 72px', gap: 12, alignItems: 'center' };
+const GRID_EDIT = { display: 'grid', gridTemplateColumns: 'auto minmax(140px, 1fr) 118px 96px 96px 72px', gap: 12, alignItems: 'center' };
 const THUMB = { width: 32, height: 32, borderRadius: 6, background: 'var(--p-color-bg-surface-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' };
 const CARET = { all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', flex: '0 0 auto', width: 20 };
 // Sort options mirror Shopify's product index (title / price / inventory).
@@ -41,9 +47,65 @@ function AvailCell({ n }) {
   return <Text as="span" variant="bodyMd" alignment="end" tone="subdued">{n.toLocaleString('en-US')}</Text>;
 }
 
-export function ProductPickerModal({ title, products, priceHeader = 'Price', qtyHeader = 'Qty', priced = false, editable = false, size = 'large', initialSelected, onClose, onAdd, backAction, max = 500 }) {
-  const locked = initialSelected || new Set();
-  const [selected, setSelected] = useState(() => new Set(locked));
+// "Added" status for a row: a green badge for a line this option added (ticked,
+// removable), an info badge for a line another option added (unticked here) that
+// flips to an "Override" badge once re-ticked (its price will be replaced on apply).
+function AddedBadge({ mine, other, isSel }) {
+  if (mine) return <Badge tone="success" size="small">Added</Badge>;
+  if (!other) return null;
+  if (isSel) return <Badge tone="attention" size="small">Override</Badge>;
+  return (
+    <span title={other.sourceLabel ? `On quote · ${other.sourceLabel}` : 'Already on this quote'}>
+      <Badge tone="info" size="small">Added</Badge>
+    </span>
+  );
+}
+
+// "In quote" column: the price the variant currently carries on the quote, or an em
+// dash when it isn't on the quote yet. `label` (a range) is used for a product header.
+function InQuoteCell({ price, label }) {
+  const text = label != null ? label : price != null ? money(price) : null;
+  return (
+    <Text as="span" variant="bodyMd" alignment="end" tone={text == null ? 'subdued' : undefined}>
+      {text == null ? '—' : text}
+    </Text>
+  );
+}
+// Range of on-quote prices across a product's variants (for the collapsed group row).
+const inQuoteLabel = (variants, quote) => {
+  const ps = variants.map((v) => quote.get(v.id)?.price).filter((x) => x != null);
+  if (!ps.length) return null;
+  const lo = Math.min(...ps);
+  const hi = Math.max(...ps);
+  return lo === hi ? money(lo) : `${money(lo)}–${money(hi)}`;
+};
+
+// A right-aligned column header with a hover tooltip (dotted underline = "hover me").
+function HeaderHelp({ label, content }) {
+  return (
+    <div style={{ justifySelf: 'end' }}>
+      <Tooltip content={content} preferredPosition="above" width="wide">
+        <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium">
+          <span style={{ borderBottom: '1px dotted var(--p-color-border)', cursor: 'help' }}>{label}</span>
+        </Text>
+      </Tooltip>
+    </div>
+  );
+}
+
+export function ProductPickerModal({ title, products, priceHeader = 'Price', qtyHeader = 'Qty', priced = false, editable = false, size = 'large', onQuote, option, onClose, onAdd, backAction, max = 500 }) {
+  // Variants already on the quote, keyed by sku → { source, sourceRef, sourceLabel, price }.
+  // A line "belongs" to this picker's option when (source, sourceRef) match: it shows as
+  // ticked "Added" and can be unticked to remove. A line added from ANOTHER option shows
+  // as an unticked "Added" (info) badge — re-ticking it re-applies THIS option's price to
+  // the single quote line (one price per sku, last pick wins). See CreateQuote.mergeLines.
+  const quote = onQuote instanceof Map ? onQuote : new Map();
+  const opt = option || {};
+  const sameOption = (info) => !!info && info.source === opt.source && (info.sourceRef ?? null) === (opt.sourceRef ?? null);
+  const mineOf = (id) => { const i = quote.get(id); return sameOption(i) ? i : null; }; // added by this option
+  const otherOf = (id) => { const i = quote.get(id); return i && !sameOption(i) ? i : null; }; // added by another option
+  const mineSkus = [...quote.keys()].filter((id) => sameOption(quote.get(id)));
+  const [selected, setSelected] = useState(() => new Set(mineSkus)); // seed only same-option picks
   const [expanded, setExpanded] = useState(() => new Set());
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('title-asc');
@@ -76,7 +138,7 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
     });
   };
   const toggleProduct = (p) => {
-    const vids = p.variants.map((v) => v.id);
+    const vids = p.variants.map((v) => v.id).filter((id) => !otherOf(id)); // don't bulk-override other-option lines
     if (!vids.length) return;
     const all = vids.every((id) => selected.has(id));
     setSelected((s) => {
@@ -93,8 +155,10 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
       return n;
     });
 
-  // Select-all acts on every shown variant (already-added ones can be unticked too).
-  const shownSelectable = shown.flatMap((p) => p.variants.map((v) => v.id));
+  // Select-all acts on shown variants, excluding lines added from another option —
+  // those are overridden only by a deliberate per-row tick, never in bulk.
+  const shownSelectable = shown.flatMap((p) => p.variants.map((v) => v.id)).filter((id) => !otherOf(id));
+  const hasOtherOption = shown.some((p) => p.variants.some((v) => otherOf(v.id)));
   const allShownSel = shownSelectable.length > 0 && shownSelectable.every((id) => selected.has(id));
   const someShownSel = shownSelectable.some((id) => selected.has(id));
   const toggleAllShown = () =>
@@ -109,11 +173,13 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
     const hi = Math.max(...vs.map((v) => v.price));
     return lo === hi ? money(lo) : `${money(lo)}–${money(hi)}`;
   };
-  // New picks = selected that aren't already on the quote. Removals = already-added
-  // variants the user just unticked (they get dropped from the quote on apply).
-  const addCount = [...selected].filter((id) => !locked.has(id)).length;
-  const removeCount = [...locked].filter((id) => !selected.has(id)).length;
-  const changeCount = addCount + removeCount;
+  // Three kinds of change: brand-new picks (not on the quote at all), overrides (a line
+  // from another option, re-ticked → its price is replaced by this option's), and
+  // removals (a same-option line the user unticked).
+  const addCount = [...selected].filter((id) => !quote.has(id)).length;
+  const overrideCount = [...selected].filter((id) => otherOf(id)).length;
+  const removeCount = mineSkus.filter((id) => !selected.has(id)).length;
+  const changeCount = addCount + overrideCount + removeCount;
 
   const doAdd = () => {
     const additions = [];
@@ -121,10 +187,11 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
     products.forEach((p) => {
       const single = p.variants.length === 1 && p.variants[0].id === p.sku;
       p.variants.forEach((v) => {
-        const wasAdded = locked.has(v.id);
+        const mine = mineOf(v.id);
+        const other = otherOf(v.id);
         const isSel = selected.has(v.id);
-        if (wasAdded && !isSel) { removals.push(v.id); return; } // unticked an added product → remove
-        if (!isSel || wasAdded) return; // not selected, or already on the quote and kept → leave as-is
+        if (mine) { if (!isSel) removals.push(v.id); return; } // same-option line unticked → remove
+        if (!isSel) return; // untouched new / other-option line → leave as-is
         const e = editable ? editOf(v) : null;
         additions.push({
           sku: v.id,
@@ -132,6 +199,10 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
           price: e ? Number(e.price) : v.price,
           qty: e ? Number(e.qty) : 1,
           priced,
+          source: opt.source,
+          sourceRef: opt.sourceRef ?? null,
+          sourceLabel: opt.label || '',
+          override: !!other, // re-ticked a line from another option → replace its price, keep its qty
         });
       });
     });
@@ -146,20 +217,32 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
       title={title}
       primaryAction={{
         content:
-          addCount && removeCount
-            ? 'Update selection'
-            : addCount
-              ? `Add ${addCount} variant${addCount === 1 ? '' : 's'}`
-              : removeCount
-                ? `Remove ${removeCount} variant${removeCount === 1 ? '' : 's'}`
-                : 'Done',
+          changeCount === 0
+            ? 'Done'
+            : [
+                addCount ? `Add ${addCount}` : null,
+                overrideCount ? `Replace ${overrideCount}` : null,
+                removeCount ? `Remove ${removeCount}` : null,
+              ]
+                .filter(Boolean)
+                .join(' · '),
         onAction: doAdd,
         disabled: changeCount === 0,
       }}
       secondaryActions={[backAction || { content: 'Cancel', onAction: onClose }]}
     >
       <Modal.Section>
-        <InlineStack gap="200" blockAlign="center" wrap={false}>
+        <BlockStack gap="300">
+          {hasOtherOption ? (
+            <Banner tone="info">
+              <Text as="p">
+                Some products below are already on this quote from another option (marked{' '}
+                <Text as="span" fontWeight="semibold">Added</Text>). Re-tick one to replace its price with this{' '}
+                {opt.source === 'b2b' ? 'B2B price' : opt.source === 'catalog' ? 'catalog price' : opt.source === 'store' ? 'store price' : 'price'}.
+              </Text>
+            </Banner>
+          ) : null}
+          <InlineStack gap="200" blockAlign="center" wrap={false}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <TextField
               label="Search products"
@@ -176,7 +259,8 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
           <div style={{ width: 210, flex: '0 0 auto' }}>
             <Select label="Sort by" labelHidden options={SORT_OPTIONS} value={sort} onChange={setSort} />
           </div>
-        </InlineStack>
+          </InlineStack>
+        </BlockStack>
       </Modal.Section>
       <Modal.Section flush>
         <Box background="bg-surface-secondary" borderBlockEndWidth="025" borderColor="border" paddingBlock="150" paddingInline="400">
@@ -184,14 +268,23 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
             <Checkbox label="" labelHidden checked={allShownSel ? true : someShownSel ? 'indeterminate' : false} onChange={toggleAllShown} />
             <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium">Product</Text>
             <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium" alignment="end">Available</Text>
-            <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium" alignment="end">{priceHeader}</Text>
+            <HeaderHelp
+              label={priceHeader}
+              content={`The price you’ll add this product at. You can still change it on the quote later.`}
+            />
+            <HeaderHelp
+              label="In quote"
+              content={`The product’s current price in this quote. “—” means it hasn’t been added yet. Select an added product to switch it to the ${priceHeader}.`}
+            />
             {editable ? <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium" alignment="end">{qtyHeader}</Text> : null}
           </div>
         </Box>
         <div style={{ maxHeight: 420, overflowY: 'auto', overflowX: 'hidden' }}>
           {shown.map((p, i) => {
             const multi = p.variants.length > 1;
-            const vids = p.variants.map((v) => v.id);
+            // Header checkbox reflects only the variants it controls — other-option
+            // lines are excluded (they override per-row, not via the header).
+            const vids = p.variants.map((v) => v.id).filter((id) => !otherOf(id));
             const allSel = vids.length > 0 && vids.every((id) => selected.has(id));
             const someSel = vids.some((id) => selected.has(id));
             const isExp = expanded.has(p.sku);
@@ -199,7 +292,9 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
 
             if (!multi) {
               const v = p.variants[0];
-              const added = locked.has(v.id);
+              const mine = !!mineOf(v.id);
+              const other = otherOf(v.id);
+              const isSel = selected.has(v.id);
               return (
                 <Box key={p.sku} paddingBlock="200" paddingInline="400" borderBlockStartWidth={topBorder} borderColor="border">
                   <div style={grid}>
@@ -210,7 +305,7 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
                       <div style={{ minWidth: 0 }}>
                         <InlineStack gap="150" blockAlign="center" wrap={false}>
                           <Text as="span" variant="bodyMd" truncate>{p.title}</Text>
-                          {added ? <Badge tone="success" size="small">Added</Badge> : null}
+                          <AddedBadge mine={mine} other={other} isSel={isSel} />
                         </InlineStack>
                         <Text as="p" tone="subdued" variant="bodySm" truncate>{p.sku}</Text>
                       </div>
@@ -223,6 +318,7 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
                     ) : (
                       <Text as="span" variant="bodyMd" alignment="end">{money(v.price)}</Text>
                     )}
+                    <InQuoteCell price={quote.get(v.id)?.price} />
                     {editable ? (
                       <div style={{ width: 72, justifySelf: 'end' }}>
                         <TextField label="Qty" labelHidden type="number" min={1} value={String(editOf(v).qty)} onChange={(val) => setEdit(v.id, { qty: Math.max(1, Number(val) || 1) })} autoComplete="off" />
@@ -249,11 +345,14 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
                     </button>
                     <AvailCell n={productStock(p)} />
                     <Text as="span" variant="bodyMd" alignment="end">{priceLabel(p.variants)}</Text>
+                    <InQuoteCell label={inQuoteLabel(p.variants, quote)} />
                     {editable ? <span /> : null}
                   </div>
                 </Box>
                 {isExp && p.variants.map((v) => {
-                  const added = locked.has(v.id);
+                  const mine = !!mineOf(v.id);
+                  const other = otherOf(v.id);
+                  const isSel = selected.has(v.id);
                   return (
                     <Box key={v.id} paddingBlock="200" paddingInline="400" borderBlockStartWidth="025" borderColor="border" background="bg-surface-secondary">
                       <div style={grid}>
@@ -265,7 +364,7 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
                           <div style={{ minWidth: 0 }}>
                             <InlineStack gap="150" blockAlign="center" wrap={false}>
                               <Text as="span" variant="bodyMd" truncate>{v.title}</Text>
-                              {added ? <Badge tone="success" size="small">Added</Badge> : null}
+                              <AddedBadge mine={mine} other={other} isSel={isSel} />
                             </InlineStack>
                             <Text as="p" tone="subdued" variant="bodySm" truncate>{v.id}</Text>
                           </div>
@@ -278,6 +377,7 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
                         ) : (
                           <Text as="span" variant="bodyMd" alignment="end">{money(v.price)}</Text>
                         )}
+                        <InQuoteCell price={quote.get(v.id)?.price} />
                         {editable ? (
                           <div style={{ width: 72, justifySelf: 'end' }}>
                             <TextField label="Qty" labelHidden type="number" min={1} value={String(editOf(v).qty)} onChange={(val) => setEdit(v.id, { qty: Math.max(1, Number(val) || 1) })} autoComplete="off" />

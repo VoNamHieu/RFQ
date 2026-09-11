@@ -111,8 +111,15 @@ export function CreateQuote() {
   const cq = state.createQuote;
   const customer = RFQ_CUSTOMERS.find((c) => c.key === cq.customerKey) || null;
   const lines = cq.lines;
-  // Variants already on the quote — the pickers show these as "Added" (locked).
-  const quoteVariantIds = new Set(lines.map((l) => l.sku).filter(Boolean));
+  // Variants already on the quote, keyed by sku → which option (source) added the line
+  // and its price. The pickers use this to mark "Added": ticked + removable for their
+  // own option, an unticked info badge for a line another option added (re-ticking it
+  // overrides that line's price). One price per sku — the last pick wins.
+  const quoteBySku = new Map(
+    lines
+      .filter((l) => l.sku)
+      .map((l) => [l.sku, { source: l.source, sourceRef: l.sourceRef ?? null, sourceLabel: l.sourceLabel, price: l.price }]),
+  );
   const subtotal = subtotalOf(lines.map((l) => ({ price: l.price, qty: l.qty })));
 
   // B2B pricing status for the selected company (mirrors the B2B app). If the
@@ -166,15 +173,19 @@ export function CreateQuote() {
   };
   const removeLine = (i) => setLines(lines.filter((_, k) => k !== i));
 
-  // Apply a picker result: drop any lines the user unticked (removals), then add the
-  // new picks (re-adding an existing SKU accumulates quantity — legacy cqPushLine).
+  // Apply a picker result: drop any lines the user unticked (removals), then apply the
+  // picks. An override (a line re-ticked from another option) replaces that line's
+  // price/source but keeps its quantity — one price per sku, the last pick wins. A plain
+  // re-add of the same sku accumulates quantity (legacy cqPushLine).
   const mergeLines = (additions, removals = []) => {
     const removeSet = new Set(removals);
     const next = lines.filter((l) => !removeSet.has(l.sku));
     additions.forEach((add) => {
-      const j = add.sku ? next.findIndex((l) => l.sku === add.sku) : -1;
-      if (j >= 0) next[j] = { ...next[j], qty: (Number(next[j].qty) || 0) + (Number(add.qty) || 1), price: add.price, priced: add.priced };
-      else next.push(add);
+      const { override, ...line } = add;
+      const j = line.sku ? next.findIndex((l) => l.sku === line.sku) : -1;
+      if (j >= 0 && override) next[j] = { ...next[j], ...line, qty: next[j].qty }; // new price over old, keep qty
+      else if (j >= 0) next[j] = { ...next[j], ...line, qty: (Number(next[j].qty) || 0) + (Number(line.qty) || 1) };
+      else next.push(line);
     });
     setLines(next);
   };
@@ -545,7 +556,7 @@ export function CreateQuote() {
           setPicker={setPicker}
           customer={customer}
           appInstalled={appInstalled}
-          initialSelected={quoteVariantIds}
+          onQuote={quoteBySku}
           onCreatePricing={goCreatePricing}
           onAdd={(additions, removals) => {
             mergeLines(additions, removals);
@@ -564,7 +575,7 @@ export function CreateQuote() {
       {catalogPicker && (
         <CatalogPickerModal
           customer={customer}
-          initialSelected={quoteVariantIds}
+          onQuote={quoteBySku}
           onPickFromStore={() => {
             setCatalogPicker(false);
             setStorePicker(true);
@@ -582,7 +593,8 @@ export function CreateQuote() {
           title="Add products"
           products={STORE_PRODUCTS}
           priceHeader="Price"
-          initialSelected={quoteVariantIds}
+          onQuote={quoteBySku}
+          option={{ source: 'store', sourceRef: null, label: 'Store list price' }}
           onClose={() => setStorePicker(false)}
           onAdd={(additions, removals) => {
             mergeLines(additions, removals);
