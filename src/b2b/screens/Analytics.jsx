@@ -867,6 +867,7 @@ export function Analytics({ embeddedCompanyId = null }) {
   const tabs = [
     { id: 'overview', content: 'Overview' },
     { id: 'accounts', content: 'Companies' },
+    { id: 'orders', content: 'Orders' },
     { id: 'quotes', content: 'Quotes' },
     { id: 'pricing', content: 'Pricing' },
   ];
@@ -1043,7 +1044,7 @@ export function Analytics({ embeddedCompanyId = null }) {
               context={openQuotes.length ? `${openQuotes.length} quote${openQuotes.length === 1 ? '' : 's'} still open` : 'No open quotes'}
               note="Current snapshot · not affected by date range or location"
               cta="Review quotes →"
-              onAction={() => setTab(2)}
+              onAction={() => setTab(3)}
             />
             {worstMargin && (
               <InsightCard
@@ -1053,7 +1054,7 @@ export function Analytics({ embeddedCompanyId = null }) {
                 context={`${money(worstMargin.salesAffected)} sales affected this period`}
                 note={worstMargin.coverage < 99.5 ? `Based on ${Math.round(worstMargin.coverage)}% cost coverage` : undefined}
                 cta="Review pricing →"
-                onAction={() => setTab(3)}
+                onAction={() => setTab(4)}
               />
             )}
           </InlineGrid>
@@ -1789,7 +1790,7 @@ export function Analytics({ embeddedCompanyId = null }) {
     </BlockStack>
   );
 
-  const tabContent = [overviewTab, companiesTab, quotesTab, pricingTab][tab];
+  const tabContent = [overviewTab, companiesTab, ordersTab, quotesTab, pricingTab][tab];
 
   const content = (
     <BlockStack gap="400">
