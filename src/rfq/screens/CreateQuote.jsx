@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Page,
-  Layout,
+  InlineGrid,
   Card,
   IndexTable,
   Modal,
@@ -166,11 +166,13 @@ export function CreateQuote() {
   };
   const removeLine = (i) => setLines(lines.filter((_, k) => k !== i));
 
-  const mergeLines = (additions) => {
-    const next = [...lines];
+  // Apply a picker result: drop any lines the user unticked (removals), then add the
+  // new picks (re-adding an existing SKU accumulates quantity — legacy cqPushLine).
+  const mergeLines = (additions, removals = []) => {
+    const removeSet = new Set(removals);
+    const next = lines.filter((l) => !removeSet.has(l.sku));
     additions.forEach((add) => {
       const j = add.sku ? next.findIndex((l) => l.sku === add.sku) : -1;
-      // Re-adding an existing SKU accumulates quantity (legacy cqPushLine).
       if (j >= 0) next[j] = { ...next[j], qty: (Number(next[j].qty) || 0) + (Number(add.qty) || 1), price: add.price, priced: add.priced };
       else next.push(add);
     });
@@ -384,14 +386,12 @@ export function CreateQuote() {
 
   return (
     <Page
-      fullWidth
       backAction={{ content: 'Submission list', onAction: () => dispatch({ type: 'NAVIGATE', view: 'submissionList' }) }}
       title="Create quote"
       primaryAction={{ content: 'Create quote', disabled: !canCreate, onAction: () => cqCreate() }}
     >
-      <Layout>
-        <Layout.Section>
-          <Card padding="0">
+      <InlineGrid columns={{ xs: '1fr', md: '2fr 1fr' }} gap="400" alignItems="start">
+        <Card padding="0">
             <Box padding="300">
               <InlineStack align="space-between" blockAlign="center" wrap>
                 <Text as="h2" variant="headingSm">
@@ -403,7 +403,7 @@ export function CreateQuote() {
                     disabled={!customer}
                     onClick={() => setPicker({ mode: 'priced', templateId: null, picks: {}, search: '' })}
                   >
-                    Add custom priced items
+                    Add B2B price
                   </Button>
                   {/* Add product = the whole Shopify store (list price), a direct button. */}
                   <Button onClick={() => setStorePicker(true)}>Add product</Button>
@@ -478,10 +478,8 @@ export function CreateQuote() {
               </>
             )}
           </Card>
-        </Layout.Section>
 
-        <Layout.Section variant="oneThird">
-          <BlockStack gap="400">
+        <BlockStack gap="400">
             <Card>
               <BlockStack gap="300">
                 <InlineStack align="space-between" blockAlign="center">
@@ -539,8 +537,7 @@ export function CreateQuote() {
               </BlockStack>
             </Card>
           </BlockStack>
-        </Layout.Section>
-      </Layout>
+      </InlineGrid>
 
       {picker && (
         <PickerModal
@@ -548,9 +545,10 @@ export function CreateQuote() {
           setPicker={setPicker}
           customer={customer}
           appInstalled={appInstalled}
+          initialSelected={quoteVariantIds}
           onCreatePricing={goCreatePricing}
-          onAdd={(additions) => {
-            mergeLines(additions);
+          onAdd={(additions, removals) => {
+            mergeLines(additions, removals);
             setPicker(null);
           }}
         />
@@ -573,8 +571,8 @@ export function CreateQuote() {
           }}
           onCreateCatalog={() => window.open('https://admin.shopify.com/settings/markets', '_blank', 'noopener,noreferrer')}
           onClose={() => setCatalogPicker(false)}
-          onAdd={(additions) => {
-            mergeLines(additions);
+          onAdd={(additions, removals) => {
+            mergeLines(additions, removals);
             setCatalogPicker(false);
           }}
         />
@@ -586,8 +584,8 @@ export function CreateQuote() {
           priceHeader="Price"
           initialSelected={quoteVariantIds}
           onClose={() => setStorePicker(false)}
-          onAdd={(additions) => {
-            mergeLines(additions);
+          onAdd={(additions, removals) => {
+            mergeLines(additions, removals);
             setStorePicker(false);
           }}
         />

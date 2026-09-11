@@ -68,7 +68,6 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
   });
 
   const toggleVariant = (vid) => {
-    if (locked.has(vid)) return;
     setSelected((s) => {
       const n = new Set(s);
       if (n.has(vid)) n.delete(vid);
@@ -77,7 +76,7 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
     });
   };
   const toggleProduct = (p) => {
-    const vids = p.variants.map((v) => v.id).filter((id) => !locked.has(id));
+    const vids = p.variants.map((v) => v.id);
     if (!vids.length) return;
     const all = vids.every((id) => selected.has(id));
     setSelected((s) => {
@@ -94,8 +93,8 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
       return n;
     });
 
-  // Select-all acts only on the shown, not-yet-added variants.
-  const shownSelectable = shown.flatMap((p) => p.variants.map((v) => v.id)).filter((id) => !locked.has(id));
+  // Select-all acts on every shown variant (already-added ones can be unticked too).
+  const shownSelectable = shown.flatMap((p) => p.variants.map((v) => v.id));
   const allShownSel = shownSelectable.length > 0 && shownSelectable.every((id) => selected.has(id));
   const someShownSel = shownSelectable.some((id) => selected.has(id));
   const toggleAllShown = () =>
@@ -110,15 +109,22 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
     const hi = Math.max(...vs.map((v) => v.price));
     return lo === hi ? money(lo) : `${money(lo)}–${money(hi)}`;
   };
-  // New picks = selected minus what's already on the quote.
-  const newCount = [...selected].filter((id) => !locked.has(id)).length;
+  // New picks = selected that aren't already on the quote. Removals = already-added
+  // variants the user just unticked (they get dropped from the quote on apply).
+  const addCount = [...selected].filter((id) => !locked.has(id)).length;
+  const removeCount = [...locked].filter((id) => !selected.has(id)).length;
+  const changeCount = addCount + removeCount;
 
   const doAdd = () => {
     const additions = [];
+    const removals = [];
     products.forEach((p) => {
       const single = p.variants.length === 1 && p.variants[0].id === p.sku;
       p.variants.forEach((v) => {
-        if (!selected.has(v.id) || locked.has(v.id)) return;
+        const wasAdded = locked.has(v.id);
+        const isSel = selected.has(v.id);
+        if (wasAdded && !isSel) { removals.push(v.id); return; } // unticked an added product → remove
+        if (!isSel || wasAdded) return; // not selected, or already on the quote and kept → leave as-is
         const e = editable ? editOf(v) : null;
         additions.push({
           sku: v.id,
@@ -129,7 +135,7 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
         });
       });
     });
-    onAdd(additions);
+    onAdd(additions, removals);
   };
 
   return (
@@ -138,7 +144,18 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
       size={size}
       onClose={onClose}
       title={title}
-      primaryAction={{ content: newCount ? `Add ${newCount} variant${newCount === 1 ? '' : 's'}` : 'Done', onAction: doAdd, disabled: newCount === 0 }}
+      primaryAction={{
+        content:
+          addCount && removeCount
+            ? 'Update selection'
+            : addCount
+              ? `Add ${addCount} variant${addCount === 1 ? '' : 's'}`
+              : removeCount
+                ? `Remove ${removeCount} variant${removeCount === 1 ? '' : 's'}`
+                : 'Done',
+        onAction: doAdd,
+        disabled: changeCount === 0,
+      }}
       secondaryActions={[backAction || { content: 'Cancel', onAction: onClose }]}
     >
       <Modal.Section>
@@ -175,10 +192,8 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
           {shown.map((p, i) => {
             const multi = p.variants.length > 1;
             const vids = p.variants.map((v) => v.id);
-            const selectableVids = vids.filter((id) => !locked.has(id));
-            const allSel = selectableVids.length > 0 && selectableVids.every((id) => selected.has(id));
+            const allSel = vids.length > 0 && vids.every((id) => selected.has(id));
             const someSel = vids.some((id) => selected.has(id));
-            const allLocked = selectableVids.length === 0;
             const isExp = expanded.has(p.sku);
             const topBorder = i === 0 ? '0' : '025';
 
@@ -188,7 +203,7 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
               return (
                 <Box key={p.sku} paddingBlock="200" paddingInline="400" borderBlockStartWidth={topBorder} borderColor="border">
                   <div style={grid}>
-                    <Checkbox label="" labelHidden checked={selected.has(v.id)} disabled={added} onChange={() => toggleVariant(v.id)} />
+                    <Checkbox label="" labelHidden checked={selected.has(v.id)} onChange={() => toggleVariant(v.id)} />
                     <InlineStack gap="200" blockAlign="center" wrap={false}>
                       <span style={{ width: 20, flex: '0 0 auto' }} />
                       <span style={THUMB}><Icon source={ImageIcon} tone="subdued" /></span>
@@ -221,7 +236,7 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
               <Box key={p.sku} borderBlockStartWidth={topBorder} borderColor="border">
                 <Box paddingBlock="200" paddingInline="400">
                   <div style={grid}>
-                    <Checkbox label="" labelHidden checked={allSel ? true : someSel ? 'indeterminate' : false} disabled={allLocked} onChange={() => toggleProduct(p)} />
+                    <Checkbox label="" labelHidden checked={allSel ? true : someSel ? 'indeterminate' : false} onChange={() => toggleProduct(p)} />
                     <button type="button" onClick={() => toggleExpand(p.sku)} style={{ all: 'unset', cursor: 'pointer', display: 'block', minWidth: 0 }}>
                       <InlineStack gap="200" blockAlign="center" wrap={false}>
                         <span style={CARET}><Icon source={isExp ? ChevronDownIcon : ChevronRightIcon} tone="subdued" /></span>
@@ -243,7 +258,7 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
                     <Box key={v.id} paddingBlock="200" paddingInline="400" borderBlockStartWidth="025" borderColor="border" background="bg-surface-secondary">
                       <div style={grid}>
                         <span style={{ paddingInlineStart: 40, display: 'flex', alignItems: 'center' }}>
-                          <Checkbox label="" labelHidden checked={selected.has(v.id)} disabled={added} onChange={() => toggleVariant(v.id)} />
+                          <Checkbox label="" labelHidden checked={selected.has(v.id)} onChange={() => toggleVariant(v.id)} />
                         </span>
                         <InlineStack gap="200" blockAlign="center" wrap={false}>
                           <span style={{ width: 20, flex: '0 0 auto' }} />
@@ -282,7 +297,7 @@ export function ProductPickerModal({ title, products, priceHeader = 'Price', qty
           )}
         </div>
         <Box paddingBlock="200" paddingInline="400" borderBlockStartWidth="025" borderColor="border">
-          <Text as="span" tone="subdued" variant="bodySm">{`${newCount}/${max} variants selected`}</Text>
+          <Text as="span" tone="subdued" variant="bodySm">{`${addCount}/${max} variants selected`}</Text>
         </Box>
       </Modal.Section>
     </Modal>

@@ -4,14 +4,15 @@ import { ChevronRightIcon } from '@shopify/polaris-icons';
 import { RFQ_CATALOG, RFQ_PRICING_OPTIONS, RFQ_TEMPLATE_PRODUCTS } from '../data/catalog.js';
 import { ProductPickerModal } from './ProductPickerModal.jsx';
 
-// The custom-priced product flow for Create quote:
+// The B2B-price product flow for Create quote:
 //   Step 1 — pick a base-pricing template attached to the customer's company.
-//   Step 2 — the shared Shopify-style ProductPickerModal in editable mode, so each
-//            line carries its own custom price + qty. (A single-variant product's
-//            variant id === its sku.)
+//   Step 2 — the shared Shopify-style ProductPickerModal (checkbox-only, same as
+//            "Add product"): products come in at the template's B2B price, qty 1,
+//            then price/qty are edited in the quote's line table. (A single-variant
+//            product's variant id === its sku.)
 const catBySku = (sku) => RFQ_CATALOG.find((p) => p.sku === sku);
 
-export function PickerModal({ picker, setPicker, customer, onAdd, onCreatePricing, appInstalled = true }) {
+export function PickerModal({ picker, setPicker, customer, onAdd, onCreatePricing, appInstalled = true, initialSelected }) {
   const templates = customer ? RFQ_PRICING_OPTIONS[customer.companyKey] || [] : [];
 
   // Step 1: pick a base-price template.
@@ -20,7 +21,7 @@ export function PickerModal({ picker, setPicker, customer, onAdd, onCreatePricin
       <Modal
         open
         onClose={() => setPicker(null)}
-        title="Add custom priced items"
+        title="Add B2B price"
         secondaryActions={[{ content: 'Cancel', onAction: () => setPicker(null) }]}
       >
         <Modal.Section>
@@ -81,10 +82,10 @@ export function PickerModal({ picker, setPicker, customer, onAdd, onCreatePricin
     );
   }
 
-  // Step 2: the shared Shopify-style picker in editable (custom-priced) mode. The
+  // Step 2: the shared Shopify-style picker (checkbox-only, like "Add product"). The
   // template price seeds the default variant; other variants seed from their catalog
-  // price. Search / sort / select-all / thumbnails / variant expansion all come from
-  // the shared modal.
+  // price. Products are added at that B2B price (qty 1) and adjusted in the line table.
+  // Search / sort / select-all / thumbnails / variant expansion come from the shared modal.
   const defPrice = (p, v) => (v.id === p.sku ? p.defaultPrice : v.list ?? p.defaultPrice);
   const products = (RFQ_TEMPLATE_PRODUCTS[picker.templateId] || []).map((t) => {
     const cat = catBySku(t.sku);
@@ -100,11 +101,11 @@ export function PickerModal({ picker, setPicker, customer, onAdd, onCreatePricin
 
   return (
     <ProductPickerModal
-      title="Add custom priced items"
+      title="Add B2B price"
       products={products}
-      editable
       priced
-      priceHeader="Price"
+      priceHeader="B2B price"
+      initialSelected={initialSelected}
       onClose={() => setPicker(null)}
       onAdd={onAdd}
       backAction={{ content: '← Templates', onAction: () => setPicker({ ...picker, templateId: null }) }}
