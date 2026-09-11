@@ -199,7 +199,31 @@ function PriceTypeHelp() {
   );
 }
 
-function ReportCard({ title, subtitle, controls, children }) {
+// How each relationship state is defined — surfaced as a tooltip on the "Relationship
+// state" card so the 5 states read as an explainable rule, not an opaque score.
+// Reorder ratio = days since last order ÷ the company's own median reorder interval.
+const RELATIONSHIP_STATE_DEFS = [
+  ['Healthy', 'Ordering within its usual rhythm.'],
+  ['Watch', 'Slightly overdue compared with its usual rhythm.'],
+  ['At risk', 'Meaningfully overdue compared with its usual rhythm.'],
+  ['Inactive', 'More than twice its usual reorder interval has passed since the last order.'],
+  ['Insufficient history', 'Not enough order history to establish a reliable rhythm. Requires at least 4 orders.'],
+];
+function RelationshipStateHelp() {
+  return (
+    <BlockStack gap="150">
+      <Text as="span" variant="bodySm">Relationship state shows whether a company is ordering on its usual schedule, based on its own order history.</Text>
+      {RELATIONSHIP_STATE_DEFS.map(([name, def]) => (
+        <BlockStack gap="025" key={name}>
+          <Text as="span" variant="bodySm" fontWeight="semibold">{name}</Text>
+          <Text as="span" variant="bodySm" tone="subdued">{def}</Text>
+        </BlockStack>
+      ))}
+    </BlockStack>
+  );
+}
+
+function ReportCard({ title, subtitle, controls, help, children }) {
   return (
     <Card>
       <BlockStack gap="300">
@@ -208,7 +232,16 @@ function ReportCard({ title, subtitle, controls, children }) {
             <Text as="h3" variant="headingSm">{title}</Text>
             {subtitle ? <Text as="p" tone="subdued" variant="bodySm">{subtitle}</Text> : null}
           </BlockStack>
-          {controls || null}
+          {(controls || help) ? (
+            <InlineStack gap="200" blockAlign="center" wrap={false}>
+              {controls || null}
+              {help ? (
+                <Tooltip content={help} preferredPosition="above" width="wide">
+                  <span style={{ display: 'inline-flex', cursor: 'help' }}><Icon source={InfoIcon} tone="subdued" /></span>
+                </Tooltip>
+              ) : null}
+            </InlineStack>
+          ) : null}
         </InlineStack>
         {children}
       </BlockStack>
@@ -395,7 +428,10 @@ export function Analytics({ embeddedCompanyId = null }) {
   // estimates. `coverage` = share of the set's sales that has cost data, so a partial
   // GP/Margin is always shown WITH how complete it is (never as if it were the full total).
   const gpStats = (os) => {
-    if (!os.length) return { gp: 0, margin: 0, coverage: null }; // no orders → GP is 0, not "unknown"
+    // No orders → GP is a real $0 (nothing sold = no profit), but MARGIN is not
+    // applicable (denominator 0): show "—", not "0%". A 0% margin would read as "sold
+    // but made no profit"; an empty scope simply has no sales to have a margin on.
+    if (!os.length) return { gp: 0, margin: null, coverage: null };
     let gp = 0, costedRev = 0, totalRev = 0, n = 0;
     for (const o of os) {
       const amt = Number(o.amount) || 0; totalRev += amt;
@@ -676,7 +712,12 @@ export function Analytics({ embeddedCompanyId = null }) {
   // Inactive >2×, else Insufficient history. An explainable state, not a 0–100 score.
   const healthRows = companyCadence.map((r) => {
     const firstAge = r.first ? daysAgo(r.first) : null;
-    const lifecycle = r.orders === 0 ? 'No purchase' : firstAge != null && firstAge <= 90 ? 'New' : 'Established';
+    // Lifecycle taxonomy is deliberately DISTINCT from the New-vs-existing revenue cohort
+    // (§4.6): lifecycle is about age-since-first-purchase ("Recently activated" ≤90d /
+    // "Established" >90d), the revenue split is about first purchase inside the selected
+    // period ("New" / "Existing"). Different words on purpose so one company can't read as
+    // both "New" and "Established" at once.
+    const lifecycle = r.orders === 0 ? 'No purchase' : firstAge != null && firstAge <= 90 ? 'Recently activated' : 'Established';
     let health = 'Insufficient history';
     let ratio = null;
     let overdue = null;
@@ -911,20 +952,26 @@ export function Analytics({ embeddedCompanyId = null }) {
   // Trailing-90-day helpers for Needs attention. Attach line items so GP resolves.
   const t90Start = addDays(TODAY, -89);
   const rawWithItems = (o) => ({ ...o, items: analyticsOrderItems[o.id] || [] });
-  const trailing90Sales = (id) => {
+  const t90Orders = (id) => {
     const c = companies.find((x) => x.id === id);
-    return (c?.orders || []).filter((o) => COMPLETED.has(o.status) && inDateRange(o.date, t90Start, TODAY)).reduce((a, o) => a + (Number(o.amount) || 0), 0);
-  };
-  const trailing90GP = (id) => {
-    const c = companies.find((x) => x.id === id);
-    return gpStats((c?.orders || []).filter((o) => COMPLETED.has(o.status) && inDateRange(o.date, t90Start, TODAY)).map(rawWithItems)).gp;
+    return (c?.orders || []).filter((o) => COMPLETED.has(o.status) && inDateRange(o.date, t90Start, TODAY)).map(rawWithItems);
   };
   // "Past their normal buying cycle" = reorder ratio beyond Healthy (Watch/At risk/
   // Inactive). Exposure is stated as trailing-90-day sales AND gross profit — never
   // called "revenue at risk", since there is no predictive model behind it (§4.4).
   const pastCycleCompanies = healthRows.filter((r) => ['Watch', 'At risk', 'Inactive'].includes(r.health));
-  const pastCycleSales = pastCycleCompanies.reduce((a, r) => a + trailing90Sales(r.id), 0);
-  const pastCycleGP = pastCycleCompanies.reduce((a, r) => { if (a === null) return null; const g = trailing90GP(r.id); return g === null ? null : a + g; }, 0);
+  // Aggregate the group's trailing-90 orders ONCE so GP carries its own cost coverage
+  // (coverage-aware rule, §0): GP is computed on the costed portion only, and
+  // pastCycleCoverage says how much of the exposure that covers. It's surfaced next to
+  // the GP so $GP against $sales isn't misread as the group's true gross margin.
+  const pastCycleOrders = pastCycleCompanies.flatMap((r) => t90Orders(r.id));
+  const pastCycleSales = pastCycleOrders.reduce((a, o) => a + (Number(o.amount) || 0), 0);
+  const pastCycleStats = gpStats(pastCycleOrders);
+  const pastCycleGP = pastCycleStats.gp;
+  const pastCycleCoverage = pastCycleStats.coverage; // % of past-cycle sales that has cost data
+  const pastCycleCoverageNote = pastCycleGP != null && pastCycleCoverage != null && pastCycleCoverage < 99.5
+    ? `Based on ${Math.round(pastCycleCoverage)}% cost coverage`
+    : undefined;
 
   // Stale pipeline — open quotes with no activity for >10 days (§3.4). quoteAge =
   // days since the last update (a proxy for last meaningful activity).
@@ -1035,6 +1082,7 @@ export function Analytics({ embeddedCompanyId = null }) {
               headline="Past their normal reorder cycle"
               value={`${pastCycleCompanies.length} compan${pastCycleCompanies.length === 1 ? 'y' : 'ies'}`}
               context={`${moneyN(pastCycleGP)} gross profit in the last 90 days`}
+              note={pastCycleCoverageNote}
               cta="Review companies →"
               onAction={() => setTab(1)}
             />
@@ -1087,7 +1135,7 @@ export function Analytics({ embeddedCompanyId = null }) {
               ))}
             </IndexTable>
           </ReportCard>
-          <ReportCard title="New vs existing revenue" subtitle="Revenue from newly activated vs established companies.">
+          <ReportCard title="New vs existing revenue" subtitle="Revenue by whether the company first purchased in the selected period.">
             <StackedBar segments={[{ name: 'Existing companies', value: existingCompanyRevenue }, { name: 'New companies', value: newCompanyRevenue }]} />
           </ReportCard>
         </>
@@ -1136,7 +1184,6 @@ export function Analytics({ embeddedCompanyId = null }) {
     ['Insufficient history', 'var(--p-color-bg-fill-tertiary, #e3e3e3)'],
   ];
   const companyHasPricing = (c) => (c?.pricing?.base?.length > 0) || !!c?.pricing?.quantity;
-  const contributionRows = (selected ? allLocationRows : companyRows).slice(0, 10).map((r) => ({ key: r.id || r.name, name: r.name, sub: r.sub, value: r.revenue, valueLabel: money(r.revenue || 0), secondary: `· ${Math.round(r.share || 0)}%` }));
   const lifecycleTotal = Math.max(1, newCompanyRevenue + existingCompanyRevenue);
 
   // §4.6 rows: period performance (companyRows) + snapshot health (healthRows).
@@ -1156,8 +1203,6 @@ export function Analytics({ embeddedCompanyId = null }) {
     switch (companySort) {
       case 'sales': return (b.revenue || 0) - (a.revenue || 0);
       case 'growth': return (b.growth ?? -Infinity) - (a.growth ?? -Infinity);
-      case 'orders': return (b.orders || 0) - (a.orders || 0);
-      case 'aov': return (b.aov || 0) - (a.aov || 0);
       case 'repeat': return (b.repeat || 0) - (a.repeat || 0);
       case 'recency': return (a.since ?? Infinity) - (b.since ?? Infinity);
       case 'overdue': return (b.overdue ?? -1) - (a.overdue ?? -1);
@@ -1203,7 +1248,7 @@ export function Analytics({ embeddedCompanyId = null }) {
         { title: 'Gross profit', alignment: 'end' },
         { title: 'Margin', alignment: 'end' },
         ...(compareEnabled ? [{ title: 'Growth', alignment: 'end' }] : []),
-        { title: 'Repeat', alignment: 'end' },
+        { title: <Tooltip content="Share of sales from repeat orders (revenue after each company's first order ÷ its revenue)." preferredPosition="above" width="wide"><span style={{ cursor: 'help' }}>Repeat revenue</span></Tooltip>, alignment: 'end' },
         { title: 'Last order', alignment: 'end' },
         { title: 'Typical reorder', alignment: 'end' },
         { title: 'Status' },
@@ -1218,9 +1263,21 @@ export function Analytics({ embeddedCompanyId = null }) {
           <IndexTable.Cell><Text as="span" alignment="end">{pctN(r.margin)}</Text></IndexTable.Cell>
           {compareEnabled && <IndexTable.Cell><Text as="span" alignment="end">{r.growth == null ? '—' : `${r.growth > 0 ? '+' : ''}${r.growth}%`}</Text></IndexTable.Cell>}
           <IndexTable.Cell><Text as="span" alignment="end">{`${Math.round(r.repeat || 0)}%`}</Text></IndexTable.Cell>
-          <IndexTable.Cell><Text as="span" alignment="end">{r.since != null ? `${r.since}d ago${r.overdue ? ` · +${r.overdue}d` : ''}` : '—'}</Text></IndexTable.Cell>
-          <IndexTable.Cell><Text as="span" alignment="end">{r.typical != null ? `${r.typical}d${r.ratio != null ? ` · ${r.ratio.toFixed(1)}×` : ''}` : '—'}</Text></IndexTable.Cell>
-          <IndexTable.Cell><Badge tone={HEALTH_TONE[r.health]}>{r.health}</Badge></IndexTable.Cell>
+          {/* Recency only — the overdue amount and reorder ratio live on the Status tooltip
+              so this cell answers one thing: how long since the last order. */}
+          <IndexTable.Cell><Text as="span" alignment="end">{r.since != null ? `${r.since}d ago` : '—'}</Text></IndexTable.Cell>
+          {/* Baseline only ("how often do they usually buy") — the current-state ratio moves
+              to Status, so this cell isn't mixing a stable interval with a TODAY value. */}
+          <IndexTable.Cell><Text as="span" alignment="end">{r.typical != null ? `~${r.typical}d` : '—'}</Text></IndexTable.Cell>
+          <IndexTable.Cell>
+            {r.ratio != null ? (
+              <Tooltip content={`${r.ratio.toFixed(1)}× its usual reorder gap${r.overdue ? ` · ${r.overdue} days past its typical reorder time` : ''}`} preferredPosition="above" width="wide">
+                <span style={{ display: 'inline-flex', cursor: 'help' }}><Badge tone={HEALTH_TONE[r.health]}>{r.health}</Badge></span>
+              </Tooltip>
+            ) : (
+              <Badge tone={HEALTH_TONE[r.health]}>{r.health}</Badge>
+            )}
+          </IndexTable.Cell>
         </IndexTable.Row>
       ))}
     </IndexTable>
@@ -1230,9 +1287,11 @@ export function Analytics({ embeddedCompanyId = null }) {
   const companyFilters = (
     <InlineStack gap="200" wrap blockAlign="center">
       <div style={{ minWidth: 150 }}><Select label="Health" labelHidden options={[{ label: 'All health', value: 'all' }, ...HEALTH_SEGMENTS.map(([n]) => ({ label: `${n} (${countHealth(n)})`, value: n }))]} value={healthFilter} onChange={setHealthFilter} /></div>
-      <div style={{ minWidth: 150 }}><Select label="Lifecycle" labelHidden options={[{ label: 'All lifecycle', value: 'all' }, ...['No purchase', 'New', 'Established'].map((n) => ({ label: `${n} (${countLifecycle(n)})`, value: n }))]} value={lifecycleFilter} onChange={setLifecycleFilter} /></div>
+      <div style={{ minWidth: 150 }}><Select label="Lifecycle" labelHidden options={[{ label: 'All lifecycle', value: 'all' }, ...['No purchase', 'Recently activated', 'Established'].map((n) => ({ label: `${n} (${countLifecycle(n)})`, value: n }))]} value={lifecycleFilter} onChange={setLifecycleFilter} /></div>
       <div style={{ minWidth: 140 }}><Select label="Pricing" labelHidden options={[{ label: 'Any pricing', value: 'all' }, { label: 'Has pricing', value: 'has' }, { label: 'No pricing', value: 'none' }]} value={pricingFilter} onChange={setPricingFilter} /></div>
-      <div style={{ minWidth: 160 }}><Select label="Sort" labelHidden options={[{ label: 'Health (default)', value: 'default' }, { label: 'Sales', value: 'sales' }, ...(compareEnabled ? [{ label: 'Growth', value: 'growth' }] : []), { label: 'Orders', value: 'orders' }, { label: 'AOV', value: 'aov' }, { label: 'Repeat revenue', value: 'repeat' }, { label: 'Last order', value: 'recency' }, { label: 'Days overdue', value: 'overdue' }]} value={companySort} onChange={setCompanySort} /></div>
+      {/* Only offer sorts for metrics the table actually shows — Orders/AOV columns aren't
+          on this screen, so sorting by them would reorder rows with nothing to verify against. */}
+      <div style={{ minWidth: 160 }}><Select label="Sort" labelHidden options={[{ label: 'Health (default)', value: 'default' }, { label: 'Sales', value: 'sales' }, ...(compareEnabled ? [{ label: 'Growth', value: 'growth' }] : []), { label: 'Repeat revenue', value: 'repeat' }, { label: 'Last order', value: 'recency' }, { label: 'Days overdue', value: 'overdue' }]} value={companySort} onChange={setCompanySort} /></div>
     </InlineStack>
   );
 
@@ -1248,51 +1307,45 @@ export function Analytics({ embeddedCompanyId = null }) {
             <MiniCompare
               items={[
                 { label: 'Trailing 90-day sales', value: money(pastCycleSales) },
-                { label: 'Trailing 90-day gross profit', value: moneyN(pastCycleGP) },
+                { label: 'Trailing 90-day gross profit', value: moneyN(pastCycleGP), sub: pastCycleCoverageNote },
               ]}
             />
           </BlockStack>
         </ReportCard>
       )}
 
-      {!selected && (
-        <ReportCard title="Relationship state" subtitle="Reorder ratio vs each company's own rhythm — separate from lifecycle. Click a segment to filter the table.">
-          <BlockStack gap="300">
-            <div style={{ display: 'flex', height: 12, borderRadius: 6, overflow: 'hidden', gap: 2 }}>
-              {healthCounts.filter((s) => s.count > 0).map((s) => (
-                <div key={s.name} title={`${s.name}: ${s.count}`} style={{ width: `${(s.count / healthTotal) * 100}%`, background: s.color }} />
-              ))}
-            </div>
-            <InlineStack gap="400" wrap>
-              {healthCounts.map((s) => (
-                <button key={s.name} type="button" onClick={() => setHealthFilter(healthFilter === s.name ? 'all' : s.name)} style={{ all: 'unset', cursor: 'pointer' }}>
-                  <InlineStack gap="150" blockAlign="center">
-                    <span style={{ width: 10, height: 10, borderRadius: 3, background: s.color, display: 'inline-block' }} />
-                    <Text as="span" variant="bodySm" fontWeight={healthFilter === s.name ? 'bold' : 'regular'}>{s.name}</Text>
-                    <Text as="span" variant="bodySm" tone="subdued">{s.count}</Text>
-                  </InlineStack>
-                </button>
-              ))}
-            </InlineStack>
-          </BlockStack>
-        </ReportCard>
-      )}
-
-      <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
-        <ReportCard title={`${selected ? 'Location' : 'Company'} contribution`} subtitle={selected ? "Share of this company's sales by location." : 'Share of selected-period B2B sales by company.'}>
-          <RankBars rows={contributionRows} empty="No completed-order data." />
-        </ReportCard>
-        {selected ? (
-          <ReportCard title="Location performance" subtitle="Location contribution in the selected period.">{companyPerfTable}</ReportCard>
-        ) : (
-          <ReportCard title="New vs established revenue" subtitle="Revenue by whether the company first purchased in the selected period.">
-            <StackedBar segments={[{ name: 'Established companies', value: existingCompanyRevenue }, { name: 'New companies', value: newCompanyRevenue }]} />
+      {selected ? (
+        <ReportCard title="Location performance" subtitle="Location contribution in the selected period.">{companyPerfTable}</ReportCard>
+      ) : (
+        <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
+          <ReportCard title="Relationship state" subtitle="Reorder ratio vs each company's own rhythm — separate from lifecycle. Click a segment to filter the table." help={<RelationshipStateHelp />}>
+            <BlockStack gap="300">
+              <div style={{ display: 'flex', height: 12, borderRadius: 6, overflow: 'hidden', gap: 2 }}>
+                {healthCounts.filter((s) => s.count > 0).map((s) => (
+                  <div key={s.name} title={`${s.name}: ${s.count}`} style={{ width: `${(s.count / healthTotal) * 100}%`, background: s.color }} />
+                ))}
+              </div>
+              <InlineStack gap="300" wrap>
+                {healthCounts.map((s) => (
+                  <button key={s.name} type="button" onClick={() => setHealthFilter(healthFilter === s.name ? 'all' : s.name)} style={{ all: 'unset', cursor: 'pointer' }}>
+                    <InlineStack gap="150" blockAlign="center">
+                      <span style={{ width: 10, height: 10, borderRadius: 3, background: s.color, display: 'inline-block' }} />
+                      <Text as="span" variant="bodySm" fontWeight={healthFilter === s.name ? 'bold' : 'regular'}>{s.name}</Text>
+                      <Text as="span" variant="bodySm" tone="subdued">{s.count}</Text>
+                    </InlineStack>
+                  </button>
+                ))}
+              </InlineStack>
+            </BlockStack>
+          </ReportCard>
+          <ReportCard title="New vs existing revenue" subtitle="Revenue by whether the company first purchased in the selected period.">
+            <StackedBar segments={[{ name: 'Existing companies', value: existingCompanyRevenue }, { name: 'New companies', value: newCompanyRevenue }]} />
             <Box paddingBlockStart="200">
-              <Text as="p" tone="subdued" variant="bodySm">{`${pct(existingCompanyRevenue, lifecycleTotal)}% established · ${pct(newCompanyRevenue, lifecycleTotal)}% newly activated.`}</Text>
+              <Text as="p" tone="subdued" variant="bodySm">{`${pct(existingCompanyRevenue, lifecycleTotal)}% existing · ${pct(newCompanyRevenue, lifecycleTotal)}% new.`}</Text>
             </Box>
           </ReportCard>
-        )}
-      </InlineGrid>
+        </InlineGrid>
+      )}
 
       {!selected && (
         <>
@@ -1337,13 +1390,22 @@ export function Analytics({ embeddedCompanyId = null }) {
       )}
 
       {activationRows.length > 0 && (
-        <ReportCard title="B2B activation" subtitle="Company application progression from registration to approval and first purchase.">
+        <ReportCard
+          title="B2B activation"
+          subtitle="Registration cohort — companies that registered in the selected period, tracked to their approval and first purchase to date."
+          help={
+            <BlockStack gap="150">
+              <Text as="span" variant="bodySm">This is a <Text as="span" variant="bodySm" fontWeight="semibold">registration cohort</Text>, not period activity: companies are chosen by registration date in the window, then their approval and first purchase are counted whenever they happen, up to today.</Text>
+              <Text as="span" variant="bodySm" tone="subdued">So re-opening an earlier period later can show higher Approved / First purchase — the cohort keeps converting. It measures conversion to date, not what happened inside the window.</Text>
+            </BlockStack>
+          }
+        >
           <BlockStack gap="300">
             <FunnelV2
               stages={[
                 { name: 'Registered', count: activationRows.length, value: String(activationRows.length) },
-                { name: 'Approved', count: activationApproved.length, value: String(activationApproved.length), note: `· ${pct(activationApproved.length, activationRows.length)}%` },
-                { name: 'First purchase', count: activationPurchased.length, value: String(activationPurchased.length), note: `· ${activationApproved.length ? pct(activationPurchased.length, activationApproved.length) : 0}% of approved` },
+                { name: 'Approved to date', count: activationApproved.length, value: String(activationApproved.length), note: `· ${pct(activationApproved.length, activationRows.length)}%` },
+                { name: 'First purchase to date', count: activationPurchased.length, value: String(activationPurchased.length), note: `· ${activationApproved.length ? pct(activationPurchased.length, activationApproved.length) : 0}% of approved` },
               ]}
             />
             <MiniCompare
