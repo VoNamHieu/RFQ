@@ -1184,7 +1184,6 @@ export function Analytics({ embeddedCompanyId = null }) {
     ['Insufficient history', 'var(--p-color-bg-fill-tertiary, #e3e3e3)'],
   ];
   const companyHasPricing = (c) => (c?.pricing?.base?.length > 0) || !!c?.pricing?.quantity;
-  const lifecycleTotal = Math.max(1, newCompanyRevenue + existingCompanyRevenue);
 
   // §4.6 rows: period performance (companyRows) + snapshot health (healthRows).
   const companyTableRows = companyRows.map((r) => {
@@ -1229,7 +1228,10 @@ export function Analytics({ embeddedCompanyId = null }) {
         { label: 'Companies', value: String(managedCount), foot: 'managed in the B2B app' },
         { label: 'Active', value: String(activeCompanyIds.size), foot: 'completed an order this period' },
         { label: 'New', value: String(newCompanyIds.size), foot: 'first order this period' },
-        { label: 'Past buying cycle', value: String(pastCycleCompanies.length), foot: `${moneyShortN(pastCycleGP)} gross profit · trailing 90 days` },
+        // Count only — the trailing-90 GP + its cost coverage live on the §4.4 exposure
+        // card, so the reliability disclosure ("Based on X% cost coverage") isn't shown
+        // in one place and dropped in another for the same number.
+        { label: 'Past buying cycle', value: String(pastCycleCompanies.length), foot: 'behind their usual reorder cadence' },
       ];
 
   const healthCounts = HEALTH_SEGMENTS.map(([name, color]) => ({ name, color, count: countHealth(name) }));
@@ -1341,7 +1343,9 @@ export function Analytics({ embeddedCompanyId = null }) {
           <ReportCard title="New vs existing revenue" subtitle="Revenue by whether the company first purchased in the selected period.">
             <StackedBar segments={[{ name: 'Existing companies', value: existingCompanyRevenue }, { name: 'New companies', value: newCompanyRevenue }]} />
             <Box paddingBlockStart="200">
-              <Text as="p" tone="subdued" variant="bodySm">{`${pct(existingCompanyRevenue, lifecycleTotal)}% existing · ${pct(newCompanyRevenue, lifecycleTotal)}% new.`}</Text>
+              {/* Revenue mix — denominator is total B2B sales (existing + new = sales),
+                  so these are existingCompanyRevenue/sales and newCompanyRevenue/sales. */}
+              <Text as="p" tone="subdued" variant="bodySm">{`${pct(existingCompanyRevenue, sales)}% existing · ${pct(newCompanyRevenue, sales)}% new.`}</Text>
             </Box>
           </ReportCard>
         </InlineGrid>

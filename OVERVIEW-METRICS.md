@@ -36,7 +36,7 @@
 | **Gross profit** | `gpStats(orders).gp` = Σ `orderGP` trên **các order đã có cost** (costed sales − COGS). Xem **Quy tắc coverage** (§0). Footer hiện **"X% of sales have cost data"** khi coverage < 100%; **"—"** khi không order nào có cost. *(Production: = **Net sales − Net COGS**, COGS cũng reverse theo return/cancel — callout §3.1.)* | `grossProfit` |
 | **Gross margin** | `gpStats(orders).margin` = `grossProfit / costedSales × 100` — margin của **phần đã costed** (không chia cho tổng sales). Footer/"—" như Gross profit. | `grossMargin` |
 | **Cost coverage** | `costCoverage = costedSales / sales × 100`. **Không phải thẻ riêng** — hiện trong footer của Gross profit / Gross margin khi < 100% để nói rõ số đang dựa trên bao nhiêu % sales. | `costCoverage` |
-| **Active companies** | Số `companyId` **khác nhau** xuất hiện trong `orders`; footer "of N managed companies" với `managedCount = companies.length`. *(Khi đã chọn 1 company → đổi thành **Active locations**.)* | `activeCompanyIds.size` |
+| **Active companies** | Số `companyId` **khác nhau** xuất hiện trong `orders`; footer "of N managed companies" với `managedCount = companies.length`. *(Khi đã chọn 1 company → đổi thành **Active locations**.)* *(Production: Active = có ≥1 **B2B purchase/order** trong kỳ — KHÔNG phải "có sale event"; company chỉ có refund/reversal trong kỳ không tính Active. Xem callout dưới.)* | `activeCompanyIds.size` |
 | **Repeat revenue** | `repeatShare = repeatRevenue / sales × 100`. `repeatRevenue` = Σ `amount` của các order **KHÔNG phải** order hoàn tất **đầu tiên** của company đó (mọi order từ lần thứ 2 trở đi). Footer hiện số tiền `repeatRevenue`. *(Production: tính theo **first sale**, không phải first completed order — callout §3.1.)* | `repeatShare`, `repeatRevenue` |
 
 ### Net B2B sales — định nghĩa chuẩn (production)
@@ -58,6 +58,7 @@
 > - **Repeat revenue (production)** = Net sales từ order **sau first buying order / first sale** của company — KHÔNG phải "sau first *completed* order" (vì Net sales không gate theo status; hai mental model sẽ lệch).
 > - **New buying companies (production)** = company có **first B2B purchase / first B2B sale** trong kỳ — KHÔNG phải first *completed* order.
 > - **Top products revenue (production)** = **net line sales** (gross line − allocated discount − reversals), KHÔNG phải raw `line.revenue` — nếu không sẽ không reconcile với Overview Net sales (vd Overview $80 nhưng Σ product $100).
+> - **Active companies / Active locations (production)** = có **≥1 B2B purchase/order trong kỳ** — KHÔNG phải "có sale event". Company chỉ có **refund/reversal** trong kỳ (không mua mới) **không** được tính Active. Cùng nguyên tắc purchase-vs-sale-event như Relationship health: revenue accounting dùng toàn bộ sales events, còn **activity** (Active) và **cadence** (health) dùng **purchase events**.
 
 ---
 

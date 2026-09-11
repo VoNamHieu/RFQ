@@ -53,7 +53,9 @@ Thứ tự các phần (all-companies mode):
 | **Companies** | Tổng số company đang quản lý. | `managedCount = companies.length` |
 | **Active** | Số `companyId` khác nhau có completed order **trong kỳ**. | `activeCompanyIds.size` |
 | **New** | Số company có **first completed order rơi vào kỳ**. | `newCompanyIds.size` |
-| **Past buying cycle** | Số company đang trễ nhịp (Watch/At risk/Inactive); footer = **trailing-90-day GP** của nhóm này. | `pastCycleCompanies.length`, `moneyShortN(pastCycleGP)` |
+| **Past buying cycle** | Số company đang trễ nhịp (Watch/At risk/Inactive). **Footer chỉ mô tả ("behind their usual reorder cadence") — KHÔNG show GP.** | `pastCycleCompanies.length` |
+
+> **Vì sao score card không show GP:** GP kèm cost coverage là trách nhiệm của **exposure card §4.4** ("Based on X% cost coverage"). Nếu score card cũng show `$GP` mà không kèm coverage → cùng một số ở một nơi disclose độ tin cậy, một nơi không. Chọn: **score card chỉ count**, GP+coverage dồn về §4.4 (tránh duplicate + tránh GP thiếu coverage).
 
 **Single-company mode** (đổi 4 thẻ thành cấp location):
 
@@ -63,6 +65,8 @@ Thứ tự các phần (all-companies mode):
 | **Active locations** | `X / Y` — location có completed order trong kỳ / tổng location. | `activeLocations` / `selected.locations.length` |
 | **Repeat revenue** | `repeatShare%` + số tiền `repeatRevenue`. | `repeatShare`, `repeatRevenue` |
 | **Relationship health** | Nhãn health của company + footer `X.X× reorder ratio` (hoặc "not enough order history"). | `healthOf(selected.id)` |
+
+> ⚠️ **Production — "Active" định nghĩa theo PURCHASE, không phải mọi sale event.** Active companies / Active locations = **có ≥1 B2B purchase/order trong kỳ**. KHÔNG hiểu là "có sales event" — một company chỉ có refund/reversal trong kỳ **không** được tính Active. (Cùng nguyên tắc với Relationship health §4.2: revenue accounting dùng toàn bộ sales events, còn activity/cadence dùng purchase events.) Demo hiện dùng completed order nên chưa lệch; note này chỉ để production sạch semantics.
 
 ---
 
@@ -139,7 +143,10 @@ Cùng card & định nghĩa với Overview §3.2b (dùng chung `newCompanyRevenu
 | **Existing companies** | `max(0, sales − newCompanyRevenue)` — company đã mua lần đầu **TRƯỚC kỳ**. | `existingCompanyRevenue` |
 
 - `newCompanyIds` = company có `firstOrderByCompany` (first **completed** order, all-time) `≥ rangeStart`.
-- Chú thích dưới: `X% existing · Y% new` (chia cho `lifecycleTotal`).
+- **Chú thích % — mẫu số BẮT BUỘC là total revenue (`sales`)**, đây là revenue mix:
+  - `New % = newCompanyRevenue / sales`
+  - `Existing % = existingCompanyRevenue / sales`
+  - Vì `existingCompanyRevenue = max(0, sales − newCompanyRevenue)` nên `new + existing = sales` → hai % cộng lại = 100%. *(Đã bỏ biến `lifecycleTotal` — tên gây hiểu nhầm là count; dùng thẳng `sales`.)*
 - Single-company mode: thay bằng **Location performance** (bảng location).
 
 > ⚠️ **Production:** dùng **first B2B sale** (sales-event basis), KHÔNG phải first *completed* order (Net sales không gate theo status). Cohort split nên tính rõ ràng: **New = Net sales của company có first sale TRONG kỳ; Existing = first sale TRƯỚC kỳ** — thay vì lấy `sales − newCompanyRevenue`. Xem §3.2b [[OVERVIEW-METRICS.md]].
