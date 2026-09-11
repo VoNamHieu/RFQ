@@ -21,6 +21,7 @@ import { InfoIcon, MaximizeIcon, XIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { money } from '../format.js';
 import { LineChart, VBarChart, StackedBar, FunnelV2, RankBars, Timeline, moneyShort } from '../components/charts.jsx';
+import { resolveDetail, defaultVariant } from '../pricing.js';
 import {
   analyticsOrderItems,
   analyticsApprovalQueue,
@@ -300,10 +301,11 @@ export function Analytics({ embeddedCompanyId = null }) {
   const { state } = useStore();
   const companies = state.db.companies;
   const products = state.db.products;
+  const policies = state.db.policies || [];
+  const companyById = (id) => companies.find((c) => c.id === id);
   const allQuotes = state.db.quotes || [];
 
   const [companyFilter, setCompanyFilter] = useState(embeddedCompanyId || 'all');
-  const [locationFilter, setLocationFilter] = useState('all');
   const [period, setPeriod] = useState('3m'); // 30d | 3m | 6m | 12m | custom
   const [compare, setCompare] = useState('none'); // none | previous
   const [customStart, setCustomStart] = useState(''); // YYYY-MM-DD (custom range)
@@ -337,7 +339,7 @@ export function Analytics({ embeddedCompanyId = null }) {
   // rangeEnd] inclusive (ending TODAY, or the custom dates). "Compare to → Previous
   // period" is the same-length span immediately before it. PERIOD metrics filter on
   // this window (inPeriod); CURRENT SNAPSHOT metrics ignore it (see snapshotQuotes)
-  // and only honour the Company / Location filter.
+  // and only honour the Company filter.
   const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
   const addMonths = (d, n) => new Date(d.getFullYear(), d.getMonth() + n, d.getDate());
@@ -395,21 +397,15 @@ export function Analytics({ embeddedCompanyId = null }) {
     return { ...o, amount: Math.max(0, amount), items, _event: ov };
   };
   const attach = (o, c) => applyEventOverlay({ ...o, companyId: c.id, companyName: c.name, items: analyticsOrderItems[o.id] || [] });
-  let allScopedOrders = scopedCompanies.flatMap((c) => (c.orders || []).map((o) => attach(o, c))).filter((o) => COMPLETED.has(o.status));
-  if (locationFilter !== 'all') allScopedOrders = allScopedOrders.filter((o) => `${o.companyId}::${o.location}` === locationFilter);
+  const allScopedOrders = scopedCompanies.flatMap((c) => (c.orders || []).map((o) => attach(o, c))).filter((o) => COMPLETED.has(o.status));
   const orders = allScopedOrders.filter((o) => inPeriod(o.date));
   const previousOrders = compareEnabled ? allScopedOrders.filter((o) => inDateRange(o.date, previousPeriodStart, previousPeriodEnd)) : [];
 
-  let quotes = allQuotes.filter((q) => scopedIds.has(q.company) && inPeriod(q.created));
-  if (locationFilter !== 'all') {
-    const loc = locationFilter.split('::')[1];
-    quotes = quotes.filter((q) => q.location === loc);
-  }
+  const quotes = allQuotes.filter((q) => scopedIds.has(q.company) && inPeriod(q.created));
 
-  // Snapshot quotes: every scoped quote regardless of when it was created. Open value
-  // is a current-state metric — it deliberately ignores BOTH the date range and the
-  // location filter, so the card reads the same no matter how the page is scoped by
-  // time/location (the microcopy on the card says so). Company scope still applies.
+  // Snapshot quotes: every scoped quote regardless of when it was created. Open value is
+  // a current-state metric, so it ignores the DATE RANGE (a quote opened 5 months ago but
+  // still open must appear). Company scope still applies.
   const snapshotQuotes = allQuotes.filter((q) => scopedIds.has(q.company));
 
   const sales = orders.reduce((a, o) => a + (Number(o.amount) || 0), 0);
@@ -541,7 +537,7 @@ export function Analytics({ embeddedCompanyId = null }) {
   const companyRows = scopedCompanies
     .map((c) => {
       const history = (c.orders || []).map((o) => attach(o, c)).filter((o) => COMPLETED.has(o.status));
-      const scopedHistory = locationFilter !== 'all' ? history.filter((o) => `${o.companyId}::${o.location}` === locationFilter) : history;
+      const scopedHistory = history;
       const os = scopedHistory.filter((o) => inPeriod(o.date));
       const rev = os.reduce((a, o) => a + (Number(o.amount) || 0), 0);
       const currentRange = sumRevenueInRange(scopedHistory, currentPeriodStart, currentPeriodEnd);
@@ -557,7 +553,7 @@ export function Analytics({ embeddedCompanyId = null }) {
     .flatMap((c) =>
       (c.locations || []).map((l) => {
         const history = (c.orders || []).map((o) => attach(o, c)).filter((o) => COMPLETED.has(o.status) && o.location === l.name);
-        const scopedHistory = locationFilter !== 'all' ? history.filter((o) => `${c.id}::${o.location}` === locationFilter) : history;
+        const scopedHistory = history;
         const os = scopedHistory.filter((o) => inPeriod(o.date));
         const rev = os.reduce((a, o) => a + (Number(o.amount) || 0), 0);
         const currentRange = sumRevenueInRange(scopedHistory, currentPeriodStart, currentPeriodEnd);
@@ -690,10 +686,26 @@ export function Analytics({ embeddedCompanyId = null }) {
 
   // ── quote rows / cadence ────────────────────────────────────────────────────
   const quoteVal = (q) => (q.lines || []).reduce((s, l) => s + (Number(l.quoted) || 0) * (Number(l.qty) || 0), 0);
-  const quoteListVal = (q) => (q.lines || []).reduce((s, l) => s + (Number(productBySku(l.sku)?.list) || 0) * (Number(l.qty) || 0), 0);
+  // Two distinct clocks — do not conflate:
+  //  • quoteAge     = how long the quote has existed (TODAY − created). "How old is it."
+  //    Drives Open quote aging (§5.3) and the Age column in Quote detail.
+  //  • quoteIdleAge = TODAY − last MEANINGFUL activity = the latest buyer/merchant
+  //    timeline event, NOT the raw `updated` field (an internal metadata write can bump
+  //    `updated` without any real activity). Drives Stale pipeline (§5.1). Falls back to
+  //    `updated` then `created` only when a quote has no timeline.
   const quoteAge = (q) => {
-    const base = String(q.updated || q.created || '').slice(0, 10);
-    return base ? Math.max(0, Math.round((TODAY - new Date(base + 'T00:00:00')) / DAY)) : 0;
+    const c = String(q.created || q.updated || '').slice(0, 10);
+    return c ? Math.max(0, Math.round((TODAY - new Date(c + 'T00:00:00')) / DAY)) : 0;
+  };
+  const lastActivity = (q) => {
+    const dates = (q.timeline || []).map((e) => timelineDate(e.when)).filter(Boolean);
+    if (dates.length) return new Date(Math.max(...dates.map((d) => d.getTime())));
+    const f = String(q.updated || q.created || '').slice(0, 10);
+    return f ? new Date(f + 'T00:00:00') : null;
+  };
+  const quoteIdleAge = (q) => {
+    const d = lastActivity(q);
+    return d ? Math.max(0, Math.round((TODAY - d) / DAY)) : 0;
   };
   const companyQuoteRows = scopedCompanies
     .map((c) => {
@@ -779,7 +791,7 @@ export function Analytics({ embeddedCompanyId = null }) {
   const activationTypical = median(activationApproved.filter((a) => a.firstOrder).map((a) => daysBetween(a.approved, a.firstOrder)));
 
   // ── approvals ───────────────────────────────────────────────────────────────
-  const scopedApprovals = analyticsApprovalQueue.filter((a) => (activeCompanyId === 'all' || a.companyId === activeCompanyId) && (locationFilter === 'all' || `${a.companyId}::${a.location}` === locationFilter));
+  const scopedApprovals = analyticsApprovalQueue.filter((a) => activeCompanyId === 'all' || a.companyId === activeCompanyId);
   const approvalValue = scopedApprovals.reduce((a, x) => a + x.value, 0);
   const approvalAgeHours = (x) => Math.max(0, (NOW - new Date(x.requestedAt)) / 3600000);
   const approvalOver48 = scopedApprovals.filter((x) => approvalAgeHours(x) > 48);
@@ -820,39 +832,81 @@ export function Analytics({ embeddedCompanyId = null }) {
     });
     return { ...b, count: qs.length, value: qs.reduce((a, q) => a + quoteVal(q), 0) };
   });
-  let listWeighted = 0;
-  let quotedWeighted = 0;
-  quotes.forEach((q) =>
+  // ── Discount / pricing analysis: three distinct questions (spec §5.7) ─────────
+  // Per-quote pricing facts, computed once against BOTH baselines:
+  //  • listVal/quotedVal   — vs Shopify LIST (stable, quote always ≤ list → ≥ 0).
+  //  • coRefVal/coQuotedVal — only over lines that resolve to a COMPANY price
+  //    (resolveDetail layer ≠ 'shopify'); used for a SIGNED variance (no clamp), since
+  //    a quote can be priced above OR below the company's standing policy.
+  //  • hasCompanyPricing    — did any priced line resolve from company pricing.
+  const quotePricingInfo = (q) => {
+    const company = companyById(q.company);
+    let listVal = 0, quotedVal = 0, coRefVal = 0, coQuotedVal = 0, hasCompanyPricing = false;
     (q.lines || []).forEach((l) => {
-      const lp = Number(productBySku(l.sku)?.list) || 0;
-      const qp = Number(l.quoted);
+      const product = productBySku(l.sku);
+      if (!product) return;
+      const quoted = Number(l.quoted);
       const qty = Number(l.qty) || 0;
-      if (lp > 0 && Number.isFinite(qp) && qp > 0) {
-        listWeighted += lp * qty;
-        quotedWeighted += qp * qty;
+      if (!Number.isFinite(quoted) || quoted <= 0 || qty <= 0) return;
+      const list = Number(product.list) || 0;
+      if (list > 0) { listVal += list * qty; quotedVal += quoted * qty; }
+      const d = resolveDetail(company, product, policies, defaultVariant(product));
+      if (d.layer !== 'shopify') {
+        const ref = Number(d.price) || 0;
+        if (ref > 0) { coRefVal += ref * qty; coQuotedVal += quoted * qty; hasCompanyPricing = true; }
       }
-    }),
-  );
-  const avgDiscount = listWeighted ? Math.max(0, ((listWeighted - quotedWeighted) / listWeighted) * 100) : null;
-  const quoteDiscountPct = (q) => {
-    const list = quoteListVal(q);
-    const quoted = quoteVal(q);
-    return list > 0 && quoted > 0 ? Math.max(0, ((list - quoted) / list) * 100) : null;
+    });
+    return {
+      listDiscount: listVal > 0 ? Math.max(0, ((listVal - quotedVal) / listVal) * 100) : null,
+      priceVariance: coRefVal > 0 ? ((coQuotedVal - coRefVal) / coRefVal) * 100 : null, // signed
+      hasCompanyPricing, listVal, quotedVal, coRefVal, coQuotedVal,
+    };
   };
-  const finalizedWithDiscount = finalizedQuotes.map((q) => ({ discount: quoteDiscountPct(q), won: q.status === 'Deal Closed' })).filter((x) => x.discount != null);
+  const periodPricing = quotes.map((q) => quotePricingInfo(q));
+  const finalizedPricing = finalizedQuotes.map((q) => ({ won: q.status === 'Deal Closed', ...quotePricingInfo(q) }));
+
+  // Metric 1 — Quoted discount vs Shopify LIST (discount depth). Weighted by list value.
+  const listWeighted = periodPricing.reduce((a, x) => a + x.listVal, 0);
+  const listQuotedWeighted = periodPricing.reduce((a, x) => a + x.quotedVal, 0);
+  const avgListDiscount = listWeighted ? Math.max(0, ((listWeighted - listQuotedWeighted) / listWeighted) * 100) : null;
+  const listDiscountRows = finalizedPricing.filter((x) => x.listDiscount != null);
   const discountBuckets = [
     { name: '0–5% off', min: 0, max: 5 },
     { name: '5–10% off', min: 5, max: 10 },
     { name: '10–15% off', min: 10, max: 15 },
     { name: '15%+ off', min: 15, max: 999 },
   ].map((b, i) => {
-    const rows = finalizedWithDiscount.filter((x) => x.discount >= b.min && (i === 0 ? x.discount <= b.max : x.discount > b.min) && x.discount <= b.max);
+    const rows = listDiscountRows.filter((x) => x.listDiscount >= b.min && (i === 0 ? x.listDiscount <= b.max : x.listDiscount > b.min) && x.listDiscount <= b.max);
     const wins = rows.filter((x) => x.won).length;
     return { ...b, count: rows.length, wins, rate: rows.length ? Math.round((wins / rows.length) * 100) : null };
   });
 
+  // Metric 2 — Price variance vs COMPANY pricing (adherence / override). SIGNED, no clamp:
+  // + = quoted above the assigned company price, − = below. Only quotes with company pricing.
+  const varWeighted = periodPricing.reduce((a, x) => a + x.coRefVal, 0);
+  const varQuotedWeighted = periodPricing.reduce((a, x) => a + x.coQuotedVal, 0);
+  const avgPriceVariance = varWeighted ? ((varQuotedWeighted - varWeighted) / varWeighted) * 100 : null;
+  const varianceRows = finalizedPricing.filter((x) => x.priceVariance != null);
+  const varianceBuckets = [
+    { name: 'Above company price', test: (v) => v > 5 },
+    { name: 'Within ±5%', test: (v) => v >= -5 && v <= 5 },
+    { name: '5–10% below', test: (v) => v < -5 && v >= -10 },
+    { name: '10%+ below', test: (v) => v < -10 },
+  ].map((b) => {
+    const rows = varianceRows.filter((x) => b.test(x.priceVariance));
+    const wins = rows.filter((x) => x.won).length;
+    return { name: b.name, count: rows.length, wins, rate: rows.length ? Math.round((wins / rows.length) * 100) : null };
+  });
+
+  // Metric 3 — win rate WITH vs WITHOUT company pricing (does pricing context convert?).
+  const winRateOf = (rows) => (rows.length ? Math.round((rows.filter((x) => x.won).length / rows.length) * 100) : null);
+  const withPricing = finalizedPricing.filter((x) => x.hasCompanyPricing);
+  const withoutPricing = finalizedPricing.filter((x) => !x.hasCompanyPricing);
+  const winWithPricing = winRateOf(withPricing);
+  const winWithoutPricing = winRateOf(withoutPricing);
+
   // ── quantity rules / pricing changes ────────────────────────────────────────
-  const quantityEvents = analyticsQuantityEvents.filter((e) => inPeriod(e.date) && (activeCompanyId === 'all' || e.companyId === activeCompanyId) && (locationFilter === 'all' || `${e.companyId}::${e.location}` === locationFilter));
+  const quantityEvents = analyticsQuantityEvents.filter((e) => inPeriod(e.date) && (activeCompanyId === 'all' || e.companyId === activeCompanyId));
   const moqEvents = quantityEvents.filter((e) => e.type === 'moq_blocked');
   const moqAttempted = moqEvents.reduce((a, e) => a + e.attemptedValue, 0);
   const moqBuyers = new Set(moqEvents.map((e) => e.buyer)).size;
@@ -871,10 +925,6 @@ export function Analytics({ embeddedCompanyId = null }) {
 
   // ── filter option lists ─────────────────────────────────────────────────────
   const companyOptions = [{ label: 'All companies', value: 'all' }, ...companies.map((c) => ({ label: c.name, value: c.id }))];
-  const locationOptions = [
-    { label: 'All locations', value: 'all' },
-    ...scopedCompanies.flatMap((c) => (c.locations || []).map((l) => ({ label: selected ? l.name : `${l.name} · ${c.name}`, value: `${c.id}::${l.name}` }))),
-  ];
   const periodOptions = [
     { label: 'Last 30 days', value: '30d' },
     { label: 'Last 3 months', value: '3m' },
@@ -887,10 +937,9 @@ export function Analytics({ embeddedCompanyId = null }) {
     { label: 'Previous period', value: 'previous' },
   ];
   const scopeText = selected ? `Filtered to ${selected.name}` : `Across ${companies.length} managed companies`;
-  const showClear = selected || locationFilter !== 'all' || period !== '3m' || compare !== 'none';
+  const showClear = selected || period !== '3m' || compare !== 'none';
   const clearFilters = () => {
     setCompanyFilter(embeddedCompanyId || 'all');
-    setLocationFilter('all');
     setPeriod('3m');
     setCompare('none');
     setCustomStart('');
@@ -908,7 +957,7 @@ export function Analytics({ embeddedCompanyId = null }) {
   const CompanyLink = ({ id, children }) => (
     <button
       type="button"
-      onClick={() => { setCompanyFilter(id); setLocationFilter('all'); }}
+      onClick={() => setCompanyFilter(id)}
       style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', color: 'var(--p-color-text-emphasis)', font: 'inherit', textAlign: 'left' }}
     >
       {children}
@@ -985,9 +1034,9 @@ export function Analytics({ embeddedCompanyId = null }) {
     ? `Based on ${Math.round(pastCycleCoverage)}% cost coverage`
     : undefined;
 
-  // Stale pipeline — open quotes with no activity for >10 days (§3.4). quoteAge =
-  // days since the last update (a proxy for last meaningful activity).
-  const staleQuotes = openQuotes.filter((q) => quoteAge(q) > 10).map((q) => quoteVal(q)).sort((a, b) => b - a);
+  // Stale pipeline — open quotes with no MEANINGFUL activity for >10 days (§3.4).
+  // Uses quoteIdleAge (days since last buyer/merchant timeline event), not quoteAge.
+  const staleQuotes = openQuotes.filter((q) => quoteIdleAge(q) > 10).map((q) => quoteVal(q)).sort((a, b) => b - a);
   const staleValue = staleQuotes.reduce((a, v) => a + v, 0);
 
   // Margin deterioration — the company whose gross margin fell most vs the previous
@@ -1102,7 +1151,7 @@ export function Analytics({ embeddedCompanyId = null }) {
               headline="Current open quote value"
               value={money(openQuoteValue)}
               context={openQuotes.length ? `${openQuotes.length} quote${openQuotes.length === 1 ? '' : 's'} still open` : 'No open quotes'}
-              note="Current snapshot · not affected by date range or location"
+              note="Current snapshot · not affected by date range"
               cta="Review quotes →"
               onAction={() => setTab(3)}
             />
@@ -1543,7 +1592,7 @@ export function Analytics({ embeddedCompanyId = null }) {
 
   // ── QUOTES (spec §5) ────────────────────────────────────────────────────────
   const previousReceived = compareEnabled
-    ? allQuotes.filter((q) => scopedIds.has(q.company) && inDateRange(q.created, previousPeriodStart, previousPeriodEnd) && (locationFilter === 'all' || q.location === locationFilter.split('::')[1])).length
+    ? allQuotes.filter((q) => scopedIds.has(q.company) && inDateRange(q.created, previousPeriodStart, previousPeriodEnd)).length
     : 0;
   const quotesCreatedDelta = compareEnabled && previousReceived ? pctChange(received, previousReceived) : null;
   const quoteValueTotal = quotes.reduce((a, q) => a + quoteVal(q), 0); // §5.2 total quoted value (period)
@@ -1555,31 +1604,25 @@ export function Analytics({ embeddedCompanyId = null }) {
     .filter((x) => x != null);
   const decisionMedian = median(decisionDays);
 
-  // §5.5 cohort funnel (Count | Value): only quotes created in the period, tracked
-  // to the furthest stage they reached — not everything currently sitting at a stage.
-  // The quote app has three states: Received → Negotiating → Won. Lost is the other
-  // terminal outcome (not downstream of Won), shown as a share of RFQs. Cohort funnel
-  // counts how far each period quote got.
+  // §5.5 pipeline distribution (Count | Value): quotes created in the period split by
+  // their CURRENT state — each quote counted exactly once, so segments sum to 100% of
+  // (non-trashed) RFQs. Replaces the old cumulative funnel: no "farthest stage reached" to
+  // derive, so a quote rejected after negotiating simply lands in Lost instead of being
+  // (mis)counted at Negotiating. Stages match spec §5.5: RFQ received → Negotiating → Won,
+  // plus Lost. Trashed is EXCLUDED (spec: "Trashed = loại"), not shown as a stage.
   const stageValue = (qs) => qs.reduce((a, q) => a + quoteVal(q), 0);
-  const funnelNegotiating = quotes.filter((q) => q.status === 'Negotiating' || q.status === 'Deal Closed');
-  const funnelWon = quotes.filter((q) => q.status === 'Deal Closed');
-  const funnelLost = quotes.filter((q) => q.status === 'Deal Rejected');
-  const funnelSource = [
-    { name: 'RFQ received', qs: quotes },
-    { name: 'Negotiating', qs: funnelNegotiating },
-    { name: 'Won', qs: funnelWon },
-    { name: 'Lost', qs: funnelLost, terminal: true },
+  const pricedSet = new Set(pricedQuotes); // reuse the priced/sent signal from `pricedQuotes` (§5.5)
+  const distOpen = quotes.filter((q) => !['Deal Closed', 'Deal Rejected', 'Trashed'].includes(q.status));
+  const distBuckets = [
+    { name: 'Received', qs: distOpen.filter((q) => !pricedSet.has(q)) },
+    { name: 'Negotiating', qs: distOpen.filter((q) => pricedSet.has(q)) },
+    { name: 'Won', qs: quotes.filter((q) => q.status === 'Deal Closed') },
+    { name: 'Lost', qs: quotes.filter((q) => q.status === 'Deal Rejected') },
   ];
-  const funnelMetricOf = (qs) => (quoteFunnelMode === 'value' ? stageValue(qs) : qs.length);
-  const funnelInitial = funnelMetricOf(quotes);
-  const funnelV2Stages = funnelSource.map((s, i) => {
-    const m = funnelMetricOf(s.qs);
-    const disp = quoteFunnelMode === 'value' ? moneyShort(m) : String(m);
-    const ofRfq = funnelInitial ? pct(m, funnelInitial) : 0;
-    if (s.terminal) return { name: s.name, count: m, value: `${disp} · ${ofRfq}%`, note: `${ofRfq}% of RFQs · lost` };
-    const prev = i ? funnelMetricOf(funnelSource[i - 1].qs) : m;
-    return { name: s.name, count: m, value: `${disp} · ${ofRfq}%`, note: i ? `${prev ? pct(m, prev) : 0}% from prior` : '' };
-  });
+  const distMetricOf = (qs) => (quoteFunnelMode === 'value' ? stageValue(qs) : qs.length);
+  const distSegments = distBuckets
+    .map((s) => ({ name: s.name, value: distMetricOf(s.qs) }))
+    .filter((s) => s.value > 0);
 
   // §5.6 quote performance by company.
   const quoteResponseDays = (q) => {
@@ -1605,6 +1648,7 @@ export function Analytics({ embeddedCompanyId = null }) {
 
   const agingMaxVal = Math.max(1, ...agingBuckets.map((x) => x.value));
   const maxDiscountRate = Math.max(1, ...discountBuckets.map((x) => x.rate || 0));
+  const varianceMaxRate = Math.max(1, ...varianceBuckets.map((x) => x.rate || 0));
 
   // §5.7 win rate by deal size (advanced). Always carries its sample size.
   const dealSizeBuckets = [
@@ -1664,12 +1708,12 @@ export function Analytics({ embeddedCompanyId = null }) {
 
       {/* §5.3 aging + §5.5 cohort funnel */}
       <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
-        <ReportCard title="Didn't close quote aging" subtitle="Value of quotes that haven't closed yet, by age. Bars scale by value, not count.">
+        <ReportCard title="Didn't close quote aging" subtitle="Value of still-open quotes by age (time since created, not since last activity). Bars scale by value, not count.">
           <RankBars rows={agingBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} quote${b.count === 1 ? '' : 's'} still open`, value: b.value, width: (b.value / agingMaxVal) * 100, valueLabel: money(b.value) }))} empty="No quotes still open." />
         </ReportCard>
         <ReportCard
-          title="Pipeline funnel"
-          subtitle="Cohort of quotes created in the period, tracked to the furthest stage reached."
+          title="Pipeline distribution"
+          subtitle="Quotes created in the period by current state — each quote counted once, segments sum to 100% of RFQs."
           controls={
             <div style={{ display: 'inline-flex', border: '1px solid var(--p-color-border)', borderRadius: 8, overflow: 'hidden' }}>
               {[['count', 'Count'], ['value', 'Value']].map(([m, lbl]) => (
@@ -1678,7 +1722,7 @@ export function Analytics({ embeddedCompanyId = null }) {
             </div>
           }
         >
-          <FunnelV2 stages={funnelV2Stages} />
+          <StackedBar segments={distSegments} format={quoteFunnelMode === 'value' ? moneyShort : (v) => String(v)} />
         </ReportCard>
       </InlineGrid>
 
@@ -1739,14 +1783,29 @@ export function Analytics({ embeddedCompanyId = null }) {
                   <RankBars rows={dealSizeBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} finalized quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / dealSizeMaxRate) * 100, valueLabel: b.rate == null ? '—' : `${b.rate}% won` }))} empty="No finalized quotes." />
                 </BlockStack>
                 <BlockStack gap="150">
-                  <Text as="h4" variant="headingXs">Win rate by discount band</Text>
-                  <MiniCompare items={[{ label: 'Average discount given', value: avgDiscount == null ? '—' : `${avgDiscount.toFixed(1)}%`, sub: 'weighted by quoted value · vs Shopify list' }]} />
+                  <Text as="h4" variant="headingXs">Win rate by quoted discount</Text>
+                  <Text as="p" tone="subdued" variant="bodySm">Quoted discount vs Shopify list price — depth of discount off list.</Text>
+                  <MiniCompare items={[{ label: 'Avg quoted discount vs list', value: avgListDiscount == null ? '—' : `${avgListDiscount.toFixed(1)}%`, sub: 'weighted by list-price value' }]} />
                   <RankBars rows={discountBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} finalized quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / maxDiscountRate) * 100, valueLabel: b.rate == null ? '—' : `${b.rate}% won` }))} empty="No finalized quotes." />
+                </BlockStack>
+                <BlockStack gap="150">
+                  <Text as="h4" variant="headingXs">Price variance vs company pricing</Text>
+                  <Text as="p" tone="subdued" variant="bodySm">Signed: + = quoted above the company&rsquo;s assigned price, − = below. Only quotes that have company pricing.</Text>
+                  <MiniCompare items={[{ label: 'Avg variance vs company price', value: avgPriceVariance == null ? '—' : `${avgPriceVariance > 0 ? '+' : ''}${avgPriceVariance.toFixed(1)}%`, sub: `${varianceRows.length} finalized quote${varianceRows.length === 1 ? '' : 's'} with company pricing` }]} />
+                  <RankBars rows={varianceBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} finalized quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / varianceMaxRate) * 100, valueLabel: b.rate == null ? '—' : `${b.rate}% won` }))} empty="No finalized quotes with company pricing." />
+                </BlockStack>
+                <BlockStack gap="150">
+                  <Text as="h4" variant="headingXs">Win rate: company pricing vs none</Text>
+                  <Text as="p" tone="subdued" variant="bodySm">Do quotes backed by assigned company pricing convert differently from quotes priced off Shopify list only?</Text>
+                  <MiniCompare items={[
+                    { label: 'With company pricing', value: winWithPricing == null ? '—' : `${winWithPricing}%`, sub: `${withPricing.length} finalized quote${withPricing.length === 1 ? '' : 's'}` },
+                    { label: 'Without company pricing', value: winWithoutPricing == null ? '—' : `${winWithoutPricing}%`, sub: `${withoutPricing.length} finalized quote${withoutPricing.length === 1 ? '' : 's'}` },
+                  ]} />
                 </BlockStack>
               </InlineGrid>
             </BlockStack>
           ) : (
-            <Text as="p" tone="subdued" variant="bodySm">Win rate by company, deal size and discount band — each with its sample size.</Text>
+            <Text as="p" tone="subdued" variant="bodySm">Win rate by company, deal size, quoted discount and price variance vs company pricing — each with its sample size.</Text>
           )}
         </ReportCard>
       )}
@@ -1927,8 +1986,7 @@ export function Analytics({ embeddedCompanyId = null }) {
               </>
             )}
             <div style={{ minWidth: 160 }}><Select label="Compare to" options={compareOptions} value={compare} onChange={setCompare} /></div>
-            {!embeddedCompanyId && <div style={{ minWidth: 190 }}><Select label="Company" options={companyOptions} value={companyFilter} onChange={(v) => { setCompanyFilter(v); setLocationFilter('all'); }} /></div>}
-            <div style={{ minWidth: 190 }}><Select label="Location" options={locationOptions} value={locationFilter} onChange={setLocationFilter} /></div>
+            {!embeddedCompanyId && <div style={{ minWidth: 190 }}><Select label="Company" options={companyOptions} value={companyFilter} onChange={setCompanyFilter} /></div>}
           </InlineStack>
           <InlineStack align="space-between" blockAlign="center" gap="200" wrap>
             <Text as="span" tone="subdued" variant="bodySm">{scopeText}</Text>
