@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { Card, BlockStack, InlineGrid, InlineStack, TextField, Text, Box, Button, Select, ChoiceList, Badge, Icon, Checkbox } from '@shopify/polaris';
-import { SearchIcon, ImageIcon, ChevronDownIcon, ChevronRightIcon } from '@shopify/polaris-icons';
+import { Card, BlockStack, InlineGrid, InlineStack, TextField, Text, Box, Button, Select, ChoiceList, Badge, Icon, Checkbox, Tooltip } from '@shopify/polaris';
+import { SearchIcon, ImageIcon, ChevronDownIcon, ChevronRightIcon, InfoIcon } from '@shopify/polaris-icons';
 import { COLLECTIONS } from '../data/constants.js';
 import { money } from '../format.js';
 import { productVariants, applyAdjustment } from '../pricing.js';
@@ -95,7 +95,28 @@ export function VolumeBasisCard({ builder, patch }) {
   return (
     <Card>
       <BlockStack gap="200">
-        <Text as="h3" variant="headingSm">Discount basis</Text>
+        <InlineStack gap="100" blockAlign="center" wrap={false}>
+          <Text as="h3" variant="headingSm">Discount basis</Text>
+          <Tooltip
+            preferredPosition="above"
+            width="wide"
+            content={
+              <BlockStack gap="150">
+                <Text as="span" variant="bodySm">Choose the price your volume discount applies to.</Text>
+                <BlockStack gap="025">
+                  <Text as="span" variant="bodySm" fontWeight="semibold">Shopify price</Text>
+                  <Text as="span" variant="bodySm" tone="subdued">The product's original store price.</Text>
+                </BlockStack>
+                <BlockStack gap="025">
+                  <Text as="span" variant="bodySm" fontWeight="semibold">Company base price</Text>
+                  <Text as="span" variant="bodySm" tone="subdued">The price set by the company's base pricing. Falls back to the Shopify price if none is set.</Text>
+                </BlockStack>
+              </BlockStack>
+            }
+          >
+            <span style={{ display: 'inline-flex', cursor: 'help' }}><Icon source={InfoIcon} tone="subdued" /></span>
+          </Tooltip>
+        </InlineStack>
         <Select
           label="Take the volume discount off"
           options={[
