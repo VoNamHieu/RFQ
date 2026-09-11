@@ -229,13 +229,25 @@ function ReportCard({ title, subtitle, controls, help, children }) {
       <BlockStack gap="300">
         <InlineStack align="space-between" blockAlign="start" gap="300" wrap>
           <BlockStack gap="050">
-            <Text as="h3" variant="headingSm">{title}</Text>
+            {/* With controls, the help icon sits next to the title (a card with a wide
+                controls row shouldn't push the ⓘ to the far right past the controls).
+                Without controls, it goes in the right slot below, pinned flush-right. */}
+            {help && controls ? (
+              <InlineStack gap="100" blockAlign="center" wrap={false}>
+                <Text as="h3" variant="headingSm">{title}</Text>
+                <Tooltip content={help} preferredPosition="above" width="wide">
+                  <span style={{ display: 'inline-flex', cursor: 'help' }}><Icon source={InfoIcon} tone="subdued" /></span>
+                </Tooltip>
+              </InlineStack>
+            ) : (
+              <Text as="h3" variant="headingSm">{title}</Text>
+            )}
             {subtitle ? <Text as="p" tone="subdued" variant="bodySm">{subtitle}</Text> : null}
           </BlockStack>
-          {(controls || help) ? (
+          {(controls || (help && !controls)) ? (
             <InlineStack gap="200" blockAlign="center" wrap={false}>
               {controls || null}
-              {help ? (
+              {help && !controls ? (
                 <Tooltip content={help} preferredPosition="above" width="wide">
                   <span style={{ display: 'inline-flex', cursor: 'help' }}><Icon source={InfoIcon} tone="subdued" /></span>
                 </Tooltip>
@@ -1303,7 +1315,16 @@ export function Analytics({ embeddedCompanyId = null }) {
 
       {/* §4.4 — exposure: named as historical revenue, not "revenue at risk". */}
       {!selected && pastCycleCompanies.length > 0 && (
-        <ReportCard title="Companies past their buying cycle" subtitle="Historical revenue from companies now past their normal reorder cadence — not a prediction of loss.">
+        <ReportCard
+          title="Companies past their buying cycle"
+          subtitle="Historical revenue from companies now past their normal reorder cadence — not a prediction of loss."
+          help={
+            <BlockStack gap="150">
+              <Text as="span" variant="bodySm">Companies that are past their usual reorder cycle — Watch, At risk, or Inactive by relationship state.</Text>
+              <Text as="span" variant="bodySm" tone="subdued">Sales and gross profit reflect the group's trailing 90 days of activity. These are historical figures, not a prediction of churn or future loss. When cost data is incomplete, gross profit shows the percentage of sales with cost data.</Text>
+            </BlockStack>
+          }
+        >
           <BlockStack gap="200">
             <Text as="span" variant="bodyMd" fontWeight="medium">{`${pastCycleCompanies.length} compan${pastCycleCompanies.length === 1 ? 'y' : 'ies'} past normal buying cycle`}</Text>
             <MiniCompare
@@ -1317,7 +1338,11 @@ export function Analytics({ embeddedCompanyId = null }) {
       )}
 
       {selected ? (
-        <ReportCard title="Location performance" subtitle="Location contribution in the selected period.">{companyPerfTable}</ReportCard>
+        <ReportCard
+          title="Location performance"
+          subtitle="Location contribution in the selected period."
+          help={<Text as="span" variant="bodySm">Each of this company's locations, with its sales, share of the company's sales, orders and average order value in the selected period.</Text>}
+        >{companyPerfTable}</ReportCard>
       ) : (
         <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
           <ReportCard title="Relationship state" subtitle="Reorder ratio vs each company's own rhythm — separate from lifecycle. Click a segment to filter the table." help={<RelationshipStateHelp />}>
@@ -1340,7 +1365,17 @@ export function Analytics({ embeddedCompanyId = null }) {
               </InlineStack>
             </BlockStack>
           </ReportCard>
-          <ReportCard title="New vs existing revenue" subtitle="Revenue by whether the company first purchased in the selected period.">
+          <ReportCard
+            title="New vs existing revenue"
+            subtitle="Revenue by whether the company first purchased in the selected period."
+            help={
+              <BlockStack gap="150">
+                <Text as="span" variant="bodySm"><Text as="span" variant="bodySm" fontWeight="semibold">New</Text> — Revenue from companies whose first purchase falls within the selected period.</Text>
+                <Text as="span" variant="bodySm"><Text as="span" variant="bodySm" fontWeight="semibold">Existing</Text> — Revenue from companies that first purchased before the selected period.</Text>
+                <Text as="span" variant="bodySm" tone="subdued">Percentages show each cohort's share of total B2B sales in the period.</Text>
+              </BlockStack>
+            }
+          >
             <StackedBar segments={[{ name: 'Existing companies', value: existingCompanyRevenue }, { name: 'New companies', value: newCompanyRevenue }]} />
             <Box paddingBlockStart="200">
               {/* Revenue mix — denominator is total B2B sales (existing + new = sales),
@@ -1356,6 +1391,12 @@ export function Analytics({ embeddedCompanyId = null }) {
           <ReportCard
             title="Company performance"
             subtitle="Value, gross profit, growth, reorder behaviour and relationship state per company."
+            help={
+              <BlockStack gap="150">
+                <Text as="span" variant="bodySm">One row per company, combining performance for the selected period with its current relationship state.</Text>
+                <Text as="span" variant="bodySm" tone="subdued">Sales, gross profit, margin, growth, and repeat revenue follow the selected period. Last order, typical reorder, and status reflect the company's current relationship state and are not limited by the date range.</Text>
+              </BlockStack>
+            }
             controls={
               <InlineStack gap="200" wrap blockAlign="center">
                 {companyFilters}
@@ -1398,9 +1439,9 @@ export function Analytics({ embeddedCompanyId = null }) {
           title="B2B activation"
           subtitle="Registration cohort — companies that registered in the selected period, tracked to their approval and first purchase to date."
           help={
-            <BlockStack gap="150">
-              <Text as="span" variant="bodySm">This is a <Text as="span" variant="bodySm" fontWeight="semibold">registration cohort</Text>, not period activity: companies are chosen by registration date in the window, then their approval and first purchase are counted whenever they happen, up to today.</Text>
-              <Text as="span" variant="bodySm" tone="subdued">So re-opening an earlier period later can show higher Approved / First purchase — the cohort keeps converting. It measures conversion to date, not what happened inside the window.</Text>
+            <BlockStack gap="025">
+              <Text as="span" variant="bodySm" fontWeight="semibold">Registration cohort</Text>
+              <Text as="span" variant="bodySm" tone="subdued">Companies are grouped by registration date, then tracked through approval and first purchase to date. Earlier cohorts may continue to increase as more companies convert.</Text>
             </BlockStack>
           }
         >

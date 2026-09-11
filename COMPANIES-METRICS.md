@@ -230,6 +230,57 @@ Funnel chọn cohort theo **registration date trong kỳ**, rồi đếm approve
 
 ---
 
+## §4.9 — Card tooltips (ⓘ copy)
+
+Mỗi ReportCard trên tab Companies có info tooltip (prop `help` của ReportCard — icon ⓘ; card có controls thì icon nằm cạnh title, không controls thì flush mép phải). Copy verbatim (giữ đồng bộ với UI khi đổi):
+
+**Relationship state** (`RelationshipStateHelp`)
+```
+Relationship state shows whether a company is ordering on its usual schedule, based on its own order history.
+
+Healthy — Ordering within its usual rhythm.
+Watch — Slightly overdue compared with its usual rhythm.
+At risk — Meaningfully overdue compared with its usual rhythm.
+Inactive — More than twice its usual reorder interval has passed since the last order.
+Insufficient history — Not enough order history to establish a reliable rhythm. Requires at least 4 orders.
+```
+
+**Companies past their buying cycle**
+```
+Companies that are past their usual reorder cycle — Watch, At risk, or Inactive by relationship state.
+
+Sales and gross profit reflect the group's trailing 90 days of activity. These are historical figures, not a prediction of churn or future loss. When cost data is incomplete, gross profit shows the percentage of sales with cost data.
+```
+
+**New vs existing revenue**
+```
+New — Revenue from companies whose first purchase falls within the selected period.
+Existing — Revenue from companies that first purchased before the selected period.
+Percentages show each cohort's share of total B2B sales in the period.
+```
+
+**Location performance** (single-company mode)
+```
+Each of this company's locations, with its sales, share of the company's sales, orders and average order value in the selected period.
+```
+
+**Company performance**
+```
+One row per company, combining performance for the selected period with its current relationship state.
+
+Sales, gross profit, margin, growth, and repeat revenue follow the selected period. Last order, typical reorder, and status reflect the company's current relationship state and are not limited by the date range.
+```
+
+**B2B activation**
+```
+Registration cohort
+Companies are grouped by registration date, then tracked through approval and first purchase to date. Earlier cohorts may continue to increase as more companies convert.
+```
+
+Ngoài card (cùng đợt): header cột **Repeat revenue** → *"Share of sales from repeat orders (revenue after each company's first order ÷ its revenue)."*
+
+---
+
 ## 5. Nguồn dữ liệu & map Shopify (production)
 
 | Chỉ số | Nguồn demo | Map Shopify (production) |
