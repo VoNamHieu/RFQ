@@ -53,8 +53,10 @@ export const analyticsQuantityEvents = [
   { type: 'tier_observed', date: '2026-08-13', companyId: 'c1', location: 'Bac Ninh site', policy: 'Filter Case Pricing', qty: 12, threshold: 12, orderValue: 1120, reached: true, near: false, realizedDiscount: 15 },
 ];
 
-// Observed commercial metrics before and after a pricing-rule edit.
+// Observed commercial metrics before and after a pricing-rule edit. `windowDays` is the MATCHED
+// exposure on each side — `before` and `after` cover the same number of days (30d before vs 30d
+// after the change), so a before/after delta reflects the change, not unequal window lengths.
 export const analyticsPricingChanges = [
-  { date: '2026-07-02', companyId: 'c1', scope: 'ABC Construction · Hanoi', rule: 'FIL-XL negotiated price', change: '$72 → $75', before: { sales: 16800, aov: 5600, priceDelta: -25.0 }, after: { sales: 18420, aov: 6140, priceDelta: -21.9 } },
-  { date: '2026-07-17', companyId: 'c2', scope: 'Vinh Phat Trading', rule: 'Distributor Tier 2', change: '20% → 25% off', before: { sales: 8920, aov: 4460, priceDelta: -20.0 }, after: { sales: 10480, aov: 5240, priceDelta: -25.0 } },
+  { date: '2026-07-02', companyId: 'c1', scope: 'ABC Construction · Hanoi', rule: 'FIL-XL negotiated price', change: '$72 → $75', windowDays: 30, before: { sales: 16800, aov: 5600, priceDelta: -25.0 }, after: { sales: 18420, aov: 6140, priceDelta: -21.9 } },
+  { date: '2026-07-17', companyId: 'c2', scope: 'Vinh Phat Trading', rule: 'Distributor Tier 2', change: '20% → 25% off', windowDays: 30, before: { sales: 8920, aov: 4460, priceDelta: -20.0 }, after: { sales: 10480, aov: 5240, priceDelta: -25.0 } },
 ];

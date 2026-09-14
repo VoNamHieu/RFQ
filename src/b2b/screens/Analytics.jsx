@@ -55,6 +55,14 @@ const EVENT_OVERLAY = {
   '#1033': { returnSku: 'SEA-30', returnQty: 200, returnValue: 1250 },
 };
 
+// ── Dev-only missing-cost case (toggled by the "Inject missing cost" dev button) ──
+// Strips the unit cost from one SKU so its lines drop out of GP/Margin. Used to demo the
+// cost-coverage disclosures — Hero "% of sales have cost data", the margin-threshold card
+// footer, and per-source coverage on Margin by price source — which stay hidden while the
+// seed is fully costed. SEA-30 sells across several price sources, so coverage falls on
+// multiple rows at once. Never applied in a prod build.
+const DEV_MISSING_COST_SKU = 'SEA-30';
+
 // ── small numeric helpers (ported verbatim from the god file) ────────────────
 const toDate = (d) => (d ? new Date(String(d).slice(0, 10) + 'T00:00:00') : null);
 const pct = (n, d) => (d ? Math.round((n / d) * 100) : 0);
@@ -135,7 +143,15 @@ function MiniCompare({ items, plain = false }) {
     <InlineGrid columns={{ xs: 1, sm: Math.min(n, 2), md: n }} gap="300">
       {items.map((it) => (
         <BlockStack gap="050" key={it.label}>
-          <Text as="span" tone="subdued" variant="bodySm">{it.label}</Text>
+          {it.help ? (
+            <Tooltip content={it.help} preferredPosition="above" width="wide">
+              <Text as="span" tone="subdued" variant="bodySm">
+                <span style={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 2 }}>{it.label}</span>
+              </Text>
+            </Tooltip>
+          ) : (
+            <Text as="span" tone="subdued" variant="bodySm">{it.label}</Text>
+          )}
           <Text as="span" variant="headingMd">{it.value}</Text>
           {it.sub ? <Text as="span" tone="subdued" variant="bodySm">{it.sub}</Text> : null}
         </BlockStack>
@@ -172,33 +188,12 @@ function InsightCard({ headline, value, tone, context, note, cta, onAction }) {
   );
 }
 
-// Plain-language definitions of each resolved price type, surfaced as a tooltip on
-// the pricing cards so merchants know what "Price created on B2B" vs "Price synced from quotes" etc. mean.
-const PRICE_TYPE_DEFS = [
-  ["Price created on B2B", 'A B2B pricing created directly in the app — from the company, location or catalog rules assigned to this buyer.'],
-  ['Price synced from quotes', 'A B2B pricing whose origin was an accepted RFQ/quote, synced into the app and then applied to the order.'],
-  ['Other price', 'A price neither created on B2B nor synced from a quote — e.g. the plain Shopify default, or a custom price keyed on the draft order.'],
-  ['Manual price changes', 'A line whose price was changed by hand while the draft order was being created, overriding the pricing assigned to the company/location.'],
-];
-function PriceTypeHelp() {
+// A table column heading with a dotted underline + hover tooltip explaining the metric.
+// Used on the Pricing performance table so each column's definition is one hover away.
+function HeadHelp({ label, help }) {
   return (
-    <Tooltip
-      width="wide"
-      preferredPosition="below"
-      content={
-        <BlockStack gap="150">
-          {PRICE_TYPE_DEFS.map(([name, def]) => (
-            <BlockStack gap="025" key={name}>
-              <Text as="span" variant="bodySm" fontWeight="semibold">{name}</Text>
-              <Text as="span" variant="bodySm" tone="subdued">{def}</Text>
-            </BlockStack>
-          ))}
-        </BlockStack>
-      }
-    >
-      <span style={{ display: 'inline-flex', cursor: 'help' }}>
-        <Icon source={InfoIcon} tone="subdued" />
-      </span>
+    <Tooltip content={help} preferredPosition="above" width="wide">
+      <span style={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 3 }}>{label}</span>
     </Tooltip>
   );
 }
@@ -314,7 +309,6 @@ export function Analytics({ embeddedCompanyId = null }) {
   const [customStart, setCustomStart] = useState(''); // YYYY-MM-DD (custom range)
   const [customEnd, setCustomEnd] = useState('');
   const [tab, setTab] = useState(0);
-  const [primaryMode, setPrimaryMode] = useState('trend'); // trend | breakdown
   const [measure, setMeasure] = useState('revenue'); // revenue | orders
   const [showAllProducts, setShowAllProducts] = useState(false); // Overview top-products "View all"
   const [healthFilter, setHealthFilter] = useState('all'); // Companies table: relationship health
@@ -327,8 +321,8 @@ export function Analytics({ embeddedCompanyId = null }) {
   const [advancedPipeline, setAdvancedPipeline] = useState(false); // Quotes §5.7 expander
   const [advancedPricing, setAdvancedPricing] = useState(false); // Pricing §6.5 expander
   const [marginThreshold, setMarginThreshold] = useState('20'); // §6.1 margin-exception threshold
-  const [breakdown, setBreakdown] = useState('company'); // company | location | pricing | source
   const [devInject, setDevInject] = useState(false); // dev-only: inject event-basis test data (returns/discounts)
+  const [devMissingCost, setDevMissingCost] = useState(false); // dev-only: strip one SKU's cost to demo coverage disclosures
 
   const activeCompanyId = embeddedCompanyId || companyFilter;
   const scopedCompanies = activeCompanyId === 'all' ? companies.slice() : companies.filter((c) => c.id === activeCompanyId);
@@ -422,7 +416,7 @@ export function Analytics({ embeddedCompanyId = null }) {
   // we return null and let GP/Margin stay null instead of fabricating an estimate.
   // For a financial metric, "not available" (—) beats a guess that looks like a real
   // number, because GP/Margin flow into the Hero KPIs, product and company analytics.
-  const productCost = (sku) => { const c = productBySku(sku)?.cost; return c == null ? null : (Number(c) || 0); };
+  const productCost = (sku) => { if (devMissingCost && sku === DEV_MISSING_COST_SKU) return null; const c = productBySku(sku)?.cost; return c == null ? null : (Number(c) || 0); };
   const orderCogs = (o) => {
     const items = o.items || [];
     if (!items.length) return null;
@@ -584,67 +578,129 @@ export function Analytics({ embeddedCompanyId = null }) {
     .map((x) => { const gp = x.costKnown ? x.revenue - x.cogs : null; const orders = x.orderIds.size; return { name: x.name, sub: x.sub, sku: x.sku, revenue: x.revenue, units: x.units, orders, companies: x.companies.size, gp, margin: marginOf(gp, x.revenue), aov: orders ? x.revenue / orders : 0, share: sales ? (x.revenue / sales) * 100 : 0 }; })
     .sort((a, b) => b.revenue - a.revenue);
 
-  // ── pricing usage / realization ─────────────────────────────────────────────
-  const referenceValueForOrder = (o) => (o.items || []).reduce((s, i) => s + (Number(productBySku(i.sku)?.list) || 0) * (Number(i.qty) || 0), 0);
+  // ── shared pricing attribution (line-level, snapshot AT ORDER CREATION) ───────
+  // Analytics evaluates pricing by the price actually applied to each line WHEN THE ORDER
+  // WAS CREATED, in two merchant-facing groups only:
+  //   • B2B pricing   — the line used a Company / Location / app pricing at creation
+  //                     (pricing synced from a quote counts as B2B once it's applied).
+  //   • Other pricing — the line did not (a manual custom price, the Shopify default, …).
+  // Later adjustments (discount, refund, price edit, reversal) do NOT change a line's group
+  // or its margin-at-applied-price here. `synced_from_quote` stays internal origin metadata,
+  // not an analytics dimension. Each line's snapshot carries BOTH the pricing-engine output
+  // (BEFORE any manual override) and the price actually applied at creation:
+  //   • resolved*  = engine output — `resolvedPricingSource` / `resolvedPricingId` /
+  //     (prod) `resolvedUnitPrice`: the B2B pricing that WAS resolved, even if later overridden.
+  //   • *AtCreation = the effective price present when the order was created —
+  //     `pricingSourceAtCreation` / `appliedUnitPriceAtCreation` (an override wins; a discount
+  //     already present at creation is INCLUDED), plus `wasPriceOverridden`. `costAtCreation` too.
+  // Provenance & economics use *AtCreation (an overridden line → Other pricing); Manual-price-
+  // changes uses resolved* + wasPriceOverridden (so we still know WHICH B2B pricing was overridden
+  // — pricingSourceAtCreation alone would lose that). Adjustments AFTER creation (discount/refund/
+  // edit/reversal) are ignored. The demo derives the snapshot from the seed (`line.revenue` =
+  // applied value at creation; `overridden` = a manual price replaced a resolved B2B price; there
+  // is no separate resolvedUnitPrice number in the seed). Both Overview and Pricing read this layer.
+  const B2B_SOURCES = ['Company price', 'Location price', 'Previous agreement'];
+  const lineSnapshot = (o, it) => {
+    const qty = Number(it.qty) || 0;
+    const c = productCost(it.sku); // costAtCreation
+    // resolved = engine output, before override. In the demo an `overridden` line sat on a B2B
+    // order, so it WAS resolved from that order's B2B pricing.
+    const resolvedIsB2B = B2B_SOURCES.includes(o.pricingSource);
+    const resolvedPricingId = resolvedIsB2B && o.pricing && o.pricing !== 'None' ? o.pricing : null;
+    // at creation = effective applied price; a manual override flips the line to Other pricing.
+    const wasPriceOverridden = !!it.overridden;
+    const isB2B = resolvedIsB2B && !wasPriceOverridden; // pricingSourceAtCreation is B2B
+    return {
+      order: o, sku: it.sku, qty, wasPriceOverridden,
+      resolvedIsB2B, resolvedPricingSource: resolvedIsB2B ? 'B2B pricing' : 'Other pricing', resolvedPricingId,
+      isB2B, group: isB2B ? 'B2B pricing' : 'Other pricing',
+      pricingId: isB2B ? resolvedPricingId : null,
+      lineValue: Number(it.revenue) || 0, // appliedUnitPriceAtCreation × qty (incl. pre-creation discount)
+      // resolvedUnitPrice × qty — pricing-engine output, BEFORE draft discount/override. The demo
+      // has no separate resolvedUnitPrice and no pre-creation line discount, so a non-overridden
+      // B2B line equals lineValue; an overridden line's pre-override price isn't captured → null.
+      resolvedLineValue: resolvedIsB2B ? (wasPriceOverridden ? null : (Number(it.revenue) || 0)) : null,
+      lineCost: c === null ? null : c * qty, // costAtCreation × qty (null when cost unknown)
+    };
+  };
+  const attributedLines = orders.flatMap((o) => {
+    const items = o.items || [];
+    if (!items.length) return [lineSnapshot(o, { sku: null, qty: 0, revenue: o.amount, overridden: false })];
+    return items.map((it) => lineSnapshot(o, it));
+  });
+  // §6.4 Pricing performance = per named B2B pricing PROFILE only. Lines without a profile
+  // (Other pricing, or a B2B line with no named profile) are excluded — there is NO "Other
+  // pricing" row; those are covered by §6.2 order value and §6.3 provenance, not evaluated as a
+  // "pricing" here. Only applied (non-overridden) lines land in a profile row, so Order value =
+  // what the profile actually priced; an overridden line's value goes nowhere here, but its
+  // override is still counted in the Manual-price-changes column (keyed by resolvedPricingId).
+  // vs-Shopify = the profile's resolved price vs Shopify list on those applied lines (an
+  // overridden product's manual price is NOT folded into vs-Shopify — production could include
+  // it at its resolvedUnitPrice once captured).
   const pricingMap = new Map();
-  orders.forEach((o) => {
-    const srcLabel = o.pricingSource === 'Company price' || o.pricingSource === 'Location price' ? "Price created on B2B" : o.pricingSource === 'Previous agreement' ? 'Price synced from quotes' : 'Other price';
-    // A named pricing profile groups by its own name; an order with no profile
-    // (Shopify default or a manual price) groups under its price source instead.
-    const k = o.pricing && o.pricing !== 'None' ? o.pricing : srcLabel;
-    const cur = pricingMap.get(k) || { name: k, sub: srcLabel, revenue: 0, reference: 0, gp: 0, costedRev: 0, costedN: 0, orders: 0, companies: new Set(), locations: new Set() };
-    cur.revenue += Number(o.amount) || 0;
-    cur.reference += referenceValueForOrder(o);
-    { const g = orderGP(o); if (g !== null) { cur.gp += g; cur.costedRev += (Number(o.amount) || 0); cur.costedN += 1; } }
-    cur.orders += 1;
-    cur.companies.add(o.companyId);
-    cur.locations.add(`${o.companyId}::${o.location}`);
+  attributedLines.forEach((s) => {
+    if (!s.pricingId) return; // named-profile rows only — no "Other pricing" bucket
+    const k = s.pricingId;
+    const cur = pricingMap.get(k) || { name: k, sub: s.group, value: 0, resolvedValue: 0, reference: 0, cost: 0, costedValue: 0, costedN: 0, orderIds: new Set(), companies: new Set() };
+    cur.value += s.lineValue; // order value (applied at creation)
+    if (s.resolvedLineValue !== null) cur.resolvedValue += s.resolvedLineValue; // for vs-Shopify (resolved price)
+    cur.reference += (Number(productBySku(s.sku)?.list) || 0) * s.qty;
+    if (s.lineCost !== null) { cur.cost += s.lineCost; cur.costedValue += s.lineValue; cur.costedN += 1; }
+    cur.orderIds.add(s.order.id);
+    cur.companies.add(s.order.companyId);
     pricingMap.set(k, cur);
   });
-  // §6.1 line-level economics: manual overrides + margin exceptions. A line is
-  // "eligible" when a B2B pricing resolved it (not the Shopify default).
-  const orderLines = orders.flatMap((o) => (o.items || []).map((it) => ({ ...it, order: o })));
-  const isB2BLine = (l) => ['Location price', 'Company price', 'Previous agreement'].includes(l.order.pricingSource);
-  const eligibleLines = orderLines.filter(isB2BLine);
-  const overriddenLines = eligibleLines.filter((l) => l.overridden);
-  const overrideRate = eligibleLines.length ? (overriddenLines.length / eligibleLines.length) * 100 : 0;
-  const overrideByPricing = new Map();
-  orderLines.forEach((l) => {
-    if (!isB2BLine(l)) return;
-    const k = l.order.pricing && l.order.pricing !== 'None' ? l.order.pricing : 'Shopify price';
-    const cur = overrideByPricing.get(k) || { eligible: 0, overridden: 0 };
-    cur.eligible += 1;
-    if (l.overridden) cur.overridden += 1;
-    overrideByPricing.set(k, cur);
-  });
+  // NOTE: "Manual price changes" (override rate) has been removed from merchant-facing analytics —
+  // the current flow does not let merchants key a custom unit price before an order is created, so
+  // the metric isn't meaningful here. The per-line snapshot still carries resolvedPricingSource /
+  // resolvedPricingId / resolvedLineValue / wasPriceOverridden (kept future-proof), just no metric.
 
   const pricingUsage = [...pricingMap.values()]
     .map((x) => {
-      const ov = overrideByPricing.get(x.name);
-      const gp = x.costedN ? x.gp : null;
-      return { ...x, companies: x.companies.size, locations: x.locations.size, share: sales ? (x.revenue / sales) * 100 : 0, gp, margin: x.costedN && x.costedRev ? (x.gp / x.costedRev) * 100 : null, overrideRate: ov && ov.eligible ? (ov.overridden / ov.eligible) * 100 : null, delta: x.revenue - x.reference, deltaPct: x.reference ? ((x.revenue - x.reference) / x.reference) * 100 : null };
+      const gp = x.costedN ? x.costedValue - x.cost : null;
+      return { name: x.name, sub: x.sub, value: x.value, reference: x.reference, orders: x.orderIds.size, companies: x.companies.size, gp, margin: x.costedN && x.costedValue ? (gp / x.costedValue) * 100 : null, delta: x.resolvedValue - x.reference, deltaPct: x.reference ? ((x.resolvedValue - x.reference) / x.reference) * 100 : null };
     })
     .sort((a, b) => (b.gp ?? -Infinity) - (a.gp ?? -Infinity));
-  const referenceValue = orders.reduce((a, o) => a + referenceValueForOrder(o), 0);
-  const realizedPriceDelta = sales - referenceValue;
-  const realizedPriceDeltaPct = referenceValue ? (realizedPriceDelta / referenceValue) * 100 : null;
-  // "Negotiated" = the app resolved it (company/location) or it came from a quote —
-  // not a manual custom price or the plain Shopify default.
-  const influencedOrders = orders.filter((o) => ['Company price', 'Location price', 'Previous agreement'].includes(o.pricingSource));
-  const influencedRevenue = influencedOrders.reduce((a, o) => a + (Number(o.amount) || 0), 0);
-  const influencedShare = sales ? (influencedRevenue / sales) * 100 : 0;
 
-  // §6.1 margin exceptions — lines below a configurable minimum margin (exceptions,
-  // not averages). §6.2 baseline pricing footprint.
-  const lineMargin = (l) => { const c = productCost(l.sku); if (c === null) return null; const rev = Number(l.revenue) || 0; return rev ? ((rev - c * (Number(l.qty) || 0)) / rev) * 100 : 0; };
+  // §6.2 footprint — ORDER VALUE / orders that used B2B pricing at creation (line-level).
+  // "Order value" (not "sales"): Σ initial line value on B2B-priced lines — a snapshot at
+  // creation, deliberately NOT reconciled with Overview Net sales (which nets discounts/refunds).
+  const b2bLines = attributedLines.filter((s) => s.isB2B);
+  const b2bValue = b2bLines.reduce((a, s) => a + s.lineValue, 0);
+  const b2bOrderIds = new Set(b2bLines.map((s) => s.order.id));
+  const orderValueTotal = attributedLines.reduce((a, s) => a + s.lineValue, 0);
+  const b2bValueShare = orderValueTotal ? (b2bValue / orderValueTotal) * 100 : 0;
+  const orderCountAll = new Set(attributedLines.map((s) => s.order.id)).size;
+  const b2bOrderShare = orderCountAll ? (b2bOrderIds.size / orderCountAll) * 100 : 0;
+
+  // §6.1 core economics — ALL at the price applied WHEN THE ORDER WAS CREATED (not realized Net
+  // sales/GP; those belong to Overview). Applied B2B vs Shopify compares B2B-priced lines' applied
+  // value with their Shopify list; "Margin at order creation" = line GP / costed applied value;
+  // "Order value below margin threshold" = initial line value of lines with margin-at-creation < floor.
+  // "B2B price vs Shopify" = the PRICING-ENGINE metric: RESOLVED B2B price vs Shopify list, on
+  // resolved-B2B lines whose resolved price is known (`resolvedLineValue`). Uses resolvedUnitPrice,
+  // NOT the applied price — a draft discount present at creation must NOT drag it down (that shows
+  // in margin / order value). Overridden lines are excluded (pre-override resolved price uncaptured).
+  const resolvedPricedLines = attributedLines.filter((s) => s.resolvedLineValue !== null);
+  const resolvedB2BValue = resolvedPricedLines.reduce((a, s) => a + s.resolvedLineValue, 0);
+  const resolvedB2BReference = resolvedPricedLines.reduce((a, s) => a + (Number(productBySku(s.sku)?.list) || 0) * s.qty, 0);
+  const b2bVsShopifyDelta = resolvedB2BValue - resolvedB2BReference;
+  const b2bVsShopifyPct = resolvedB2BReference ? (b2bVsShopifyDelta / resolvedB2BReference) * 100 : null;
+  // "Margin at order creation" & "Order value" use the APPLIED price at creation (incl. pre-creation discount).
+  let appliedGP = 0;
+  let appliedCostedValue = 0;
+  attributedLines.forEach((s) => { if (s.lineCost !== null) { appliedGP += s.lineValue - s.lineCost; appliedCostedValue += s.lineValue; } });
+  const appliedMargin = appliedCostedValue ? (appliedGP / appliedCostedValue) * 100 : null;
+  const appliedMarginCoverage = orderValueTotal ? (appliedCostedValue / orderValueTotal) * 100 : null;
+  const lineMarginAtCreation = (s) => { if (s.lineCost === null) return null; return s.lineValue ? ((s.lineValue - s.lineCost) / s.lineValue) * 100 : 0; };
   const marginFloor = Number(marginThreshold) || 20;
-  // Only flag a line as below-threshold when its margin is actually known.
-  const marginExceptionLines = orderLines.filter((l) => { const m = lineMargin(l); return m !== null && m < marginFloor; });
-  const marginExceptionSales = marginExceptionLines.reduce((a, l) => a + (Number(l.revenue) || 0), 0);
+  const marginExceptionLines = attributedLines.filter((s) => { const m = lineMarginAtCreation(s); return m !== null && m < marginFloor; });
+  const marginExceptionValue = marginExceptionLines.reduce((a, s) => a + s.lineValue, 0);
+  const marginCostedValue = attributedLines.reduce((a, s) => a + (s.lineCost !== null ? s.lineValue : 0), 0);
+  const marginCoverage = orderValueTotal ? (marginCostedValue / orderValueTotal) * 100 : null;
   const hasPricingFn = (c) => (c?.pricing?.base?.length > 0) || !!c?.pricing?.quantity;
   const activePolicyCount = (state.db.policies || []).filter((p) => p.status !== 'Inactive' && p.audienceType === 'b2b').length;
   const companiesWithPricing = scopedCompanies.filter(hasPricingFn).length;
-  const locationsCovered = scopedCompanies.filter(hasPricingFn).reduce((a, c) => a + (c.locations?.length || 0), 0);
 
   // ── purchasing motion / relationship / price sources ────────────────────────
   const sourceMap = new Map();
@@ -656,32 +712,28 @@ export function Analytics({ embeddedCompanyId = null }) {
     sourceMap.set(name, cur);
   });
   const orderSources = [...sourceMap.values()].map((x) => ({ ...x, share: sales ? (x.revenue / sales) * 100 : 0 })).sort((a, b) => b.revenue - a.revenue);
-  // Price sources (§6). "Price created on B2B" is a B2B pricing authored directly in the
-  // app (company/location/catalog rules) — location pricing isn't separated yet, so a
-  // resolved "Location price" folds into it. "Price synced from quotes" is a B2B pricing
-  // whose origin was an accepted quote (pricingSource "Previous agreement"). "Other price"
-  // is the residual: neither created on B2B nor synced from a quote — the plain Shopify
-  // default, a custom price keyed on the draft order, or one whose source no longer resolves.
-  const isCompanyPriced = (o) => o.pricingSource === 'Company price' || o.pricingSource === 'Location price';
-  const companyPriceRevenue = orders.filter(isCompanyPriced).reduce((a, o) => a + (Number(o.amount) || 0), 0);
-  const previousPriceRevenue = orders.filter((o) => o.pricingSource === 'Previous agreement').reduce((a, o) => a + (Number(o.amount) || 0), 0);
-  const otherPriceRevenue = Math.max(0, sales - companyPriceRevenue - previousPriceRevenue);
-  const isOtherPriced = (o) => !['Company price', 'Location price', 'Previous agreement'].includes(o.pricingSource);
-  // Margin economics per resolved price source (§6): what each pricing path actually earns.
-  const priceSourceRows = [
-    { name: "Price created on B2B", match: isCompanyPriced },
-    { name: 'Price synced from quotes', match: (o) => o.pricingSource === 'Previous agreement' },
-    { name: 'Other price', match: isOtherPriced },
-  ]
-    .map((s) => {
-      const os = orders.filter(s.match);
-      const rev = os.reduce((a, o) => a + (Number(o.amount) || 0), 0);
-      const st = gpStats(os);
-      return { name: s.name, revenue: rev, gp: st.gp, margin: st.margin, share: sales ? (rev / sales) * 100 : 0 };
+  // Margin by pricing source (§6.3), at the price applied WHEN THE ORDER WAS CREATED. Two
+  // groups (B2B pricing / Other pricing) from the shared attribution layer: revenue = Σ initial
+  // line value, GP = Σ (initial value − costAtCreation×qty) on costed lines, margin = GP /
+  // costed initial value, coverage = costed share. Later discounts/refunds/edits are excluded.
+  const groupEcon = new Map();
+  attributedLines.forEach((s) => {
+    const cur = groupEcon.get(s.group) || { value: 0, cost: 0, costedValue: 0, costedN: 0 };
+    cur.value += s.lineValue; // order value at creation (not realized sales)
+    if (s.lineCost !== null) { cur.cost += s.lineCost; cur.costedValue += s.lineValue; cur.costedN += 1; }
+    groupEcon.set(s.group, cur);
+  });
+  const b2bPricingValue = groupEcon.get('B2B pricing')?.value || 0;
+  const otherPricingValue = groupEcon.get('Other pricing')?.value || 0;
+  const pricingSourceRows = ['B2B pricing', 'Other pricing']
+    .map((name) => {
+      const e = groupEcon.get(name) || { value: 0, cost: 0, costedValue: 0, costedN: 0 };
+      const gp = e.costedN ? e.costedValue - e.cost : null;
+      return { name, value: e.value, gp, margin: e.costedN && e.costedValue ? (gp / e.costedValue) * 100 : null, coverage: e.value ? (e.costedValue / e.value) * 100 : null };
     })
-    .filter((s) => s.revenue > 0)
-    .sort((a, b) => b.revenue - a.revenue);
-  const priceSourceMaxMargin = Math.max(1, ...priceSourceRows.map((s) => s.margin).filter((m) => m !== null));
+    .filter((s) => s.value > 0)
+    .sort((a, b) => b.value - a.value);
+  const pricingSourceMaxMargin = Math.max(1, ...pricingSourceRows.map((s) => s.margin).filter((m) => m !== null));
 
   // ── quote rows / cadence ────────────────────────────────────────────────────
   const quoteVal = (q) => (q.lines || []).reduce((s, l) => s + (Number(l.quoted) || 0) * (Number(l.qty) || 0), 0);
@@ -898,19 +950,27 @@ export function Analytics({ embeddedCompanyId = null }) {
 
   // ── quantity rules / pricing changes ────────────────────────────────────────
   const quantityEvents = analyticsQuantityEvents.filter((e) => inPeriod(e.date) && (activeCompanyId === 'all' || e.companyId === activeCompanyId));
-  const moqEvents = quantityEvents.filter((e) => e.type === 'moq_blocked');
-  const moqAttempted = moqEvents.reduce((a, e) => a + e.attemptedValue, 0);
-  const moqBuyers = new Set(moqEvents.map((e) => e.buyer)).size;
-  const moqRecovered = moqEvents.filter((e) => e.laterCompleted).length;
-  // §6.6 near-threshold: attempts within 20% of the MOQ (qty ≥ 80% of MOQ, still under it).
-  const moqNear = moqEvents.filter((e) => e.threshold && e.qty >= 0.8 * e.threshold && e.qty < e.threshold).length;
-  const moqNearRate = moqEvents.length ? Math.round((moqNear / moqEvents.length) * 100) : 0;
+  // §6.6 = quantity-pricing EFFECTIVENESS only: of the purchases eligible for a tier, how many
+  // reached it (reach rate), the order value that went through tiers, and the discount realized.
+  // The friction/potential/behavior signals (MOQ-blocked demand, near-threshold, later-recovered)
+  // were cut from merchant-facing analytics — they measure demand/behavior, not whether quantity
+  // pricing works. Keep those as internal telemetry if product wants to study them.
   const tierEvents = quantityEvents.filter((e) => e.type === 'tier_observed');
+  const tierReachedEvents = tierEvents.filter((e) => e.reached);
+  // Realized discount is value-weighted by the PRE-DISCOUNT reference value, not the post-discount
+  // order value — a $1,000-reference order at 20% must carry weight $1,000, not $800. The event
+  // holds the actual (post-discount) `orderValue`, so reference = orderValue / (1 − discount).
+  const eventReference = (e) => { const d = (Number(e.realizedDiscount) || 0) / 100; return d < 1 ? (Number(e.orderValue) || 0) / (1 - d) : (Number(e.orderValue) || 0); };
+  const wDiscount = (evs) => { const ref = evs.reduce((a, e) => a + eventReference(e), 0); return ref ? evs.reduce((a, e) => a + eventReference(e) * (Number(e.realizedDiscount) || 0), 0) / ref : null; };
+  const tierEligible = tierEvents.length;
+  const tierReached = tierReachedEvents.length;
+  const tierReachRate = tierEligible ? (tierReached / tierEligible) * 100 : null;
+  const tierOrderValue = tierReachedEvents.reduce((a, e) => a + (Number(e.orderValue) || 0), 0);
+  const tierAvgDiscount = wDiscount(tierReachedEvents);
   const tierPolicies = [...new Set(tierEvents.map((e) => e.policy))].map((name) => {
     const es = tierEvents.filter((e) => e.policy === name);
     const reached = es.filter((e) => e.reached);
-    const near = es.filter((e) => e.near);
-    return { name, eligible: es.length, reached: reached.length, near: near.length, revenue: reached.reduce((a, e) => a + e.orderValue, 0), discount: reached.length ? reached.reduce((a, e) => a + e.realizedDiscount, 0) / reached.length : null };
+    return { name, eligible: es.length, reached: reached.length, reachRate: es.length ? (reached.length / es.length) * 100 : null, orderValue: reached.reduce((a, e) => a + (Number(e.orderValue) || 0), 0), discount: wDiscount(reached) };
   });
   const ruleChanges = analyticsPricingChanges.filter((r) => activeCompanyId === 'all' || r.companyId === activeCompanyId);
 
@@ -937,12 +997,6 @@ export function Analytics({ embeddedCompanyId = null }) {
     setCustomEnd('');
   };
 
-  // ── breakdown selectors (Overview primary) ──────────────────────────────────
-  const allowedBreakdowns = selected ? ['location', 'pricing', 'source'] : ['company', 'location', 'pricing'];
-  const activeBreakdown = allowedBreakdowns.includes(breakdown) ? breakdown : selected ? 'location' : 'company';
-  const breakdownRows = activeBreakdown === 'company' ? companyRows : activeBreakdown === 'location' ? allLocationRows : activeBreakdown === 'pricing' ? pricingUsage : orderSources;
-  const breakdownLabel = activeBreakdown === 'company' ? 'Company' : activeBreakdown === 'location' ? 'Location' : activeBreakdown === 'pricing' ? 'Pricing' : 'Buying motion';
-  const breakdownDimOptions = allowedBreakdowns.map((k) => ({ value: k, label: k === 'company' ? 'Company' : k === 'location' ? 'Location' : k === 'pricing' ? 'Pricing' : 'Buying motion' }));
 
   // Clickable company cell → drill into that company.
   const CompanyLink = ({ id, children }) => (
@@ -1737,19 +1791,18 @@ export function Analytics({ embeddedCompanyId = null }) {
 
   // ── PRICING & MARGIN (spec §6) ──────────────────────────────────────────────
   const provenanceSegments = [
-    { name: "Price created on B2B", value: companyPriceRevenue },
-    { name: 'Price synced from quotes', value: previousPriceRevenue },
-    { name: 'Other price', value: otherPriceRevenue },
+    { name: 'B2B pricing', value: b2bPricingValue },
+    { name: 'Other pricing', value: otherPricingValue },
   ].filter((s) => s.value > 0);
   const pricingTab = (
     <BlockStack gap="500">
-      {/* §6.1 — core economics: sensible AND profitable commercial terms? */}
+      {/* §6.1 — core economics, ALL at the price applied when the order was created */}
       <ScoreGrid
         items={[
-          { label: 'B2B price vs Shopify', value: realizedPriceDeltaPct == null ? '—' : `${Math.abs(realizedPriceDeltaPct).toFixed(1)}% ${realizedPriceDelta >= 0 ? 'higher' : 'lower'}`, foot: `${money(Math.abs(realizedPriceDelta))} ${realizedPriceDelta >= 0 ? 'above' : 'below'} Shopify prices` },
-          { label: 'Gross margin', value: pct1N(grossMargin), foot: costCoverage != null && costCoverage < 99.5 ? `${moneyN(grossProfit)} GP · ${Math.round(costCoverage)}% cost coverage` : `${moneyN(grossProfit)} gross profit` },
-          { label: 'Manual price changes', value: `${overrideRate.toFixed(1)}%`, foot: `${overriddenLines.length} of ${eligibleLines.length} app-priced line${eligibleLines.length === 1 ? '' : 's'}` },
-          { label: 'Sales below margin threshold', value: money(marginExceptionSales), foot: `${marginExceptionLines.length} line${marginExceptionLines.length === 1 ? '' : 's'} below ${marginFloor}% margin` },
+          { label: 'B2B price vs Shopify', value: b2bVsShopifyPct == null ? '—' : `${Math.abs(b2bVsShopifyPct).toFixed(1)}% ${b2bVsShopifyDelta >= 0 ? 'higher' : 'lower'}`, foot: `${money(Math.abs(b2bVsShopifyDelta))} ${b2bVsShopifyDelta >= 0 ? 'above' : 'below'} Shopify on B2B-priced lines`, help: 'How B2B prices compare with Shopify prices on lines where app pricing was applied. Uses the price resolved by the app before any additional discount or later adjustment.' },
+          { label: 'Margin at order creation', value: pct1N(appliedMargin), foot: appliedMarginCoverage != null && appliedMarginCoverage < 99.5 ? `${moneyN(appliedGP)} GP · ${Math.round(appliedMarginCoverage)}% cost coverage` : `${moneyN(appliedGP)} gross profit`, help: 'Gross margin based on the price on each line when the order was created. Later refunds, returns, or price adjustments are not included.' },
+          { label: 'Orders using B2B pricing', value: orderCountAll ? `${Math.round(b2bOrderShare)}%` : '—', foot: `${b2bOrderIds.size} of ${orderCountAll} order${orderCountAll === 1 ? '' : 's'}`, help: 'Share of orders with at least one line using pricing created from the app when the order was created.' },
+          { label: 'Order value below margin threshold', value: money(marginExceptionValue), foot: `${marginExceptionLines.length} line${marginExceptionLines.length === 1 ? '' : 's'} below ${marginFloor}% margin${marginCoverage != null && marginCoverage < 99.5 ? ` · Based on ${Math.round(marginCoverage)}% cost coverage` : ''}`, help: 'Order value from lines whose margin at order creation is below the selected threshold. Lines without cost data are excluded.' },
         ]}
       />
       <InlineStack align="end" blockAlign="center" gap="200">
@@ -1762,42 +1815,46 @@ export function Analytics({ embeddedCompanyId = null }) {
       {/* §6.2 — baseline pricing footprint */}
       <MiniCompare
         items={[
-          { label: 'Active pricing agreements', value: String(activePolicyCount) },
-          { label: 'Companies with pricing', value: String(companiesWithPricing) },
-          { label: 'Locations covered', value: String(locationsCovered) },
-          { label: 'Revenue on negotiated pricing', value: money(influencedRevenue) },
-          { label: 'Orders on negotiated pricing', value: String(influencedOrders.length) },
+          { label: 'Active pricing agreements', value: String(activePolicyCount), help: 'Number of B2B pricing agreements that are currently active.' },
+          { label: 'Companies with pricing', value: String(companiesWithPricing), help: 'Number of companies that currently have pricing created from the app assigned.' },
+          { label: 'Order value using B2B pricing', value: money(b2bValue), sub: `${Math.round(b2bValueShare)}% of order value`, help: 'Order value from lines that used pricing created from the app when the order was created.' },
         ]}
       />
 
       {/* §6.3 provenance + margin by source */}
       <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
-        <ReportCard title="Pricing provenance" subtitle="Where revenue was actually priced from — created on B2B, synced from a quote, or other." controls={<PriceTypeHelp />}>
+        <ReportCard title="Order value by pricing source" help="Shows how order value is split between B2B pricing and other pricing, based on the price source used when each order line was created.">
           <StackedBar segments={provenanceSegments} />
         </ReportCard>
-        <ReportCard title="Margin by price source" subtitle="Gross margin each resolved price source actually earns." controls={<PriceTypeHelp />}>
-          <RankBars rows={priceSourceRows.map((s) => ({ key: s.name, name: s.name, sub: `${moneyN(s.gp)} gross profit · ${money(s.revenue)} sales`, value: s.margin ?? 0, width: s.margin == null ? 0 : (s.margin / priceSourceMaxMargin) * 100, valueLabel: pctN(s.margin) }))} empty="No completed orders." />
+        <ReportCard title="Margin by pricing source" help="Compares margin at order creation between lines using B2B pricing and lines using other pricing. Later refunds, returns, and price adjustments are excluded.">
+          <RankBars rows={pricingSourceRows.map((s) => ({ key: s.name, name: s.name, sub: `${money(s.value)} order value · ${moneyN(s.gp)} gross profit${s.coverage != null && s.coverage < 99.5 ? ` · ${Math.round(s.coverage)}% cost coverage` : ''}`, value: s.margin ?? 0, width: s.margin == null ? 0 : (s.margin / pricingSourceMaxMargin) * 100, valueLabel: pctN(s.margin) }))} empty="No completed orders." />
         </ReportCard>
       </InlineGrid>
 
       {/* §6.4 — pricing performance table (sorted by gross profit) */}
-      <ReportCard title="Pricing performance" subtitle="Sales, gross profit, margin, price vs Shopify and how often the price was changed manually, by profile.">
+      <ReportCard title="Pricing performance" subtitle="Order value, gross profit, margin and price vs Shopify, by B2B pricing profile. Hover a column heading for its definition.">
         <IndexTable
           resourceName={{ singular: 'pricing', plural: 'pricings' }}
           itemCount={pricingUsage.length}
           selectable={false}
-          headings={[{ title: 'Pricing' }, { title: 'Source' }, { title: 'Sales', alignment: 'end' }, { title: 'Gross profit', alignment: 'end' }, { title: 'Margin', alignment: 'end' }, { title: 'vs Shopify', alignment: 'end' }, { title: 'Manual price changes', alignment: 'end' }, { title: 'Orders', alignment: 'end' }, { title: 'Companies', alignment: 'end' }]}
+          headings={[
+            { title: <HeadHelp label="Pricing" help="The B2B pricing profile that set the price for these order lines." /> },
+            { title: <HeadHelp label="Order value" help="Total value of order lines that used this pricing when the order was created." />, alignment: 'end' },
+            { title: <HeadHelp label="Gross profit" help="Order value minus product cost for lines with known cost data." />, alignment: 'end' },
+            { title: <HeadHelp label="Margin" help="Gross profit as a share of order value for lines with known cost data." />, alignment: 'end' },
+            { title: <HeadHelp label="vs Shopify" help="How this pricing's resolved prices compare with Shopify prices across the lines it priced. Larger-value lines carry more weight." />, alignment: 'end' },
+            { title: <HeadHelp label="Orders" help="Number of distinct orders with at least one line using this pricing." />, alignment: 'end' },
+            { title: <HeadHelp label="Companies" help="Number of distinct companies with at least one order line using this pricing." />, alignment: 'end' },
+          ]}
           emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No pricing usage on completed orders.</Text></Box>}
         >
           {pricingUsage.map((r, i) => (
             <IndexTable.Row id={r.name} key={r.name} position={i}>
               <IndexTable.Cell>{r.name}</IndexTable.Cell>
-              <IndexTable.Cell>{r.sub || '—'}</IndexTable.Cell>
-              <IndexTable.Cell><Text as="span" alignment="end">{money(r.revenue)}</Text></IndexTable.Cell>
+              <IndexTable.Cell><Text as="span" alignment="end">{money(r.value)}</Text></IndexTable.Cell>
               <IndexTable.Cell><Text as="span" alignment="end">{moneyN(r.gp)}</Text></IndexTable.Cell>
               <IndexTable.Cell><Text as="span" alignment="end">{pctN(r.margin)}</Text></IndexTable.Cell>
               <IndexTable.Cell><Text as="span" alignment="end">{r.deltaPct == null ? '—' : `${Math.abs(r.deltaPct).toFixed(1)}% ${r.deltaPct >= 0 ? 'higher' : 'lower'}`}</Text></IndexTable.Cell>
-              <IndexTable.Cell><Text as="span" alignment="end">{r.overrideRate == null ? '—' : `${Math.round(r.overrideRate)}%`}</Text></IndexTable.Cell>
               <IndexTable.Cell><Text as="span" alignment="end">{r.orders}</Text></IndexTable.Cell>
               <IndexTable.Cell><Text as="span" alignment="end">{r.companies}</Text></IndexTable.Cell>
             </IndexTable.Row>
@@ -1806,20 +1863,27 @@ export function Analytics({ embeddedCompanyId = null }) {
       </ReportCard>
 
       {/* §6.6 — MOQ / quantity pricing */}
-      <ReportCard title="MOQ & quantity pricing" subtitle="Demand blocked by minimum order quantities, and how close blocked attempts sat to the threshold. Evidence to investigate, not a recommendation.">
+      <ReportCard title="Quantity pricing effectiveness" subtitle="Of the purchases eligible for a quantity tier, how many reached it, the order value that went through tiers, and the discount realized.">
         <BlockStack gap="300">
           <MiniCompare
             items={[
-              { label: 'MOQ-blocked demand', value: money(moqAttempted), sub: `${moqEvents.length} attempt${moqEvents.length === 1 ? '' : 's'} · ${moqBuyers} buyer${moqBuyers === 1 ? '' : 's'}` },
-              { label: 'Near threshold', value: `${moqNearRate}%`, sub: `${moqNear} of ${moqEvents.length} within 20% of MOQ` },
-              { label: 'Later completed a purchase', value: `${moqRecovered} / ${moqEvents.length || 0}`, sub: 'observed after the blocked attempt' },
+              { label: 'Tier reach rate', value: tierReachRate == null ? '—' : `${Math.round(tierReachRate)}%`, sub: `${tierReached} of ${tierEligible} eligible purchase${tierEligible === 1 ? '' : 's'} reached a tier`, help: 'Share of eligible purchases that reached the quantity required for a pricing tier.' },
+              { label: 'Order value at reached tiers', value: money(tierOrderValue), help: 'Total order value from purchases that reached a quantity pricing tier.' },
+              { label: 'Average tier discount', value: tierAvgDiscount == null ? '—' : `${tierAvgDiscount.toFixed(1)}%`, help: 'Average discount on purchases that reached a quantity tier, weighted by the value before the tier discount.' },
             ]}
           />
           <IndexTable
             resourceName={{ singular: 'policy', plural: 'policies' }}
             itemCount={tierPolicies.length}
             selectable={false}
-            headings={[{ title: 'Quantity pricing' }, { title: 'Eligible', alignment: 'end' }, { title: 'Reached tier', alignment: 'end' }, { title: 'Near threshold', alignment: 'end' }, { title: 'Revenue at tier', alignment: 'end' }, { title: 'Realized discount', alignment: 'end' }]}
+            headings={[
+              { title: <HeadHelp label="Quantity pricing" help="The quantity pricing rule being evaluated." /> },
+              { title: <HeadHelp label="Eligible purchases" help="Number of purchases where this quantity pricing tier could be reached." />, alignment: 'end' },
+              { title: <HeadHelp label="Reached tier" help="Number of eligible purchases that reached the quantity required for this tier." />, alignment: 'end' },
+              { title: <HeadHelp label="Reach rate" help="Share of eligible purchases that reached this tier." />, alignment: 'end' },
+              { title: <HeadHelp label="Order value at tier" help="Total order value from purchases that reached this tier." />, alignment: 'end' },
+              { title: <HeadHelp label="Tier discount" help="Average discount received when this tier was reached, weighted by the value before the tier discount." />, alignment: 'end' },
+            ]}
             emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No quantity-rule observations in this scope.</Text></Box>}
           >
             {tierPolicies.map((r, i) => (
@@ -1827,8 +1891,8 @@ export function Analytics({ embeddedCompanyId = null }) {
                 <IndexTable.Cell>{r.name}</IndexTable.Cell>
                 <IndexTable.Cell><Text as="span" alignment="end">{r.eligible}</Text></IndexTable.Cell>
                 <IndexTable.Cell><Text as="span" alignment="end">{r.reached}</Text></IndexTable.Cell>
-                <IndexTable.Cell><Text as="span" alignment="end">{r.near}</Text></IndexTable.Cell>
-                <IndexTable.Cell><Text as="span" alignment="end">{money(r.revenue)}</Text></IndexTable.Cell>
+                <IndexTable.Cell><Text as="span" alignment="end">{r.reachRate == null ? '—' : `${Math.round(r.reachRate)}%`}</Text></IndexTable.Cell>
+                <IndexTable.Cell><Text as="span" alignment="end">{money(r.orderValue)}</Text></IndexTable.Cell>
                 <IndexTable.Cell><Text as="span" alignment="end">{r.discount == null ? '—' : `${r.discount.toFixed(1)}%`}</Text></IndexTable.Cell>
               </IndexTable.Row>
             ))}
@@ -1846,11 +1910,12 @@ export function Analytics({ embeddedCompanyId = null }) {
           <BlockStack gap="400">
             <BlockStack gap="150">
               <Text as="h4" variant="headingXs">Pricing change outcomes</Text>
+              <Text as="p" tone="subdued" variant="bodySm">Compares business outcomes before and after a pricing change using equal time windows. This shows what changed over time, not what caused the change.</Text>
               <IndexTable
                 resourceName={{ singular: 'change', plural: 'changes' }}
                 itemCount={ruleChanges.length}
                 selectable={false}
-                headings={[{ title: 'Date' }, { title: 'Scope' }, { title: 'Rule change' }, { title: 'Sales before', alignment: 'end' }, { title: 'Sales since', alignment: 'end' }, { title: 'AOV before', alignment: 'end' }, { title: 'AOV since', alignment: 'end' }, { title: 'Δ before', alignment: 'end' }, { title: 'Δ since', alignment: 'end' }]}
+                headings={[{ title: 'Date' }, { title: 'Scope' }, { title: 'Rule change' }, { title: 'Window', alignment: 'end' }, { title: 'Sales before', alignment: 'end' }, { title: 'Sales after', alignment: 'end' }, { title: 'AOV before', alignment: 'end' }, { title: 'AOV after', alignment: 'end' }, { title: 'Δ before', alignment: 'end' }, { title: 'Δ after', alignment: 'end' }]}
                 emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No tracked pricing changes in this scope.</Text></Box>}
               >
                 {ruleChanges.map((r, i) => (
@@ -1858,6 +1923,7 @@ export function Analytics({ embeddedCompanyId = null }) {
                     <IndexTable.Cell>{r.date}</IndexTable.Cell>
                     <IndexTable.Cell>{r.scope}</IndexTable.Cell>
                     <IndexTable.Cell><BlockStack gap="050"><Text as="span">{r.rule}</Text><Text as="span" tone="subdued" variant="bodySm">{r.change}</Text></BlockStack></IndexTable.Cell>
+                    <IndexTable.Cell><Text as="span" alignment="end">{r.windowDays ? `±${r.windowDays}d` : '—'}</Text></IndexTable.Cell>
                     <IndexTable.Cell><Text as="span" alignment="end">{money(r.before.sales)}</Text></IndexTable.Cell>
                     <IndexTable.Cell><Text as="span" alignment="end">{money(r.after.sales)}</Text></IndexTable.Cell>
                     <IndexTable.Cell><Text as="span" alignment="end">{money(r.before.aov)}</Text></IndexTable.Cell>
@@ -1885,17 +1951,30 @@ export function Analytics({ embeddedCompanyId = null }) {
     <BlockStack gap="400">
       {import.meta.env.DEV && (
         <Box background="bg-surface-secondary" borderColor="border" borderWidth="025" borderRadius="200" padding="200">
-          <InlineStack gap="200" blockAlign="center" wrap>
-            <Badge tone="info">Dev</Badge>
-            <Text as="span" variant="bodySm" tone="subdued">
-              {devInject
-                ? 'Event-basis test data injected: #1039 −$400 discount, #1033 SEA-30 return (−$1,250 sales / −$1,000 COGS). Net sales, GP and Top products reflect it.'
-                : 'Inject event-basis test data (a discount + a return) to demo the production Net sales / GP / Top-products definitions.'}
-            </Text>
-            <Button size="slim" pressed={devInject} onClick={() => setDevInject((v) => !v)}>
-              {devInject ? 'Reset test data' : 'Inject test data'}
-            </Button>
-          </InlineStack>
+          <BlockStack gap="200">
+            <InlineStack gap="200" blockAlign="center" wrap>
+              <Badge tone="info">Dev</Badge>
+              <Text as="span" variant="bodySm" tone="subdued">
+                {devInject
+                  ? 'Event-basis test data injected: #1039 −$400 discount, #1033 SEA-30 return (−$1,250 sales / −$1,000 COGS). Net sales, GP and Top products reflect it.'
+                  : 'Inject event-basis test data (a discount + a return) to demo the production Net sales / GP / Top-products definitions.'}
+              </Text>
+              <Button size="slim" pressed={devInject} onClick={() => setDevInject((v) => !v)}>
+                {devInject ? 'Reset test data' : 'Inject test data'}
+              </Button>
+            </InlineStack>
+            <InlineStack gap="200" blockAlign="center" wrap>
+              <Badge tone="info">Dev</Badge>
+              <Text as="span" variant="bodySm" tone="subdued">
+                {devMissingCost
+                  ? `Missing cost injected: ${DEV_MISSING_COST_SKU} has no unit cost, so its lines drop from GP/Margin. Cost coverage now shows on Margin at order creation, the "Order value below margin threshold" card and Margin by pricing source.`
+                  : `Strip the unit cost from ${DEV_MISSING_COST_SKU} to demo the cost-coverage disclosures (they stay hidden while every product is costed).`}
+              </Text>
+              <Button size="slim" pressed={devMissingCost} onClick={() => setDevMissingCost((v) => !v)}>
+                {devMissingCost ? 'Reset missing cost' : 'Inject missing cost'}
+              </Button>
+            </InlineStack>
+          </BlockStack>
         </Box>
       )}
       <Card>
