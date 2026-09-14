@@ -130,19 +130,23 @@ function ScoreGrid({ items }) {
 }
 
 // A bordered strip of secondary metrics (legacy .analytics-mini-compare).
-function MiniCompare({ items }) {
+function MiniCompare({ items, plain = false }) {
   const n = items.length;
+  const grid = (
+    <InlineGrid columns={{ xs: 1, sm: Math.min(n, 2), md: n }} gap="300">
+      {items.map((it) => (
+        <BlockStack gap="050" key={it.label}>
+          <Text as="span" tone="subdued" variant="bodySm">{it.label}</Text>
+          <Text as="span" variant="headingMd">{it.value}</Text>
+          {it.sub ? <Text as="span" tone="subdued" variant="bodySm">{it.sub}</Text> : null}
+        </BlockStack>
+      ))}
+    </InlineGrid>
+  );
+  if (plain) return grid;
   return (
     <Box borderColor="border" borderWidth="025" borderRadius="200" padding="300">
-      <InlineGrid columns={{ xs: 1, sm: Math.min(n, 2), md: n }} gap="300">
-        {items.map((it) => (
-          <BlockStack gap="050" key={it.label}>
-            <Text as="span" tone="subdued" variant="bodySm">{it.label}</Text>
-            <Text as="span" variant="headingMd">{it.value}</Text>
-            {it.sub ? <Text as="span" tone="subdued" variant="bodySm">{it.sub}</Text> : null}
-          </BlockStack>
-        ))}
-      </InlineGrid>
+      {grid}
     </Box>
   );
 }
@@ -1778,31 +1782,39 @@ export function Analytics({ embeddedCompanyId = null }) {
                 </IndexTable>
               </BlockStack>
               <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
-                <BlockStack gap="150">
-                  <Text as="h4" variant="headingXs">Win rate by deal size</Text>
-                  <Text as="p" tone="subdued" variant="bodySm">See how win rate changes across different quote values.</Text>
-                  <RankBars rows={dealSizeBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} finalized quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / dealSizeMaxRate) * 100, valueLabel: b.rate == null ? '—' : `${b.wins} of ${b.count} won · ${b.rate}%` }))} empty="No finalized quotes." />
-                </BlockStack>
-                <BlockStack gap="150">
-                  <Text as="h4" variant="headingXs">Win rate by quoted discount</Text>
-                  <Text as="p" tone="subdued" variant="bodySm">See how win rate changes at different discount levels from the Shopify list price.</Text>
-                  <MiniCompare items={[{ label: 'Average quoted discount', value: avgListDiscount == null ? '—' : `${avgListDiscount.toFixed(1)}%`, sub: 'Average discount from Shopify list price, weighted by quote value.' }]} />
-                  <RankBars rows={discountBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} finalized quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / maxDiscountRate) * 100, valueLabel: b.rate == null ? '—' : `${b.rate}% won` }))} empty="No finalized quotes." />
-                </BlockStack>
-                <BlockStack gap="150">
-                  <Text as="h4" variant="headingXs">Quoted price vs company pricing</Text>
-                  <Text as="p" tone="subdued" variant="bodySm">See whether quoted prices are typically above or below the prices assigned to each company.</Text>
-                  <MiniCompare items={[{ label: 'Average difference from company pricing', value: avgPriceVariance == null ? '—' : `${avgPriceVariance > 0 ? '+' : ''}${avgPriceVariance.toFixed(1)}%`, sub: avgPriceVariance == null ? 'No quotes with company pricing in this period.' : `Quotes were ${Math.abs(avgPriceVariance).toFixed(1)}% ${avgPriceVariance >= 0 ? 'higher' : 'lower'} than assigned company prices on average.` }]} />
-                  <RankBars rows={varianceBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} finalized quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / varianceMaxRate) * 100, valueLabel: b.rate == null ? '—' : `${b.rate}% won` }))} empty="No finalized quotes with company pricing." />
-                </BlockStack>
-                <BlockStack gap="150">
-                  <Text as="h4" variant="headingXs">Win rate with company pricing</Text>
-                  <Text as="p" tone="subdued" variant="bodySm">Compare win rates for quotes with assigned company pricing and quotes priced from Shopify prices only.</Text>
-                  <MiniCompare items={[
-                    { label: 'With company pricing', value: winWithPricing == null ? '—' : `${winWithPricing}%`, sub: `${withPricing.length} finalized quote${withPricing.length === 1 ? '' : 's'}` },
-                    { label: 'Without company pricing', value: winWithoutPricing == null ? '—' : `${winWithoutPricing}%`, sub: withoutPricing.length === 0 ? 'No finalized quotes without company pricing in this period.' : `${withoutPricing.length} finalized quote${withoutPricing.length === 1 ? '' : 's'}` },
-                  ]} />
-                </BlockStack>
+                <Box borderColor="border" borderWidth="025" borderRadius="300" padding="400">
+                  <BlockStack gap="150">
+                    <Text as="h4" variant="headingXs">Win rate by deal size</Text>
+                    <Text as="p" tone="subdued" variant="bodySm">See how win rate changes across different quote values.</Text>
+                    <RankBars rows={dealSizeBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} finalized quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / dealSizeMaxRate) * 100, valueLabel: b.rate == null ? '—' : `${b.wins} of ${b.count} won · ${b.rate}%` }))} empty="No finalized quotes." />
+                  </BlockStack>
+                </Box>
+                <Box borderColor="border" borderWidth="025" borderRadius="300" padding="400">
+                  <BlockStack gap="150">
+                    <Text as="h4" variant="headingXs">Win rate by quoted discount</Text>
+                    <Text as="p" tone="subdued" variant="bodySm">See how win rate changes at different discount levels from the Shopify list price.</Text>
+                    <MiniCompare plain items={[{ label: 'Average quoted discount', value: avgListDiscount == null ? '—' : `${avgListDiscount.toFixed(1)}%`, sub: 'Average discount from Shopify list price, weighted by quote value.' }]} />
+                    <RankBars rows={discountBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} finalized quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / maxDiscountRate) * 100, valueLabel: b.rate == null ? '—' : `${b.rate}% won` }))} empty="No finalized quotes." />
+                  </BlockStack>
+                </Box>
+                <Box borderColor="border" borderWidth="025" borderRadius="300" padding="400">
+                  <BlockStack gap="150">
+                    <Text as="h4" variant="headingXs">Quoted price vs company pricing</Text>
+                    <Text as="p" tone="subdued" variant="bodySm">See whether quoted prices are typically above or below the prices assigned to each company.</Text>
+                    <MiniCompare plain items={[{ label: 'Average difference from company pricing', value: avgPriceVariance == null ? '—' : `${avgPriceVariance > 0 ? '+' : ''}${avgPriceVariance.toFixed(1)}%`, sub: avgPriceVariance == null ? 'No quotes with company pricing in this period.' : `Quotes were ${Math.abs(avgPriceVariance).toFixed(1)}% ${avgPriceVariance >= 0 ? 'higher' : 'lower'} than assigned company prices on average.` }]} />
+                    <RankBars rows={varianceBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} finalized quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / varianceMaxRate) * 100, valueLabel: b.rate == null ? '—' : `${b.rate}% won` }))} empty="No finalized quotes with company pricing." />
+                  </BlockStack>
+                </Box>
+                <Box borderColor="border" borderWidth="025" borderRadius="300" padding="400">
+                  <BlockStack gap="150">
+                    <Text as="h4" variant="headingXs">Win rate with company pricing</Text>
+                    <Text as="p" tone="subdued" variant="bodySm">Compare win rates for quotes with assigned company pricing and quotes priced from Shopify prices only.</Text>
+                    <MiniCompare plain items={[
+                      { label: 'With company pricing', value: winWithPricing == null ? '—' : `${winWithPricing}%`, sub: `${withPricing.length} finalized quote${withPricing.length === 1 ? '' : 's'}` },
+                      { label: 'Without company pricing', value: winWithoutPricing == null ? '—' : `${winWithoutPricing}%`, sub: withoutPricing.length === 0 ? 'No finalized quotes without company pricing in this period.' : `${withoutPricing.length} finalized quote${withoutPricing.length === 1 ? '' : 's'}` },
+                    ]} />
+                  </BlockStack>
+                </Box>
               </InlineGrid>
             </BlockStack>
           ) : (
