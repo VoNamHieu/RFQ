@@ -24,7 +24,6 @@ import { LineChart, VBarChart, StackedBar, FunnelV2, RankBars, Timeline, moneySh
 import { resolveDetail, defaultVariant } from '../pricing.js';
 import {
   analyticsOrderItems,
-  analyticsApprovalQueue,
   analyticsCompanyActivation,
   analyticsQuantityEvents,
   analyticsPricingChanges,
@@ -657,10 +656,6 @@ export function Analytics({ embeddedCompanyId = null }) {
     sourceMap.set(name, cur);
   });
   const orderSources = [...sourceMap.values()].map((x) => ({ ...x, share: sales ? (x.revenue / sales) * 100 : 0 })).sort((a, b) => b.revenue - a.revenue);
-  const relationshipRows = [
-    { name: 'Repeat purchases', value: repeatRevenue },
-    { name: 'First purchases', value: Math.max(0, sales - repeatRevenue) },
-  ];
   // Price sources (§6). "Price created on B2B" is a B2B pricing authored directly in the
   // app (company/location/catalog rules) — location pricing isn't separated yet, so a
   // resolved "Location price" folds into it. "Price synced from quotes" is a B2B pricing
@@ -794,14 +789,6 @@ export function Analytics({ embeddedCompanyId = null }) {
   const activationRate = activationApproved.length ? Math.round((activationPurchased.length / activationApproved.length) * 100) : null;
   const activationTypical = median(activationApproved.filter((a) => a.firstOrder).map((a) => daysBetween(a.approved, a.firstOrder)));
 
-  // ── approvals ───────────────────────────────────────────────────────────────
-  const scopedApprovals = analyticsApprovalQueue.filter((a) => activeCompanyId === 'all' || a.companyId === activeCompanyId);
-  const approvalValue = scopedApprovals.reduce((a, x) => a + x.value, 0);
-  const approvalAgeHours = (x) => Math.max(0, (NOW - new Date(x.requestedAt)) / 3600000);
-  const approvalOver48 = scopedApprovals.filter((x) => approvalAgeHours(x) > 48);
-  const approvalOver48Value = approvalOver48.reduce((a, x) => a + x.value, 0);
-  const approvalOldest = scopedApprovals.length ? Math.max(...scopedApprovals.map(approvalAgeHours)) : null;
-
   // ── quote pipeline: response / close / win / aging / discount ────────────────
   const responseMedian = median(responseDays);
   const closeDays = quotes
@@ -893,7 +880,7 @@ export function Analytics({ embeddedCompanyId = null }) {
   const varianceRows = finalizedPricing.filter((x) => x.priceVariance != null);
   const varianceBuckets = [
     { name: 'More than 5% above', test: (v) => v > 5 },
-    { name: 'Within ±5%', test: (v) => v >= -5 && v <= 5 },
+    { name: 'Within 5%', test: (v) => v >= -5 && v <= 5 },
     { name: '5–10% below', test: (v) => v < -5 && v >= -10 },
     { name: 'More than 10% below', test: (v) => v < -10 },
   ].map((b) => {
@@ -973,7 +960,6 @@ export function Analytics({ embeddedCompanyId = null }) {
   const tabs = [
     { id: 'overview', content: 'Overview' },
     { id: 'accounts', content: 'Companies' },
-    { id: 'orders', content: 'Orders' },
     { id: 'quotes', content: 'Quotes' },
     { id: 'pricing', content: 'Pricing' },
   ];
@@ -1157,7 +1143,7 @@ export function Analytics({ embeddedCompanyId = null }) {
               context={openQuotes.length ? `${openQuotes.length} quote${openQuotes.length === 1 ? '' : 's'} still open` : 'No open quotes'}
               note="Current snapshot · not affected by date range"
               cta="Review quotes →"
-              onAction={() => setTab(3)}
+              onAction={() => setTab(2)}
             />
             {worstMargin && (
               <InsightCard
@@ -1167,7 +1153,7 @@ export function Analytics({ embeddedCompanyId = null }) {
                 context={`${money(worstMargin.salesAffected)} sales affected this period`}
                 note={worstMargin.coverage < 99.5 ? `Based on ${Math.round(worstMargin.coverage)}% cost coverage` : undefined}
                 cta="Review pricing →"
-                onAction={() => setTab(4)}
+                onAction={() => setTab(3)}
               />
             )}
           </InlineGrid>
@@ -1518,82 +1504,6 @@ export function Analytics({ embeddedCompanyId = null }) {
     </BlockStack>
   );
 
-  // ── ORDERS ──────────────────────────────────────────────────────────────────
-  const timelineEvents = selected
-    ? orders
-        .slice()
-        .sort((a, b) => String(a.date).localeCompare(String(b.date)))
-        .map((o, i, arr) => ({ amount: o.amount, gapLabel: i ? `${daysBetween(arr[i - 1].date, o.date)}d` : '', valueLabel: moneyShort(Number(o.amount) || 0), dateLabel: String(o.date).slice(5) }))
-    : [];
-  const ordersTab = (
-    <BlockStack gap="400">
-      <ScoreGrid
-        items={[
-          { label: 'Sales', value: money(sales), delta: <DeltaChip v={salesDelta} />, foot: compareEnabled ? 'vs previous period' : 'completed orders' },
-          { label: 'Orders', value: String(orderCount), delta: <DeltaChip v={orderDelta} />, foot: 'fulfilled or paid' },
-          { label: 'Average order', value: money(aov), delta: <DeltaChip v={aovDelta} />, foot: 'per completed order' },
-          { label: 'Repeat revenue', value: `${repeatShare}%`, foot: money(repeatRevenue) },
-        ]}
-      />
-      <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
-        <ReportCard title="Order volume over time" subtitle="Completed order count by month."><VBarChart data={monthly.map((m) => ({ label: m.label, value: m.orders }))} /></ReportCard>
-        <ReportCard title="Purchasing motion" subtitle="Completed revenue by whether sales assistance was involved."><StackedBar segments={orderSources.map((s) => ({ name: s.name, value: s.revenue }))} /></ReportCard>
-      </InlineGrid>
-      <ReportCard title="Purchase relationship" subtitle="Completed revenue split between first and repeat purchases."><StackedBar segments={relationshipRows} /></ReportCard>
-      <ReportCard title={selected ? 'Order cadence' : 'Reorder cadence by company'} subtitle={selected ? 'Intervals between this company’s completed orders.' : 'Compare company recency with each company’s established ordering rhythm. Typical reorder shows only with at least three observed intervals.'}>
-        {selected ? (
-          <Timeline events={timelineEvents} />
-        ) : (
-          <IndexTable
-            resourceName={{ singular: 'company', plural: 'companies' }}
-            itemCount={companyCadence.length}
-            selectable={false}
-            headings={[{ title: 'Company' }, { title: 'Orders', alignment: 'end' }, { title: 'Typical reorder', alignment: 'end' }, { title: 'Since last order', alignment: 'end' }]}
-            emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No ordering history.</Text></Box>}
-          >
-            {companyCadence.map((r, i) => (
-              <IndexTable.Row id={r.id} key={r.id} position={i}>
-                <IndexTable.Cell><CompanyLink id={r.id}>{r.name}</CompanyLink></IndexTable.Cell>
-                <IndexTable.Cell><Text as="span" alignment="end">{r.orders}</Text></IndexTable.Cell>
-                <IndexTable.Cell><Text as="span" alignment="end">{r.typical == null ? '—' : `${r.typical}d`}</Text></IndexTable.Cell>
-                <IndexTable.Cell><Text as="span" alignment="end">{r.since == null ? '—' : `${r.since}d`}</Text></IndexTable.Cell>
-              </IndexTable.Row>
-            ))}
-          </IndexTable>
-        )}
-      </ReportCard>
-      <ReportCard title="Approval queue" subtitle="Open order value waiting on an internal approval decision.">
-        <BlockStack gap="300">
-          <MiniCompare
-            items={[
-              { label: 'Awaiting approval', value: money(approvalValue), sub: `${scopedApprovals.length} order${scopedApprovals.length === 1 ? '' : 's'}` },
-              { label: 'Waiting > 48h', value: money(approvalOver48Value), sub: `${approvalOver48.length} order${approvalOver48.length === 1 ? '' : 's'}` },
-              { label: 'Oldest waiting', value: approvalOldest == null ? '—' : `${Math.round(approvalOldest)}h` },
-            ]}
-          />
-          <IndexTable
-            resourceName={{ singular: 'order', plural: 'orders' }}
-            itemCount={scopedApprovals.length}
-            selectable={false}
-            headings={[{ title: 'Order' }, { title: 'Company' }, { title: 'Location' }, { title: 'Value', alignment: 'end' }, { title: 'Waiting', alignment: 'end' }, { title: 'Approver' }]}
-            emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No approvals waiting.</Text></Box>}
-          >
-            {scopedApprovals.map((a, i) => (
-              <IndexTable.Row id={a.id} key={a.id} position={i}>
-                <IndexTable.Cell>{a.id}</IndexTable.Cell>
-                <IndexTable.Cell>{a.company}</IndexTable.Cell>
-                <IndexTable.Cell>{a.location}</IndexTable.Cell>
-                <IndexTable.Cell><Text as="span" alignment="end">{money(a.value)}</Text></IndexTable.Cell>
-                <IndexTable.Cell><Text as="span" alignment="end">{`${Math.round(approvalAgeHours(a))}h`}</Text></IndexTable.Cell>
-                <IndexTable.Cell>{a.approver}</IndexTable.Cell>
-              </IndexTable.Row>
-            ))}
-          </IndexTable>
-        </BlockStack>
-      </ReportCard>
-    </BlockStack>
-  );
-
   // ── QUOTES (spec §5) ────────────────────────────────────────────────────────
   const previousReceived = compareEnabled
     ? allQuotes.filter((q) => scopedIds.has(q.company) && inDateRange(q.created, previousPeriodStart, previousPeriodEnd)).length
@@ -1786,32 +1696,32 @@ export function Analytics({ embeddedCompanyId = null }) {
                   <BlockStack gap="150">
                     <Text as="h4" variant="headingXs">Win rate by deal size</Text>
                     <Text as="p" tone="subdued" variant="bodySm">See how win rate changes across different quote values.</Text>
-                    <RankBars rows={dealSizeBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} finalized quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / dealSizeMaxRate) * 100, valueLabel: b.rate == null ? '—' : `${b.wins} of ${b.count} won · ${b.rate}%` }))} empty="No finalized quotes." />
+                    <RankBars rows={dealSizeBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} won or lost quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / dealSizeMaxRate) * 100, valueLabel: b.rate == null ? '—' : `${b.wins} of ${b.count} won · ${b.rate}%` }))} empty="No won or lost quotes." />
                   </BlockStack>
                 </Box>
                 <Box borderColor="border" borderWidth="025" borderRadius="300" padding="400">
                   <BlockStack gap="150">
-                    <Text as="h4" variant="headingXs">Win rate by quoted discount</Text>
+                    <Text as="h4" variant="headingXs">Win rate by discount</Text>
                     <Text as="p" tone="subdued" variant="bodySm">See how win rate changes at different discount levels from the Shopify list price.</Text>
-                    <MiniCompare plain items={[{ label: 'Average quoted discount', value: avgListDiscount == null ? '—' : `${avgListDiscount.toFixed(1)}%`, sub: 'Average discount from Shopify list price, weighted by quote value.' }]} />
-                    <RankBars rows={discountBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} finalized quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / maxDiscountRate) * 100, valueLabel: b.rate == null ? '—' : `${b.rate}% won` }))} empty="No finalized quotes." />
+                    <MiniCompare plain items={[{ label: 'Average discount from Shopify price', value: avgListDiscount == null ? '—' : `${avgListDiscount.toFixed(1)}%`, sub: 'Weighted by the Shopify value of each quote.' }]} />
+                    <RankBars rows={discountBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} won or lost quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / maxDiscountRate) * 100, valueLabel: b.rate == null ? '—' : `${b.rate}% won` }))} empty="No won or lost quotes." />
                   </BlockStack>
                 </Box>
                 <Box borderColor="border" borderWidth="025" borderRadius="300" padding="400">
                   <BlockStack gap="150">
                     <Text as="h4" variant="headingXs">Quoted price vs company pricing</Text>
-                    <Text as="p" tone="subdued" variant="bodySm">See whether quoted prices are typically above or below the prices assigned to each company.</Text>
+                    <Text as="p" tone="subdued" variant="bodySm">See how quoted prices compare with the prices already assigned to each company.</Text>
                     <MiniCompare plain items={[{ label: 'Average difference from company pricing', value: avgPriceVariance == null ? '—' : `${avgPriceVariance > 0 ? '+' : ''}${avgPriceVariance.toFixed(1)}%`, sub: avgPriceVariance == null ? 'No quotes with company pricing in this period.' : `Quotes were ${Math.abs(avgPriceVariance).toFixed(1)}% ${avgPriceVariance >= 0 ? 'higher' : 'lower'} than assigned company prices on average.` }]} />
-                    <RankBars rows={varianceBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} finalized quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / varianceMaxRate) * 100, valueLabel: b.rate == null ? '—' : `${b.rate}% won` }))} empty="No finalized quotes with company pricing." />
+                    <RankBars rows={varianceBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} won or lost quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / varianceMaxRate) * 100, valueLabel: b.rate == null ? '—' : `${b.rate}% won` }))} empty="No won or lost quotes with company pricing." />
                   </BlockStack>
                 </Box>
                 <Box borderColor="border" borderWidth="025" borderRadius="300" padding="400">
                   <BlockStack gap="150">
-                    <Text as="h4" variant="headingXs">Win rate with company pricing</Text>
-                    <Text as="p" tone="subdued" variant="bodySm">Compare win rates for quotes with assigned company pricing and quotes priced from Shopify prices only.</Text>
+                    <Text as="h4" variant="headingXs">Win rate by pricing setup</Text>
+                    <Text as="p" tone="subdued" variant="bodySm">Compare win rates for quotes with company pricing and quotes based on Shopify prices only.</Text>
                     <MiniCompare plain items={[
-                      { label: 'With company pricing', value: winWithPricing == null ? '—' : `${winWithPricing}%`, sub: `${withPricing.length} finalized quote${withPricing.length === 1 ? '' : 's'}` },
-                      { label: 'Without company pricing', value: winWithoutPricing == null ? '—' : `${winWithoutPricing}%`, sub: withoutPricing.length === 0 ? 'No finalized quotes without company pricing in this period.' : `${withoutPricing.length} finalized quote${withoutPricing.length === 1 ? '' : 's'}` },
+                      { label: 'With company pricing', value: winWithPricing == null ? '—' : `${winWithPricing}%`, sub: `${withPricing.length} won or lost quote${withPricing.length === 1 ? '' : 's'}` },
+                      { label: 'Shopify price only', value: winWithoutPricing == null ? '—' : `${winWithoutPricing}%`, sub: withoutPricing.length === 0 ? 'No won or lost quotes in this period.' : `${withoutPricing.length} won or lost quote${withoutPricing.length === 1 ? '' : 's'}` },
                     ]} />
                   </BlockStack>
                 </Box>
@@ -1969,7 +1879,7 @@ export function Analytics({ embeddedCompanyId = null }) {
     </BlockStack>
   );
 
-  const tabContent = [overviewTab, companiesTab, ordersTab, quotesTab, pricingTab][tab];
+  const tabContent = [overviewTab, companiesTab, quotesTab, pricingTab][tab];
 
   const content = (
     <BlockStack gap="400">
