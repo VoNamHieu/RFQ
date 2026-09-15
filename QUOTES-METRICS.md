@@ -1,10 +1,10 @@
 # Quotes tab — blueprint & engine tính từng chỉ số
 
 > Bản thiết kế cho tab **Quotes** của màn Analytics: mục đích từng phần, công thức mỗi chỉ số,
-> mô hình funnel, và map sang production. Bám theo `src/b2b/screens/Analytics.jsx` (§5.x).
+> phân bố trạng thái quote, và map sang production. Bám theo `src/b2b/screens/Analytics.jsx` (§5.x).
 > Xem thêm [[OVERVIEW-METRICS.md]] (engine chung, snapshot vs period) · [[COMPANIES-METRICS.md]] · [[PRD-NOTES.md]] (funnel taxonomy).
 >
-> Cập nhật: 2026-09-11 · Branch: `wip/analytics`
+> Cập nhật: 2026-09-14 · UI copy đồng bộ với code (headers + tooltips)
 
 ---
 
@@ -13,17 +13,17 @@
 **Câu hỏi tab trả lời:** *Pipeline báo giá đang có bao nhiêu tiền, đang kẹt ở đâu, tỷ lệ thắng bao nhiêu, mất bao lâu để phản hồi/chốt, và discount ảnh hưởng win-rate thế nào?*
 
 **2 chế độ** (theo filter Company):
-- **All companies** (`selected = null`): toàn portfolio + card **Advanced pipeline analysis**.
+- **All companies** (`selected = null`): toàn portfolio + card **Advanced quote analysis**.
 - **1 company** (`selected`): thêm card **Quote detail** (bảng quote thô của company).
 
 Thứ tự các phần (all-companies mode):
-1. **Hero KPIs** (§5.1) — 4 thẻ: Open pipeline / Win rate by value / Stale pipeline / First response.
+1. **Hero KPIs** (§5.1) — 4 thẻ: Open quote value / Win rate by value / Stale quote value / First response time.
 2. **Baseline strip** (§5.2, MiniCompare) — 6 số nền.
-3. **Didn't close quote aging** (§5.3) + **Pipeline funnel** (§5.5) — 2 cột.
+3. **Open quote aging** (§5.3) + **Quote status distribution** (§5.5) — 2 cột.
 4. **Median time to decision** (§5.4).
-5. **Advanced pipeline analysis** (§5.6/§5.7) — win-rate cuts (expander).
+5. **Advanced quote analysis** (§5.6/§5.7) — win-rate cuts (expander).
 
-> **Funnel app quote chỉ 3 trạng thái:** **RFQ received → Negotiating → Won**, cộng nhánh **Lost** (terminal, không nằm dưới Won). Đã bỏ ý tưởng 5-stage + "Lost reasons" (xem [[PRD-NOTES.md]] §6).
+> **Trạng thái quote:** **Negotiating / Won / Lost / open** — §5.5 hiển thị **phân bố theo trạng thái hiện tại** (mỗi quote 1 lần), không phải funnel progression. Đã bỏ ý tưởng 5-stage + "Lost reasons" (xem [[PRD-NOTES.md]] §6).
 
 ---
 
@@ -40,7 +40,7 @@ Thứ tự các phần (all-companies mode):
 | **`quoteListVal(q)`** | `Σ (Shopify list × qty)` — mốc để tính discount. |
 | **`quoteAge(q)`** | Số ngày từ `updated \|\| created` đến TODAY. |
 
-> **Period vs snapshot:** Hero **Open pipeline** & **Stale pipeline** và card **Aging** đều dựa trên `openQuotes` (**snapshot**, không lọc theo kỳ). Funnel / win-rate / decision / baseline dựa trên `quotes` (**period**, `created` trong kỳ). Giống nguyên tắc "Current open quote value" ở Overview §3.4b.
+> **Period vs snapshot:** Hero **Open quote value** & **Stale quote value** và card **Aging** đều dựa trên `openQuotes` (**snapshot**, không lọc theo kỳ). Distribution / win-rate / decision / baseline dựa trên `quotes` (**period**, `created` trong kỳ). Giống nguyên tắc "Current open quote value" ở Overview §3.4b.
 
 ---
 
@@ -48,10 +48,10 @@ Thứ tự các phần (all-companies mode):
 
 | Thẻ | Công thức | Biến |
 |---|---|---|
-| **Open pipeline** | `Σ quoteVal` trên **openQuotes** (snapshot). Footer = số quote đang mở. | `openQuoteValue`, `openQuotes.length` |
+| **Open quote value** | `Σ quoteVal` trên **openQuotes** (snapshot). Footer = số quote đang mở. | `openQuoteValue`, `openQuotes.length` |
 | **Win rate by value** | `wonValue / finalizedValue × 100`. Footer "$X won of $Y finalized". `null` khi chưa có quote finalized. | `winRateValue` |
-| **Stale pipeline** | `Σ quoteVal` của **openQuotes có `quoteAge > 10` ngày**. Footer = số quote idle >10 ngày. | `staleValue`, `staleQuotes.length` |
-| **First response** | **Median** thời gian `created → sự kiện "quote sent/priced" đầu tiên` (timeline), trên `pricedQuotes`. | `responseMedian` |
+| **Stale quote value** | `Σ quoteVal` của **openQuotes có `quoteAge > 10` ngày**. Footer = số quote idle >10 ngày. | `staleValue`, `staleQuotes.length` |
+| **First response time** | **Median** thời gian `created → sự kiện "quote sent/priced" đầu tiên` (timeline), trên `pricedQuotes`. | `responseMedian` |
 
 - `finalizedQuotes = wonQuotes + lostQuotes` (Won = `Deal Closed`, Lost = `Deal Rejected`), tính trên **period** `quotes`.
 - `wonValue`/`finalizedValue` = `Σ quoteVal`.
@@ -71,12 +71,12 @@ Thứ tự các phần (all-companies mode):
 
 ---
 
-## §5.3 — Didn't close quote aging (RankBars)
+## §5.3 — Open quote aging (RankBars)
 
 - Chia **openQuotes** (snapshot) theo `quoteAge`: `< 3d` / `3–7d` / `8–14d` / `15+d`.
 - Mỗi bar: `value = Σ quoteVal` của bucket; **bar scale theo VALUE, không phải count** (`width = value / agingMaxVal`). `sub` = "N quotes still open".
 - Ý nghĩa: giá trị quote **chưa chốt** đang già đi ở đâu — không phải đếm quote.
-- (Tên card là "**Didn't close quote aging**" — quote đã có activity nhưng chưa closed.)
+- (Tên card là "**Open quote aging**" — quote đã có activity nhưng chưa closed.)
 
 ---
 
@@ -84,38 +84,43 @@ Thứ tự các phần (all-companies mode):
 
 - `decisionMedian` = **median** của `created → updated` (số ngày) trên **finalizedQuotes** (Won + Lost).
 - **Median, không phải average** (nói rõ trong subtitle) — tránh outlier kéo lệch.
-- Khác **First response** (§5.1): response = tới lúc **báo giá lần đầu**; decision = tới lúc **chốt Won/Lost**.
+- Khác **First response time** (§5.1): response = tới lúc **báo giá lần đầu**; decision = tới lúc **chốt Won/Lost**.
 
 ---
 
-## §5.5 — Pipeline funnel (cohort, FunnelV2)
+## §5.5 — Quote status distribution (StackedBar)
 
-- **Cohort** = quote **tạo trong kỳ**, track tới **stage xa nhất đạt được** (không phải "đang đứng ở stage nào").
-- 4 dòng: **RFQ received** (`quotes`) → **Negotiating** (`Negotiating` + `Deal Closed`) → **Won** (`Deal Closed`); + **Lost** (`Deal Rejected`, terminal — hiển thị là % của RFQs, không phải downstream của Won).
+- Chia **quotes tạo trong kỳ** theo **trạng thái hiện tại** — mỗi quote đếm **1 lần**, các segment cộng lại = 100% của RFQs. (`distSegments`).
+- Segment = current status (Negotiating / Won / Lost / open).
 - Toggle **Count | Value** (`quoteFunnelMode`): metric = số quote hoặc `Σ quoteVal`.
-- Mỗi stage hiển thị: `metric · X% of RFQs`, note `Y% from prior` (Lost note = `% of RFQs · lost`).
 
-> ⚠️ **Cohort semantics (như activation §4.8 [[COMPANIES-METRICS.md]]):** đếm cohort tạo-trong-kỳ đã đi xa tới đâu tính đến hiện tại → mở lại kỳ cũ về sau, số Won/Negotiating có thể tăng khi quote tiếp tục chuyển stage. Là conversion-to-date, không phải "activity trong kỳ".
+> ⚠️ **Đã đổi từ funnel → distribution:** trước đây là FunnelV2 cohort (stage **xa nhất đạt được**, RFQ received → Negotiating → Won + Lost); nay là **phân bố theo trạng thái hiện tại** (mỗi quote đúng 1 lần, sum 100%). Distribution là snapshot phân bố, KHÔNG phải conversion-to-date như funnel cũ.
 
 ---
 
-## §5.6 / §5.7 — Advanced pipeline analysis (chỉ all-companies, expander)
+## §5.6 / §5.7 — Advanced quote analysis (chỉ all-companies, expander)
 
-Subtitle cảnh báo: *"always read with the sample size; correlation is not causation."* Mỗi cut luôn kèm **sample size**.
+Subtitle: *"Explore patterns associated with won and lost quotes. Small samples can be noisy, and these patterns do not prove cause and effect."* Mỗi cut luôn kèm **sample size**.
 
-**a) Win rate by company** (`companyQuoteTable`, sort theo quoted value): mỗi company →
-`RFQs` · `Quoted value` (`Σ quoteVal`) · `Open value` (`Σ quoteVal` quote đang mở) · `Win (count)` = won/finalized · `Win (value)` = wonValue/finalizedValue · `Median response` (created → first sent).
+**Win rate by company** (`companyQuoteTable`, sort theo quoted value): mỗi company →
+`Company` · `Quotes` (RFQs) · `Quoted value` (`Σ quoteVal`) · `Open quote value` (`Σ quoteVal` quote đang mở) · `Win rate (count)` = won/finalized · `Win rate (value)` = wonValue/finalizedValue · `First response time` (created → first sent).
 
-**b) Win rate by deal size** (`dealSizeBuckets`): `< $2k` / `$2k–$10k` / `$10k–$50k` / `$50k+` theo `quoteVal`; `rate = won / finalized` trong bucket (+ count).
+### Win rate analysis (4 cut, grouping heading)
 
-**c) Win rate by discount band** (`discountBuckets`): `0–5%` / `5–10%` / `10–15%` / `15%+` off theo `quoteDiscountPct(q)` = `(list − quoted) / list`; `rate = won / finalized` (+ count).
-- **Average discount given** = `avgDiscount` = `(Σ list×qty − Σ quoted×qty) / Σ list×qty`, **weighted theo quoted value · vs Shopify list** (clamp ≥ 0).
+**a) Win rate by deal size** (`dealSizeBuckets`): `< $2k` / `$2k–$10k` / `$10k–$50k` / `$50k+` theo `quoteVal`; `rate = won / finalized` trong bucket (+ count).
+
+**b) Win rate by discount** (`discountBuckets`): `0–5%` / `5–10%` / `10–15%` / `15%+` off theo `quoteDiscountPct(q)` = `(list − quoted) / list`; `rate = won / finalized` (+ count).
+- **Average discount vs Shopify** = `avgDiscount` = `(Σ list×qty − Σ quoted×qty) / Σ list×qty`, **weighted theo quoted value · vs Shopify list** (clamp ≥ 0).
+
+**c) Quoted price vs company pricing** (`varianceBuckets`): so giá quoted với **giá company đã gán** — `avgPriceVariance` = `(Σ quoted − Σ assigned) / Σ assigned`, **signed** (dương = quoted cao hơn). `rate = won / finalized` theo band.
+
+**d) Win rate with vs without company pricing** (`winWithPricing` / `winWithoutPricing`): 2 nhóm — **Company pricing** (quote có giá company gán lúc quote) vs **Shopify price only** (chỉ Shopify làm mốc); mỗi nhóm `rate = won / finalized` (+ count).
 
 ---
 
 ## Quote detail (single-company mode)
 
-Bảng quote thô của company đang chọn (`quoteDetailTable`): `Quote id` · `Location` · `Status` (badge: Won→success, Lost→critical) · `Age` (`quoteAge d`) · `Quoted value` (`quoteVal`).
+Bảng quote thô của company đang chọn (`quoteDetailTable`): `Quote` · `Status` (badge: Won→success, Lost→critical) · `Age` (`quoteAge d`) · `Quoted value` (`quoteVal`). **Bỏ cột Location** — quote hiện chỉ có company scope.
 
 ---
 
@@ -125,14 +130,14 @@ Bảng quote thô của company đang chọn (`quoteDetailTable`): `Quote id` ·
 |---|---|---|
 | Quote value | `Σ line.quoted × qty` | Giá negotiated đã chốt trên quote/RFQ record |
 | Win / Lost | `status ∈ {Deal Closed, Deal Rejected}` | Trạng thái terminal của quote trong app |
-| First response / Median response | timeline event "quote sent/priced" | Timestamp sự kiện báo giá đầu tiên |
+| First response time | timeline event "quote sent/priced" | Timestamp sự kiện báo giá đầu tiên |
 | Time to decision | `created → updated` | `created → resolved` (Won/Lost) |
 | Discount band / avg discount | `quoted` vs `product.list` | Giá quoted vs Shopify list price |
-| Open / Stale pipeline | `openQuotes` snapshot | Quote đang mở theo current state (không gate theo kỳ) |
+| Open / Stale quote value | `openQuotes` snapshot | Quote đang mở theo current state (không gate theo kỳ) |
 
 ### Ghi chú production
-- **Funnel & baseline = cohort tạo-trong-kỳ**, conversion-to-date (mutable) — như activation funnel. Nếu cần report bất biến thì gate stage-transition ≤ `rangeEnd` (đổi logic).
-- **Open pipeline / Stale pipeline = current snapshot** (bỏ date + location, chỉ Company scope) — cùng mental model với Overview "Current open quote value".
+- **Distribution & baseline = quote tạo-trong-kỳ.** Distribution là **phân bố theo current status** (mỗi quote 1 lần, sum 100%) — snapshot, không phải conversion-to-date như funnel cũ. (Win-rate/decision cũng theo period `quotes`.)
+- **Open quote value / Stale quote value = current snapshot** (bỏ date + location, chỉ Company scope) — cùng mental model với Overview "Current open quote value".
 - **Win rate** nên báo **cả count và value** (đã có) — deal to/nhỏ có win-rate khác nhau, xem thêm §5.7 by deal size.
 - Discount **vs Shopify list**, weighted theo value — không phải trung bình đơn giản của các %.
 
@@ -146,6 +151,6 @@ Bảng quote thô của company đang chọn (`quoteDetailTable`): `Quote id` ·
 | `received`, `quoteValueTotal`, `wonQuotes`, `lostQuotes`, `avgQuoteValue`, `winRateCount` | §5.2 Baseline |
 | `agingBuckets`, `agingMaxVal` | §5.3 Aging |
 | `decisionMedian` | §5.4 Decision |
-| `funnelSource`, `funnelV2Stages`, `quoteFunnelMode`, `stageValue` | §5.5 Funnel |
+| `distSegments`, `quoteFunnelMode` | §5.5 Quote status distribution |
 | `companyQuoteTable`, `dealSizeBuckets`, `discountBuckets`, `avgDiscount` | §5.6/§5.7 Advanced |
 | `quoteDetailTable` | Quote detail (selected) |
