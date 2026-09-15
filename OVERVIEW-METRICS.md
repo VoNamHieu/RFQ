@@ -21,7 +21,7 @@
 | **Line items** | `analyticsOrderItems[o.id]` = `{ sku, qty, revenue }` (map với draft-order line items của Shopify). |
 | **COGS** | `productCost(sku)` = `product.cost` (map **Shopify `InventoryItem.unitCost`**). `orderCogs(o)` = Σ `qty × cost`. **Nếu cost thiếu** — product không có cost, hoặc order không có line items — `orderCogs` = **`null`** (không ước lượng). |
 | **Gross profit / Margin 1 order** | `orderGP(o)` = `null` khi COGS null, ngược lại `amount − COGS`. |
-| **Quy tắc coverage (quan trọng)** | Không fabricate số liệu tài chính. `gpStats(orders)` tính GP/Margin **chỉ trên phần sales đã có cost** (bỏ các order chưa costed), kèm **`coverage`** = `costedSales / totalSales`. **Margin = GP / costedSales** (margin của phần đã costed, không phải chia cho tổng sales → không bị hiểu sai là toàn store). Khi coverage < 100% → footer của Gross profit/Margin hiện **"X% of sales have cost data"**. **Không có order nào costed → "—"**; nhưng **scope không có order nào (0 order) → GP = $0, Margin = 0%** (không phải "—" — 0 đơn nghĩa là 0, không phải "chưa biết"). Áp dụng cho Hero KPI, Top companies, Top products, chart, Pricing tab. *(Đã bỏ fallback `amount × 0.68`.)* |
+| **Quy tắc coverage (quan trọng)** | Không fabricate số liệu tài chính. `gpStats(orders)` tính GP/Margin **chỉ trên phần sales đã có cost** (bỏ các order chưa costed), kèm **`coverage`** = `costedSales / totalSales`. **Margin = GP / costedSales** (margin của phần đã costed, không phải chia cho tổng sales → không bị hiểu sai là toàn store). Khi coverage < 100% → footer của Gross profit/Margin hiện **"X% of sales have cost data"**. **Không có order nào costed → "—"** (chưa biết). **Scope 0 order → GP = $0** (bán 0 = lãi $0, là số 0 thật) **nhưng Margin = "—"** (not applicable — mẫu số = 0; "0%" sẽ bị đọc thành "có bán nhưng không có lãi", trong khi thực ra không có sales nào để tính margin). Áp dụng cho Hero KPI, Top companies, Top products, chart, Pricing tab. *(Đã bỏ fallback `amount × 0.68`.)* |
 | **Delta** | Khi bật Compare: `pctChange(giá trị kỳ này, giá trị kỳ trước)`. Margin & repeat hiển thị chênh lệch theo **pp** (điểm phần trăm). |
 
 > **Period vs snapshot:** `orders` (và mọi chỉ số từ nó) lọc theo **kỳ**. Riêng **quotes mở** ("Current open quote value") là **snapshot hiện tại** — mọi quote đang mở, **không lọc theo Date Range lẫn Location** (chỉ giữ Company scope) — xem §3.4b.
@@ -36,7 +36,7 @@
 | **Gross profit** | `gpStats(orders).gp` = Σ `orderGP` trên **các order đã có cost** (costed sales − COGS). Xem **Quy tắc coverage** (§0). Footer hiện **"X% of sales have cost data"** khi coverage < 100%; **"—"** khi không order nào có cost. *(Production: = **Net sales − Net COGS**, COGS cũng reverse theo return/cancel — callout §3.1.)* | `grossProfit` |
 | **Gross margin** | `gpStats(orders).margin` = `grossProfit / costedSales × 100` — margin của **phần đã costed** (không chia cho tổng sales). Footer/"—" như Gross profit. | `grossMargin` |
 | **Cost coverage** | `costCoverage = costedSales / sales × 100`. **Không phải thẻ riêng** — hiện trong footer của Gross profit / Gross margin khi < 100% để nói rõ số đang dựa trên bao nhiêu % sales. | `costCoverage` |
-| **Active companies** | Số `companyId` **khác nhau** xuất hiện trong `orders`; footer "of N managed companies" với `managedCount = companies.length`. *(Khi đã chọn 1 company → đổi thành **Active locations**.)* | `activeCompanyIds.size` |
+| **Active companies** | Số `companyId` **khác nhau** xuất hiện trong `orders`; footer "of N managed companies" với `managedCount = companies.length`. *(Khi đã chọn 1 company → đổi thành **Active locations**.)* *(Production: Active = có ≥1 **B2B purchase/order** trong kỳ — KHÔNG phải "có sale event"; company chỉ có refund/reversal trong kỳ không tính Active. Xem callout dưới.)* | `activeCompanyIds.size` |
 | **Repeat revenue** | `repeatShare = repeatRevenue / sales × 100`. `repeatRevenue` = Σ `amount` của các order **KHÔNG phải** order hoàn tất **đầu tiên** của company đó (mọi order từ lần thứ 2 trở đi). Footer hiện số tiền `repeatRevenue`. *(Production: tính theo **first sale**, không phải first completed order — callout §3.1.)* | `repeatShare`, `repeatRevenue` |
 
 ### Net B2B sales — định nghĩa chuẩn (production)
@@ -58,6 +58,7 @@
 > - **Repeat revenue (production)** = Net sales từ order **sau first buying order / first sale** của company — KHÔNG phải "sau first *completed* order" (vì Net sales không gate theo status; hai mental model sẽ lệch).
 > - **New buying companies (production)** = company có **first B2B purchase / first B2B sale** trong kỳ — KHÔNG phải first *completed* order.
 > - **Top products revenue (production)** = **net line sales** (gross line − allocated discount − reversals), KHÔNG phải raw `line.revenue` — nếu không sẽ không reconcile với Overview Net sales (vd Overview $80 nhưng Σ product $100).
+> - **Active companies / Active locations (production)** = có **≥1 B2B purchase/order trong kỳ** — KHÔNG phải "có sale event". Company chỉ có **refund/reversal** trong kỳ (không mua mới) **không** được tính Active. Cùng nguyên tắc purchase-vs-sale-event như Relationship health: revenue accounting dùng toàn bộ sales events, còn **activity** (Active) và **cadence** (health) dùng **purchase events**.
 
 ---
 
@@ -86,6 +87,7 @@
 ### a) "Past their normal reorder cycle" → hero = **SỐ company**
 - **Relationship health** (mô hình 5 trạng thái): `reorder ratio = days-since-last-order / median-interval`.
   Healthy ≤1.25× · Watch ≤1.5× · At risk ≤2× · Inactive >2× · else **Insufficient history** (cần ≥4 order / ≥3 khoảng cách).
+  - **Current snapshot, recompute theo TODAY** (không forecast): anchor = **latest B2B purchase/order** — return/cancellation/reversal **KHÔNG** reset nhịp. `since` đo tới hiện tại nên health tự trôi theo ngày dù không có order mới. Chi tiết & định nghĩa production: `COMPANIES-METRICS.md` §4.2, §5.
 - `pastCycleCompanies` = các company ở **Watch / At risk / Inactive**.
 - **Hero (số lớn)** = **`pastCycleCompanies.length`** (vd "3 companies"). Chủ ý đưa **số company** làm hero để **scale khi có nhiều company** — việc cần làm là "review N company", không phải đọc 1 con số GP gộp.
 - **Context (dòng phụ)** = `pastCycleGP` = Σ **gross profit 90 ngày gần nhất** (`trailing90GP`: completed orders trong `[TODAY−89, TODAY]`, qua `gpStats`). Hiển thị "$X gross profit in the last 90 days".

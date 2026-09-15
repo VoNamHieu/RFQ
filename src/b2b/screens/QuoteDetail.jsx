@@ -131,18 +131,40 @@ export function QuoteDetail() {
               >
                 {rows}
               </IndexTable>
-              <Box padding="300">
-                <InlineStack align="end" gap="200">
-                  <Text as="span" tone="subdued">Quote total</Text>
-                  {notFullyPriced ? (
-                    <Text as="span" tone="subdued">Not priced yet</Text>
-                  ) : (
-                    <Text as="span" fontWeight="semibold">
-                      {`${money2(quoteTotalVal)}${delta != null ? ` · ${delta}% vs Shopify price` : ''}`}
-                    </Text>
-                  )}
-                </InlineStack>
-              </Box>
+            </Card>
+
+            {/* Payment information — mirrors the quote app's Payment Information card
+                (subtotal, add-discount/shipping/tax/deposit, total). Replaces the bare
+                "Quote total" line. The add rows are demo placeholders here. */}
+            <Card>
+              <BlockStack gap="200">
+                <Text as="h2" variant="headingSm">Payment information</Text>
+                <Box borderColor="border" borderWidth="025" borderRadius="200" padding="300">
+                  <BlockStack gap="200">
+                    <InlineStack align="space-between">
+                      <Text as="span" fontWeight="semibold">Subtotal</Text>
+                      <Text as="span" fontWeight="semibold">{notFullyPriced ? 'Not priced yet' : money2(quoteTotalVal)}</Text>
+                    </InlineStack>
+                    {[['Add discount', `-${money2(0)}`], ['Add shipping', money2(0)], ['Add tax', money2(0)], ['Add deposit', money2(0)]].map(([label, value]) => (
+                      <InlineStack key={label} align="space-between" blockAlign="center">
+                        <Text as="span" tone="subdued">{label}</Text>
+                        <InlineStack gap="600" blockAlign="center">
+                          <Text as="span" tone="subdued" variant="bodySm">--</Text>
+                          <Box minWidth="72px"><Text as="span" alignment="end">{value}</Text></Box>
+                        </InlineStack>
+                      </InlineStack>
+                    ))}
+                    <Divider />
+                    <InlineStack align="space-between">
+                      <Text as="span" variant="bodyMd" fontWeight="semibold">Total</Text>
+                      <Text as="span" variant="bodyMd" fontWeight="semibold">{notFullyPriced ? 'Not priced yet' : money2(quoteTotalVal)}</Text>
+                    </InlineStack>
+                    {!notFullyPriced && delta != null && (
+                      <Text as="p" tone="subdued" variant="bodySm" alignment="end">{`${delta}% vs Shopify price`}</Text>
+                    )}
+                  </BlockStack>
+                </Box>
+              </BlockStack>
             </Card>
 
             {quote.note && (

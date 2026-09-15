@@ -24,7 +24,7 @@ const catalogProducts = (catalog) => {
 const catalogProductCount = (catalog) =>
   RFQ_CATALOG.filter((p) => (p.variants || []).some((v) => catalog.prices[v.id] != null)).length;
 
-export function CatalogPickerModal({ customer, onClose, onAdd, initialSelected, onPickFromStore, onCreateCatalog }) {
+export function CatalogPickerModal({ customer, onClose, onAdd, onQuote, onPickFromStore, onCreateCatalog }) {
   const catalogs = (customer && RFQ_SHOPIFY_CATALOGS[customer.companyKey]) || [];
   const [catalogId, setCatalogId] = useState(catalogs.length === 1 ? catalogs[0].id : null);
 
@@ -102,7 +102,8 @@ export function CatalogPickerModal({ customer, onClose, onAdd, initialSelected, 
       products={products}
       priceHeader="Catalog price"
       priced
-      initialSelected={initialSelected}
+      onQuote={onQuote}
+      option={{ source: 'catalog', sourceRef: activeCatalog.id, label: activeCatalog.name }}
       onClose={onClose}
       onAdd={onAdd}
       backAction={catalogs.length > 1 ? { content: '← Catalogs', onAction: () => setCatalogId(null) } : { content: 'Cancel', onAction: onClose }}

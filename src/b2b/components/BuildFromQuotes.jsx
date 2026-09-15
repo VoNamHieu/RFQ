@@ -8,7 +8,10 @@ import {
   TextField,
   IndexTable,
   Divider,
+  Button,
+  Link,
 } from '@shopify/polaris';
+import { XCircleIcon } from '@shopify/polaris-icons';
 import { useStore, newBaseBuilder } from '../store.jsx';
 import { companyBaseEntries } from '../pricing.js';
 import { money } from '../format.js';
@@ -53,6 +56,8 @@ export function BuildFromQuotes() {
     const rows = bq.rows.map((r, k) => (k === i ? { ...r, ...patch } : r));
     dispatch({ type: 'BUILD_QUOTES_PATCH', patch: { rows } });
   };
+  const removeRow = (i) =>
+    dispatch({ type: 'BUILD_QUOTES_PATCH', patch: { rows: bq.rows.filter((_, k) => k !== i) } });
   // "Create a new base pricing" is the FIRST dropdown option (not buried at the
   // bottom), so it's easy to find no matter how many pricings the company has.
   const destOptions = [
@@ -113,6 +118,18 @@ export function BuildFromQuotes() {
         <IndexTable.Cell>
           <Text as="span" tone={belowCost ? 'critical' : undefined}>{`${margin}%${belowCost ? ' · below cost' : ''}`}</Text>
         </IndexTable.Cell>
+        <IndexTable.Cell>
+          <Link
+            onClick={() => {
+              // Close this modal and open the source quote in the B2B app.
+              dispatch({ type: 'CLOSE_BUILD_QUOTES' });
+              dispatch({ type: 'OPEN_QUOTE', id: r.from });
+            }}
+          >{`from #${r.from}`}</Link>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <Button icon={XCircleIcon} variant="tertiary" tone="critical" accessibilityLabel="Remove row" onClick={() => removeRow(i)} />
+        </IndexTable.Cell>
       </IndexTable.Row>
     );
   });
@@ -151,6 +168,8 @@ export function BuildFromQuotes() {
                     tooltipContent: 'Saved as this product’s base price in the selected pricing. Defaults to the quoted price — edit if needed.',
                   },
                   { title: 'Margin' },
+                  { title: 'Source' },
+                  { title: '' },
                 ]}
               >
                 {rows}

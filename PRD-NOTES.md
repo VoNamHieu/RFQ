@@ -69,6 +69,12 @@ Phân biệt theo **nguồn gốc của pricing** (không phải "cách checkout
 
 - **Overview**: Net B2B sales, Gross profit, Gross margin, Active companies, Repeat revenue + hàng phụ (Orders, AOV, Units sold, New buying companies). Card **Needs attention** gom các tín hiệu kèm bối cảnh tài chính (reorder cycle → hero là **số company**, current open quote value...).
 - **Companies** (nhãn tab; tab id nội bộ vẫn là `accounts`): tách **lifecycle** khỏi **relationship health**. Health model **5 trạng thái**: Healthy (≤1.25× median interval) / Watch (≤1.5×) / At risk (≤2×) / Inactive (>2×) / Insufficient history (cần ≥4 order, ≥3 interval). Reorder ratio = days-since-last-order / median-interval.
+  - **Taxonomy fix (chỉ đổi nhãn, KHÔNG đổi logic):** trước đây "New/Established" bị dùng ở **2 concept khác nhau** cùng tab → mâu thuẫn (một company có thể vừa New vừa Established). Đã tách chữ:
+    - **Lifecycle** (tuổi kể từ lần mua đầu): `No purchase` / **`Recently activated`** (≤90 ngày, trước là "New") / `Established` (>90 ngày).
+    - **Revenue mix** (mua lần đầu trong kỳ đang chọn hay chưa): `New company revenue` / **`Existing company revenue`** (trước là "Established"). Card đổi tên **"New vs existing revenue"**, khớp Overview §3.2b.
+    - Kết quả: "Established" chỉ còn thuộc lifecycle; "Existing" chỉ còn thuộc revenue mix — không đạp nhau. Chi tiết: [[OVERVIEW-METRICS.md]] / `COMPANIES-METRICS.md` §4.3, §4.6.
+  - **Relationship health = current snapshot, recompute theo TODAY** (không forecast). Anchor nhịp mua = **latest B2B purchase/order**; **return/cancellation/reversal KHÔNG reset** reorder cycle (chỉ revenue accounting mới dùng toàn bộ sales events). `since` đo tới hiện tại nên state tự trôi Healthy→Watch→At risk→Inactive theo ngày. Production wording chuẩn ở `COMPANIES-METRICS.md` §5.
+  - **Activation funnel = registration cohort → conversion to date** (đã chọn semantics). Cohort chọn theo `registered ∈ period`; approved/first-purchase đếm **bất kể xảy ra khi nào** (tới hiện tại) → report **mutable theo thời gian** (chạy lại kỳ cũ có thể tăng số), có chủ đích, label rõ "Registered cohort … to date". Alternative nếu cần immutable: gate approved/firstOrder ≤ `rangeEnd` (đổi logic, chưa làm). Chi tiết `COMPANIES-METRICS.md` §4.8.
 - **Quotes**: funnel **3 trạng thái** khớp app quote hiện tại — **RFQ received → Negotiating → Won**, cộng nhánh **Lost** (terminal). (Đã bỏ ý tưởng 5-stage và bỏ "Lost reasons".)
 
 ## 7. Nguồn dữ liệu cần Shopify API (khi lên production)
