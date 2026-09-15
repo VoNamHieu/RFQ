@@ -8,7 +8,7 @@ import { QuotesTab } from '../components/tabs/QuotesTab.jsx';
 import { OrdersTab } from '../components/tabs/OrdersTab.jsx';
 import { LocationsTab } from '../components/tabs/LocationsTab.jsx';
 import { ContactsTab } from '../components/tabs/ContactsTab.jsx';
-import { Analytics } from './Analytics.jsx';
+import { CompanyAnalytics } from '../components/CompanyAnalytics.jsx';
 import { versionFlags } from '../../shared/versions.js';
 
 const TABS = [
@@ -75,9 +75,9 @@ export function CompanyDetail() {
         {state.companyTab === 'analytics' && (
           <BlockStack gap="300">
             <InlineStack align="end">
-              <Button onClick={() => dispatch({ type: 'NAVIGATE', view: 'analytics' })}>View advanced analytics</Button>
+              <Button onClick={() => dispatch({ type: 'NAVIGATE', view: 'analytics' })}>Compare with all companies</Button>
             </InlineStack>
-            <Analytics embeddedCompanyId={company.id} />
+            <CompanyAnalytics company={company} />
           </BlockStack>
         )}
       </BlockStack>

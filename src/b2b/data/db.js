@@ -212,6 +212,10 @@ const health = [
   { name: 'QuoteSnap connection', detail: 'Accepted quotes are arriving normally', state: 'Healthy', tone: 'success' }
 ];
 
+// `refAtQuote` on a won quote's line = the company's assigned unit price SNAPSHOTTED at quote
+// time (companyPricingReferenceAtQuote). Company Analytics "Quoted price vs company pricing" reads
+// this frozen value — it must NOT re-run the current pricing engine on a historical quote (pricing
+// may have changed since). Seeded here for Deal Closed quotes; production captures it at quote time.
 const quotes = [
   {
     id: '1051074', company: 'c1', buyer: 'John Nguyen', email: 'john@abcconstruction.com', location: 'Hanoi',
@@ -226,7 +230,7 @@ const quotes = [
     id: '1028991', company: 'c1', buyer: 'Le Thu Ha', email: 'ha@abcconstruction.com', location: 'Hanoi',
     created: '2026-07-14 15:53:51', updated: '2026-07-22', leadScore: null,
     progress: 'Draft Order Created', status: 'Deal Closed', assignee: 'Vo Nam Hieu', expires: '2026-08-22', source: 'RFQ form', note: '',
-    lines: [{ sku: 'FIL-STD', qty: 120, quoted: 44 }, { sku: 'SEA-30', qty: 300, quoted: 5.9 }],
+    lines: [{ sku: 'FIL-STD', qty: 120, quoted: 44, refAtQuote: 40.3 }, { sku: 'SEA-30', qty: 300, quoted: 5.9, refAtQuote: 5.2 }],
     timeline: [{ when: 'Jul 14', what: 'Buyer submitted an RFQ through the form' },
       { when: 'Jul 18', what: 'Quote sent, valid 30 days' },
       { when: 'Jul 22', what: 'Draft order created in Shopify' }]
@@ -235,7 +239,7 @@ const quotes = [
     id: '1030120', company: 'c1', buyer: 'John Nguyen', email: 'john@abcconstruction.com', location: 'Hanoi',
     created: '2026-08-10 10:20:00', updated: '2026-08-12', leadScore: null,
     progress: 'Draft Order Created', status: 'Deal Closed', assignee: 'Vo Nam Hieu', expires: '2026-09-10', source: 'RFQ form', note: '',
-    lines: [{ sku: 'FIL-XL', qty: 60, quoted: 70 }, { sku: 'HOS-12', qty: 20, quoted: 118 }, { sku: 'VLV-40', qty: 50, quoted: 39 }, { sku: 'MCFC-TRAINING-JACKET', qty: 30, quoted: 980 }, { sku: 'FIL-STD', qty: 100, quoted: 45 }],
+    lines: [{ sku: 'FIL-XL', qty: 60, quoted: 70, refAtQuote: 62.4 }, { sku: 'HOS-12', qty: 20, quoted: 118, refAtQuote: 123.25 }, { sku: 'VLV-40', qty: 50, quoted: 39, refAtQuote: 36.4 }, { sku: 'MCFC-TRAINING-JACKET', qty: 30, quoted: 980, refAtQuote: 930 }, { sku: 'FIL-STD', qty: 100, quoted: 45, refAtQuote: 40.3 }],
     timeline: [{ when: 'Aug 10', what: 'Buyer submitted an RFQ through the form' },
       { when: 'Aug 12', what: 'Draft order created in Shopify' }]
   },
@@ -260,7 +264,7 @@ const quotes = [
     id: '1027687', company: 'c2', buyer: 'Bui Quang', email: 'quang@vinhphat.vn', location: 'Da Nang',
     created: '2026-07-13 13:19:15', updated: '2026-07-16', leadScore: null,
     progress: 'Auto Confirmed', status: 'Deal Closed', assignee: 'Vo Nam Hieu', expires: '2026-08-16', source: 'RFQ form', note: '',
-    lines: [{ sku: 'HOS-12', qty: 30, quoted: 118 }],
+    lines: [{ sku: 'HOS-12', qty: 30, quoted: 118, refAtQuote: 123.25 }],
     timeline: [{ when: 'Jul 13', what: 'Buyer submitted an RFQ through the form' },
       { when: 'Jul 16', what: 'Auto confirmed at the quoted prices' }]
   },

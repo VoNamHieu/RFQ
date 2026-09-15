@@ -22,6 +22,7 @@ import { useStore } from '../store.jsx';
 import { money } from '../format.js';
 import { LineChart, VBarChart, StackedBar, FunnelV2, RankBars, Timeline, moneyShort } from '../components/charts.jsx';
 import { resolveDetail, defaultVariant } from '../pricing.js';
+import { buildAttributedLines, pricingProfileRows } from '../pricingAttribution.js';
 import {
   analyticsOrderItems,
   analyticsCompanyActivation,
@@ -195,6 +196,17 @@ function HeadHelp({ label, help }) {
     <Tooltip content={help} preferredPosition="above" width="wide">
       <span style={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 3 }}>{label}</span>
     </Tooltip>
+  );
+}
+
+// An h4 sub-card heading with a dotted underline + hover tooltip (same idea as HeadHelp).
+function HeadingHelp({ label, help }) {
+  return (
+    <Text as="h4" variant="headingXs">
+      <Tooltip content={help} preferredPosition="above" width="wide">
+        <span style={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 3 }}>{label}</span>
+      </Tooltip>
+    </Text>
   );
 }
 
@@ -599,68 +611,12 @@ export function Analytics({ embeddedCompanyId = null }) {
   // edit/reversal) are ignored. The demo derives the snapshot from the seed (`line.revenue` =
   // applied value at creation; `overridden` = a manual price replaced a resolved B2B price; there
   // is no separate resolvedUnitPrice number in the seed). Both Overview and Pricing read this layer.
-  const B2B_SOURCES = ['Company price', 'Location price', 'Previous agreement'];
-  const lineSnapshot = (o, it) => {
-    const qty = Number(it.qty) || 0;
-    const c = productCost(it.sku); // costAtCreation
-    // resolved = engine output, before override. In the demo an `overridden` line sat on a B2B
-    // order, so it WAS resolved from that order's B2B pricing.
-    const resolvedIsB2B = B2B_SOURCES.includes(o.pricingSource);
-    const resolvedPricingId = resolvedIsB2B && o.pricing && o.pricing !== 'None' ? o.pricing : null;
-    // at creation = effective applied price; a manual override flips the line to Other pricing.
-    const wasPriceOverridden = !!it.overridden;
-    const isB2B = resolvedIsB2B && !wasPriceOverridden; // pricingSourceAtCreation is B2B
-    return {
-      order: o, sku: it.sku, qty, wasPriceOverridden,
-      resolvedIsB2B, resolvedPricingSource: resolvedIsB2B ? 'B2B pricing' : 'Other pricing', resolvedPricingId,
-      isB2B, group: isB2B ? 'B2B pricing' : 'Other pricing',
-      pricingId: isB2B ? resolvedPricingId : null,
-      lineValue: Number(it.revenue) || 0, // appliedUnitPriceAtCreation × qty (incl. pre-creation discount)
-      // resolvedUnitPrice × qty — pricing-engine output, BEFORE draft discount/override. The demo
-      // has no separate resolvedUnitPrice and no pre-creation line discount, so a non-overridden
-      // B2B line equals lineValue; an overridden line's pre-override price isn't captured → null.
-      resolvedLineValue: resolvedIsB2B ? (wasPriceOverridden ? null : (Number(it.revenue) || 0)) : null,
-      lineCost: c === null ? null : c * qty, // costAtCreation × qty (null when cost unknown)
-    };
-  };
-  const attributedLines = orders.flatMap((o) => {
-    const items = o.items || [];
-    if (!items.length) return [lineSnapshot(o, { sku: null, qty: 0, revenue: o.amount, overridden: false })];
-    return items.map((it) => lineSnapshot(o, it));
-  });
-  // §6.4 Pricing performance = per named B2B pricing PROFILE only. Lines without a profile
-  // (Other pricing, or a B2B line with no named profile) are excluded — there is NO "Other
-  // pricing" row; those are covered by §6.2 order value and §6.3 provenance, not evaluated as a
-  // "pricing" here. Only applied (non-overridden) lines land in a profile row, so Order value =
-  // what the profile actually priced; an overridden line's value goes nowhere here, but its
-  // override is still counted in the Manual-price-changes column (keyed by resolvedPricingId).
-  // vs-Shopify = the profile's resolved price vs Shopify list on those applied lines (an
-  // overridden product's manual price is NOT folded into vs-Shopify — production could include
-  // it at its resolvedUnitPrice once captured).
-  const pricingMap = new Map();
-  attributedLines.forEach((s) => {
-    if (!s.pricingId) return; // named-profile rows only — no "Other pricing" bucket
-    const k = s.pricingId;
-    const cur = pricingMap.get(k) || { name: k, sub: s.group, value: 0, resolvedValue: 0, reference: 0, cost: 0, costedValue: 0, costedN: 0, orderIds: new Set(), companies: new Set() };
-    cur.value += s.lineValue; // order value (applied at creation)
-    if (s.resolvedLineValue !== null) cur.resolvedValue += s.resolvedLineValue; // for vs-Shopify (resolved price)
-    cur.reference += (Number(productBySku(s.sku)?.list) || 0) * s.qty;
-    if (s.lineCost !== null) { cur.cost += s.lineCost; cur.costedValue += s.lineValue; cur.costedN += 1; }
-    cur.orderIds.add(s.order.id);
-    cur.companies.add(s.order.companyId);
-    pricingMap.set(k, cur);
-  });
-  // NOTE: "Manual price changes" (override rate) has been removed from merchant-facing analytics —
-  // the current flow does not let merchants key a custom unit price before an order is created, so
-  // the metric isn't meaningful here. The per-line snapshot still carries resolvedPricingSource /
-  // resolvedPricingId / resolvedLineValue / wasPriceOverridden (kept future-proof), just no metric.
-
-  const pricingUsage = [...pricingMap.values()]
-    .map((x) => {
-      const gp = x.costedN ? x.costedValue - x.cost : null;
-      return { name: x.name, sub: x.sub, value: x.value, reference: x.reference, orders: x.orderIds.size, companies: x.companies.size, gp, margin: x.costedN && x.costedValue ? (gp / x.costedValue) * 100 : null, delta: x.resolvedValue - x.reference, deltaPct: x.reference ? ((x.resolvedValue - x.reference) / x.reference) * 100 : null };
-    })
-    .sort((a, b) => (b.gp ?? -Infinity) - (a.gp ?? -Infinity));
+  // The ONE engine, extracted to `pricingAttribution.js` and shared with Company Analytics — see
+  // PRICING-METRICS.md §0 for snapshot semantics (resolved* vs *AtCreation, two groups). §6.4
+  // Pricing performance = named B2B profiles only (no "Other" row). Manual-price-changes was
+  // removed from merchant-facing analytics; the snapshot still carries resolved*/wasPriceOverridden.
+  const attributedLines = buildAttributedLines(orders, productCost);
+  const pricingUsage = pricingProfileRows(attributedLines, productBySku);
 
   // §6.2 footprint — ORDER VALUE / orders that used B2B pricing at creation (line-level).
   // "Order value" (not "sales"): Σ initial line value on B2B-priced lines — a snapshot at
@@ -1635,13 +1591,17 @@ export function Analytics({ embeddedCompanyId = null }) {
       resourceName={{ singular: 'quote', plural: 'quotes' }}
       itemCount={quotes.length}
       selectable={false}
-      headings={[{ title: 'Quote' }, { title: 'Location' }, { title: 'Status' }, { title: 'Age', alignment: 'end' }, { title: 'Quoted value', alignment: 'end' }]}
+      headings={[
+        { title: <HeadHelp label="Quote" help="Quote record." /> },
+        { title: <HeadHelp label="Status" help="Current quote status." /> },
+        { title: <HeadHelp label="Age" help="Number of days since the quote was created." />, alignment: 'end' },
+        { title: <HeadHelp label="Quoted value" help="Total quoted value across all lines in the quote." />, alignment: 'end' },
+      ]}
       emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No RFQs.</Text></Box>}
     >
       {quotes.map((q, i) => (
         <IndexTable.Row id={q.id} key={q.id} position={i}>
           <IndexTable.Cell>{q.id}</IndexTable.Cell>
-          <IndexTable.Cell>{q.location || '—'}</IndexTable.Cell>
           <IndexTable.Cell><Badge tone={q.status === 'Deal Closed' ? 'success' : q.status === 'Deal Rejected' ? 'critical' : undefined}>{q.status}</Badge></IndexTable.Cell>
           <IndexTable.Cell><Text as="span" alignment="end">{`${quoteAge(q)}d`}</Text></IndexTable.Cell>
           <IndexTable.Cell><Text as="span" alignment="end">{money(quoteVal(q))}</Text></IndexTable.Cell>
@@ -1655,33 +1615,33 @@ export function Analytics({ embeddedCompanyId = null }) {
       {/* §5.1 — hero metrics: future revenue + where it's stuck */}
       <ScoreGrid
         items={[
-          { label: 'Open pipeline', value: money(openQuoteValue), foot: `${openQuotes.length} open quote${openQuotes.length === 1 ? '' : 's'}` },
-          { label: 'Win rate by value', value: winRateValue == null ? '—' : `${winRateValue}%`, foot: `${moneyShort(wonValue)} won of ${moneyShort(finalizedValue)} finalized` },
-          { label: 'Stale pipeline', value: money(staleValue), foot: `${staleQuotes.length} quote${staleQuotes.length === 1 ? '' : 's'} idle >10 days` },
-          { label: 'First response', value: formatTypicalTime(responseMedian), foot: 'median RFQ → first response' },
+          { label: 'Open quote value', value: money(openQuoteValue), foot: `${openQuotes.length} open quote${openQuotes.length === 1 ? '' : 's'}`, help: 'Total value of quotes that are still open. This is a current snapshot and is not limited to the selected period.' },
+          { label: 'Win rate by value', value: winRateValue == null ? '—' : `${winRateValue}%`, foot: `${moneyShort(wonValue)} won of ${moneyShort(finalizedValue)} finalized`, help: 'Share of won quote value among all quote value that was won or lost in the selected period.' },
+          { label: 'Stale quote value', value: money(staleValue), foot: `${staleQuotes.length} quote${staleQuotes.length === 1 ? '' : 's'} idle >10 days`, help: 'Value of open quotes with no activity for more than 10 days.' },
+          { label: 'First response time', value: formatTypicalTime(responseMedian), foot: 'median RFQ → first response', help: 'Median time from quote creation to the first time the quote was priced or sent.' },
         ]}
       />
 
       {/* §5.2 — baseline metric strip */}
       <MiniCompare
         items={[
-          { label: 'Quotes created', value: String(received) },
-          { label: 'Total quoted value', value: money(quoteValueTotal) },
-          { label: 'Won quotes', value: String(wonQuotes.length) },
-          { label: 'Lost quotes', value: String(lostQuotes.length) },
-          { label: 'Average quote value', value: money(avgQuoteValue) },
-          { label: 'Win rate by count', value: winRateCount == null ? '—' : `${winRateCount}%` },
+          { label: 'Quotes created', value: String(received), help: 'Number of quotes created in the selected period.' },
+          { label: 'Total quoted value', value: money(quoteValueTotal), help: 'Total quoted value of quotes created in the selected period.' },
+          { label: 'Won quotes', value: String(wonQuotes.length), help: 'Number of quotes won in the selected period.' },
+          { label: 'Lost quotes', value: String(lostQuotes.length), help: 'Number of quotes lost in the selected period.' },
+          { label: 'Average quote value', value: money(avgQuoteValue), help: 'Average quoted value of quotes created in the selected period.' },
+          { label: 'Win rate by count', value: winRateCount == null ? '—' : `${winRateCount}%`, help: 'Share of won quotes among all quotes that were won or lost in the selected period.' },
         ]}
       />
 
       {/* §5.3 aging + §5.5 cohort funnel */}
       <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
-        <ReportCard title="Didn't close quote aging" subtitle="Value of still-open quotes by age (time since created, not since last activity). Bars scale by value, not count.">
+        <ReportCard title="Open quote aging" help="Value of quotes that are still open, grouped by how long ago they were created. Bars represent quoted value, not the number of quotes.">
           <RankBars rows={agingBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} quote${b.count === 1 ? '' : 's'} still open`, value: b.value, width: (b.value / agingMaxVal) * 100, valueLabel: money(b.value) }))} empty="No quotes still open." />
         </ReportCard>
         <ReportCard
-          title="Pipeline distribution"
-          subtitle="Quotes created in the period by current state — each quote counted once, segments sum to 100% of RFQs."
+          title="Quote status distribution"
+          help="Shows how quotes in the selected period are split by their current status. Each quote is counted once. Switch between Count and Value to view the number of quotes or their quoted value."
           controls={
             <div style={{ display: 'inline-flex', border: '1px solid var(--p-color-border)', borderRadius: 8, overflow: 'hidden' }}>
               {[['count', 'Count'], ['value', 'Value']].map(([m, lbl]) => (
@@ -1695,7 +1655,7 @@ export function Analytics({ embeddedCompanyId = null }) {
       </InlineGrid>
 
       {/* §5.4 sales cycle */}
-      <ReportCard title="Median time to decision" subtitle="Median RFQ → Won or Lost decision. Median, not average.">
+      <ReportCard title="Median time to decision" help="Median time from quote creation until the quote was won or lost.">
         <Text as="span" variant="headingLg">{formatTypicalTime(decisionMedian)}</Text>
       </ReportCard>
 
@@ -1709,8 +1669,8 @@ export function Analytics({ embeddedCompanyId = null }) {
       {/* §5.7 — advanced pipeline analysis (portfolio) */}
       {!selected && (
         <ReportCard
-          title="Advanced pipeline analysis"
-          subtitle="Explore what tends to be associated with won and lost quotes. Results can vary with small sample sizes and do not prove cause and effect."
+          title="Advanced quote analysis"
+          subtitle="Explore patterns associated with won and lost quotes. Small samples can be noisy, and these patterns do not prove cause and effect."
           controls={<Button variant="plain" onClick={() => setAdvancedPipeline((v) => !v)}>{advancedPipeline ? 'Hide' : 'Show'}</Button>}
         >
           {advancedPipeline ? (
@@ -1722,13 +1682,13 @@ export function Analytics({ embeddedCompanyId = null }) {
                   itemCount={companyQuoteTable.length}
                   selectable={false}
                   headings={[
-                    { title: 'Company' },
-                    { title: 'RFQs', alignment: 'end' },
-                    { title: 'Quoted value', alignment: 'end' },
-                    { title: 'Open value', alignment: 'end' },
-                    { title: 'Win (count)', alignment: 'end' },
-                    { title: 'Win (value)', alignment: 'end' },
-                    { title: 'Median response', alignment: 'end' },
+                    { title: <HeadHelp label="Company" help="Company associated with these quotes." /> },
+                    { title: <HeadHelp label="Quotes" help="Number of quotes for this company in the selected period." />, alignment: 'end' },
+                    { title: <HeadHelp label="Quoted value" help="Total quoted value of this company's quotes." />, alignment: 'end' },
+                    { title: <HeadHelp label="Open quote value" help="Quoted value of this company's quotes that are still open." />, alignment: 'end' },
+                    { title: <HeadHelp label="Win rate (count)" help="Share of won quotes among this company's quotes that were won or lost." />, alignment: 'end' },
+                    { title: <HeadHelp label="Win rate (value)" help="Share of won quote value among this company's quote value that was won or lost." />, alignment: 'end' },
+                    { title: <HeadHelp label="First response time" help="Median time from quote creation to the first time it was priced or sent, for this company." />, alignment: 'end' },
                   ]}
                   emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No RFQs in this scope.</Text></Box>}
                 >
@@ -1745,37 +1705,34 @@ export function Analytics({ embeddedCompanyId = null }) {
                   ))}
                 </IndexTable>
               </BlockStack>
+              <Text as="h4" variant="headingXs">Win rate analysis</Text>
               <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
                 <Box borderColor="border" borderWidth="025" borderRadius="300" padding="400">
                   <BlockStack gap="150">
-                    <Text as="h4" variant="headingXs">Win rate by deal size</Text>
-                    <Text as="p" tone="subdued" variant="bodySm">See how win rate changes across different quote values.</Text>
+                    <HeadingHelp label="Win rate by deal size" help="Shows how win rate changes across quote value ranges." />
                     <RankBars rows={dealSizeBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} won or lost quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / dealSizeMaxRate) * 100, valueLabel: b.rate == null ? '—' : `${b.wins} of ${b.count} won · ${b.rate}%` }))} empty="No won or lost quotes." />
                   </BlockStack>
                 </Box>
                 <Box borderColor="border" borderWidth="025" borderRadius="300" padding="400">
                   <BlockStack gap="150">
-                    <Text as="h4" variant="headingXs">Win rate by discount</Text>
-                    <Text as="p" tone="subdued" variant="bodySm">See how win rate changes at different discount levels from the Shopify list price.</Text>
-                    <MiniCompare plain items={[{ label: 'Average discount from Shopify price', value: avgListDiscount == null ? '—' : `${avgListDiscount.toFixed(1)}%`, sub: 'Weighted by the Shopify value of each quote.' }]} />
+                    <HeadingHelp label="Win rate by discount" help="Shows how win rate changes at different discount levels from the Shopify price." />
+                    <MiniCompare plain items={[{ label: 'Average discount vs Shopify', value: avgListDiscount == null ? '—' : `${avgListDiscount.toFixed(1)}%`, sub: 'Weighted by the Shopify value of each quote.', help: 'Average discount from Shopify price, weighted by the Shopify value of each quote.' }]} />
                     <RankBars rows={discountBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} won or lost quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / maxDiscountRate) * 100, valueLabel: b.rate == null ? '—' : `${b.rate}% won` }))} empty="No won or lost quotes." />
                   </BlockStack>
                 </Box>
                 <Box borderColor="border" borderWidth="025" borderRadius="300" padding="400">
                   <BlockStack gap="150">
-                    <Text as="h4" variant="headingXs">Quoted price vs company pricing</Text>
-                    <Text as="p" tone="subdued" variant="bodySm">See how quoted prices compare with the prices already assigned to each company.</Text>
-                    <MiniCompare plain items={[{ label: 'Average difference from company pricing', value: avgPriceVariance == null ? '—' : `${avgPriceVariance > 0 ? '+' : ''}${avgPriceVariance.toFixed(1)}%`, sub: avgPriceVariance == null ? 'No quotes with company pricing in this period.' : `Quotes were ${Math.abs(avgPriceVariance).toFixed(1)}% ${avgPriceVariance >= 0 ? 'higher' : 'lower'} than assigned company prices on average.` }]} />
+                    <HeadingHelp label="Quoted price vs company pricing" help="Shows how quoted prices compare with the pricing already assigned to each company." />
+                    <MiniCompare plain items={[{ label: 'Average difference from company pricing', value: avgPriceVariance == null ? '—' : `${avgPriceVariance > 0 ? '+' : ''}${avgPriceVariance.toFixed(1)}%`, sub: avgPriceVariance == null ? 'No quotes with company pricing in this period.' : `Quotes were ${Math.abs(avgPriceVariance).toFixed(1)}% ${avgPriceVariance >= 0 ? 'higher' : 'lower'} than assigned company prices on average.`, help: 'Average difference between quoted prices and assigned company prices, weighted by value. Positive means quoted prices were higher; negative means they were lower.' }]} />
                     <RankBars rows={varianceBuckets.map((b) => ({ key: b.name, name: b.name, sub: `${b.count} won or lost quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / varianceMaxRate) * 100, valueLabel: b.rate == null ? '—' : `${b.rate}% won` }))} empty="No won or lost quotes with company pricing." />
                   </BlockStack>
                 </Box>
                 <Box borderColor="border" borderWidth="025" borderRadius="300" padding="400">
                   <BlockStack gap="150">
-                    <Text as="h4" variant="headingXs">Win rate by pricing setup</Text>
-                    <Text as="p" tone="subdued" variant="bodySm">Compare win rates for quotes with company pricing and quotes based on Shopify prices only.</Text>
+                    <HeadingHelp label="Win rate with vs without company pricing" help="Compares win rate for quotes where the company had assigned pricing at quote time with quotes based on Shopify price only." />
                     <MiniCompare plain items={[
-                      { label: 'With company pricing', value: winWithPricing == null ? '—' : `${winWithPricing}%`, sub: `${withPricing.length} won or lost quote${withPricing.length === 1 ? '' : 's'}` },
-                      { label: 'Shopify price only', value: winWithoutPricing == null ? '—' : `${winWithoutPricing}%`, sub: withoutPricing.length === 0 ? 'No won or lost quotes in this period.' : `${withoutPricing.length} won or lost quote${withoutPricing.length === 1 ? '' : 's'}` },
+                      { label: 'Company pricing', value: winWithPricing == null ? '—' : `${winWithPricing}%`, sub: `${withPricing.length} won or lost quote${withPricing.length === 1 ? '' : 's'}`, help: 'Win rate for quotes where the company had assigned pricing at quote time.' },
+                      { label: 'Shopify price only', value: winWithoutPricing == null ? '—' : `${winWithoutPricing}%`, sub: withoutPricing.length === 0 ? 'No won or lost quotes in this period.' : `${withoutPricing.length} won or lost quote${withoutPricing.length === 1 ? '' : 's'}`, help: 'Win rate for quotes where no company pricing was assigned and Shopify price was used as the reference.' },
                     ]} />
                   </BlockStack>
                 </Box>
