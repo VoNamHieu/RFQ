@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Card, BlockStack, InlineGrid, InlineStack, Box, Text, Badge, Divider, Tooltip, Select, Button, Tabs, IndexTable } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
 import { money } from '../format.js';
-import { moneyShort, LineChart, RankBars, Timeline } from './charts.jsx';
+import { moneyShort, LineChart, RankBars } from './charts.jsx';
 import { buildAttributedLines, pricingProfileRows, appliedEconomics } from '../pricingAttribution.js';
 import { analyticsPricingChanges, analyticsQuantityEvents, analyticsOrderItems } from '../data/analytics.js';
 
@@ -61,17 +61,30 @@ function Stat({ label, value, sub, help, tone, delta }) {
     </BlockStack>
   );
 }
-function SectionCard({ title, subtitle, action, children }) {
+function SectionCard({ title, subtitle, action, help, children }) {
+  const titleEl = help ? (
+    <Tooltip content={help} preferredPosition="above" width="wide">
+      <Text as="h3" variant="headingSm"><span style={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 3 }}>{title}</span></Text>
+    </Tooltip>
+  ) : <Text as="h3" variant="headingSm">{title}</Text>;
   return (
     <Card>
       <BlockStack gap="300">
         <InlineStack align="space-between" blockAlign="start" gap="300" wrap>
-          <BlockStack gap="050"><Text as="h3" variant="headingSm">{title}</Text>{subtitle ? <Text as="p" tone="subdued" variant="bodySm">{subtitle}</Text> : null}</BlockStack>
+          <BlockStack gap="050">{titleEl}{subtitle ? <Text as="p" tone="subdued" variant="bodySm">{subtitle}</Text> : null}</BlockStack>
           {action || null}
         </InlineStack>
         {children}
       </BlockStack>
     </Card>
+  );
+}
+// Column heading with a dotted-underline hover tooltip, for IndexTable `headings`.
+function ColHelp({ label, help }) {
+  return (
+    <Tooltip content={help} preferredPosition="above" width="wide">
+      <span style={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 2 }}>{label}</span>
+    </Tooltip>
   );
 }
 function ShiftRow({ label, prev, cur, fmt = (x) => String(x) }) {
@@ -108,7 +121,7 @@ export function CompanyAnalytics({ company }) {
   const [tab, setTab] = useState(0);
   const [period, setPeriod] = useState('3m');
   const [compare, setCompare] = useState('previous');
-  const [adoptionMode, setAdoptionMode] = useState('orders'); // orders | value
+  const [marginFloor, setMarginFloor] = useState(MARGIN_FLOOR); // merchant-adjustable margin threshold
 
   const products = state.db.products || [];
   const allQuotes = state.db.quotes || [];
@@ -198,13 +211,21 @@ export function CompanyAnalytics({ company }) {
   const recentWon = wonAll.slice().sort((a, b) => String(b.created).localeCompare(String(a.created))).slice(0, 6);
   const varDetails = recentWon.map((q) => quoteVariance(q)).filter(Boolean);
   const varRows = varDetails.map((d) => d.pct);
-  const within5 = varRows.filter((v) => Math.abs(v) <= 5).length;
+  // ±5% is an internal noise threshold (not shown to merchants): above = won higher than the
+  // pricing set for the company, below = won lower (possible over-discounting), else ~ at price.
+  const above5 = varRows.filter((v) => v > 5).length;
   const below5 = varRows.filter((v) => v < -5).length;
-  const below10 = varRows.filter((v) => v < -10).length;
-  // Value-weighted across all lines of the recent won quotes (money total, not a mean of per-quote %).
+  // Concrete number for merchants: value-weighted average difference vs the pricing set (money total).
   const totQuoted = varDetails.reduce((a, d) => a + d.quotedV, 0);
   const totRef = varDetails.reduce((a, d) => a + d.refV, 0);
   const avgVariance = totRef ? ((totQuoted - totRef) / totRef) * 100 : null;
+  const negoAbs = avgVariance == null ? 0 : Math.round(Math.abs(avgVariance));
+  const negoDir = negoAbs === 0 ? 'about the same as' : avgVariance >= 0 ? 'above' : 'below';
+  const negoSummary = below5
+    ? 'Worth a quick look — you may be discounting below their agreed price on those quotes.'
+    : above5
+    ? 'Won quotes are landing at or above your set price — nothing discounted below it.'
+    : 'Won quotes are staying right around your set price.';
 
   // ── pricing (SHARED engine — same attribution as global Pricing tab, company-scoped) ─────────
   const attributedLines = buildAttributedLines(periodOrders, productCost);
@@ -214,20 +235,30 @@ export function CompanyAnalytics({ company }) {
   const allEcon = appliedEconomics(attributedLines);
   const b2bEcon = appliedEconomics(attributedLines, (s) => s.isB2B);
   const adoptionValue = allEcon.value ? Math.round((b2bEcon.value / allEcon.value) * 100) : null;
+  // Rule-based adoption summary — surfaces breadth (orders) vs depth (value) in one sentence.
+  const adoptionSummary = (() => {
+    if (!periodOrders.length) return 'No order activity in this period.';
+    const o = adoptionOrders ?? 0; const v = adoptionValue ?? 0;
+    if (o < 50) return 'Most purchasing in this period did not use B2B pricing.';
+    if (o >= 90 && v >= 90) return 'B2B pricing was used across nearly all orders and order value in this period.';
+    if (o === 100) return `All orders used B2B pricing, but ${100 - v}% of order value still came from other pricing.`;
+    if (o - v >= 25) return `B2B pricing appeared in most orders, but only ${v}% of order value used it.`;
+    return `B2B pricing covered ${o}% of orders and ${v}% of order value this period.`;
+  })();
   const resolvedPriced = attributedLines.filter((s) => s.resolvedLineValue !== null);
   const resolvedVal = resolvedPriced.reduce((a, s) => a + s.resolvedLineValue, 0);
   const resolvedRef = resolvedPriced.reduce((a, s) => a + (Number(productBySku(s.sku)?.list) || 0) * s.qty, 0);
   const vsShopify = resolvedRef ? ((resolvedVal - resolvedRef) / resolvedRef) * 100 : null;
   const marginAtCreation = allEcon.margin;
   const companyProfiles = pricingProfileRows(attributedLines, productBySku);
-  const exceptionLines = attributedLines.filter((s) => s.lineCost !== null && s.lineValue && ((s.lineValue - s.lineCost) / s.lineValue) * 100 < MARGIN_FLOOR);
+  const exceptionLines = attributedLines.filter((s) => s.lineCost !== null && s.lineValue && ((s.lineValue - s.lineCost) / s.lineValue) * 100 < marginFloor);
   const exceptionValue = exceptionLines.reduce((a, s) => a + s.lineValue, 0);
 
   // ── attention signals ────────────────────────────────────────────────────────
   const attention = [];
-  if (staleOpen.length) attention.push({ text: `${staleOpen.length} open quote${staleOpen.length === 1 ? '' : 's'} inactive for more than 10 days`, tab: 2 });
-  if (exceptionValue > 0) attention.push({ text: `${money(exceptionValue)} order value below ${MARGIN_FLOOR}% margin`, tab: 3 });
-  if (ratio != null && ratio > 1.5) attention.push({ text: `Last purchase was ${ratio.toFixed(1)}× the usual reorder interval ago`, tab: 1 });
+  if (staleOpen.length) attention.push({ text: `${staleOpen.length} open quote${staleOpen.length === 1 ? '' : 's'} with no activity for more than 10 days`, tab: 2 });
+  if (exceptionValue > 0) attention.push({ text: `${money(exceptionValue)} in order value from lines below ${marginFloor}% margin`, tab: 3 });
+  if (ratio != null && ratio > 1.5) attention.push({ text: `It's been ${ratio.toFixed(1)}× the usual reorder interval since the last purchase`, tab: 1 });
 
   // ── unified timeline ─────────────────────────────────────────────────────────
   const allEvents = (() => {
@@ -251,28 +282,17 @@ export function CompanyAnalytics({ company }) {
   const frequently = [...inRecent8.entries()].filter(([, c]) => c >= Math.ceil(recent8.length / 2)).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const recentIdx = allCompleted.length - 3;
   const newInRecent = [...firstPurchase.entries()].filter(([s, d]) => allCompleted.findIndex((o) => o.date === d) >= recentIdx && recentIdx > 0 && (inEarlier.get(s) || 0) === 0).slice(0, 4);
-  // "Previously frequent" only when there's enough history to be meaningful (≥8 orders).
-  const previouslyFrequent = allCompleted.length >= MIN_HISTORY_FOR_LAPSED
+  // "Previously frequent" (lapsed SKUs) only when there's enough history to be meaningful (≥8
+  // orders). Below that the column is HIDDEN entirely — not shown with a placeholder — because a
+  // dead column exposing the ≥8 threshold is worse than one fewer column.
+  const showLapsed = allCompleted.length >= MIN_HISTORY_FOR_LAPSED;
+  const previouslyFrequent = showLapsed
     ? [...inEarlier.entries()].filter(([s, c]) => c >= Math.ceil(earlier.length / 2) && !inRecent4.has(s)).slice(0, 4) : [];
 
-  // ── product-category mix (period vs prev) — SECONDARY: only if taxonomy is usable ────────────
-  const categoryMix = (os) => { const m = new Map(); let total = 0; os.forEach((o) => (o.items || []).forEach((it) => { const cat = productBySku(it.sku)?.productType || 'Other'; const rev = Number(it.revenue) || 0; m.set(cat, (m.get(cat) || 0) + rev); total += rev; })); return { m, total }; };
-  const curMix = categoryMix(periodOrders);
-  const prevMix = categoryMix(prevOrders);
-  const mixCats = [...new Set([...curMix.m.keys(), ...prevMix.m.keys()])].sort((a, b) => (curMix.m.get(b) || 0) - (curMix.m.get(a) || 0));
-  const mixUsable = mixCats.filter((c) => c !== 'Other').length >= 2 && (curMix.total > 0 || prevMix.total > 0);
-
-  // ── monthly series (sales + adoption toggle) ─────────────────────────────────
+  // ── monthly sales series (Purchase-trend line chart) ─────────────────────────
   const monthsSpan = [];
   for (let d = new Date(rangeStart.getFullYear(), rangeStart.getMonth(), 1); d <= TODAY; d = addMonths(d, 1)) monthsSpan.push(new Date(d));
   const salesSeries = monthsSpan.map((d) => { const key = monthKey(d); return { label: MONTHS[d.getMonth()], value: periodOrders.filter((o) => String(o.date).startsWith(key)).reduce((a, o) => a + (Number(o.amount) || 0), 0) }; });
-  const adoptionSeries = monthsSpan.map((d) => {
-    const key = monthKey(d); const lines = attributedLines.filter((s) => String(s.order.date).startsWith(key));
-    const orders = new Set(lines.map((s) => s.order.id)); const b2bO = new Set(lines.filter((s) => s.isB2B).map((s) => s.order.id));
-    const tot = lines.reduce((a, s) => a + s.lineValue, 0); const b2bV = lines.filter((s) => s.isB2B).reduce((a, s) => a + s.lineValue, 0);
-    const v = adoptionMode === 'value' ? (tot ? Math.round((b2bV / tot) * 100) : null) : (orders.size ? Math.round((b2bO.size / orders.size) * 100) : null);
-    return { label: MONTHS[d.getMonth()], value: v };
-  });
 
   // ── quantity pricing (company-scoped) ────────────────────────────────────────
   const tierEvents = analyticsQuantityEvents.filter((e) => e.type === 'tier_observed' && e.companyId === company.id && inPeriod(e.date));
@@ -285,10 +305,10 @@ export function CompanyAnalytics({ company }) {
   if (cmp && prevS.n > 0 && curS.n > 0) {
     const sD = salesDelta ?? 0, oD = ordersDelta ?? 0, aD = aovDelta ?? 0;
     if (Math.abs(sD) <= 12 && oD <= -20 && aD >= 20) changedSentence = 'Sales stayed roughly flat while the company placed fewer, larger orders.';
-    else if (oD >= 20 && aD <= -15) changedSentence = 'The company is ordering more often, in smaller orders.';
-    else if (sD >= 15) changedSentence = 'Sales are up versus the previous period.';
-    else if (sD <= -15) changedSentence = 'Sales are down versus the previous period.';
-    else changedSentence = 'Buying was broadly similar to the previous period.';
+    else if (oD >= 20 && aD <= -15) changedSentence = 'The company placed more orders, but each order was smaller on average.';
+    else if (sD >= 15) changedSentence = 'Sales increased compared with the previous period.';
+    else if (sD <= -15) changedSentence = 'Sales decreased compared with the previous period.';
+    else changedSentence = 'Sales and order patterns were broadly similar to the previous period.';
   }
 
   const money0 = (v) => (v == null ? '—' : money(v));
@@ -303,30 +323,30 @@ export function CompanyAnalytics({ company }) {
       <Card>
         <BlockStack gap="300">
           <InlineGrid columns={{ xs: 2, sm: 4 }} gap="400">
-            <Stat label="Net sales" value={money(curS.rev)} delta={<DeltaChip v={salesDelta} />} sub={cmp ? 'vs previous' : 'in period'} help="Sales this company generated in the selected period (completed orders)." />
-            <Stat label="Orders" value={String(curS.n)} delta={<DeltaChip v={ordersDelta} />} sub={cmp ? 'vs previous' : 'in period'} help="Completed orders in the selected period." />
-            <Stat label="Average order value" value={money(curS.aov)} delta={<DeltaChip v={aovDelta} />} sub={cmp ? 'vs previous' : 'per order'} help="Average value per completed order in the selected period." />
-            <Stat label="Open quote value" value={money(openQuoteValue)} sub="Current snapshot · not affected by date range" help="Total value of this company's still-open quotes. A current snapshot, independent of the date range." />
+            <Stat label="Net sales" value={money(curS.rev)} delta={<DeltaChip v={salesDelta} />} sub={cmp ? 'vs previous period' : 'in selected period'} help="Net sales generated by this company in the selected period." />
+            <Stat label="Orders" value={String(curS.n)} delta={<DeltaChip v={ordersDelta} />} sub={cmp ? 'vs previous period' : 'in selected period'} help="Number of orders placed by this company in the selected period." />
+            <Stat label="Average order value" value={money(curS.aov)} delta={<DeltaChip v={aovDelta} />} sub={cmp ? 'vs previous period' : 'per order'} help="Average net sales per order in the selected period." />
+            <Stat label="Open quote value" value={money(openQuoteValue)} sub="Current snapshot · not affected by date range" help="Total value of this company's quotes that are still open. This is a current snapshot and is not affected by the date range." />
           </InlineGrid>
           {changedSentence ? <Text as="p" variant="bodyMd">{changedSentence}</Text> : null}
         </BlockStack>
       </Card>
 
-      <SectionCard title="Relationship state" subtitle="How this company is tracking against its own buying rhythm.">
+      <SectionCard title="Relationship state" subtitle="How this company is tracking against its own buying rhythm." help="Shows whether this company is still ordering around its usual schedule or has gone quieter than normal, based on its own order history.">
         <InlineStack gap="400" blockAlign="center" wrap>
           <Badge tone={STATE_TONE[relState]} size="large">{relState}</Badge>
           {overdue != null && overdue > 0 ? <Text as="span" tone="subdued">{overdue} days past its usual reorder time</Text> : null}
         </InlineStack>
         <Divider />
         <InlineGrid columns={{ xs: 2, sm: 4 }} gap="400">
-          <Stat label="Last order" value={since == null ? '—' : `${since} days ago`} sub={last ? fmtDate(last) : undefined} />
-          <Stat label="Typical reorder" value={typical == null ? '—' : `~${typical} days`} />
-          <Stat label="Current gap" value={ratio == null ? '—' : `${ratio.toFixed(1)}× usual`} tone={ratio != null && ratio > 1.5 ? 'critical' : undefined} />
-          <Stat label="Order history" value={`${allCompleted.length} orders`} />
+          <Stat label="Last order" value={since == null ? '—' : `${since} days ago`} sub={last ? fmtDate(last) : undefined} help="How long ago this company placed its most recent order." />
+          <Stat label="Typical reorder" value={typical == null ? '—' : `~${typical} days`} help="How long this company typically goes between orders." />
+          <Stat label="Current gap" value={ratio == null ? '—' : `${ratio.toFixed(1)}× usual`} tone={ratio != null && ratio > 1.5 ? 'critical' : undefined} help="How the time since the last order compares with this company's usual reorder interval." />
+          <Stat label="Order history" value={`${allCompleted.length} orders`} help="Total number of past orders available for this company." />
         </InlineGrid>
       </SectionCard>
 
-      <SectionCard title="Attention needed" subtitle="Factual signals worth inspecting — no score, no prediction.">
+      <SectionCard title="Attention needed" subtitle="Things in this account that may need a closer look." help="Highlights current account signals from quotes, margins, and reorder timing. These are factual indicators, not predictions.">
         {attention.length ? (
           <BlockStack gap="0">
             {attention.map((a, i) => (
@@ -341,30 +361,42 @@ export function CompanyAnalytics({ company }) {
         ) : <Text as="p" tone="subdued" variant="bodySm">Nothing needs attention right now.</Text>}
       </SectionCard>
 
-      <SectionCard title="Recent activity" action={<Button variant="plain" onClick={() => setTab(2)}>View all activity</Button>}>
+      <SectionCard title="Recent activity" help="The latest orders, quotes, and pricing changes for this company, newest first." action={<Button variant="plain" onClick={() => setTab(2)}>View all activity</Button>}>
         {allEvents.length ? <BlockStack gap="0">{allEvents.slice(0, 6).map((e, i) => <TimelineRow key={i} e={e} first={i === 0} />)}</BlockStack> : <Text as="p" tone="subdued" variant="bodySm">No activity yet.</Text>}
       </SectionCard>
     </BlockStack>
   );
 
   // ── BUYING ──────────────────────────────────────────────────────────────────
-  const cadenceEvents = allCompleted.map((o, i, arr) => ({ amount: o.amount, valueLabel: moneyShort(Number(o.amount) || 0), dateLabel: fmtDate(o.date), gapLabel: i ? `${daysBetween(arr[i - 1].date, o.date)}d` : '' }));
   const largest = allCompleted.reduce((m, o) => Math.max(m, Number(o.amount) || 0), 0);
   const medianOrder = median(allCompleted.map((o) => Number(o.amount) || 0));
   const avgProds = allCompleted.length ? allCompleted.reduce((a, o) => a + (o.items || []).length, 0) / allCompleted.length : 0;
+  // Top products — highest line revenue in the selected period (company-scoped).
+  const productAgg = new Map();
+  periodOrders.forEach((o) => (o.items || []).forEach((it) => {
+    const cur = productAgg.get(it.sku) || { sku: it.sku, revenue: 0, qty: 0 };
+    cur.revenue += Number(it.revenue) || 0;
+    cur.qty += Number(it.qty) || 0;
+    productAgg.set(it.sku, cur);
+  }));
+  const topProducts = [...productAgg.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+  const topMax = Math.max(1, ...topProducts.map((p) => p.revenue));
   const buying = (
     <BlockStack gap="400">
-      <SectionCard title="Buying rhythm" subtitle="This company's cadence — intervals between its own orders.">
+      <SectionCard title="Buying rhythm" subtitle="How often and how large this company orders." help="Summarizes this company's usual reorder timing and order size using its own purchase history." action={<Button variant="plain" onClick={() => goTab('orders')}>View orders →</Button>}>
         <InlineGrid columns={{ xs: 2, sm: 4 }} gap="400">
-          <Stat label="Typical reorder" value={typical == null ? '—' : `${typical} days`} help="Median days between this company's completed orders." />
-          <Stat label="Last order" value={since == null ? '—' : `${since} days ago`} />
-          <Stat label="Current gap" value={ratio == null ? '—' : `${ratio.toFixed(1)}× usual`} tone={ratio != null && ratio > 1.5 ? 'critical' : undefined} />
-          <Stat label="Orders in period" value={String(curS.n)} />
+          <Stat label="Typical reorder" value={typical == null ? '—' : `${typical} days`} help="How long this company typically goes between orders." />
+          <Stat label="Last order" value={since == null ? '—' : `${since} days ago`} sub={last ? fmtDate(last) : undefined} help="How long ago this company placed its most recent order." />
+          <Stat label="Current gap" value={ratio == null ? '—' : `${ratio.toFixed(1)}× usual`} tone={ratio != null && ratio > 1.5 ? 'critical' : undefined} help="How the time since the last order compares with this company's usual reorder interval." />
+          <Stat label="Orders in period" value={String(curS.n)} help="Number of orders placed in the selected period." />
+          <Stat label="Total orders" value={`${allCompleted.length}`} help="Total number of past orders for this company." />
+          <Stat label="Largest order" value={money(largest)} help="The largest order this company has placed." />
+          <Stat label="Median order value" value={money0(medianOrder)} help="The typical order size for this company, using the middle value across its order history." />
+          <Stat label="Products per order" value={avgProds ? avgProds.toFixed(1) : '—'} help="Average number of different products purchased in each order." />
         </InlineGrid>
-        {cadenceEvents.length ? (<><Divider /><Timeline events={cadenceEvents} empty="No completed orders." /></>) : null}
       </SectionCard>
 
-      <SectionCard title="Purchase trend" subtitle="Is the company buying more, less, or just in different order sizes?">
+      <SectionCard title="Purchase trend" subtitle="See whether this company is spending more, less, or simply changing its order size." help="Compares this company's sales, order count, and average order value with the previous period.">
         <LineChart data={salesSeries} label="Sales over time" />
         <Divider />
         <BlockStack gap="200">
@@ -375,8 +407,12 @@ export function CompanyAnalytics({ company }) {
         {changedSentence ? <Text as="p" variant="bodySm" tone="subdued">{changedSentence}</Text> : null}
       </SectionCard>
 
-      <SectionCard title="Basket behaviour" subtitle="What this company buys, what's new, and what it used to buy but hasn't lately (last 8 orders).">
-        <InlineGrid columns={{ xs: 1, md: 3 }} gap="400">
+      <SectionCard title="Top products" subtitle="This company's highest-revenue products in the selected period." help="Ranks the products this company spent the most on during the selected period.">
+        <RankBars rows={topProducts.map((p) => ({ key: p.sku, name: skuName(p.sku), sub: `${p.qty.toLocaleString('en-US')} units`, value: p.revenue, width: (p.revenue / topMax) * 100, valueLabel: money(p.revenue) }))} empty="No completed orders in this period." />
+      </SectionCard>
+
+      <SectionCard title="Basket behavior" subtitle={showLapsed ? "What this company keeps buying, what's new, and what it used to buy but hasn't lately." : "What this company keeps buying and what's new in recent orders."} help="Shows recurring products, products that recently appeared for the first time, and — when there is enough order history — products that used to appear often but have not appeared lately.">
+        <InlineGrid columns={{ xs: 1, md: showLapsed ? 3 : 2 }} gap="400">
           <BlockStack gap="150">
             <Text as="span" variant="bodySm" fontWeight="semibold">Frequently purchased</Text>
             {frequently.length ? frequently.map(([s, c]) => <Text as="p" key={s} variant="bodyMd">{skuName(s)} <Text as="span" tone="subdued" variant="bodySm">· {c} of last {recent8.length}</Text></Text>) : <Text as="p" tone="subdued" variant="bodySm">—</Text>}
@@ -385,32 +421,12 @@ export function CompanyAnalytics({ company }) {
             <Text as="span" variant="bodySm" fontWeight="semibold">New in recent orders</Text>
             {newInRecent.length ? newInRecent.map(([s, d]) => <Text as="p" key={s} variant="bodyMd">{skuName(s)} <Text as="span" tone="subdued" variant="bodySm">· first {fmtDate(d)}</Text></Text>) : <Text as="p" tone="subdued" variant="bodySm">—</Text>}
           </BlockStack>
-          <BlockStack gap="150">
-            <Text as="span" variant="bodySm" fontWeight="semibold">Previously frequent</Text>
-            {allCompleted.length < MIN_HISTORY_FOR_LAPSED ? <Text as="p" tone="subdued" variant="bodySm">Needs ≥{MIN_HISTORY_FOR_LAPSED} orders</Text>
-              : previouslyFrequent.length ? previouslyFrequent.map(([s, c]) => <Text as="p" key={s} variant="bodyMd">{skuName(s)} <Text as="span" tone="subdued" variant="bodySm">· was in {c} of {earlier.length}, not in last 4</Text></Text>) : <Text as="p" tone="subdued" variant="bodySm">—</Text>}
-          </BlockStack>
-        </InlineGrid>
-      </SectionCard>
-
-      {mixUsable ? (
-        <SectionCard title="Product mix change" subtitle="Where this company's demand is shifting, by product category.">
-          <BlockStack gap="200">
-            {mixCats.slice(0, 6).map((cat) => {
-              const p = prevMix.total ? Math.round(((prevMix.m.get(cat) || 0) / prevMix.total) * 100) : 0;
-              const c = curMix.total ? Math.round(((curMix.m.get(cat) || 0) / curMix.total) * 100) : 0;
-              return <ShiftRow key={cat} label={cat} prev={p} cur={c} fmt={(x) => `${x}%`} />;
-            })}
-          </BlockStack>
-        </SectionCard>
-      ) : null}
-
-      <SectionCard title="Order summary" action={<Button variant="plain" onClick={() => goTab('orders')}>View orders →</Button>}>
-        <InlineGrid columns={{ xs: 2, sm: 4 }} gap="400">
-          <Stat label="Largest order" value={money(largest)} />
-          <Stat label="Median order value" value={money0(medianOrder)} />
-          <Stat label="Products per order" value={avgProds ? avgProds.toFixed(1) : '—'} />
-          <Stat label="Days since last order" value={since == null ? '—' : `${since}`} />
+          {showLapsed ? (
+            <BlockStack gap="150">
+              <Text as="span" variant="bodySm" fontWeight="semibold">Previously frequent</Text>
+              {previouslyFrequent.length ? previouslyFrequent.map(([s, c]) => <Text as="p" key={s} variant="bodyMd">{skuName(s)} <Text as="span" tone="subdued" variant="bodySm">· was in {c} of {earlier.length}, not in last 4</Text></Text>) : <Text as="p" tone="subdued" variant="bodySm">—</Text>}
+            </BlockStack>
+          ) : null}
         </InlineGrid>
       </SectionCard>
     </BlockStack>
@@ -421,14 +437,14 @@ export function CompanyAnalytics({ company }) {
     <BlockStack gap="400">
       <Card>
         <InlineGrid columns={{ xs: 2, sm: 4 }} gap="400">
-          <Stat label="Open quote value" value={money(openQuoteValue)} sub="Current snapshot" help="Value of this company's still-open quotes. Current snapshot, not limited to the date range." />
-          <Stat label="Open quotes" value={String(openQuotes.length)} />
-          <Stat label="Win rate" value={winRateCount == null ? '—' : `${winRateCount}%`} sub="by count, in period" help="Won quotes as a share of quotes won or lost in the period." />
-          <Stat label="First response time" value={fmtDur(responseMedian)} help="Median time from quote creation to the first time it was priced or sent." />
+          <Stat label="Open quote value" value={money(openQuoteValue)} sub="Current snapshot" help="Total value of this company's quotes that are still open. This is a current snapshot." />
+          <Stat label="Open quotes" value={String(openQuotes.length)} help="Number of quotes that are still open and have not yet been won or lost." />
+          <Stat label="Win rate" value={winRateCount == null ? '—' : `${winRateCount}%`} sub="by count, in period" help="Share of this company's decided quotes that were won in the selected period." />
+          <Stat label="First response time" value={fmtDur(responseMedian)} help="How long this company's quotes typically take to receive their first price or reply." />
         </InlineGrid>
       </Card>
 
-      <SectionCard title="Open quote attention" subtitle="Open quotes for this company, oldest activity first." action={<Button variant="plain" onClick={() => goTab('quotes')}>View all quotes →</Button>}>
+      <SectionCard title="Open quotes to review" subtitle="Open quotes for this company, with the longest-idle quotes first." help="Shows this company's open quotes and puts the ones with the oldest activity at the top so they are easier to follow up." action={<Button variant="plain" onClick={() => goTab('quotes')}>View all quotes →</Button>}>
         {openQuotes.length ? (
           <>
             <IndexTable resourceName={{ singular: 'quote', plural: 'quotes' }} itemCount={openQuotes.length} selectable={false}
@@ -448,23 +464,16 @@ export function CompanyAnalytics({ company }) {
         ) : <Text as="p" tone="subdued" variant="bodySm">No open quotes.</Text>}
       </SectionCard>
 
-      <SectionCard title="Negotiation history" subtitle="Quote outcomes for this company in the selected period.">
+      <SectionCard title="Quote outcomes" subtitle="How this company's quotes turned out in the selected period." help="Summarizes quotes created for this company, how many were won or lost, and how long decided quotes typically took to close.">
         <InlineGrid columns={{ xs: 2, sm: 4 }} gap="400">
-          <Stat label="Quotes created" value={String(periodQuotes.length)} />
-          <Stat label="Won" value={String(wonP.length)} />
-          <Stat label="Lost" value={String(lostP.length)} />
-          <Stat label="Win rate by count" value={winRateCount == null ? '—' : `${winRateCount}%`} />
-          <Stat label="Median time to decision" value={fmtDur(decisionMedian)} help="Median time from quote creation until it was resolved (won or lost)." />
+          <Stat label="Quotes created" value={String(periodQuotes.length)} help="Number of quotes created for this company in the selected period." />
+          <Stat label="Won" value={String(wonP.length)} help="Number of quotes that ended as won in the selected period." />
+          <Stat label="Lost" value={String(lostP.length)} help="Number of quotes that ended as lost in the selected period." />
+          <Stat label="Win rate by count" value={winRateCount == null ? '—' : `${winRateCount}%`} help="Share of decided quotes that were won." />
+          <Stat label="Typical time to decision" value={fmtDur(decisionMedian)} help="How long a quote typically takes to be won or lost after it is created." />
         </InlineGrid>
       </SectionCard>
 
-      {varRows.length ? (
-        <SectionCard title="Quoted price vs company pricing" subtitle="Recent won quotes vs the pricing assigned at quote time (snapshot, not today's pricing).">
-          <Stat label="Average difference from company pricing" value={avgVariance == null ? '—' : `${avgVariance > 0 ? '+' : ''}${avgVariance.toFixed(1)}%`} help="Average difference between quoted prices and the company's assigned pricing captured at quote time, weighted by value." />
-          <Text as="p" variant="bodyMd">{varRows.length} recent won quote{varRows.length === 1 ? '' : 's'} · {within5} within ±5% of assigned pricing{below10 ? ` · ${below10} quoted >10% below` : below5 ? ` · ${below5} quoted >5% below` : ''}</Text>
-          {avgVariance != null ? <Text as="p" tone="subdued" variant="bodySm">Won quotes were priced {Math.abs(avgVariance).toFixed(1)}% {avgVariance >= 0 ? 'above' : 'below'} assigned company pricing on average.</Text> : null}
-        </SectionCard>
-      ) : null}
 
       {(() => {
         const finalizedQ = periodQuotes.filter((q) => FINALIZED.has(q.status));
@@ -476,7 +485,7 @@ export function CompanyAnalytics({ company }) {
         });
         const maxRate = Math.max(1, ...bands.map((b) => b.rate || 0));
         return bands.some((b) => b.count) ? (
-          <SectionCard title="Win rate by discount" subtitle="For this company only — read with the sample size; association, not cause.">
+          <SectionCard title="Win rate by discount" subtitle="Compare win rate across discount ranges from the Shopify price." help="Shows the share of won quotes within each discount range, using the Shopify price as the reference. Only won and lost quotes are included. This shows a pattern, not that the discount caused the outcome.">
             <RankBars rows={bands.map((b) => ({ key: b.name, name: `${b.name} off`, sub: `${b.wins} of ${b.count} won or lost`, width: b.rate == null ? 0 : (b.rate / maxRate) * 100, valueLabel: b.rate == null ? '—' : `${b.rate}%` }))} empty="No won or lost quotes." />
           </SectionCard>
         ) : null;
@@ -489,34 +498,41 @@ export function CompanyAnalytics({ company }) {
     <BlockStack gap="400">
       <Card>
         <InlineGrid columns={{ xs: 2, sm: 4 }} gap="400">
-          <Stat label="B2B price vs Shopify" value={vsShopify == null ? '—' : signedPct(vsShopify)} sub="on B2B-priced lines" help="How this company's B2B prices compare with Shopify list, on B2B-priced lines (resolved price)." />
-          <Stat label="Margin at order creation" value={pct1(marginAtCreation)} sub="costed lines" help="Gross margin at the price applied when orders were created, on lines with known cost." />
-          <Stat label="Orders using B2B pricing" value={adoptionOrders == null ? '—' : `${adoptionOrders}%`} sub={`${b2bOrderIds.size} of ${periodOrders.length}`} help="Share of this company's completed orders using a B2B pricing." />
-          <Stat label={`Order value below ${MARGIN_FLOOR}% margin`} value={money(exceptionValue)} sub={`${exceptionLines.length} line${exceptionLines.length === 1 ? '' : 's'}`} help={`Order value from lines whose margin at creation is below ${MARGIN_FLOOR}%.`} />
+          <Stat label="B2B price vs Shopify" value={vsShopify == null ? '—' : signedPct(vsShopify)} sub="on B2B-priced lines" help="How much lower or higher this company's B2B prices are than its regular Shopify prices." />
+          <Stat label="Margin at order creation" value={pct1(marginAtCreation)} sub="costed lines" help="Profit margin based on the price and product cost recorded when each order was placed. Items without cost data are excluded." />
+          <Stat label="Order value" value={money(allEcon.value)} sub="in selected period" help="Total value of this company's order lines in the selected period." />
+          <Stat label={`Order value below ${marginFloor}% margin`} value={money(exceptionValue)} sub={`${exceptionLines.length} line${exceptionLines.length === 1 ? '' : 's'}`} help="Total value of items sold below your selected profit-margin threshold." />
         </InlineGrid>
       </Card>
 
-      {adoptionSeries.some((s) => s.value != null) ? (
-        <SectionCard title="Pricing adoption over time" subtitle="Is this company actually transacting through the pricing you assigned?"
-          action={<div style={{ display: 'inline-flex', border: '1px solid var(--p-color-border)', borderRadius: 8, overflow: 'hidden' }}>{[['orders', 'Orders'], ['value', 'Order value']].map(([m, lbl]) => (<button key={m} type="button" onClick={() => setAdoptionMode(m)} style={{ padding: '5px 12px', border: 0, cursor: 'pointer', font: 'inherit', background: adoptionMode === m ? 'var(--p-color-bg-fill-brand)' : 'transparent', color: adoptionMode === m ? 'var(--p-color-text-brand-on-bg-fill)' : 'var(--p-color-text)' }}>{lbl}</button>))}</div>}>
-          <LineChart data={adoptionSeries} prefix="" label={`Share of ${adoptionMode === 'value' ? 'order value' : 'orders'} using B2B pricing`} />
-          <Text as="p" tone="subdued" variant="bodySm">An order counts as "using B2B pricing" if ≥1 line does — order-value view shows how much value actually went through it.</Text>
-        </SectionCard>
-      ) : null}
+      <SectionCard title="B2B pricing usage" subtitle="How much of this company's purchasing used B2B pricing in the selected period." help="Shows both how many orders used B2B pricing and how much order value actually came from B2B-priced items.">
+        <InlineGrid columns={{ xs: 1, sm: 2 }} gap="400">
+          <Stat label="Orders using B2B pricing" value={adoptionOrders == null ? '—' : `${adoptionOrders}%`} sub={`${b2bOrderIds.size} of ${periodOrders.length} orders`} help="Share of this company's orders where at least one item used B2B pricing." />
+          <Stat label="Order value using B2B pricing" value={adoptionValue == null ? '—' : `${adoptionValue}%`} sub={`${money(b2bEcon.value)} of ${money(allEcon.value)} order value`} help="Share of this company's order value that came from items using B2B pricing." />
+        </InlineGrid>
+        <Text as="p" variant="bodyMd">{adoptionSummary}</Text>
+      </SectionCard>
 
       {varRows.length ? (
-        <SectionCard title="Pricing vs negotiation" subtitle="Assigned company pricing (at quote time) vs recent won quotes.">
-          <BlockStack gap="100">
-            <Text as="p" variant="bodyMd">{within5} within ±5% · {Math.max(0, below5 - below10)} 5–10% below · {below10} more than 10% below</Text>
-            {below5 ? <Text as="p" tone="subdued" variant="bodySm">{below5} of {varRows.length} recent won quotes were more than 5% below assigned pricing.</Text> : <Text as="p" tone="subdued" variant="bodySm">Recent won quotes are close to the assigned pricing.</Text>}
-          </BlockStack>
+        <SectionCard title="Won quotes vs your pricing" subtitle="How recent won quotes compare with the pricing set for this company." help="Compares recent won quote prices with the B2B pricing that was in place for this company at the time of each quote.">
+          <InlineGrid columns={{ xs: 1, sm: 2 }} gap="400">
+            <Stat label="Average vs your pricing" value={`${negoAbs}%`} sub={`${negoDir} your set price`} help="Average difference between recent won quote prices and the pricing that was set for this company at the time." />
+            <Stat label={below5 ? 'Below your set price' : 'At or above your set price'} value={`${below5 || varRows.length} of ${varRows.length}`} sub="recent won quotes" help={below5 ? 'Number of recent won quotes that landed below your set price.' : 'Number of recent won quotes that landed at or above your set price.'} />
+          </InlineGrid>
+          <Text as="p" variant="bodyMd">{negoSummary}</Text>
         </SectionCard>
       ) : null}
 
-      <SectionCard title="Pricing performance" subtitle="How the pricing this company transacts on is performing." action={<Button variant="plain" onClick={() => goTab('pricing')}>View pricing →</Button>}>
+      <SectionCard title="Pricing performance" subtitle="How the B2B pricing this company actually buys on is performing." help="Shows the order value, margin, Shopify-price difference, and order count for each B2B pricing used by this company." action={<Button variant="plain" onClick={() => goTab('pricing')}>View pricing →</Button>}>
         {companyProfiles.length > 1 ? (
           <IndexTable resourceName={{ singular: 'pricing', plural: 'pricings' }} itemCount={companyProfiles.length} selectable={false}
-            headings={[{ title: 'Pricing' }, { title: 'Order value', alignment: 'end' }, { title: 'Margin', alignment: 'end' }, { title: 'vs Shopify', alignment: 'end' }, { title: 'Orders', alignment: 'end' }]}>
+            headings={[
+              { title: <ColHelp label="Pricing" help="The B2B pricing used by these order lines." /> },
+              { title: <ColHelp label="Order value" help="Total order value on this pricing in the selected period." />, alignment: 'end' },
+              { title: <ColHelp label="Margin" help="Profit margin on orders that used this pricing." />, alignment: 'end' },
+              { title: <ColHelp label="vs Shopify" help="How this pricing compares with this company's regular Shopify prices." />, alignment: 'end' },
+              { title: <ColHelp label="Orders" help="Number of orders that used this pricing." />, alignment: 'end' },
+            ]}>
             {companyProfiles.map((p, i) => (
               <IndexTable.Row id={p.name} key={p.name} position={i}>
                 <IndexTable.Cell>{p.name}</IndexTable.Cell>
@@ -531,29 +547,47 @@ export function CompanyAnalytics({ company }) {
           <BlockStack gap="200">
             <Text as="span" variant="bodyMd" fontWeight="semibold">{companyProfiles[0].name}</Text>
             <InlineGrid columns={{ xs: 2, sm: 4 }} gap="400">
-              <Stat label="Order value" value={money(companyProfiles[0].value)} />
-              <Stat label="Margin" value={pct1(companyProfiles[0].margin)} />
-              <Stat label="vs Shopify" value={companyProfiles[0].deltaPct == null ? '—' : signedPct(companyProfiles[0].deltaPct)} />
-              <Stat label="Orders" value={String(companyProfiles[0].orders)} />
+              <Stat label="Order value" value={money(companyProfiles[0].value)} help="Total order value on this pricing in the selected period." />
+              <Stat label="Margin" value={pct1(companyProfiles[0].margin)} help="Profit margin on orders that used this pricing." />
+              <Stat label="vs Shopify" value={companyProfiles[0].deltaPct == null ? '—' : signedPct(companyProfiles[0].deltaPct)} help="How this pricing compares with this company's regular Shopify prices." />
+              <Stat label="Orders" value={String(companyProfiles[0].orders)} help="Number of orders that used this pricing." />
             </InlineGrid>
           </BlockStack>
         ) : <Text as="p" tone="subdued" variant="bodySm">No B2B pricing used on orders in this period.</Text>}
       </SectionCard>
 
-      <SectionCard title="Quantity pricing effectiveness" subtitle="Whether this company reaches the quantity tiers it's eligible for.">
+      <SectionCard title="Quantity pricing usage" subtitle="How often this company buys enough to reach the quantity pricing available to it." help="Shows whether this company reaches its available quantity tiers, how much order value those purchases create, and the average discount received.">
         {hasQuantityPricing && tierEvents.length ? (
           <InlineGrid columns={{ xs: 1, sm: 3 }} gap="400">
-            <Stat label="Tier reach rate" value={tierEvents.length ? `${Math.round((tierReached.length / tierEvents.length) * 100)}%` : '—'} sub={`${tierReached.length} of ${tierEvents.length} eligible`} />
-            <Stat label="Order value at reached tiers" value={money(tierReached.reduce((a, e) => a + (Number(e.orderValue) || 0), 0))} />
-            <Stat label="Average tier discount" value={(() => { const d = tierRefWeighted(tierReached); return d == null ? '—' : `${d.toFixed(1)}%`; })()} />
+            <Stat label="Tier reach rate" value={tierEvents.length ? `${Math.round((tierReached.length / tierEvents.length) * 100)}%` : '—'} sub={`${tierReached.length} of ${tierEvents.length} eligible`} help="Share of eligible purchases where this company ordered enough to reach a quantity-price tier." />
+            <Stat label="Order value at reached tiers" value={money(tierReached.reduce((a, e) => a + (Number(e.orderValue) || 0), 0))} help="Total value of purchases where this company reached a quantity-price tier." />
+            <Stat label="Average tier discount" value={(() => { const d = tierRefWeighted(tierReached); return d == null ? '—' : `${d.toFixed(1)}%`; })()} help="Average discount received on purchases that reached a quantity-price tier." />
           </InlineGrid>
         ) : <Text as="p" tone="subdued" variant="bodySm">No quantity pricing assigned.</Text>}
       </SectionCard>
 
-      {exceptionLines.length ? (
-        <SectionCard title={`Order value below ${MARGIN_FLOOR}% margin`} subtitle="Lines priced below the margin threshold at creation." action={<Button variant="plain" onClick={() => goTab('pricing')}>View pricing →</Button>}>
+      <SectionCard
+        title={`Products below ${marginFloor}% margin`}
+        subtitle="Products sold below your selected profit-margin threshold."
+        help={`Shows products this company bought on order lines below ${marginFloor}% margin, including the value sold, margin, and pricing used. Change the threshold with the picker.`}
+        action={
+          <InlineStack gap="300" blockAlign="center" wrap={false}>
+            <div style={{ minWidth: 160 }}>
+              <Select label="Margin threshold" labelHidden value={String(marginFloor)} onChange={(v) => setMarginFloor(Number(v))}
+                options={[10, 15, 20, 25, 30].map((n) => ({ label: `Below ${n}% margin`, value: String(n) }))} />
+            </div>
+            <Button variant="plain" onClick={() => goTab('pricing')}>View pricing →</Button>
+          </InlineStack>
+        }
+      >
+        {exceptionLines.length ? (
           <IndexTable resourceName={{ singular: 'line', plural: 'lines' }} itemCount={exceptionLines.length} selectable={false}
-            headings={[{ title: 'Product' }, { title: 'Order value', alignment: 'end' }, { title: 'Margin', alignment: 'end' }, { title: 'Pricing' }]}>
+            headings={[
+              { title: <ColHelp label="Product" help="Product sold below the selected margin threshold." /> },
+              { title: <ColHelp label="Value below threshold" help="Total value sold below the selected margin threshold." />, alignment: 'end' },
+              { title: <ColHelp label="Margin" help="Profit margin on the value shown in this row." />, alignment: 'end' },
+              { title: <ColHelp label="Pricing" help="B2B pricing used for the value shown in this row." /> },
+            ]}>
             {exceptionLines.slice(0, 8).map((l, i) => { const m = l.lineValue ? ((l.lineValue - l.lineCost) / l.lineValue) * 100 : 0; return (
               <IndexTable.Row id={`${l.order.id}-${l.sku}-${i}`} key={i} position={i}>
                 <IndexTable.Cell>{skuName(l.sku)}</IndexTable.Cell>
@@ -563,8 +597,8 @@ export function CompanyAnalytics({ company }) {
               </IndexTable.Row>
             ); })}
           </IndexTable>
-        </SectionCard>
-      ) : null}
+        ) : <Text as="p" tone="subdued" variant="bodySm">No items were sold below {marginFloor}% margin in this period.</Text>}
+      </SectionCard>
     </BlockStack>
   );
 
