@@ -97,12 +97,16 @@ const formatTypicalTime = (d) => {
 };
 
 // ── presentational helpers ───────────────────────────────────────────────────
-function DeltaChip({ v, suffix = '%' }) {
+// `suffix` is the unit ('%', ' pp', or '' for counts). `goodDown` flips the colour for metrics
+// where a decrease is good (lost quotes, stale value, time-to-decision, below-margin value).
+function DeltaChip({ v, suffix = '%', goodDown = false }) {
   if (v == null) return null;
   const up = v > 0;
   const down = v < 0;
+  const good = goodDown ? down : up;
+  const bad = goodDown ? up : down;
   return (
-    <Text as="span" variant="bodySm" tone={up ? 'success' : down ? 'critical' : 'subdued'}>
+    <Text as="span" variant="bodySm" tone={good ? 'success' : bad ? 'critical' : 'subdued'}>
       {`${up ? '↑ ' : down ? '↓ ' : ''}${Math.abs(v)}${suffix}`}
     </Text>
   );
@@ -156,7 +160,10 @@ function MiniCompare({ items, plain = false }) {
           ) : (
             <Text as="span" tone="subdued" variant="bodySm">{it.label}</Text>
           )}
-          <Text as="span" variant="headingMd">{it.value}</Text>
+          <InlineStack gap="150" blockAlign="center" wrap={false}>
+            <Text as="span" variant="headingMd">{it.value}</Text>
+            {it.delta || null}
+          </InlineStack>
           {it.sub ? <Text as="span" tone="subdued" variant="bodySm">{it.sub}</Text> : null}
         </BlockStack>
       ))}
@@ -420,8 +427,12 @@ export function Analytics({ embeddedCompanyId = null }) {
   const allScopedOrders = scopedCompanies.flatMap((c) => (c.orders || []).map((o) => attach(o, c))).filter((o) => COMPLETED.has(o.status));
   const orders = allScopedOrders.filter((o) => inPeriod(o.date));
   const previousOrders = compareEnabled ? allScopedOrders.filter((o) => inDateRange(o.date, previousPeriodStart, previousPeriodEnd)) : [];
+  // Period-over-period delta helpers (Compare = previous). `dPct` = % change, `dPP` = pp diff.
+  const dPct = (cur, prev) => (compareEnabled ? pctChange(cur, prev) : null);
+  const dPP = (cur, prev) => (compareEnabled && cur != null && prev != null ? Math.round(cur - prev) : null);
 
   const quotes = showEmpty ? [] : allQuotes.filter((q) => scopedIds.has(q.company) && inPeriod(q.created));
+  const previousQuotes = compareEnabled && !showEmpty ? allQuotes.filter((q) => scopedIds.has(q.company) && inDateRange(q.created, previousPeriodStart, previousPeriodEnd)) : [];
 
   // Snapshot quotes: every scoped quote regardless of when it was created. Open value is
   // a current-state metric, so it ignores the DATE RANGE (a quote opened 5 months ago but
@@ -479,6 +490,8 @@ export function Analytics({ embeddedCompanyId = null }) {
   const pctN = (v) => (v == null ? '—' : `${Math.round(v)}%`);
   const pct1N = (v) => (v == null ? '—' : `${v.toFixed(1)}%`);
   const unitsSold = orders.reduce((a, o) => a + (o.items || []).reduce((s, it) => s + (Number(it.qty) || 0), 0), 0);
+  const prevUnits = previousOrders.reduce((a, o) => a + (o.items || []).reduce((s, it) => s + (Number(it.qty) || 0), 0), 0);
+  const unitsDelta = dPct(unitsSold, prevUnits);
   const gpPrev = gpStats(previousOrders);
   const previousGrossProfit = gpPrev.gp;
   const previousSalesGP = previousOrders.reduce((a, o) => a + (Number(o.amount) || 0), 0);
@@ -663,6 +676,20 @@ export function Analytics({ embeddedCompanyId = null }) {
   const marginFloor = Number(marginThreshold) || 20;
   const marginExceptionLines = attributedLines.filter((s) => { const m = lineMarginAtCreation(s); return m !== null && m < marginFloor; });
   const marginExceptionValue = marginExceptionLines.reduce((a, s) => a + s.lineValue, 0);
+  // Previous-period pricing + deltas (Compare = previous → delta chips on the Pricing tab).
+  const pLines = buildAttributedLines(previousOrders, productCost);
+  const pB2bOrderIds = new Set(pLines.filter((s) => s.isB2B).map((s) => s.order.id));
+  const pOrderCountAll = new Set(pLines.map((s) => s.order.id)).size;
+  const pB2bOrderShare = pOrderCountAll ? (pB2bOrderIds.size / pOrderCountAll) * 100 : 0;
+  let pAppliedGP = 0, pAppliedCostedValue = 0;
+  pLines.forEach((s) => { if (s.lineCost !== null) { pAppliedGP += s.lineValue - s.lineCost; pAppliedCostedValue += s.lineValue; } });
+  const pAppliedMargin = pAppliedCostedValue ? (pAppliedGP / pAppliedCostedValue) * 100 : null;
+  const pMarginExceptionValue = pLines.filter((s) => { const m = lineMarginAtCreation(s); return m !== null && m < marginFloor; }).reduce((a, s) => a + s.lineValue, 0);
+  const appliedMarginDelta = dPP(appliedMargin == null ? null : Math.round(appliedMargin), pAppliedMargin == null ? null : Math.round(pAppliedMargin));
+  const b2bOrderShareDelta = orderCountAll && pOrderCountAll ? dPP(Math.round(b2bOrderShare), Math.round(pB2bOrderShare)) : null;
+  const marginExceptionDelta = dPct(marginExceptionValue, pMarginExceptionValue);
+  const pB2bValue = pLines.filter((s) => s.isB2B).reduce((a, s) => a + s.lineValue, 0);
+  const b2bValueDelta = dPct(b2bValue, pB2bValue);
   const marginCostedValue = attributedLines.reduce((a, s) => a + (s.lineCost !== null ? s.lineValue : 0), 0);
   const marginCoverage = orderValueTotal ? (marginCostedValue / orderValueTotal) * 100 : null;
   const hasPricingFn = (c) => (c?.pricing?.base?.length > 0) || !!c?.pricing?.quantity;
@@ -783,6 +810,8 @@ export function Analytics({ embeddedCompanyId = null }) {
   );
   // New = the company's first completed order falls inside the current window.
   const newCompanyIds = new Set([...firstOrderByCompany.entries()].filter(([, d]) => d && new Date(d + 'T00:00:00') >= rangeStart).map(([id]) => id));
+  const previousNewCount = compareEnabled ? [...firstOrderByCompany.entries()].filter(([, d]) => d && inDateRange(d, previousPeriodStart, previousPeriodEnd)).length : 0;
+  const newDelta = compareEnabled ? newCompanyIds.size - previousNewCount : null;
   const newCompanyRevenue = orders.filter((o) => newCompanyIds.has(o.companyId)).reduce((a, o) => a + (Number(o.amount) || 0), 0);
   const existingCompanyRevenue = Math.max(0, sales - newCompanyRevenue);
   const activeLocations = selected ? new Set(orders.map((o) => o.location)).size : allLocationRows.filter((r) => r.orders).length;
@@ -827,6 +856,19 @@ export function Analytics({ embeddedCompanyId = null }) {
   const lostValue = lostQuotes.reduce((a, q) => a + quoteVal(q), 0);
   const winRateCount = finalizedQuotes.length ? Math.round((wonQuotes.length / finalizedQuotes.length) * 100) : null;
   const winRateValue = finalizedValue ? Math.round((wonValue / finalizedValue) * 100) : null;
+  // Previous-period quote metrics + deltas (Compare = previous → delta chips on the Quotes tab).
+  const pWonQuotes = previousQuotes.filter((q) => q.status === 'Deal Closed');
+  const pLostQuotes = previousQuotes.filter((q) => q.status === 'Deal Rejected');
+  const pFinalizedValue = [...pWonQuotes, ...pLostQuotes].reduce((a, q) => a + quoteVal(q), 0);
+  const pWonValue = pWonQuotes.reduce((a, q) => a + quoteVal(q), 0);
+  const pWinRateValue = pFinalizedValue ? Math.round((pWonValue / pFinalizedValue) * 100) : null;
+  const pQuoteValueTotal = previousQuotes.reduce((a, q) => a + quoteVal(q), 0);
+  const pReceived = previousQuotes.length;
+  const wonQuotesDelta = dPct(wonQuotes.length, pWonQuotes.length);
+  const lostQuotesDelta = dPct(lostQuotes.length, pLostQuotes.length);
+  const winRateValueDelta = dPP(winRateValue, pWinRateValue);
+  const quoteValueTotalDelta = dPct(quotes.reduce((a, q) => a + quoteVal(q), 0), pQuoteValueTotal);
+  const avgQuoteValueDelta = dPct(quotes.length ? quotes.reduce((a, q) => a + quoteVal(q), 0) / quotes.length : 0, pReceived ? pQuoteValueTotal / pReceived : 0);
   const avgWonValue = wonQuotes.length ? wonValue / wonQuotes.length : null;
   const avgLostValue = lostQuotes.length ? lostValue / lostQuotes.length : null;
   const openQuoteValue = openQuotes.reduce((a, q) => a + quoteVal(q), 0);
@@ -1120,10 +1162,10 @@ export function Analytics({ embeddedCompanyId = null }) {
       {/* §3.2 — Baseline context */}
       <MiniCompare
         items={[
-          { label: 'Orders', value: String(orderCount) },
-          { label: 'Average order value', value: money(aov) },
-          { label: 'Units sold', value: unitsSold.toLocaleString('en-US') },
-          { label: selected ? 'New locations' : 'New buying companies', value: selected ? String(newLocations) : String(newCompanyIds.size) },
+          { label: 'Orders', value: String(orderCount), delta: orderDelta ? <DeltaChip v={orderDelta} /> : null },
+          { label: 'Average order value', value: money(aov), delta: aovDelta ? <DeltaChip v={aovDelta} /> : null },
+          { label: 'Units sold', value: unitsSold.toLocaleString('en-US'), delta: unitsDelta ? <DeltaChip v={unitsDelta} /> : null },
+          { label: selected ? 'New locations' : 'New buying companies', value: selected ? String(newLocations) : String(newCompanyIds.size), delta: selected ? null : (newDelta ? <DeltaChip v={newDelta} suffix="" /> : null) },
         ]}
       />
 
@@ -1299,8 +1341,8 @@ export function Analytics({ embeddedCompanyId = null }) {
       ]
     : [
         { label: 'Companies', value: String(managedCount), foot: 'managed in the B2B app' },
-        { label: 'Active', value: String(activeCompanyIds.size), foot: 'completed an order this period' },
-        { label: 'New', value: String(newCompanyIds.size), foot: 'first order this period' },
+        { label: 'Active', value: String(activeCompanyIds.size), delta: activeDelta ? <DeltaChip v={activeDelta} suffix="" /> : null, foot: 'completed an order this period' },
+        { label: 'New', value: String(newCompanyIds.size), delta: newDelta ? <DeltaChip v={newDelta} suffix="" /> : null, foot: 'first order this period' },
         // Count only — the trailing-90 GP + its cost coverage live on the §4.4 exposure
         // card, so the reliability disclosure ("Based on X% cost coverage") isn't shown
         // in one place and dropped in another for the same number.
@@ -1628,7 +1670,7 @@ export function Analytics({ embeddedCompanyId = null }) {
       <ScoreGrid
         items={[
           { label: 'Open quote value', value: money(openQuoteValue), foot: `${openQuotes.length} open quote${openQuotes.length === 1 ? '' : 's'}`, help: 'Total value of quotes that are still open. This is a current snapshot and is not limited to the selected period.' },
-          { label: 'Win rate by value', value: winRateValue == null ? '—' : `${winRateValue}%`, foot: `${moneyShort(wonValue)} won of ${moneyShort(finalizedValue)} finalized`, help: 'Share of won quote value among all quote value that was won or lost in the selected period.' },
+          { label: 'Win rate by value', value: winRateValue == null ? '—' : `${winRateValue}%`, delta: winRateValueDelta ? <DeltaChip v={winRateValueDelta} suffix=" pp" /> : null, foot: `${moneyShort(wonValue)} won of ${moneyShort(finalizedValue)} finalized`, help: 'Share of won quote value among all quote value that was won or lost in the selected period.' },
           { label: 'Stale quote value', value: money(staleValue), foot: `${staleQuotes.length} quote${staleQuotes.length === 1 ? '' : 's'} idle >10 days`, help: 'Value of open quotes with no activity for more than 10 days.' },
           { label: 'First response time', value: formatTypicalTime(responseMedian), foot: 'median RFQ → first response', help: 'Median time from quote creation to the first time the quote was priced or sent.' },
         ]}
@@ -1637,11 +1679,11 @@ export function Analytics({ embeddedCompanyId = null }) {
       {/* §5.2 — baseline metric strip */}
       <MiniCompare
         items={[
-          { label: 'Quotes created', value: String(received), help: 'Number of quotes created in the selected period.' },
-          { label: 'Total quoted value', value: money(quoteValueTotal), help: 'Total quoted value of quotes created in the selected period.' },
-          { label: 'Won quotes', value: String(wonQuotes.length), help: 'Number of quotes won in the selected period.' },
-          { label: 'Lost quotes', value: String(lostQuotes.length), help: 'Number of quotes lost in the selected period.' },
-          { label: 'Average quote value', value: money(avgQuoteValue), help: 'Average quoted value of quotes created in the selected period.' },
+          { label: 'Quotes created', value: String(received), delta: quotesCreatedDelta ? <DeltaChip v={quotesCreatedDelta} suffix="" /> : null, help: 'Number of quotes created in the selected period.' },
+          { label: 'Total quoted value', value: money(quoteValueTotal), delta: quoteValueTotalDelta ? <DeltaChip v={quoteValueTotalDelta} /> : null, help: 'Total quoted value of quotes created in the selected period.' },
+          { label: 'Won quotes', value: String(wonQuotes.length), delta: wonQuotesDelta ? <DeltaChip v={wonQuotesDelta} suffix="" /> : null, help: 'Number of quotes won in the selected period.' },
+          { label: 'Lost quotes', value: String(lostQuotes.length), delta: lostQuotesDelta ? <DeltaChip v={lostQuotesDelta} suffix="" goodDown /> : null, help: 'Number of quotes lost in the selected period.' },
+          { label: 'Average quote value', value: money(avgQuoteValue), delta: avgQuoteValueDelta ? <DeltaChip v={avgQuoteValueDelta} /> : null, help: 'Average quoted value of quotes created in the selected period.' },
           { label: 'Win rate by count', value: winRateCount == null ? '—' : `${winRateCount}%`, help: 'Share of won quotes among all quotes that were won or lost in the selected period.' },
         ]}
       />
@@ -1769,9 +1811,9 @@ export function Analytics({ embeddedCompanyId = null }) {
       <ScoreGrid
         items={[
           { label: 'B2B price vs Shopify', value: b2bVsShopifyPct == null ? '—' : `${Math.abs(b2bVsShopifyPct).toFixed(1)}% ${b2bVsShopifyDelta >= 0 ? 'higher' : 'lower'}`, foot: `${money(Math.abs(b2bVsShopifyDelta))} ${b2bVsShopifyDelta >= 0 ? 'above' : 'below'} Shopify on B2B-priced lines`, help: 'How B2B prices compare with Shopify prices on lines where app pricing was applied. Uses the price resolved by the app before any additional discount or later adjustment.' },
-          { label: 'Margin at order creation', value: pct1N(appliedMargin), foot: appliedMarginCoverage != null && appliedMarginCoverage < 99.5 ? `${moneyN(appliedGP)} GP · ${Math.round(appliedMarginCoverage)}% cost coverage` : `${moneyN(appliedGP)} gross profit`, help: 'Gross margin based on the price on each line when the order was created. Later refunds, returns, or price adjustments are not included.' },
-          { label: 'Orders using B2B pricing', value: orderCountAll ? `${Math.round(b2bOrderShare)}%` : '—', foot: `${b2bOrderIds.size} of ${orderCountAll} order${orderCountAll === 1 ? '' : 's'}`, help: 'Share of orders with at least one line using pricing created from the app when the order was created.' },
-          { label: 'Order value below margin threshold', value: money(marginExceptionValue), foot: `${marginExceptionLines.length} line${marginExceptionLines.length === 1 ? '' : 's'} below ${marginFloor}% margin${marginCoverage != null && marginCoverage < 99.5 ? ` · Based on ${Math.round(marginCoverage)}% cost coverage` : ''}`, help: 'Order value from lines whose margin at order creation is below the selected threshold. Lines without cost data are excluded.' },
+          { label: 'Margin at order creation', value: pct1N(appliedMargin), delta: appliedMarginDelta ? <DeltaChip v={appliedMarginDelta} suffix=" pp" /> : null, foot: appliedMarginCoverage != null && appliedMarginCoverage < 99.5 ? `${moneyN(appliedGP)} GP · ${Math.round(appliedMarginCoverage)}% cost coverage` : `${moneyN(appliedGP)} gross profit`, help: 'Gross margin based on the price on each line when the order was created. Later refunds, returns, or price adjustments are not included.' },
+          { label: 'Orders using B2B pricing', value: orderCountAll ? `${Math.round(b2bOrderShare)}%` : '—', delta: b2bOrderShareDelta ? <DeltaChip v={b2bOrderShareDelta} suffix=" pp" /> : null, foot: `${b2bOrderIds.size} of ${orderCountAll} order${orderCountAll === 1 ? '' : 's'}`, help: 'Share of orders with at least one line using pricing created from the app when the order was created.' },
+          { label: 'Order value below margin threshold', value: money(marginExceptionValue), delta: marginExceptionDelta ? <DeltaChip v={marginExceptionDelta} goodDown /> : null, foot: `${marginExceptionLines.length} line${marginExceptionLines.length === 1 ? '' : 's'} below ${marginFloor}% margin${marginCoverage != null && marginCoverage < 99.5 ? ` · Based on ${Math.round(marginCoverage)}% cost coverage` : ''}`, help: 'Order value from lines whose margin at order creation is below the selected threshold. Lines without cost data are excluded.' },
         ]}
       />
       <InlineStack align="end" blockAlign="center" gap="200">
@@ -1786,7 +1828,7 @@ export function Analytics({ embeddedCompanyId = null }) {
         items={[
           { label: 'Active pricing agreements', value: String(activePolicyCount), help: 'Number of B2B pricing agreements that are currently active.' },
           { label: 'Companies with pricing', value: String(companiesWithPricing), help: 'Number of companies that currently have pricing created from the app assigned.' },
-          { label: 'Order value using B2B pricing', value: money(b2bValue), sub: `${Math.round(b2bValueShare)}% of order value`, help: 'Order value from lines that used pricing created from the app when the order was created.' },
+          { label: 'Order value using B2B pricing', value: money(b2bValue), delta: b2bValueDelta ? <DeltaChip v={b2bValueDelta} /> : null, sub: `${Math.round(b2bValueShare)}% of order value`, help: 'Order value from lines that used pricing created from the app when the order was created.' },
         ]}
       />
 

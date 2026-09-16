@@ -46,9 +46,14 @@ const timelineDate = (label, year) => {
   return mi < 0 ? null : new Date(year, mi, Number(m[2]));
 };
 
-function DeltaChip({ v }) {
+// `suffix` is the unit ('%' for changes, ' pp' for percentage-point diffs). `goodDown` flips the
+// colour for metrics where a decrease is good (time-to-decision, below-margin value, lost quotes).
+function DeltaChip({ v, suffix = '%', goodDown = false }) {
   if (v == null) return null;
-  return <Text as="span" variant="bodySm" tone={v > 0 ? 'success' : v < 0 ? 'critical' : 'subdued'}>{`${v > 0 ? '↑ ' : v < 0 ? '↓ ' : ''}${Math.abs(v)}%`}</Text>;
+  const up = v > 0, down = v < 0;
+  const good = goodDown ? down : up;
+  const bad = goodDown ? up : down;
+  return <Text as="span" variant="bodySm" tone={good ? 'success' : bad ? 'critical' : 'subdued'}>{`${up ? '↑ ' : down ? '↓ ' : ''}${Math.abs(v)}${suffix}`}</Text>;
 }
 function Stat({ label, value, sub, help, tone, delta }) {
   return (
@@ -206,6 +211,20 @@ export function CompanyAnalytics({ company }) {
     const d = first ? timelineDate(first.when, toDate(created).getFullYear()) : null;
     return d ? Math.max(0, (d - toDate(created)) / DAY) : null;
   }).filter((x) => x != null));
+  // ── previous-period comparisons (Compare = previous → drive delta chips across every tab) ─────
+  const dPct = (cur, prev) => (cmp ? pctChange(cur, prev) : null); // % change, gated on Compare
+  const dPP = (cur, prev) => (cmp && cur != null && prev != null ? Math.round(cur - prev) : null); // pp diff
+  const prevQuotes = companyQuotes.filter((q) => inPrev(q.created));
+  const prevWonN = prevQuotes.filter((q) => q.status === 'Deal Closed').length;
+  const prevLostN = prevQuotes.filter((q) => q.status === 'Deal Rejected').length;
+  const prevFinalized = prevWonN + prevLostN;
+  const prevWinRate = prevFinalized ? Math.round((prevWonN / prevFinalized) * 100) : null;
+  const prevDecisionMedian = median(prevQuotes.filter((q) => FINALIZED.has(q.status)).map((q) => { const c = String(q.created || '').slice(0, 10); const r = resolvedAt(q); return c && r ? Math.max(0, daysBetween(c, r)) : null; }).filter((x) => x != null));
+  const quotesCreatedDelta = dPct(periodQuotes.length, prevQuotes.length);
+  const wonDelta = dPct(wonP.length, prevWonN);
+  const lostDelta = dPct(lostP.length, prevLostN);
+  const winRateDelta = dPP(winRateCount, prevWinRate);
+  const decisionDelta = decisionMedian != null && prevDecisionMedian ? dPct(decisionMedian, prevDecisionMedian) : null;
   const lastActivity = (q) => { const ds = (q.timeline || []).map((e) => timelineDate(e.when, toDate(String(q.created || '')).getFullYear())).filter(Boolean); const latest = ds.length ? new Date(Math.max(...ds.map((d) => d.getTime()))) : toDate(String(q.updated || q.created || '')); return latest ? Math.max(0, Math.round((TODAY - latest) / DAY)) : null; };
   const quoteAge = (q) => { const c = String(q.created || '').slice(0, 10); return c ? Math.max(0, daysAgo(c)) : 0; };
   const staleOpen = openQuotes.filter((q) => (lastActivity(q) ?? 0) > 10);
@@ -264,6 +283,19 @@ export function CompanyAnalytics({ company }) {
   const companyProfiles = pricingProfileRows(attributedLines, productBySku);
   const exceptionLines = attributedLines.filter((s) => s.lineCost !== null && s.lineValue && ((s.lineValue - s.lineCost) / s.lineValue) * 100 < marginFloor);
   const exceptionValue = exceptionLines.reduce((a, s) => a + s.lineValue, 0);
+  // Previous-period pricing (for delta chips on the Pricing tab).
+  const prevLines = buildAttributedLines(prevOrders, productCost);
+  const prevEcon = appliedEconomics(prevLines);
+  const prevB2bOrderIds = new Set(prevLines.filter((s) => s.isB2B).map((s) => s.order.id));
+  const prevAdoptionOrders = prevOrders.length ? Math.round((prevB2bOrderIds.size / prevOrders.length) * 100) : null;
+  const prevB2bEcon = appliedEconomics(prevLines, (s) => s.isB2B);
+  const prevAdoptionValue = prevEcon.value ? Math.round((prevB2bEcon.value / prevEcon.value) * 100) : null;
+  const prevExceptionValue = prevLines.filter((s) => s.lineCost !== null && s.lineValue && ((s.lineValue - s.lineCost) / s.lineValue) * 100 < marginFloor).reduce((a, s) => a + s.lineValue, 0);
+  const marginDelta = dPP(marginAtCreation == null ? null : Math.round(marginAtCreation * 10) / 10, prevEcon.margin == null ? null : Math.round(prevEcon.margin * 10) / 10);
+  const orderValueDelta = dPct(allEcon.value, prevEcon.value);
+  const adoptionOrdersDelta = dPP(adoptionOrders, prevAdoptionOrders);
+  const adoptionValueDelta = dPP(adoptionValue, prevAdoptionValue);
+  const exceptionDelta = dPct(exceptionValue, prevExceptionValue);
 
   // ── attention signals ────────────────────────────────────────────────────────
   const attention = [];
@@ -399,7 +431,7 @@ export function CompanyAnalytics({ company }) {
           <Stat label="Typical reorder" value={typical == null ? '—' : `${typical} days`} help="How long this company typically goes between orders." />
           <Stat label="Last order" value={since == null ? '—' : `${since} days ago`} sub={last ? fmtDate(last) : undefined} help="How long ago this company placed its most recent order." />
           <Stat label="Current gap" value={ratio == null ? '—' : `${ratio.toFixed(1)}× usual`} tone={ratio != null && ratio > 1.5 ? 'critical' : undefined} help="How the time since the last order compares with this company's usual reorder interval." />
-          <Stat label="Orders in period" value={String(curS.n)} help="Number of orders placed in the selected period." />
+          <Stat label="Orders in period" value={String(curS.n)} delta={<DeltaChip v={ordersDelta} />} help="Number of orders placed in the selected period." />
           <Stat label="Total orders" value={`${allCompleted.length}`} help="Total number of past orders for this company." />
           <Stat label="Largest order" value={money(largest)} help="The largest order this company has placed." />
           <Stat label="Median order value" value={money0(medianOrder)} help="The typical order size for this company, using the middle value across its order history." />
@@ -450,7 +482,7 @@ export function CompanyAnalytics({ company }) {
         <InlineGrid columns={{ xs: 2, sm: 4 }} gap="400">
           <Stat label="Open quote value" value={money(openQuoteValue)} sub="Current snapshot" help="Total value of this company's quotes that are still open. This is a current snapshot." />
           <Stat label="Open quotes" value={String(openQuotes.length)} help="Number of quotes that are still open and have not yet been won or lost." />
-          <Stat label="Win rate" value={winRateCount == null ? '—' : `${winRateCount}%`} sub="by count, in period" help="Share of this company's decided quotes that were won in the selected period." />
+          <Stat label="Win rate" value={winRateCount == null ? '—' : `${winRateCount}%`} delta={<DeltaChip v={winRateDelta} suffix=" pp" />} sub="by count, in period" help="Share of this company's decided quotes that were won in the selected period." />
           <Stat label="First response time" value={fmtDur(responseMedian)} help="How long this company's quotes typically take to receive their first price or reply." />
         </InlineGrid>
       </Card>
@@ -477,11 +509,11 @@ export function CompanyAnalytics({ company }) {
 
       <SectionCard title="Quote outcomes" subtitle="How this company's quotes turned out in the selected period." help="Summarizes quotes created for this company, how many were won or lost, and how long decided quotes typically took to close.">
         <InlineGrid columns={{ xs: 2, sm: 4 }} gap="400">
-          <Stat label="Quotes created" value={String(periodQuotes.length)} help="Number of quotes created for this company in the selected period." />
-          <Stat label="Won" value={String(wonP.length)} help="Number of quotes that ended as won in the selected period." />
-          <Stat label="Lost" value={String(lostP.length)} help="Number of quotes that ended as lost in the selected period." />
-          <Stat label="Win rate by count" value={winRateCount == null ? '—' : `${winRateCount}%`} help="Share of decided quotes that were won." />
-          <Stat label="Typical time to decision" value={fmtDur(decisionMedian)} help="How long a quote typically takes to be won or lost after it is created." />
+          <Stat label="Quotes created" value={String(periodQuotes.length)} delta={<DeltaChip v={quotesCreatedDelta} />} help="Number of quotes created for this company in the selected period." />
+          <Stat label="Won" value={String(wonP.length)} delta={<DeltaChip v={wonDelta} />} help="Number of quotes that ended as won in the selected period." />
+          <Stat label="Lost" value={String(lostP.length)} delta={<DeltaChip v={lostDelta} goodDown />} help="Number of quotes that ended as lost in the selected period." />
+          <Stat label="Win rate by count" value={winRateCount == null ? '—' : `${winRateCount}%`} delta={<DeltaChip v={winRateDelta} suffix=" pp" />} help="Share of decided quotes that were won." />
+          <Stat label="Typical time to decision" value={fmtDur(decisionMedian)} delta={<DeltaChip v={decisionDelta} goodDown />} help="How long a quote typically takes to be won or lost after it is created." />
         </InlineGrid>
       </SectionCard>
 
@@ -510,16 +542,16 @@ export function CompanyAnalytics({ company }) {
       <Card>
         <InlineGrid columns={{ xs: 2, sm: 4 }} gap="400">
           <Stat label="B2B price vs Shopify" value={vsShopify == null ? '—' : signedPct(vsShopify)} sub="on B2B-priced lines" help="How much lower or higher this company's B2B prices are than its regular Shopify prices." />
-          <Stat label="Margin at order creation" value={pct1(marginAtCreation)} sub="costed lines" help="Profit margin based on the price and product cost recorded when each order was placed. Items without cost data are excluded." />
-          <Stat label="Order value" value={money(allEcon.value)} sub="in selected period" help="Total value of this company's order lines in the selected period." />
-          <Stat label={`Order value below ${marginFloor}% margin`} value={money(exceptionValue)} sub={`${exceptionLines.length} line${exceptionLines.length === 1 ? '' : 's'}`} help="Total value of items sold below your selected profit-margin threshold." />
+          <Stat label="Margin at order creation" value={pct1(marginAtCreation)} delta={<DeltaChip v={marginDelta} suffix=" pp" />} sub="costed lines" help="Profit margin based on the price and product cost recorded when each order was placed. Items without cost data are excluded." />
+          <Stat label="Order value" value={money(allEcon.value)} delta={<DeltaChip v={orderValueDelta} />} sub="in selected period" help="Total value of this company's order lines in the selected period." />
+          <Stat label={`Order value below ${marginFloor}% margin`} value={money(exceptionValue)} delta={<DeltaChip v={exceptionDelta} goodDown />} sub={`${exceptionLines.length} line${exceptionLines.length === 1 ? '' : 's'}`} help="Total value of items sold below your selected profit-margin threshold." />
         </InlineGrid>
       </Card>
 
       <SectionCard title="B2B pricing usage" subtitle="How much of this company's purchasing used B2B pricing in the selected period." help="Shows both how many orders used B2B pricing and how much order value actually came from B2B-priced items.">
         <InlineGrid columns={{ xs: 1, sm: 2 }} gap="400">
-          <Stat label="Orders using B2B pricing" value={adoptionOrders == null ? '—' : `${adoptionOrders}%`} sub={`${b2bOrderIds.size} of ${periodOrders.length} orders`} help="Share of this company's orders where at least one item used B2B pricing." />
-          <Stat label="Order value using B2B pricing" value={adoptionValue == null ? '—' : `${adoptionValue}%`} sub={`${money(b2bEcon.value)} of ${money(allEcon.value)} order value`} help="Share of this company's order value that came from items using B2B pricing." />
+          <Stat label="Orders using B2B pricing" value={adoptionOrders == null ? '—' : `${adoptionOrders}%`} delta={<DeltaChip v={adoptionOrdersDelta} suffix=" pp" />} sub={`${b2bOrderIds.size} of ${periodOrders.length} orders`} help="Share of this company's orders where at least one item used B2B pricing." />
+          <Stat label="Order value using B2B pricing" value={adoptionValue == null ? '—' : `${adoptionValue}%`} delta={<DeltaChip v={adoptionValueDelta} suffix=" pp" />} sub={`${money(b2bEcon.value)} of ${money(allEcon.value)} order value`} help="Share of this company's order value that came from items using B2B pricing." />
         </InlineGrid>
         <Text as="p" variant="bodyMd">{adoptionSummary}</Text>
       </SectionCard>

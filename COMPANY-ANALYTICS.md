@@ -29,7 +29,9 @@
 | Khái niệm | Định nghĩa |
 |---|---|
 | **Date range** | `period` ∈ {30d, 3m, 6m, 12m}, mặc định 3m. `rangeStart..TODAY`. |
-| **Compare** | `previous` (mặc định) → kỳ trước cùng độ dài ngay liền trước (`prevStart..prevEnd`); `none` → tắt delta. |
+| **Compare** | `previous` (mặc định) → kỳ trước cùng độ dài ngay liền trước (`prevStart..prevEnd`); `none` → tắt mọi delta. **Control GLOBAL** (cạnh Date range). **Rule delta (quan trọng, nhất quán):** *mọi metric THEO KỲ đều có delta vs previous; metric snapshot/all-time thì KHÔNG BAO GIỜ* (theo bản chất, không phải bỏ sót). |
+| ↳ **Period metric (CÓ delta)** | Overview: Net sales / Orders / Average order value (+ contextual sentence). Buying: Orders in period (+ Purchase trend prev↔cur). Quotes: Win rate · Quotes created / Won / Lost / Win rate by count / Typical time to decision. Pricing: Margin at order creation · Order value · Order value below margin · Orders/Order-value using B2B pricing. Delta = **`% change`** cho count/$ (`dPct`), **`pp` diff** cho metric % (`dPP`); màu **đảo** (`goodDown`) cho metric "giảm là tốt" (Lost, Typical time to decision, Order value below margin). |
+| ↳ **Snapshot / all-time (KHÔNG delta)** | Open quote value, Open quotes (current-state) · Relationship state: Typical reorder / Last order / Current gap / Order history · Buying rhythm order-profile: Total orders / Largest order / Median order value / Products per order (lifetime — thêm delta sẽ đổi nghĩa) · First response time (running median) · B2B price vs Shopify (bản thân đã là "vs"). |
 | **Completed order** | `status ∈ {Fulfilled, Paid}`. `allCompleted` = mọi completed order của company, sort tăng theo date. |
 | **`periodOrders` / `prevOrders`** | `allCompleted` lọc trong kỳ / kỳ trước. |
 | **PERIOD vs SNAPSHOT** | Net sales/Orders/AOV, negotiation history, pricing health… theo **kỳ**. **Open quote value** và **Relationship state** là **current snapshot** (bỏ date range) — có microcopy *"Current snapshot · not affected by date range"*. |
