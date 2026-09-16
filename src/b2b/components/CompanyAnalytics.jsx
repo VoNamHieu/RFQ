@@ -4,6 +4,7 @@ import { useStore } from '../store.jsx';
 import { money } from '../format.js';
 import { moneyShort, LineChart, RankBars } from './charts.jsx';
 import { buildAttributedLines, pricingProfileRows, appliedEconomics } from '../pricingAttribution.js';
+import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import { analyticsPricingChanges, analyticsQuantityEvents, analyticsOrderItems } from '../data/analytics.js';
 
 // ── Company Analytics — account intelligence: everything compares the company with ITS OWN
@@ -122,6 +123,7 @@ export function CompanyAnalytics({ company }) {
   const [period, setPeriod] = useState('3m');
   const [compare, setCompare] = useState('previous');
   const [marginFloor, setMarginFloor] = useState(MARGIN_FLOOR); // merchant-adjustable margin threshold
+  const [devEmpty, setDevEmpty] = useState(false); // dev-only: preview the empty state on a company that has data
 
   const products = state.db.products || [];
   const allQuotes = state.db.quotes || [];
@@ -603,16 +605,46 @@ export function CompanyAnalytics({ company }) {
   );
 
   const body = [overview, buying, quotes, pricing][tab];
+  // Empty state: this company has never ordered AND has no quotes, so every tab would be blank.
+  const isEmpty = !allCompleted.length && !companyQuotes.length;
+  const showEmpty = isEmpty || devEmpty;
   return (
     <BlockStack gap="400">
-      <Card>
-        <InlineStack gap="300" blockAlign="end" wrap>
-          <div style={{ minWidth: 160 }}><Select label="Date range" options={[{ label: 'Last 30 days', value: '30d' }, { label: 'Last 3 months', value: '3m' }, { label: 'Last 6 months', value: '6m' }, { label: 'Last 12 months', value: '12m' }]} value={period} onChange={setPeriod} /></div>
-          <div style={{ minWidth: 170 }}><Select label="Compare" options={[{ label: 'Previous period', value: 'previous' }, { label: 'No comparison', value: 'none' }]} value={compare} onChange={setCompare} /></div>
-        </InlineStack>
-      </Card>
-      <Card padding="0"><Tabs tabs={tabs} selected={tab} onSelect={setTab} /></Card>
-      {body}
+      {import.meta.env.DEV && (
+        <Box background="bg-surface-secondary" borderColor="border" borderWidth="025" borderRadius="200" padding="200">
+          <InlineStack gap="200" blockAlign="center" wrap>
+            <Badge tone="info">Dev</Badge>
+            <Text as="span" variant="bodySm" tone="subdued">
+              {isEmpty
+                ? 'This company has no orders or quotes, so analytics is showing its empty state.'
+                : devEmpty
+                ? 'Previewing the empty state — this company actually has data.'
+                : 'Preview the analytics empty state (how it looks for a company with no orders or quotes).'}
+            </Text>
+            <Button size="slim" pressed={devEmpty} disabled={isEmpty} onClick={() => setDevEmpty((v) => !v)}>
+              {devEmpty ? 'Show data' : 'Preview empty state'}
+            </Button>
+          </InlineStack>
+        </Box>
+      )}
+      {showEmpty ? (
+        <Card>
+          <EmptyBlock heading="No analytics for this company yet">
+            This company hasn't placed any orders or received any quotes in your B2B app yet. Its buying rhythm, quotes, and pricing performance will appear here once there's activity.
+          </EmptyBlock>
+        </Card>
+      ) : (
+        <>
+          <Card>
+            <InlineStack gap="300" blockAlign="end" wrap>
+              <div style={{ minWidth: 160 }}><Select label="Date range" options={[{ label: 'Last 30 days', value: '30d' }, { label: 'Last 3 months', value: '3m' }, { label: 'Last 6 months', value: '6m' }, { label: 'Last 12 months', value: '12m' }]} value={period} onChange={setPeriod} /></div>
+              <div style={{ minWidth: 170 }}><Select label="Compare" options={[{ label: 'Previous period', value: 'previous' }, { label: 'No comparison', value: 'none' }]} value={compare} onChange={setCompare} /></div>
+            </InlineStack>
+          </Card>
+          <Card padding="0"><Tabs tabs={tabs} selected={tab} onSelect={setTab} /></Card>
+          {body}
+        </>
+      )}
     </BlockStack>
   );
 }

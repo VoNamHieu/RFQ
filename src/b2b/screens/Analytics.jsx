@@ -23,6 +23,7 @@ import { money } from '../format.js';
 import { LineChart, VBarChart, StackedBar, FunnelV2, RankBars, Timeline, moneyShort } from '../components/charts.jsx';
 import { resolveDetail, defaultVariant } from '../pricing.js';
 import { buildAttributedLines, pricingProfileRows } from '../pricingAttribution.js';
+import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import {
   analyticsOrderItems,
   analyticsCompanyActivation,
@@ -335,6 +336,7 @@ export function Analytics({ embeddedCompanyId = null }) {
   const [marginThreshold, setMarginThreshold] = useState('20'); // §6.1 margin-exception threshold
   const [devInject, setDevInject] = useState(false); // dev-only: inject event-basis test data (returns/discounts)
   const [devMissingCost, setDevMissingCost] = useState(false); // dev-only: strip one SKU's cost to demo coverage disclosures
+  const [devEmpty, setDevEmpty] = useState(false); // dev-only: preview the empty state while data exists
 
   const activeCompanyId = embeddedCompanyId || companyFilter;
   const scopedCompanies = activeCompanyId === 'all' ? companies.slice() : companies.filter((c) => c.id === activeCompanyId);
@@ -1904,11 +1906,28 @@ export function Analytics({ embeddedCompanyId = null }) {
 
   const tabContent = [overviewTab, companiesTab, quotesTab, pricingTab][tab];
 
+  // Empty state: no B2B orders anywhere and no quotes at all (a brand-new merchant).
+  const isEmpty = !companies.some((c) => (c.orders || []).length > 0) && !allQuotes.length;
+  const showEmpty = isEmpty || devEmpty;
+
   const content = (
     <BlockStack gap="400">
       {import.meta.env.DEV && (
         <Box background="bg-surface-secondary" borderColor="border" borderWidth="025" borderRadius="200" padding="200">
           <BlockStack gap="200">
+            <InlineStack gap="200" blockAlign="center" wrap>
+              <Badge tone="info">Dev</Badge>
+              <Text as="span" variant="bodySm" tone="subdued">
+                {isEmpty
+                  ? 'No B2B orders or quotes exist, so Analytics is showing its empty state.'
+                  : devEmpty
+                  ? 'Previewing the empty state — B2B data actually exists.'
+                  : 'Preview the Analytics empty state (how it looks for a brand-new merchant with no orders or quotes).'}
+              </Text>
+              <Button size="slim" pressed={devEmpty} disabled={isEmpty} onClick={() => setDevEmpty((v) => !v)}>
+                {devEmpty ? 'Show data' : 'Preview empty state'}
+              </Button>
+            </InlineStack>
             <InlineStack gap="200" blockAlign="center" wrap>
               <Badge tone="info">Dev</Badge>
               <Text as="span" variant="bodySm" tone="subdued">
@@ -1934,30 +1953,40 @@ export function Analytics({ embeddedCompanyId = null }) {
           </BlockStack>
         </Box>
       )}
-      <Card>
-        <BlockStack gap="300">
-          <InlineStack gap="300" wrap blockAlign="end">
-            <div style={{ minWidth: 150 }}><Select label="Date range" options={periodOptions} value={period} onChange={setPeriod} /></div>
-            {period === 'custom' && (
-              <>
-                <div style={{ minWidth: 150 }}><TextField label="Start date" type="date" value={customStart} onChange={setCustomStart} autoComplete="off" /></div>
-                <div style={{ minWidth: 150 }}><TextField label="End date" type="date" value={customEnd} onChange={setCustomEnd} autoComplete="off" /></div>
-              </>
-            )}
-            <div style={{ minWidth: 160 }}><Select label="Compare to" options={compareOptions} value={compare} onChange={setCompare} /></div>
-            {!embeddedCompanyId && <div style={{ minWidth: 190 }}><Select label="Company" options={companyOptions} value={companyFilter} onChange={setCompanyFilter} /></div>}
-          </InlineStack>
-          <InlineStack align="space-between" blockAlign="center" gap="200" wrap>
-            <Text as="span" tone="subdued" variant="bodySm">{scopeText}</Text>
-            {showClear && <Button variant="tertiary" onClick={clearFilters}>Clear filters</Button>}
-          </InlineStack>
-        </BlockStack>
-      </Card>
+      {showEmpty ? (
+        <Card>
+          <EmptyBlock heading="No B2B analytics yet">
+            You don't have any B2B orders or quotes yet. Once your companies start ordering or you send quotes, performance across companies, quotes and pricing will appear here.
+          </EmptyBlock>
+        </Card>
+      ) : (
+        <>
+          <Card>
+            <BlockStack gap="300">
+              <InlineStack gap="300" wrap blockAlign="end">
+                <div style={{ minWidth: 150 }}><Select label="Date range" options={periodOptions} value={period} onChange={setPeriod} /></div>
+                {period === 'custom' && (
+                  <>
+                    <div style={{ minWidth: 150 }}><TextField label="Start date" type="date" value={customStart} onChange={setCustomStart} autoComplete="off" /></div>
+                    <div style={{ minWidth: 150 }}><TextField label="End date" type="date" value={customEnd} onChange={setCustomEnd} autoComplete="off" /></div>
+                  </>
+                )}
+                <div style={{ minWidth: 160 }}><Select label="Compare to" options={compareOptions} value={compare} onChange={setCompare} /></div>
+                {!embeddedCompanyId && <div style={{ minWidth: 190 }}><Select label="Company" options={companyOptions} value={companyFilter} onChange={setCompanyFilter} /></div>}
+              </InlineStack>
+              <InlineStack align="space-between" blockAlign="center" gap="200" wrap>
+                <Text as="span" tone="subdued" variant="bodySm">{scopeText}</Text>
+                {showClear && <Button variant="tertiary" onClick={clearFilters}>Clear filters</Button>}
+              </InlineStack>
+            </BlockStack>
+          </Card>
 
-      <Card padding="0">
-        <Tabs tabs={tabs} selected={tab} onSelect={setTab} />
-        <Box padding="400">{tabContent}</Box>
-      </Card>
+          <Card padding="0">
+            <Tabs tabs={tabs} selected={tab} onSelect={setTab} />
+            <Box padding="400">{tabContent}</Box>
+          </Card>
+        </>
+      )}
     </BlockStack>
   );
 

@@ -35,6 +35,7 @@
 | **PERIOD vs SNAPSHOT** | Net sales/Orders/AOV, negotiation history, pricing health… theo **kỳ**. **Open quote value** và **Relationship state** là **current snapshot** (bỏ date range) — có microcopy *"Current snapshot · not affected by date range"*. |
 | **4 tab** | Overview / Buying / Quotes / Pricing (`Tabs`, state `tab`). |
 | **Tooltips** | **Mọi** header section (`SectionCard` prop `help`) và **mọi** KPI (`Stat` prop `help`) đều có tooltip **business-language** (gạch chân chấm, hover) — tránh biệt ngữ (không "resolved price", "costed lines", "line-level"…); nói theo góc merchant ("your regular Shopify prices", "profit margin", "the pricing you set for this company"). |
+| **Empty state** | Khi company **chưa có order VÀ chưa có quote** (`isEmpty = !allCompleted.length && !companyQuotes.length`) → thay toàn bộ controls + tabs bằng `EmptyBlock` (heading *"No analytics for this company yet"* — dùng shared `EmptyBlock`, không dùng Polaris `EmptyState` để tránh skeleton flash). **Dev toggle** (`import.meta.env.DEV` only, badge "Dev"): nút *"Preview empty state" / "Show data"* (`devEmpty`) để xem empty state trên company có data — cần vì không demo company nào rỗng hoàn toàn (đều có ≥2 quote). |
 
 ---
 
