@@ -41,7 +41,7 @@ const fmt = (v, prefix = '$') => prefix + Math.round(v).toLocaleString('en-US');
 
 // Sales-over-time line chart with area, dots, hover value label and an optional
 // dashed "previous period" comparison series (legacy renderAnalytics trendSvg).
-export function LineChart({ data, compare = null, height = 200, prefix = '$', label = 'Sales over time' }) {
+export function LineChart({ data, compare = null, height = 200, prefix = '$', label = 'Sales over time', empty = null }) {
   const [ref, measured] = useMeasure();
   const [hover, setHover] = useState(null);
   const hasCompare = Array.isArray(compare) && compare.length > 0;
@@ -53,6 +53,11 @@ export function LineChart({ data, compare = null, height = 200, prefix = '$', la
   const compareVals = hasCompare ? data.map((_, i) => Number(compare[i]?.value ?? compare[i] ?? 0)) : [];
   // Keep only points with a known value — an unknown (null) bucket is a gap, not a 0.
   const pts = data.map((d, i) => ({ i, v: d.value })).filter((p) => p.v != null);
+  // Per-block empty state: when there's nothing to plot (no points, or every point is 0), show a
+  // calm placeholder at the chart's height instead of a flat line pinned to the axis.
+  if (empty && (!pts.length || pts.every((p) => !Number(p.v)))) {
+    return <div style={{ height: h, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Text as="p" tone="subdued" variant="bodySm">{empty}</Text></div>;
+  }
   const max = Math.max(1, ...pts.map((p) => p.v), ...compareVals);
   const x = (i) => pad.l + (data.length <= 1 ? iw / 2 : (i / (data.length - 1)) * iw);
   const y = (v) => pad.t + ih - (v / max) * ih;

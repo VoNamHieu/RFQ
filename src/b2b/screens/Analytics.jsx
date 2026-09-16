@@ -13,6 +13,7 @@ import {
   Tabs,
   IndexTable,
   Badge,
+  Banner,
   Button,
   Tooltip,
   Icon,
@@ -23,7 +24,6 @@ import { money } from '../format.js';
 import { LineChart, VBarChart, StackedBar, FunnelV2, RankBars, Timeline, moneyShort } from '../components/charts.jsx';
 import { resolveDetail, defaultVariant } from '../pricing.js';
 import { buildAttributedLines, pricingProfileRows } from '../pricingAttribution.js';
-import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import {
   analyticsOrderItems,
   analyticsCompanyActivation,
@@ -341,7 +341,14 @@ export function Analytics({ embeddedCompanyId = null }) {
   const [devEmpty, setDevEmpty] = useState(false); // dev-only: preview the empty state while data exists
 
   const activeCompanyId = embeddedCompanyId || companyFilter;
-  const scopedCompanies = activeCompanyId === 'all' ? companies.slice() : companies.filter((c) => c.id === activeCompanyId);
+  // Empty state: no B2B orders anywhere and no quotes at all (or the dev "Preview empty state"
+  // toggle is on). Zeroing the source data — orders, quotes and the event feeds — makes every
+  // block render its own per-block empty state (empty charts, "—" KPIs, "No … yet" tables) while
+  // the whole dashboard layout, controls and tabs stay put.
+  const genuinelyEmpty = !companies.some((c) => (c.orders || []).length > 0) && !allQuotes.length;
+  const showEmpty = genuinelyEmpty || devEmpty;
+  const scopedBase = activeCompanyId === 'all' ? companies.slice() : companies.filter((c) => c.id === activeCompanyId);
+  const scopedCompanies = showEmpty ? scopedBase.map((c) => ({ ...c, orders: [] })) : scopedBase;
   const selected = activeCompanyId === 'all' ? null : scopedCompanies[0] || null;
   const scopedIds = new Set(scopedCompanies.map((c) => c.id));
 
@@ -414,12 +421,12 @@ export function Analytics({ embeddedCompanyId = null }) {
   const orders = allScopedOrders.filter((o) => inPeriod(o.date));
   const previousOrders = compareEnabled ? allScopedOrders.filter((o) => inDateRange(o.date, previousPeriodStart, previousPeriodEnd)) : [];
 
-  const quotes = allQuotes.filter((q) => scopedIds.has(q.company) && inPeriod(q.created));
+  const quotes = showEmpty ? [] : allQuotes.filter((q) => scopedIds.has(q.company) && inPeriod(q.created));
 
   // Snapshot quotes: every scoped quote regardless of when it was created. Open value is
   // a current-state metric, so it ignores the DATE RANGE (a quote opened 5 months ago but
   // still open must appear). Company scope still applies.
-  const snapshotQuotes = allQuotes.filter((q) => scopedIds.has(q.company));
+  const snapshotQuotes = showEmpty ? [] : allQuotes.filter((q) => scopedIds.has(q.company));
 
   const sales = orders.reduce((a, o) => a + (Number(o.amount) || 0), 0);
   const orderCount = orders.length;
@@ -794,7 +801,7 @@ export function Analytics({ embeddedCompanyId = null }) {
     : 0;
 
   // ── activation ──────────────────────────────────────────────────────────────
-  let activationRows = analyticsCompanyActivation.filter((a) => inPeriod(a.registered));
+  let activationRows = showEmpty ? [] : analyticsCompanyActivation.filter((a) => inPeriod(a.registered));
   if (selected) activationRows = activationRows.filter((a) => a.companyId === selected.id);
   const activationApproved = activationRows.filter((a) => a.approved);
   const activationPurchased = activationRows.filter((a) => a.firstOrder);
@@ -909,7 +916,7 @@ export function Analytics({ embeddedCompanyId = null }) {
   const winWithoutPricing = winRateOf(withoutPricing);
 
   // ── quantity rules / pricing changes ────────────────────────────────────────
-  const quantityEvents = analyticsQuantityEvents.filter((e) => inPeriod(e.date) && (activeCompanyId === 'all' || e.companyId === activeCompanyId));
+  const quantityEvents = showEmpty ? [] : analyticsQuantityEvents.filter((e) => inPeriod(e.date) && (activeCompanyId === 'all' || e.companyId === activeCompanyId));
   // §6.6 = quantity-pricing EFFECTIVENESS only: of the purchases eligible for a tier, how many
   // reached it (reach rate), the order value that went through tiers, and the discount realized.
   // The friction/potential/behavior signals (MOQ-blocked demand, near-threshold, later-recovered)
@@ -932,7 +939,7 @@ export function Analytics({ embeddedCompanyId = null }) {
     const reached = es.filter((e) => e.reached);
     return { name, eligible: es.length, reached: reached.length, reachRate: es.length ? (reached.length / es.length) * 100 : null, orderValue: reached.reduce((a, e) => a + (Number(e.orderValue) || 0), 0), discount: wDiscount(reached) };
   });
-  const ruleChanges = analyticsPricingChanges.filter((r) => activeCompanyId === 'all' || r.companyId === activeCompanyId);
+  const ruleChanges = showEmpty ? [] : analyticsPricingChanges.filter((r) => activeCompanyId === 'all' || r.companyId === activeCompanyId);
 
   // ── filter option lists ─────────────────────────────────────────────────────
   const companyOptions = [{ label: 'All companies', value: 'all' }, ...companies.map((c) => ({ label: c.name, value: c.id }))];
@@ -1135,6 +1142,7 @@ export function Analytics({ embeddedCompanyId = null }) {
         <LineChart
           data={overviewSeries.map((b) => ({ label: b.label, value: seriesVal(b) }))}
           compare={compareEnabled ? overviewPrevSeries.map((b) => ({ label: b.label, value: seriesVal(b) })) : null}
+          empty="No completed sales in this period yet."
         />
       </ReportCard>
 
@@ -1908,10 +1916,6 @@ export function Analytics({ embeddedCompanyId = null }) {
 
   const tabContent = [overviewTab, companiesTab, quotesTab, pricingTab][tab];
 
-  // Empty state: no B2B orders anywhere and no quotes at all (a brand-new merchant).
-  const isEmpty = !companies.some((c) => (c.orders || []).length > 0) && !allQuotes.length;
-  const showEmpty = isEmpty || devEmpty;
-
   const content = (
     <BlockStack gap="400">
       {SHOW_DEV_TOOLS && (
@@ -1920,13 +1924,13 @@ export function Analytics({ embeddedCompanyId = null }) {
             <InlineStack gap="200" blockAlign="center" wrap>
               <Badge tone="info">Dev</Badge>
               <Text as="span" variant="bodySm" tone="subdued">
-                {isEmpty
+                {genuinelyEmpty
                   ? 'No B2B orders or quotes exist, so Analytics is showing its empty state.'
                   : devEmpty
                   ? 'Previewing the empty state — B2B data actually exists.'
                   : 'Preview the Analytics empty state (how it looks for a brand-new merchant with no orders or quotes).'}
               </Text>
-              <Button size="slim" pressed={devEmpty} disabled={isEmpty} onClick={() => setDevEmpty((v) => !v)}>
+              <Button size="slim" pressed={devEmpty} disabled={genuinelyEmpty} onClick={() => setDevEmpty((v) => !v)}>
                 {devEmpty ? 'Show data' : 'Preview empty state'}
               </Button>
             </InlineStack>
@@ -1955,40 +1959,35 @@ export function Analytics({ embeddedCompanyId = null }) {
           </BlockStack>
         </Box>
       )}
-      {showEmpty ? (
-        <Card>
-          <EmptyBlock heading="No B2B analytics yet">
-            You don't have any B2B orders or quotes yet. Once your companies start ordering or you send quotes, performance across companies, quotes and pricing will appear here.
-          </EmptyBlock>
-        </Card>
-      ) : (
-        <>
-          <Card>
-            <BlockStack gap="300">
-              <InlineStack gap="300" wrap blockAlign="end">
-                <div style={{ minWidth: 150 }}><Select label="Date range" options={periodOptions} value={period} onChange={setPeriod} /></div>
-                {period === 'custom' && (
-                  <>
-                    <div style={{ minWidth: 150 }}><TextField label="Start date" type="date" value={customStart} onChange={setCustomStart} autoComplete="off" /></div>
-                    <div style={{ minWidth: 150 }}><TextField label="End date" type="date" value={customEnd} onChange={setCustomEnd} autoComplete="off" /></div>
-                  </>
-                )}
-                <div style={{ minWidth: 160 }}><Select label="Compare to" options={compareOptions} value={compare} onChange={setCompare} /></div>
-                {!embeddedCompanyId && <div style={{ minWidth: 190 }}><Select label="Company" options={companyOptions} value={companyFilter} onChange={setCompanyFilter} /></div>}
-              </InlineStack>
-              <InlineStack align="space-between" blockAlign="center" gap="200" wrap>
-                <Text as="span" tone="subdued" variant="bodySm">{scopeText}</Text>
-                {showClear && <Button variant="tertiary" onClick={clearFilters}>Clear filters</Button>}
-              </InlineStack>
-            </BlockStack>
-          </Card>
-
-          <Card padding="0">
-            <Tabs tabs={tabs} selected={tab} onSelect={setTab} />
-            <Box padding="400">{tabContent}</Box>
-          </Card>
-        </>
+      {showEmpty && (
+        <Banner tone="info">
+          You don't have any B2B orders or quotes yet. As your companies start ordering and you send quotes, performance across companies, quotes and pricing will fill in below.
+        </Banner>
       )}
+      <Card>
+        <BlockStack gap="300">
+          <InlineStack gap="300" wrap blockAlign="end">
+            <div style={{ minWidth: 150 }}><Select label="Date range" options={periodOptions} value={period} onChange={setPeriod} disabled={showEmpty} /></div>
+            {period === 'custom' && (
+              <>
+                <div style={{ minWidth: 150 }}><TextField label="Start date" type="date" value={customStart} onChange={setCustomStart} autoComplete="off" /></div>
+                <div style={{ minWidth: 150 }}><TextField label="End date" type="date" value={customEnd} onChange={setCustomEnd} autoComplete="off" /></div>
+              </>
+            )}
+            <div style={{ minWidth: 160 }}><Select label="Compare to" options={compareOptions} value={compare} onChange={setCompare} disabled={showEmpty} /></div>
+            {!embeddedCompanyId && <div style={{ minWidth: 190 }}><Select label="Company" options={companyOptions} value={companyFilter} onChange={setCompanyFilter} disabled={showEmpty} /></div>}
+          </InlineStack>
+          <InlineStack align="space-between" blockAlign="center" gap="200" wrap>
+            <Text as="span" tone="subdued" variant="bodySm">{scopeText}</Text>
+            {showClear && <Button variant="tertiary" onClick={clearFilters}>Clear filters</Button>}
+          </InlineStack>
+        </BlockStack>
+      </Card>
+
+      <Card padding="0">
+        <Tabs tabs={tabs} selected={tab} onSelect={setTab} />
+        <Box padding="400">{tabContent}</Box>
+      </Card>
     </BlockStack>
   );
 

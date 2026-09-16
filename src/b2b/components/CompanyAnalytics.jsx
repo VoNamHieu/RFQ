@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { Card, BlockStack, InlineGrid, InlineStack, Box, Text, Badge, Divider, Tooltip, Select, Button, Tabs, IndexTable } from '@shopify/polaris';
+import { Card, BlockStack, InlineGrid, InlineStack, Box, Text, Badge, Banner, Divider, Tooltip, Select, Button, Tabs, IndexTable } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
 import { money } from '../format.js';
 import { moneyShort, LineChart, RankBars } from './charts.jsx';
 import { buildAttributedLines, pricingProfileRows, appliedEconomics } from '../pricingAttribution.js';
-import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import { analyticsPricingChanges, analyticsQuantityEvents, analyticsOrderItems } from '../data/analytics.js';
 
 // ── Company Analytics — account intelligence: everything compares the company with ITS OWN
@@ -148,10 +147,18 @@ export function CompanyAnalytics({ company }) {
 
   // ── orders / quotes ──────────────────────────────────────────────────────────
   const attach = (o) => ({ ...o, companyId: company.id, items: orderItems(o) });
-  const allCompleted = (company.orders || []).filter((o) => COMPLETED.has(o.status)).map(attach).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const rawCompleted = (company.orders || []).filter((o) => COMPLETED.has(o.status)).map(attach).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const rawQuotes = allQuotes.filter((q) => q.company === company.id);
+  // Empty state: this company has never ordered AND has no quotes (or the dev "Preview empty state"
+  // toggle is on). Zeroing the source data here makes every downstream block render its own
+  // per-block empty state (empty charts, "—" KPIs, "No … yet" tables) while the dashboard layout,
+  // controls and tabs stay in place — so the screen reads as "waiting for data", not "broken".
+  const genuinelyEmpty = !rawCompleted.length && !rawQuotes.length;
+  const showEmpty = genuinelyEmpty || devEmpty;
+  const allCompleted = showEmpty ? [] : rawCompleted;
+  const companyQuotes = showEmpty ? [] : rawQuotes;
   const periodOrders = allCompleted.filter((o) => inPeriod(o.date));
   const prevOrders = allCompleted.filter((o) => inPrev(o.date));
-  const companyQuotes = allQuotes.filter((q) => q.company === company.id);
   const openQuotes = companyQuotes.filter((q) => !OPEN_QUOTE_EXCLUDE.has(q.status));
   const periodQuotes = companyQuotes.filter((q) => inPeriod(q.created));
 
@@ -269,7 +276,7 @@ export function CompanyAnalytics({ company }) {
     const ev = [];
     allCompleted.forEach((o) => ev.push({ date: String(o.date).slice(0, 10), title: `Order ${o.id}`, detail: money(Number(o.amount) || 0) }));
     companyQuotes.forEach((q) => { const c = String(q.created || '').slice(0, 10); if (c) ev.push({ date: c, title: `Quote #${q.id} created`, detail: q.buyer || '' }); if (q.status === 'Deal Closed') { const w = resolvedAt(q); if (w) ev.push({ date: w, title: `Quote #${q.id} won`, tone: 'success' }); } });
-    analyticsPricingChanges.filter((r) => r.companyId === company.id).forEach((r) => ev.push({ date: String(r.date).slice(0, 10), title: 'Pricing updated', detail: r.rule }));
+    (showEmpty ? [] : analyticsPricingChanges.filter((r) => r.companyId === company.id)).forEach((r) => ev.push({ date: String(r.date).slice(0, 10), title: 'Pricing updated', detail: r.rule }));
     return ev.filter((e) => e.date).sort((a, b) => b.date.localeCompare(a.date));
   })();
 
@@ -299,7 +306,7 @@ export function CompanyAnalytics({ company }) {
   const salesSeries = monthsSpan.map((d) => { const key = monthKey(d); return { label: MONTHS[d.getMonth()], value: periodOrders.filter((o) => String(o.date).startsWith(key)).reduce((a, o) => a + (Number(o.amount) || 0), 0) }; });
 
   // ── quantity pricing (company-scoped) ────────────────────────────────────────
-  const tierEvents = analyticsQuantityEvents.filter((e) => e.type === 'tier_observed' && e.companyId === company.id && inPeriod(e.date));
+  const tierEvents = showEmpty ? [] : analyticsQuantityEvents.filter((e) => e.type === 'tier_observed' && e.companyId === company.id && inPeriod(e.date));
   const tierReached = tierEvents.filter((e) => e.reached);
   const hasQuantityPricing = tierEvents.length > 0 || !!company.pricing?.quantity;
   const tierRefWeighted = (evs) => { const ref = evs.reduce((a, e) => a + (e.realizedDiscount < 100 ? e.orderValue / (1 - e.realizedDiscount / 100) : e.orderValue), 0); return ref ? evs.reduce((a, e) => a + (e.realizedDiscount < 100 ? e.orderValue / (1 - e.realizedDiscount / 100) : e.orderValue) * e.realizedDiscount, 0) / ref : null; };
@@ -401,7 +408,7 @@ export function CompanyAnalytics({ company }) {
       </SectionCard>
 
       <SectionCard title="Purchase trend" subtitle="See whether this company is spending more, less, or simply changing its order size." help="Compares this company's sales, order count, and average order value with the previous period.">
-        <LineChart data={salesSeries} label="Sales over time" />
+        <LineChart data={salesSeries} label="Sales over time" empty="No sales in this period yet." />
         <Divider />
         <BlockStack gap="200">
           <ShiftRow label="Net sales" prev={prevS.rev} cur={curS.rev} fmt={moneyShort} />
@@ -607,9 +614,6 @@ export function CompanyAnalytics({ company }) {
   );
 
   const body = [overview, buying, quotes, pricing][tab];
-  // Empty state: this company has never ordered AND has no quotes, so every tab would be blank.
-  const isEmpty = !allCompleted.length && !companyQuotes.length;
-  const showEmpty = isEmpty || devEmpty;
   return (
     <BlockStack gap="400">
       {SHOW_DEV_TOOLS && (
@@ -617,36 +621,31 @@ export function CompanyAnalytics({ company }) {
           <InlineStack gap="200" blockAlign="center" wrap>
             <Badge tone="info">Dev</Badge>
             <Text as="span" variant="bodySm" tone="subdued">
-              {isEmpty
+              {genuinelyEmpty
                 ? 'This company has no orders or quotes, so analytics is showing its empty state.'
                 : devEmpty
                 ? 'Previewing the empty state — this company actually has data.'
                 : 'Preview the analytics empty state (how it looks for a company with no orders or quotes).'}
             </Text>
-            <Button size="slim" pressed={devEmpty} disabled={isEmpty} onClick={() => setDevEmpty((v) => !v)}>
+            <Button size="slim" pressed={devEmpty} disabled={genuinelyEmpty} onClick={() => setDevEmpty((v) => !v)}>
               {devEmpty ? 'Show data' : 'Preview empty state'}
             </Button>
           </InlineStack>
         </Box>
       )}
-      {showEmpty ? (
-        <Card>
-          <EmptyBlock heading="No analytics for this company yet">
-            This company hasn't placed any orders or received any quotes in your B2B app yet. Its buying rhythm, quotes, and pricing performance will appear here once there's activity.
-          </EmptyBlock>
-        </Card>
-      ) : (
-        <>
-          <Card>
-            <InlineStack gap="300" blockAlign="end" wrap>
-              <div style={{ minWidth: 160 }}><Select label="Date range" options={[{ label: 'Last 30 days', value: '30d' }, { label: 'Last 3 months', value: '3m' }, { label: 'Last 6 months', value: '6m' }, { label: 'Last 12 months', value: '12m' }]} value={period} onChange={setPeriod} /></div>
-              <div style={{ minWidth: 170 }}><Select label="Compare" options={[{ label: 'Previous period', value: 'previous' }, { label: 'No comparison', value: 'none' }]} value={compare} onChange={setCompare} /></div>
-            </InlineStack>
-          </Card>
-          <Card padding="0"><Tabs tabs={tabs} selected={tab} onSelect={setTab} /></Card>
-          {body}
-        </>
+      {showEmpty && (
+        <Banner tone="info">
+          This company hasn't placed any orders or received any quotes yet. As it starts buying and you send quotes, its buying rhythm, quotes and pricing performance will fill in below.
+        </Banner>
       )}
+      <Card>
+        <InlineStack gap="300" blockAlign="end" wrap>
+          <div style={{ minWidth: 160 }}><Select label="Date range" options={[{ label: 'Last 30 days', value: '30d' }, { label: 'Last 3 months', value: '3m' }, { label: 'Last 6 months', value: '6m' }, { label: 'Last 12 months', value: '12m' }]} value={period} onChange={setPeriod} disabled={showEmpty} /></div>
+          <div style={{ minWidth: 170 }}><Select label="Compare" options={[{ label: 'Previous period', value: 'previous' }, { label: 'No comparison', value: 'none' }]} value={compare} onChange={setCompare} disabled={showEmpty} /></div>
+        </InlineStack>
+      </Card>
+      <Card padding="0"><Tabs tabs={tabs} selected={tab} onSelect={setTab} /></Card>
+      {body}
     </BlockStack>
   );
 }
