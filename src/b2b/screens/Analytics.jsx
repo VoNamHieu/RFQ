@@ -64,6 +64,8 @@ const EVENT_OVERLAY = {
 // seed is fully costed. SEA-30 sells across several price sources, so coverage falls on
 // multiple rows at once. Never applied in a prod build.
 const DEV_MISSING_COST_SKU = 'SEA-30';
+// Prototype: show the dev toggles in production too (flip to import.meta.env.DEV to hide in prod).
+const SHOW_DEV_TOOLS = true;
 
 // ── small numeric helpers (ported verbatim from the god file) ────────────────
 const toDate = (d) => (d ? new Date(String(d).slice(0, 10) + 'T00:00:00') : null);
@@ -1912,7 +1914,7 @@ export function Analytics({ embeddedCompanyId = null }) {
 
   const content = (
     <BlockStack gap="400">
-      {import.meta.env.DEV && (
+      {SHOW_DEV_TOOLS && (
         <Box background="bg-surface-secondary" borderColor="border" borderWidth="025" borderRadius="200" padding="200">
           <BlockStack gap="200">
             <InlineStack gap="200" blockAlign="center" wrap>

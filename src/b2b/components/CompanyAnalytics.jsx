@@ -19,6 +19,8 @@ const OPEN_QUOTE_EXCLUDE = new Set(['Deal Closed', 'Deal Rejected', 'Trashed']);
 const FINALIZED = new Set(['Deal Closed', 'Deal Rejected']);
 const SENT_PROGRESS = new Set(['Email Sent', 'PDF Exported', 'Draft Order Created', 'Auto Confirmed']);
 const MARGIN_FLOOR = 20;
+// Prototype: show the dev toggles in production too (flip to import.meta.env.DEV to hide in prod).
+const SHOW_DEV_TOOLS = true;
 const MIN_HISTORY_FOR_LAPSED = 8; // "Previously frequent" needs enough history to be meaningful
 const STATE_TONE = { Healthy: 'success', Watch: 'attention', 'At risk': 'warning', Inactive: 'critical', 'Insufficient history': undefined };
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -610,7 +612,7 @@ export function CompanyAnalytics({ company }) {
   const showEmpty = isEmpty || devEmpty;
   return (
     <BlockStack gap="400">
-      {import.meta.env.DEV && (
+      {SHOW_DEV_TOOLS && (
         <Box background="bg-surface-secondary" borderColor="border" borderWidth="025" borderRadius="200" padding="200">
           <InlineStack gap="200" blockAlign="center" wrap>
             <Badge tone="info">Dev</Badge>
