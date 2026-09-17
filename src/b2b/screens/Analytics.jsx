@@ -1926,7 +1926,18 @@ export function Analytics({ embeddedCompanyId = null }) {
                 resourceName={{ singular: 'change', plural: 'changes' }}
                 itemCount={ruleChanges.length}
                 selectable={false}
-                headings={[{ title: 'Date' }, { title: 'Scope' }, { title: 'Rule change' }, { title: 'Window', alignment: 'end' }, { title: 'Sales before', alignment: 'end' }, { title: 'Sales after', alignment: 'end' }, { title: 'AOV before', alignment: 'end' }, { title: 'AOV after', alignment: 'end' }, { title: 'Δ before', alignment: 'end' }, { title: 'Δ after', alignment: 'end' }]}
+                headings={[
+                  { title: <HeadHelp label="Date" help="When this pricing change took effect." /> },
+                  { title: <HeadHelp label="Company / pricing" help="The company or pricing profile affected by this change." /> },
+                  { title: <HeadHelp label="Pricing change" help="What changed in the pricing rule, shown as before → after." /> },
+                  { title: <HeadHelp label="Comparison period" help="Equal periods before and after the pricing change." />, alignment: 'end' },
+                  { title: <HeadHelp label="Sales before" help="Total sales during the period before the pricing change." />, alignment: 'end' },
+                  { title: <HeadHelp label="Sales after" help="Total sales during the period after the pricing change." />, alignment: 'end' },
+                  { title: <HeadHelp label="AOV before" help="Average order value during the period before the pricing change." />, alignment: 'end' },
+                  { title: <HeadHelp label="AOV after" help="Average order value during the period after the pricing change." />, alignment: 'end' },
+                  { title: <HeadHelp label="vs Shopify before" help="How B2B prices compared with Shopify prices before the change. Negative means B2B prices were lower." />, alignment: 'end' },
+                  { title: <HeadHelp label="vs Shopify after" help="How B2B prices compared with Shopify prices after the change. Negative means B2B prices were lower." />, alignment: 'end' },
+                ]}
                 emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No tracked pricing changes in this scope.</Text></Box>}
               >
                 {ruleChanges.map((r, i) => (
