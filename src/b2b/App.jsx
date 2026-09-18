@@ -12,7 +12,7 @@ import {
   MenuHorizontalIcon,
   SettingsIcon,
   ClipboardIcon,
-  AutomationIcon,
+  ViewIcon,
 } from '@shopify/polaris-icons';
 import { AdminFrame } from '../shared/AdminFrame.jsx';
 import { useStore } from './store.jsx';
@@ -75,7 +75,7 @@ export function App() {
     {
       title: 'Apps',
       items: [
-        { label: 'Flow', icon: AutomationIcon, url: '#/flow', onClick: () => {} },
+        { label: 'Storefront', icon: ViewIcon, url: '#/storefront', onClick: () => { window.location.href = '/storefront'; } },
         { label: 'O:Request a Quote', icon: ClipboardIcon, url: '#/rfq-app', onClick: () => { window.location.href = withV('/'); } },
         {
           label: 'Wholesale B2B Solution',

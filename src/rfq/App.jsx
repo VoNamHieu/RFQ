@@ -9,7 +9,7 @@ import {
   ChartVerticalIcon,
   ClipboardIcon,
   StoreIcon,
-  AutomationIcon,
+  ViewIcon,
 } from '@shopify/polaris-icons';
 import { AdminFrame } from '../shared/AdminFrame.jsx';
 import { activeVersion } from '../shared/versions.js';
@@ -52,7 +52,7 @@ export function App() {
     {
       title: 'Apps',
       items: [
-        { label: 'Flow', icon: AutomationIcon, url: '#/flow', onClick: () => {} },
+        { label: 'Storefront', icon: ViewIcon, url: '#/storefront', onClick: () => { window.location.href = '/storefront'; } },
         {
           label: 'O:Request a Quote',
           icon: ClipboardIcon,

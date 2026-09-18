@@ -21,6 +21,10 @@ function devRootRedirect() {
           res.writeHead(302, { Location: '/src/b2b/index.html' });
           return res.end();
         }
+        if (url === '/storefront' || url === '/storefront/' || url === '/storefront/index.html') {
+          res.writeHead(302, { Location: '/src/storefront/index.html' });
+          return res.end();
+        }
         next();
       });
     },
@@ -40,6 +44,7 @@ export default defineConfig({
       input: {
         rfq: 'src/rfq/index.html',
         b2b: 'src/b2b/index.html',
+        storefront: 'src/storefront/index.html',
       },
     },
   },
