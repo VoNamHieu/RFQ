@@ -1,13 +1,20 @@
 // Initial store state, applying cross-app persistence + handoff from the RFQ app
 // (legacy restoreRfqCompanies + receiveRfqHandoff at b2b/index.html §8190-8262).
 import { dbSeed } from './data/db.js';
+import { registrationSeed } from './data/registrations.js';
 import { DEMO_STATE_KEY, readJSON, consumeHandoff } from '../shared/persistence.js';
 import { normalizeDb, injectRfqCompany, applyQuotePricingTransfer } from './dbHelpers.js';
 
 export function makeBaseState() {
   return {
-    view: 'customers', // customers | company | pricing | analytics | settings | quote | location
+    view: 'customers', // customers | company | pricing | analytics | settings | quote | location | registrations | registration | form
     selectedCompany: 'c1',
+    // Registrations (storefront form submissions)
+    selectedRegistration: null,
+    registrationFilter: 'pending', // pending | approved | declined | all
+    registrationSearch: '',
+    registrationSort: 'submitted desc', // `${field} ${dir}` — see Registrations SORT_OPTIONS
+    formEntry: null, // 'editor' → the Form builder opens straight into the editor (from Registrations)
     companyTab: 'pricing',
     selectedQuote: null,
     selectedLocation: null,
@@ -34,7 +41,7 @@ export function makeBaseState() {
     addCompany: null, // { step, shopifyId, baseId } — add-company wizard
     emptyMode: false, // "show the app with no data" (fresh-install simulation)
     emptyBackup: null,
-    db: normalizeDb(dbSeed),
+    db: normalizeDb({ ...dbSeed, registrations: registrationSeed }),
     toast: null,
   };
 }
@@ -81,6 +88,7 @@ export function buildInitialState() {
 // Map the URL hash (kept in sync by the nav's `url`s) to an initial view.
 function viewFromHash(hash) {
   const map = {
+    '#/b2b/registrations': 'registrations',
     '#/b2b/pricing': 'pricing',
     '#/b2b/company': 'customers',
     '#/b2b/analytics': 'analytics',

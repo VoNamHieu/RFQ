@@ -85,18 +85,25 @@ const CUSTOM_TYPES = [
   { kind: 'upload', label: 'Upload files' },
 ];
 
-export function FormSettings() {
+// `entry` = 'editor' when opened from Registrations ("Edit form"): skip the
+// first-run steps and go straight to the editor, whose Back returns there.
+export function FormSettings({ entry }) {
   const { dispatch } = useStore();
   const toast = (m) => dispatch({ type: 'TOAST', message: m });
-  const [step, setStep] = useState('empty'); // 'empty' | 'create' | 'editor'
+  const [step, setStep] = useState(entry === 'editor' ? 'editor' : 'empty'); // 'empty' | 'create' | 'editor'
+  const toRegistrations = () => dispatch({ type: 'NAVIGATE', view: 'registrations', patch: { formEntry: null } });
 
   if (step === 'create') return <CreateStep toast={toast} onBack={() => setStep('empty')} onCreate={() => setStep('editor')} />;
-  if (step === 'editor') return <EditorStep toast={toast} onBack={() => setStep('create')} />;
-  return <EmptyStep toast={toast} onCreate={() => setStep('create')} />;
+  if (step === 'editor') {
+    return entry === 'editor'
+      ? <EditorStep toast={toast} onBack={toRegistrations} title="B2B registration form" />
+      : <EditorStep toast={toast} onBack={() => setStep('create')} />;
+  }
+  return <EmptyStep toast={toast} onCreate={() => setStep('create')} onManageList={toRegistrations} />;
 }
 
 // ── Step 1 — empty ────────────────────────────────────────────────────────────
-function EmptyStep({ toast, onCreate }) {
+function EmptyStep({ toast, onCreate, onManageList }) {
   return (
     <Page title="Form settings">
       <Card>
@@ -109,7 +116,7 @@ function EmptyStep({ toast, onCreate }) {
             </Box>
             <Box paddingBlockStart="200">
               <InlineStack gap="300" align="center">
-                <Button onClick={() => toast('Registrations list')}>Manage list</Button>
+                <Button onClick={onManageList}>Manage list</Button>
                 <Button variant="primary" onClick={onCreate}>Create form</Button>
               </InlineStack>
             </Box>
@@ -170,7 +177,7 @@ function TemplateCard({ title, badge, desc, action, footer }) {
 // registrations are reviewed · how it looks (optional) · where it goes live.
 const EDITOR_TABS = ['Form', 'Review process', 'Design', 'Publish form'];
 
-function EditorStep({ toast, onBack }) {
+function EditorStep({ toast, onBack, title: pageTitle = 'Create B2B registration form' }) {
   const [tab, setTab] = useState('Form');
   const [fullPreview, setFullPreview] = useState(false);
   // Form
@@ -242,7 +249,7 @@ function EditorStep({ toast, onBack }) {
 
   return (
     <Page
-      title="Create B2B registration form"
+      title={pageTitle}
       titleMetadata={<Badge tone="success">Active</Badge>}
       backAction={{ content: 'Back', onAction: onBack }}
       secondaryActions={[{ content: 'Turn form off', onAction: () => toast('Form turned off') }]}
