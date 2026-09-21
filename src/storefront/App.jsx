@@ -7,6 +7,7 @@ import { QuoteRequestModal } from './components/QuoteRequestModal.jsx';
 import { Home } from './screens/Home.jsx';
 import { Product } from './screens/Product.jsx';
 import { Account } from './screens/Account.jsx';
+import { BusinessAccount } from './screens/BusinessAccount.jsx';
 
 function CurrentView() {
   const { state } = useStore();
@@ -28,6 +29,23 @@ function Toast() {
   return <div className="toast">{state.toast}</div>;
 }
 
+// Prototype-only affordance: jump from the customer storefront back to the admin
+// app UI. Returns to whichever app opened the storefront (its URL is the
+// referrer, since in-storefront navigation is state-only), else the B2B app.
+function AppSwitch() {
+  const back = () => {
+    const ref = document.referrer;
+    const cameFromApp = ref && ref.includes(window.location.host) && !ref.includes('/storefront');
+    if (cameFromApp) window.history.back();
+    else window.location.href = '/b2b';
+  };
+  return (
+    <button className="dev-switch" onClick={back} title="Back to the admin app UI">
+      ← Back to app
+    </button>
+  );
+}
+
 export function App() {
   const { state } = useStore();
   // Scroll to top on page change (a router would do this for us).
@@ -41,6 +59,19 @@ export function App() {
         <Account />
         <QuoteRequestModal />
         <Toast />
+        <AppSwitch />
+      </>
+    );
+  }
+
+  // "Apply for a business account" is a standalone auth/account-style page (its
+  // own minimal header + centred card), the same portal world as the account.
+  if (state.view === 'register') {
+    return (
+      <>
+        <BusinessAccount />
+        <Toast />
+        <AppSwitch />
       </>
     );
   }
@@ -53,6 +84,7 @@ export function App() {
       <CartDrawer />
       <QuoteRequestModal />
       <Toast />
+      <AppSwitch />
     </>
   );
 }

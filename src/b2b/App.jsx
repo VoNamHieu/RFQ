@@ -23,6 +23,7 @@ import { LocationDetail } from './screens/LocationDetail.jsx';
 import { PricingLibrary } from './screens/PricingLibrary.jsx';
 import { Analytics } from './screens/Analytics.jsx';
 import { Settings } from './screens/Settings.jsx';
+import { FormSettings } from './screens/FormSettings.jsx';
 import { PricingEditor } from './components/PricingEditor.jsx';
 import { BuildFromQuotes } from './components/BuildFromQuotes.jsx';
 import { PriceBoard } from './components/PriceBoard.jsx';
@@ -45,6 +46,8 @@ function CurrentView() {
       return <LocationDetail />;
     case 'pricing':
       return <PricingLibrary />;
+    case 'form':
+      return <FormSettings />;
     case 'analytics':
       return flags.analytics ? <Analytics /> : <CompaniesList />;
     case 'settings':
@@ -83,7 +86,7 @@ export function App() {
           url: '#/b2b',
           onClick: () => dispatch({ type: 'NAVIGATE', view: 'customers' }),
           subNavigationItems: [
-            { label: 'Form', url: '#/b2b/form', matches: false, onClick: () => {} },
+            { label: 'Form', url: '#/b2b/form', matches: state.view === 'form', onClick: () => dispatch({ type: 'NAVIGATE', view: 'form' }) },
             { label: `B2B Company (${state.db.companies.length})`, url: '#/b2b/company', matches: companyActive, onClick: () => dispatch({ type: 'NAVIGATE', view: 'customers' }) },
             { label: `Pricing (${state.db.policies.length})`, url: '#/b2b/pricing', matches: state.view === 'pricing', onClick: () => dispatch({ type: 'NAVIGATE', view: 'pricing' }) },
             ...(flags.analytics

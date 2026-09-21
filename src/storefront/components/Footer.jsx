@@ -1,7 +1,11 @@
 import React from 'react';
+import { useStore } from '../store.jsx';
 
-// Dawn footer: newsletter + quick links + payment note. Static (prototype).
+// Dawn footer: newsletter + quick links + payment note. Mostly static; "Trade
+// accounts" is the conventional storefront entry into the B2B application.
 export function Footer() {
+  const { dispatch } = useStore();
+  const go = (view) => dispatch({ type: 'NAVIGATE', view });
   return (
     <footer className="footer">
       <div className="page-width">
@@ -27,7 +31,7 @@ export function Footer() {
             <h4>Company</h4>
             <ul className="footer__muted">
               <li><a href="#">About us</a></li>
-              <li><a href="#">Trade accounts</a></li>
+              <li><a className="link" onClick={() => go('register')}>Trade accounts</a></li>
               <li><a href="#">Contact</a></li>
               <li><a href="#">Shipping & returns</a></li>
             </ul>

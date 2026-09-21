@@ -40,3 +40,12 @@ export const CardIcon = (p) => (
 export const BoxIcon = (p) => (
   <svg viewBox="0 0 24 24" {...p}><path d="M12 3 4 7v10l8 4 8-4V7z" {...stroke} /><path d="m4 7 8 4 8-4M12 11v10" {...stroke} /></svg>
 );
+export const CheckIcon = (p) => (
+  <svg viewBox="0 0 24 24" {...p}><path d="m5 13 4 4L19 7" {...stroke} /></svg>
+);
+export const LockIcon = (p) => (
+  <svg viewBox="0 0 24 24" {...p}><rect x="5" y="11" width="14" height="9" rx="2" {...stroke} /><path d="M8 11V8a4 4 0 0 1 8 0v3" {...stroke} /></svg>
+);
+export const BuildingIcon = (p) => (
+  <svg viewBox="0 0 24 24" {...p}><path d="M4 21V6l8-3 8 3v15" {...stroke} /><path d="M4 21h16M9 9h.01M15 9h.01M9 13h.01M15 13h.01M9 17h6" {...stroke} /></svg>
+);

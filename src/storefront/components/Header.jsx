@@ -10,14 +10,16 @@ export function Header() {
   const cartCount = state.cart.reduce((n, l) => n + l.qty, 0);
   const go = (view) => dispatch({ type: 'NAVIGATE', view });
 
-  const onAccount = () => {
-    if (state.session) go('account');
-    else dispatch({ type: 'LOGIN' }); // demo: sign in as the B2B buyer, then...
-  };
+  // Guests land on the account login screen (Shopify's hosted new-customer-
+  // accounts login); signed-in buyers go to their portal.
+  const onAccount = () => go('account');
 
   return (
     <>
-      <div className="announcement">Free shipping on orders over $250 · Trade & bulk pricing available</div>
+      <div className="announcement">
+        Free shipping on orders over $250 · Trade &amp; bulk pricing —{' '}
+        <a className="announcement__cta" onClick={() => go('register')}>Apply for a business account →</a>
+      </div>
 
       {state.session && (
         <div className="b2b-bar">

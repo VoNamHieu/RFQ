@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
 import { ACCOUNT_ORDERS, ACCOUNT_QUOTES } from '../data/products.js';
 import { money } from '../utils.js';
-import { PinIcon, MailIcon, ChevronRightIcon, ChevronDownIcon, CardIcon, BoxIcon, CloseIcon } from '../components/icons.jsx';
+import { PinIcon, MailIcon, ChevronRightIcon, ChevronDownIcon, CardIcon, BoxIcon, CloseIcon, BuildingIcon } from '../components/icons.jsx';
 
 const toneClass = (t) => (t === 'green' ? 'badge--green' : t === 'blue' ? 'badge--blue' : t === 'amber' ? 'badge--amber' : '');
 
@@ -17,14 +17,7 @@ export function Account() {
   const [mktEmail, setMktEmail] = useState(session?.marketing?.email ?? false);
   const [quotesOpen, setQuotesOpen] = useState(false);
 
-  if (!session) {
-    return (
-      <section className="section page-width empty">
-        <p>You’re signed out.</p>
-        <button className="button" onClick={() => dispatch({ type: 'LOGIN' })}>Log in</button>
-      </section>
-    );
-  }
+  if (!session) return <AccountLogin dispatch={dispatch} />;
 
   const initial = (session.contact || '?').charAt(0).toUpperCase();
   const quotes = [...state.quoteRequests, ...ACCOUNT_QUOTES];
@@ -52,6 +45,7 @@ export function Account() {
           {section === 'profile' ? (
             <Profile
               session={session}
+              application={state.b2bApplications[0]}
               mktEmail={mktEmail}
               onToggleMkt={() => setMktEmail((v) => !v)}
               onViewQuote={() => setQuotesOpen(true)}
@@ -68,7 +62,43 @@ export function Account() {
   );
 }
 
-function Profile({ session, mktEmail, onToggleMkt, onViewQuote, dispatch }) {
+// Guest account entry — a stand-in for Shopify's hosted new-customer-accounts
+// login: work email + a one-time code (passwordless), branding only. We do NOT
+// put the B2B "apply" entry here — Shopify's login page can't carry custom
+// content — it lives on the storefront (announcement bar / footer / apply page).
+function AccountLogin({ dispatch }) {
+  const [email, setEmail] = useState('');
+  const go = (view) => dispatch({ type: 'NAVIGATE', view });
+  const login = () => dispatch({ type: 'LOGIN' }); // demo: sign in as the B2B buyer
+
+  return (
+    <div className="acct">
+      <header className="acct-header">
+        <div className="acct-logo" onClick={() => go('home')}>221 Baker</div>
+      </header>
+
+      <div className="acct-login">
+        <h1>Log in</h1>
+        <p className="muted">Enter your work email and we’ll send a one-time code — no password needed.</p>
+
+        <div className="form-row">
+          <label className="field-label">Email</label>
+          <input
+            className="input"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@company.com"
+            onKeyDown={(e) => e.key === 'Enter' && login()}
+          />
+        </div>
+        <button className="button button--full" onClick={login}>Continue</button>
+      </div>
+    </div>
+  );
+}
+
+function Profile({ session, application, mktEmail, onToggleMkt, onViewQuote, dispatch }) {
   const toast = (message) => dispatch({ type: 'TOAST', message });
   return (
     <>
@@ -76,6 +106,28 @@ function Profile({ session, mktEmail, onToggleMkt, onViewQuote, dispatch }) {
       <div className="acct-banner">
         Manage your quote list <a className="link" onClick={onViewQuote}>View quote</a>
       </div>
+
+      {/* Business account: once an application exists it becomes a status card;
+          before that it's the "Apply" entry. */}
+      {application ? (
+        <div className="acct-cta acct-cta--status">
+          <span className="acct-cta-icon"><BuildingIcon /></span>
+          <div className="acct-cta-main">
+            <strong>Business account application</strong>
+            <p className="muted">Ref {application.ref} · Submitted {application.date} · we’ll email you once approved</p>
+          </div>
+          <span className="badge badge--amber">{application.status}</span>
+        </div>
+      ) : (
+        <div className="acct-cta">
+          <span className="acct-cta-icon"><BuildingIcon /></span>
+          <div className="acct-cta-main">
+            <strong>Apply for a business account</strong>
+            <p className="muted">Ordering for a business? Unlock contract pricing, volume discounts and quote requests.</p>
+          </div>
+          <button className="button button--b2b button--sm" onClick={() => dispatch({ type: 'NAVIGATE', view: 'register' })}>Apply</button>
+        </div>
+      )}
 
       {/* Person */}
       <div className="acct-section-head">

@@ -7,13 +7,14 @@ import { DEMO_ACCOUNT, productBySku, b2bPriceFor } from './data/products.js';
 // flow that is this project's storefront touchpoint.
 
 const initialState = {
-  view: 'home', // 'home' | 'product' | 'account'
+  view: 'home', // 'home' | 'product' | 'account' | 'register'
   currentSku: null,
   session: null, // null = guest (D2C); else DEMO_ACCOUNT (logged-in B2B buyer)
   cart: [], // [{ sku, variantId, qty }]
   cartOpen: false,
   quoteModal: null, // { sku } — the Request-a-quote modal
   quoteRequests: [], // quotes submitted from the storefront this session
+  b2bApplications: [], // self-serve B2B account applications awaiting merchant approval
   toast: null,
 };
 
@@ -64,6 +65,14 @@ function reducer(state, action) {
         quoteModal: null,
         quoteRequests: [action.request, ...state.quoteRequests],
         toast: 'Quote request sent — we’ll reply with pricing shortly',
+      };
+    case 'SUBMIT_B2B_APPLICATION':
+      // Self-serve registration → lands in the merchant's approval queue. Here we
+      // just record it and confirm; approval/tagging happens on the admin side.
+      return {
+        ...state,
+        b2bApplications: [action.application, ...state.b2bApplications],
+        toast: 'Application submitted',
       };
     case 'TOAST':
       return { ...state, toast: action.message };
