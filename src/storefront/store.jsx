@@ -35,7 +35,7 @@ function reducer(state, action) {
     case 'OPEN_PRODUCT':
       return { ...state, view: 'product', currentSku: action.sku, cartOpen: false };
     case 'LOGIN':
-      return { ...state, session: DEMO_ACCOUNT, toast: `Signed in as ${DEMO_ACCOUNT.contact} · ${DEMO_ACCOUNT.companyName}` };
+      return { ...state, session: DEMO_ACCOUNT, toast: 'Signed in' };
     case 'LOGOUT':
       return { ...state, session: null, view: state.view === 'account' ? 'home' : state.view, toast: 'Signed out' };
     case 'ADD_TO_CART':
@@ -64,7 +64,7 @@ function reducer(state, action) {
         ...state,
         quoteModal: null,
         quoteRequests: [action.request, ...state.quoteRequests],
-        toast: 'Quote request sent — we’ll reply with pricing shortly',
+        toast: 'Quote request sent',
       };
     case 'SUBMIT_B2B_APPLICATION':
       // Self-serve registration → lands in the merchant's approval queue. Here we

@@ -213,7 +213,7 @@ function reducer(state, action) {
         const policyId = action.policyId !== undefined ? action.policyId : action.baseId;
         l.pricing[kind] = policyId || null;
       }
-      return { ...state, db, toast: (action.policyId ?? action.baseId) ? 'Location pricing overridden' : 'Reverted to company pricing' };
+      return { ...state, db, toast: (action.policyId ?? action.baseId) ? 'Location pricing overridden' : 'Company pricing restored' };
     }
     // Assign / remove a buyer (contact) at a location. Buyer counts derive from
     // contact assignment, so recompute every location's count on change.
@@ -317,7 +317,7 @@ function reducer(state, action) {
         }
       }
       const label = a.kind === 'quantity' ? 'Quantity pricing' : 'Base pricing';
-      const toast = a.mode === 'swap' ? `${label} changed` : `${ids.length > 1 ? `${ids.length} ${label}s` : label} added`;
+      const toast = a.mode === 'swap' ? `${label} changed` : ids.length > 1 ? `${ids.length} pricings added` : `${label} added`;
       return { ...state, db, assign: null, toast };
     }
     case 'REMOVE_COMPANY_QUANTITY': {
@@ -358,7 +358,7 @@ function reducer(state, action) {
       } else if (action.targetType === 'global') {
         db.defaults = { ...(db.defaults || {}), [pol.audienceType === 'd2c' ? 'wholesalePolicyId' : 'b2bPolicyId']: pol.id };
       }
-      return { ...state, db, assignMulti: null, toast: `${pol.name} assigned` };
+      return { ...state, db, assignMulti: null, toast: 'Pricing assigned' };
     }
     // ----- Add-company wizard -----
     case 'OPEN_ADD_COMPANY':
@@ -512,7 +512,7 @@ function reducer(state, action) {
         explicitEnabled: Object.keys(b.variantAdjustments || {}).length > 0,
       };
       if (!draft.name || !draft.name.trim()) {
-        return { ...state, toast: 'Give the pricing a name' };
+        return { ...state, toast: 'Name required' };
       }
       const db = clone(state.db);
       const existing = db.policies.find((p) => p.id === b.id);
@@ -565,7 +565,7 @@ function reducer(state, action) {
         db.policies.push(fork);
         removeCompanyBase(scopeCompany, existing.id);
         addCompanyBase(scopeCompany, fork.id, draft.priority);
-        return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: `Forked into ${fork.name}` };
+        return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: 'Pricing forked' };
       }
       Object.assign(existing, draft, { id: existing.id });
       // Library edit (not scoped to a Company) → sync the assignment choices.
@@ -616,7 +616,7 @@ function reducer(state, action) {
         db.quotes = [];
         db.registrations = [];
         db.defaults = { b2bPolicyId: null, wholesalePolicyId: null };
-        return { ...state, db, emptyBackup, emptyMode: true, view: 'customers', selectedCompany: null, toast: 'Showing the app with no data' };
+        return { ...state, db, emptyBackup, emptyMode: true, view: 'customers', selectedCompany: null, toast: 'Sample data hidden' };
       }
       if (!action.on && state.emptyMode) {
         return { ...state, db: state.emptyBackup || state.db, emptyBackup: null, emptyMode: false, view: 'customers', toast: 'Sample data restored' };
@@ -653,7 +653,7 @@ function reducer(state, action) {
       };
       // Same engine as the RFQ→B2B handoff: create a scoped base, or merge into
       // the chosen base — forking it first if it is shared with other companies.
-      const msg = applyQuotePricingTransfer(db, companyId, lines, transfer) || 'No prices to add';
+      const msg = applyQuotePricingTransfer(db, companyId, lines, transfer) || 'No prices added';
       return { ...state, db, buildQuotes: null, toast: msg };
     }
     case 'TOAST':

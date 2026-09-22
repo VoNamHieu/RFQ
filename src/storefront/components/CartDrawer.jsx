@@ -52,7 +52,7 @@ export function CartDrawer() {
           <div className="drawer__foot">
             <div className="summary-row"><span>Subtotal</span><strong>{money(subtotal)}</strong></div>
             <p className="muted" style={{ fontSize: '1.3rem', marginTop: 0 }}>Taxes and shipping calculated at checkout.</p>
-            <button className="button button--full" onClick={() => dispatch({ type: 'TOAST', message: 'Checkout is not wired up in this prototype' })}>
+            <button className="button button--full" onClick={() => dispatch({ type: 'TOAST', message: 'Demo only' })}>
               Check out
             </button>
           </div>

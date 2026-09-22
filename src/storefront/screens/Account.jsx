@@ -132,7 +132,7 @@ function Profile({ session, application, mktEmail, onToggleMkt, onViewQuote, dis
       {/* Person */}
       <div className="acct-section-head">
         <h2>{session.contact}</h2>
-        <button className="acct-btn" onClick={() => toast('Edit profile is not wired up in this prototype')}>Edit</button>
+        <button className="acct-btn" onClick={() => toast('Demo only')}>Edit</button>
       </div>
       <div className="acct-field">
         <span className="acct-field-label">Email</span>
@@ -163,16 +163,16 @@ function Profile({ session, application, mktEmail, onToggleMkt, onViewQuote, dis
 
       {/* Shipping address */}
       <h3 className="acct-h">Shipping address</h3>
-      <AddressCard address={session.shippingAddress} onClick={() => toast('Address editing is not wired up in this prototype')} />
+      <AddressCard address={session.shippingAddress} onClick={() => toast('Demo only')} />
 
       {/* Billing address */}
       <h3 className="acct-h">Billing address</h3>
-      <AddressCard address={session.billingAddress} onClick={() => toast('Address editing is not wired up in this prototype')} />
+      <AddressCard address={session.billingAddress} onClick={() => toast('Demo only')} />
 
       {/* Payment methods */}
       <div className="acct-section-head">
         <h3 className="acct-h" style={{ margin: 0 }}>Payment methods</h3>
-        <button className="acct-btn" onClick={() => toast('Add payment method is not wired up in this prototype')}>Add</button>
+        <button className="acct-btn" onClick={() => toast('Demo only')}>Add</button>
       </div>
       {session.paymentMethods.length === 0 ? (
         <div className="acct-card acct-empty">No payment methods saved.</div>

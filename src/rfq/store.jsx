@@ -509,7 +509,7 @@ function reducer(state, action) {
       return {
         ...state,
         quotes: { ...state.quotes, [action.id]: updated },
-        toast: `Quote No.${action.id} added to ${shopifyCompanyDirectory[action.companyKey]?.name || 'the company'}.`,
+        toast: `Quote No.${action.id} added`,
       };
     }
     case 'TOAST':

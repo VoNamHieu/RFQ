@@ -317,7 +317,7 @@ function ProductsCard({ quote, lines, setLines, dispatch, showSavePrices, onSave
 function PaymentCard({ subtotal, dispatch, onSendProposal }) {
   const AddRow = ({ label, value }) => (
     <InlineStack align="space-between" blockAlign="center">
-      <Link onClick={() => dispatch({ type: 'TOAST', message: `${label} — demo only` })}>{label}</Link>
+      <Link onClick={() => dispatch({ type: 'TOAST', message: 'Demo only' })}>{label}</Link>
       <InlineStack gap="600" blockAlign="center">
         <Text as="span" tone="subdued" variant="bodySm">--</Text>
         <Box minWidth="72px">

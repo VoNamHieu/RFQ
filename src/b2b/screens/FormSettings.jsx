@@ -674,7 +674,7 @@ function PublishTab({
               <BlockStack gap="200">
                 <StepLine n="Step 1:">
                   <Text as="span" variant="bodyMd">Open</Text>
-                  <Button variant="plain" onClick={() => toast('Opening app embed block settings')}>app embed block settings</Button>
+                  <Button variant="plain" onClick={() => toast('Opening app embeds')}>app embed block settings</Button>
                   <span style={{ display: 'inline-flex' }}><Icon source={ExternalSmallIcon} tone="subdued" /></span>
                 </StepLine>
                 <StepLine n="Step 2:"><Text as="span" variant="bodyMd">Choose a page you want to add the form</Text></StepLine>
@@ -1254,7 +1254,7 @@ function LearnMore({ toast }) {
     <Box paddingBlockStart="400">
       <InlineStack align="center" gap="100">
         <Text as="span" tone="subdued">Learn more about</Text>
-        <Button variant="plain" onClick={() => toast('Opening docs: registration form')}>registration form</Button>
+        <Button variant="plain" onClick={() => toast('Opening docs')}>registration form</Button>
       </InlineStack>
     </Box>
   );
