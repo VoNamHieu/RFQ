@@ -167,7 +167,7 @@ export function applyQuotePricingTransfer(db, companyId, lines, transfer) {
     prof.id = demoPolicyId(db);
     db.policies.push(prof);
     addCompanyBase(co, prof.id, prof.priority);
-    return `Quote prices saved as “${prof.name}”`;
+    return 'Quote prices saved';
   }
   const base = policyById(db.policies, tid);
   const usesBase = companyBaseArray(co).some((e) => e.id === base.id);
@@ -182,9 +182,9 @@ export function applyQuotePricingTransfer(db, companyId, lines, transfer) {
     db.policies.push(fork);
     removeCompanyBase(co, base.id);
     addCompanyBase(co, fork.id, base.priority);
-    return `Forked ${base.name} → ${fork.name} with the quote prices`;
+    return 'Pricing forked';
   }
   base.variantAdjustments = { ...(base.variantAdjustments || {}), ...overrides };
   base.explicitEnabled = true;
-  return `Quote prices added to ${base.name}`;
+  return 'Quote prices added';
 }

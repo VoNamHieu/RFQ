@@ -12,7 +12,7 @@ import {
   MenuHorizontalIcon,
   SettingsIcon,
   ClipboardIcon,
-  AutomationIcon,
+  ViewIcon,
 } from '@shopify/polaris-icons';
 import { AdminFrame } from '../shared/AdminFrame.jsx';
 import { useStore } from './store.jsx';
@@ -23,6 +23,10 @@ import { LocationDetail } from './screens/LocationDetail.jsx';
 import { PricingLibrary } from './screens/PricingLibrary.jsx';
 import { Analytics } from './screens/Analytics.jsx';
 import { Settings } from './screens/Settings.jsx';
+import { FormSettings } from './screens/FormSettings.jsx';
+import { Registrations } from './screens/Registrations.jsx';
+import { RegistrationDetail } from './screens/RegistrationDetail.jsx';
+import { pendingCount } from './registrations.js';
 import { PricingEditor } from './components/PricingEditor.jsx';
 import { BuildFromQuotes } from './components/BuildFromQuotes.jsx';
 import { PriceBoard } from './components/PriceBoard.jsx';
@@ -45,6 +49,12 @@ function CurrentView() {
       return <LocationDetail />;
     case 'pricing':
       return <PricingLibrary />;
+    case 'registrations':
+      return <Registrations />;
+    case 'registration':
+      return <RegistrationDetail key={state.selectedRegistration} />;
+    case 'form':
+      return <FormSettings entry={state.formEntry} />;
     case 'analytics':
       return flags.analytics ? <Analytics /> : <CompaniesList />;
     case 'settings':
@@ -58,6 +68,9 @@ function CurrentView() {
 export function App() {
   const { state, dispatch } = useStore();
   const companyActive = ['customers', 'company', 'quote', 'location'].includes(state.view);
+  // Registrations holds the submissions list, one registration's review, and the form builder.
+  const registrationsActive = ['registrations', 'registration', 'form'].includes(state.view);
+  const pending = pendingCount(state.db);
   // The editor shows as an in-frame page only when opened from the Pricing screen.
   const editorAsPage = !!state.builder && state.view === 'pricing';
 
@@ -75,7 +88,7 @@ export function App() {
     {
       title: 'Apps',
       items: [
-        { label: 'Flow', icon: AutomationIcon, url: '#/flow', onClick: () => {} },
+        { label: 'Storefront', icon: ViewIcon, url: '#/storefront', onClick: () => { window.location.href = '/storefront'; } },
         { label: 'O:Request a Quote', icon: ClipboardIcon, url: '#/rfq-app', onClick: () => { window.location.href = withV('/'); } },
         {
           label: 'Wholesale B2B Solution',
@@ -83,7 +96,13 @@ export function App() {
           url: '#/b2b',
           onClick: () => dispatch({ type: 'NAVIGATE', view: 'customers' }),
           subNavigationItems: [
-            { label: 'Form', url: '#/b2b/form', matches: false, onClick: () => {} },
+            {
+              // Count = registrations waiting for review (sub-nav items take no badge).
+              label: pending ? `Registrations (${pending})` : 'Registrations',
+              url: '#/b2b/registrations',
+              matches: registrationsActive,
+              onClick: () => dispatch({ type: 'NAVIGATE', view: 'registrations' }),
+            },
             { label: `B2B Company (${state.db.companies.length})`, url: '#/b2b/company', matches: companyActive, onClick: () => dispatch({ type: 'NAVIGATE', view: 'customers' }) },
             { label: `Pricing (${state.db.policies.length})`, url: '#/b2b/pricing', matches: state.view === 'pricing', onClick: () => dispatch({ type: 'NAVIGATE', view: 'pricing' }) },
             ...(flags.analytics

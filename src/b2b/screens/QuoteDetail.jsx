@@ -82,7 +82,7 @@ export function QuoteDetail() {
     );
   });
 
-  const secondaryActions = [{ content: 'Open in RFQ', onAction: () => dispatch({ type: 'TOAST', message: 'Opens the RFQ app' }) }];
+  const secondaryActions = [{ content: 'Open in RFQ', onAction: () => dispatch({ type: 'TOAST', message: 'Opens in RFQ' }) }];
   if (quote.status === 'Deal Closed' && versionFlags().priceCrossSync) {
     secondaryActions.push({
       content: 'Turn into pricing',

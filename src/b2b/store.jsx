@@ -3,6 +3,7 @@ import { shopifyCompanyDirectory } from './data/directory.js';
 import { policyUsageCount } from './pricing.js';
 import { newRule, newBaseBuilder, newQuantityBuilder } from './builders.js';
 import { buildInitialState } from './initialState.js';
+import { matchCompany } from './registrations.js';
 import {
   clone,
   companyBaseArray,
@@ -99,6 +100,49 @@ function applyAssignment(db, policyId, b) {
   else if (db.defaults.wholesalePolicyId === policyId) db.defaults.wholesalePolicyId = null;
 }
 
+// Approve = activate the buyer in a Company: as a new contact on an existing
+// Company (`companyId`), or as the main contact of a new Company. Mutates `db`.
+function approveRegistration(db, reg, companyId) {
+  const name = `${reg.firstName} ${reg.lastName}`.trim();
+  const when = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+  let company = companyId ? db.companies.find((c) => c.id === companyId) : null;
+  if (company) {
+    const loc = company.locations?.[0]?.name || '';
+    if (!(company.contacts || []).some((ct) => ct.email === reg.email)) {
+      company.contacts = [...(company.contacts || []), { name, email: reg.email, role: 'Ordering only', access: 'Buys directly', locations: loc }];
+    }
+    recomputeBuyers(company);
+    company.activity = [{ when, what: `${name} approved from a B2B registration` }, ...(company.activity || [])];
+  } else {
+    let n = db.companies.length + 1;
+    while (db.companies.some((c) => c.id === `c${n}`)) n += 1;
+    const id = `c${n}`;
+    company = {
+      id,
+      name: reg.company,
+      mainContact: name,
+      source: 'Registration form',
+      pricing: { base: [], quantity: null },
+      revenue: 0,
+      // One starting location with the same defaults normalizeDb gives seeded ones.
+      locations: [{
+        id: `${id}-l1`, name: 'Head office', terms: 'Not set', ordering: 'Buys directly', buyers: 1, lastOrder: '—',
+        status: 'Active', paymentTerms: 'No payment terms', purchasingMode: 'DIRECT', externalId: '',
+        shipping: { country: reg.country || '', address1: '', address2: '', city: '', postal: '', phone: '' },
+        billingSameAsShipping: true, editableShipping: false, taxId: reg.taxId || '', taxSettings: 'collect',
+        pricing: { base: null, quantity: null },
+      }],
+      contacts: [{ name, email: reg.email, role: 'Location admin', access: 'Buys directly', locations: 'Head office' }],
+      quotes: [],
+      exceptions: [],
+      activity: [{ when, what: `Created from ${name}'s B2B registration` }],
+      orders: [],
+    };
+    db.companies.push(company);
+  }
+  Object.assign(reg, { status: 'approved', decidedAt: new Date().toISOString().slice(0, 10), companyId: company.id });
+}
+
 function reducer(state, action) {
   switch (action.type) {
     case 'NAVIGATE':
@@ -107,6 +151,51 @@ function reducer(state, action) {
       return { ...state, view: 'company', selectedCompany: action.id, companyTab: action.tab || 'pricing' };
     case 'SET_COMPANY_TAB':
       return { ...state, companyTab: action.tab };
+    // ----- Registrations (storefront form submissions) -----
+    case 'OPEN_REGISTRATION':
+      return { ...state, view: 'registration', selectedRegistration: action.id };
+    case 'SET_REGISTRATION_FILTER':
+      return { ...state, registrationFilter: action.filter };
+    case 'SET_REGISTRATION_SEARCH':
+      return { ...state, registrationSearch: action.value };
+    case 'SET_REGISTRATION_SORT':
+      return { ...state, registrationSort: action.value };
+    // One registration, into the Company the merchant picked (null → new Company).
+    case 'APPROVE_REGISTRATION': {
+      const db = clone(state.db);
+      const reg = (db.registrations || []).find((r) => r.id === action.id);
+      if (!reg || reg.status !== 'pending') return state;
+      approveRegistration(db, reg, action.companyId);
+      return { ...state, db, toast: 'Registration approved' };
+    }
+    // Bulk: each buyer joins their suggested Company, or gets a new one.
+    case 'APPROVE_REGISTRATIONS': {
+      const db = clone(state.db);
+      const regs = (db.registrations || []).filter((r) => action.ids.includes(r.id) && r.status === 'pending');
+      regs.forEach((reg) => approveRegistration(db, reg, matchCompany(reg, db.companies)?.company.id || null));
+      return { ...state, db, toast: regs.length === 1 ? 'Registration approved' : `${regs.length} registrations approved` };
+    }
+    case 'DECLINE_REGISTRATIONS': {
+      const db = clone(state.db);
+      const today = new Date().toISOString().slice(0, 10);
+      const regs = (db.registrations || []).filter((r) => action.ids.includes(r.id) && r.status === 'pending');
+      regs.forEach((reg) => Object.assign(reg, { status: 'declined', decidedAt: today }));
+      return { ...state, db, toast: regs.length === 1 ? 'Registration declined' : `${regs.length} registrations declined` };
+    }
+    // Removes the submissions only — Companies created by approving them stay.
+    case 'DELETE_REGISTRATIONS': {
+      const db = clone(state.db);
+      const before = (db.registrations || []).length;
+      db.registrations = (db.registrations || []).filter((r) => !action.ids.includes(r.id));
+      const n = before - db.registrations.length;
+      const leave = state.view === 'registration' && action.ids.includes(state.selectedRegistration);
+      return {
+        ...state,
+        db,
+        ...(leave ? { view: 'registrations', selectedRegistration: null } : {}),
+        toast: n === 1 ? 'Registration deleted' : `${n} registrations deleted`,
+      };
+    }
     case 'OPEN_QUOTE':
       return { ...state, view: 'quote', selectedQuote: action.id };
     case 'OPEN_LOCATION':
@@ -124,7 +213,7 @@ function reducer(state, action) {
         const policyId = action.policyId !== undefined ? action.policyId : action.baseId;
         l.pricing[kind] = policyId || null;
       }
-      return { ...state, db, toast: (action.policyId ?? action.baseId) ? 'Location pricing overridden' : 'Reverted to company pricing' };
+      return { ...state, db, toast: (action.policyId ?? action.baseId) ? 'Location pricing overridden' : 'Company pricing restored' };
     }
     // Assign / remove a buyer (contact) at a location. Buyer counts derive from
     // contact assignment, so recompute every location's count on change.
@@ -228,7 +317,7 @@ function reducer(state, action) {
         }
       }
       const label = a.kind === 'quantity' ? 'Quantity pricing' : 'Base pricing';
-      const toast = a.mode === 'swap' ? `${label} changed` : `${ids.length > 1 ? `${ids.length} ${label}s` : label} added`;
+      const toast = a.mode === 'swap' ? `${label} changed` : ids.length > 1 ? `${ids.length} pricings added` : `${label} added`;
       return { ...state, db, assign: null, toast };
     }
     case 'REMOVE_COMPANY_QUANTITY': {
@@ -269,7 +358,7 @@ function reducer(state, action) {
       } else if (action.targetType === 'global') {
         db.defaults = { ...(db.defaults || {}), [pol.audienceType === 'd2c' ? 'wholesalePolicyId' : 'b2bPolicyId']: pol.id };
       }
-      return { ...state, db, assignMulti: null, toast: `${pol.name} assigned` };
+      return { ...state, db, assignMulti: null, toast: 'Pricing assigned' };
     }
     // ----- Add-company wizard -----
     case 'OPEN_ADD_COMPANY':
@@ -423,7 +512,7 @@ function reducer(state, action) {
         explicitEnabled: Object.keys(b.variantAdjustments || {}).length > 0,
       };
       if (!draft.name || !draft.name.trim()) {
-        return { ...state, toast: 'Give the pricing a name' };
+        return { ...state, toast: 'Name required' };
       }
       const db = clone(state.db);
       const existing = db.policies.find((p) => p.id === b.id);
@@ -476,7 +565,7 @@ function reducer(state, action) {
         db.policies.push(fork);
         removeCompanyBase(scopeCompany, existing.id);
         addCompanyBase(scopeCompany, fork.id, draft.priority);
-        return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: `Forked into ${fork.name}` };
+        return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: 'Pricing forked' };
       }
       Object.assign(existing, draft, { id: existing.id });
       // Library edit (not scoped to a Company) → sync the assignment choices.
@@ -514,7 +603,7 @@ function reducer(state, action) {
       return { ...state, db, toast: 'Default pricing updated' };
     }
     // "Show the app with no data": clear app-owned records (companies, pricing,
-    // customers, tags, defaults, quotes) to reveal the fresh-install empty states;
+    // customers, tags, defaults, quotes, registrations) to reveal the fresh-install empty states;
     // toggling off restores the sample data (legacy setEmptyMode / demoBackup).
     case 'SET_EMPTY_MODE': {
       if (action.on && !state.emptyMode) {
@@ -525,8 +614,9 @@ function reducer(state, action) {
         db.customers = [];
         db.tagPricing = [];
         db.quotes = [];
+        db.registrations = [];
         db.defaults = { b2bPolicyId: null, wholesalePolicyId: null };
-        return { ...state, db, emptyBackup, emptyMode: true, view: 'customers', selectedCompany: null, toast: 'Showing the app with no data' };
+        return { ...state, db, emptyBackup, emptyMode: true, view: 'customers', selectedCompany: null, toast: 'Sample data hidden' };
       }
       if (!action.on && state.emptyMode) {
         return { ...state, db: state.emptyBackup || state.db, emptyBackup: null, emptyMode: false, view: 'customers', toast: 'Sample data restored' };
@@ -563,7 +653,7 @@ function reducer(state, action) {
       };
       // Same engine as the RFQ→B2B handoff: create a scoped base, or merge into
       // the chosen base — forking it first if it is shared with other companies.
-      const msg = applyQuotePricingTransfer(db, companyId, lines, transfer) || 'No prices to add';
+      const msg = applyQuotePricingTransfer(db, companyId, lines, transfer) || 'No prices added';
       return { ...state, db, buildQuotes: null, toast: msg };
     }
     case 'TOAST':

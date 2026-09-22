@@ -9,28 +9,45 @@ import {
   Divider,
   Box,
   Button,
+  ButtonGroup,
   TextField,
   Icon,
   Link,
   Collapsible,
+  Popover,
+  ActionList,
 } from '@shopify/polaris';
 import {
   MenuHorizontalIcon,
   DeleteIcon,
-  SearchIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   PersonIcon,
   ProductIcon,
   PlusCircleIcon,
+  PlusIcon,
   MagicIcon,
 } from '@shopify/polaris-icons';
-import { useStore, handoffToB2B, managedCompanyKeyForEmail } from '../store.jsx';
+import { useStore, handoffToB2B, handoffCompanyToB2B, managedCompanyKeyForEmail } from '../store.jsx';
 import { money, money2 } from '../utils.js';
 import { shopifyCompanyDirectory } from '../data/companies.js';
+import { RFQ_CATALOG, RFQ_CUSTOMERS } from '../data/catalog.js';
+import { PickerModal } from '../components/PickerModal.jsx';
+import { CatalogPickerModal } from '../components/CatalogPickerModal.jsx';
+import { CustomItemModal } from '../components/CustomItemModal.jsx';
+import { ProductPickerModal } from '../components/ProductPickerModal.jsx';
 import { SaveToB2B } from '../components/SaveToB2B.jsx';
 import { B2BRelationshipCard, SyncFlowModals, CreateCompanyModal, CompanyCreatedModal } from '../components/B2BRelationship.jsx';
-import { versionFlags } from '../../shared/versions.js';
+import { versionFlags, activeVersion } from '../../shared/versions.js';
+
+// Whole-store products, normalized for the shared ProductPickerModal (list price).
+// Mirrors CreateQuote's STORE_PRODUCTS so the "Add product" picker is identical.
+const STORE_PRODUCTS = RFQ_CATALOG.map((p) => ({
+  sku: p.sku,
+  title: p.title,
+  stock: p.stock,
+  variants: (p.variants || []).map((v) => ({ id: v.id, title: v.title, price: v.list, stock: v.stock })),
+}));
 
 function quoteCompanyKey(quote) {
   return (
@@ -55,13 +72,69 @@ function Thumb() {
 }
 
 // Left column: the editable Products card (spec §5.4 renderQuote).
-function ProductsCard({ lines, setLines, dispatch, showSavePrices, onSavePrices }) {
+function ProductsCard({ quote, lines, setLines, dispatch, showSavePrices, onSavePrices }) {
+  const { state } = useStore();
   const setLine = (i, patch) => setLines(lines.map((l, k) => (k === i ? { ...l, ...patch } : l)));
   const removeLine = (i) => setLines(lines.filter((_, k) => k !== i));
   const [skuOpen, setSkuOpen] = useState(() => new Set());
   const toggleSku = (i) => setSkuOpen((s) => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n; });
 
+  // ---- Add-product options ported from Create quote (states copied as-is) ----
+  const [picker, setPicker] = useState(null); // {mode:'priced'|'catalog', templateId, picks:{}, search}
+  const [catalogPicker, setCatalogPicker] = useState(false); // Shopify B2B catalog picker
+  const [addMenu, setAddMenu] = useState(false); // "More actions" source menu
+  const [storePicker, setStorePicker] = useState(false); // whole-store (Shopify) picker
+  const [customItemOpen, setCustomItemOpen] = useState(false); // "Add custom item" dialog
+
+  // The quote's customer/company, resolved to an RFQ customer so the pickers behave
+  // exactly like Create quote (B2B pricing options, catalog, no-pricing handoff).
+  const custEmail = quote?.customer?.email;
+  const customer =
+    RFQ_CUSTOMERS.find((c) => c.email === custEmail) ||
+    RFQ_CUSTOMERS.find((c) => c.companyKey === quoteCompanyKey(quote)) ||
+    null;
+  const company = customer ? shopifyCompanyDirectory[customer.companyKey] : null;
+  const companyInB2B = company?.inB2B === true; // already managed in the B2B app
+  const isB2BCompany = !!company && company.inB2B !== false;
+  const appInstalled = company ? company.b2bAppInstalled !== false : true;
+
+  // Variants already on the quote, keyed by sku → which option added the line and its
+  // price, so the pickers can mark "Added". One price per sku — the last pick wins.
+  const quoteBySku = new Map(
+    lines
+      .filter((l) => l.sku)
+      .map((l) => [l.sku, { source: l.source, sourceRef: l.sourceRef ?? null, sourceLabel: l.sourceLabel, price: l.price }]),
+  );
+
+  // Send the merchant to the B2B app to create pricing for this customer.
+  const goCreatePricing = () => {
+    if (!customer) return;
+    if (isB2BCompany) {
+      handoffCompanyToB2B(state, customer.companyKey, customer, { openPricing: true });
+      return;
+    }
+    const v = activeVersion();
+    const base = v === 'latest' ? '/b2b' : `/b2b?v=${v}`;
+    window.location.href = `${base}#/b2b/pricing`;
+  };
+
+  // Apply a picker result: drop unticked lines, then apply picks. An override replaces a
+  // line's price/source but keeps its quantity; a plain re-add accumulates quantity.
+  const mergeLines = (additions, removals = []) => {
+    const removeSet = new Set(removals);
+    const next = lines.filter((l) => !removeSet.has(l.sku));
+    additions.forEach((add) => {
+      const { override, ...line } = add;
+      const j = line.sku ? next.findIndex((l) => l.sku === line.sku) : -1;
+      if (j >= 0 && override) next[j] = { ...next[j], ...line, qty: next[j].qty };
+      else if (j >= 0) next[j] = { ...next[j], ...line, qty: (Number(next[j].qty) || 0) + (Number(line.qty) || 1) };
+      else next.push(line);
+    });
+    setLines(next);
+  };
+
   return (
+    <>
     <Card>
       <BlockStack gap="200">
         <InlineStack align="space-between" blockAlign="center">
@@ -69,15 +142,52 @@ function ProductsCard({ lines, setLines, dispatch, showSavePrices, onSavePrices 
           <Button icon={MenuHorizontalIcon} variant="tertiary" accessibilityLabel="Product actions" onClick={() => dispatch({ type: 'TOAST', message: 'Product actions' })} />
         </InlineStack>
 
-        <TextField
-          label="Search product"
-          labelHidden
-          value=""
-          onChange={() => {}}
-          prefix={<Icon source={SearchIcon} tone="subdued" />}
-          placeholder="Search product"
-          autoComplete="off"
-        />
+        <InlineStack align="end">
+          <ButtonGroup>
+            <Button
+              icon={PlusIcon}
+              disabled={!customer}
+              onClick={() => setPicker({ mode: 'priced', templateId: null, picks: {}, search: '' })}
+            >
+              Add B2B price
+            </Button>
+            {/* Add product = the whole Shopify store (list price), a direct button. */}
+            <Button onClick={() => setStorePicker(true)}>Add product</Button>
+            {/* Secondary sources grouped under "More actions". */}
+            <Popover
+              active={addMenu}
+              onClose={() => setAddMenu(false)}
+              preferredAlignment="left"
+              activator={
+                <Button disclosure onClick={() => setAddMenu((v) => !v)}>
+                  More actions
+                </Button>
+              }
+            >
+              <ActionList
+                items={[
+                  {
+                    content: 'Add product from catalog',
+                    helpText: 'The company’s Shopify catalog',
+                    disabled: !customer,
+                    onAction: () => {
+                      setAddMenu(false);
+                      setCatalogPicker(true);
+                    },
+                  },
+                  {
+                    content: 'Add custom item',
+                    helpText: 'A free-form line with your own price',
+                    onAction: () => {
+                      setAddMenu(false);
+                      setCustomItemOpen(true);
+                    },
+                  },
+                ]}
+              />
+            </Popover>
+          </ButtonGroup>
+        </InlineStack>
 
         <InlineStack gap="300" blockAlign="center">
           <Box width="44%"><Text as="span" tone="subdued" variant="bodySm">Product</Text></Box>
@@ -146,6 +256,60 @@ function ProductsCard({ lines, setLines, dispatch, showSavePrices, onSavePrices 
         )}
       </BlockStack>
     </Card>
+
+    {picker && (
+      <PickerModal
+        picker={picker}
+        setPicker={setPicker}
+        customer={customer}
+        appInstalled={appInstalled}
+        onQuote={quoteBySku}
+        onCreatePricing={goCreatePricing}
+        onAdd={(additions, removals) => {
+          mergeLines(additions, removals);
+          setPicker(null);
+        }}
+      />
+    )}
+    <CustomItemModal
+      open={customItemOpen}
+      onClose={() => setCustomItemOpen(false)}
+      onAdd={(line) => {
+        setLines([...lines, line]);
+        setCustomItemOpen(false);
+      }}
+    />
+    {catalogPicker && (
+      <CatalogPickerModal
+        customer={customer}
+        onQuote={quoteBySku}
+        onPickFromStore={() => {
+          setCatalogPicker(false);
+          setStorePicker(true);
+        }}
+        onCreateCatalog={() => window.open('https://admin.shopify.com/settings/markets', '_blank', 'noopener,noreferrer')}
+        onClose={() => setCatalogPicker(false)}
+        onAdd={(additions, removals) => {
+          mergeLines(additions, removals);
+          setCatalogPicker(false);
+        }}
+      />
+    )}
+    {storePicker && (
+      <ProductPickerModal
+        title="Add products"
+        products={STORE_PRODUCTS}
+        priceHeader="Price"
+        onQuote={quoteBySku}
+        option={{ source: 'store', sourceRef: null, label: 'Store list price' }}
+        onClose={() => setStorePicker(false)}
+        onAdd={(additions, removals) => {
+          mergeLines(additions, removals);
+          setStorePicker(false);
+        }}
+      />
+    )}
+    </>
   );
 }
 
@@ -153,7 +317,7 @@ function ProductsCard({ lines, setLines, dispatch, showSavePrices, onSavePrices 
 function PaymentCard({ subtotal, dispatch, onSendProposal }) {
   const AddRow = ({ label, value }) => (
     <InlineStack align="space-between" blockAlign="center">
-      <Link onClick={() => dispatch({ type: 'TOAST', message: `${label} — demo only` })}>{label}</Link>
+      <Link onClick={() => dispatch({ type: 'TOAST', message: 'Demo only' })}>{label}</Link>
       <InlineStack gap="600" blockAlign="center">
         <Text as="span" tone="subdued" variant="bodySm">--</Text>
         <Box minWidth="72px">
@@ -336,6 +500,7 @@ export function QuoteDetail() {
           <Layout.Section>
             <BlockStack gap="300">
               <ProductsCard
+                quote={quote}
                 lines={lines}
                 setLines={setLines}
                 dispatch={dispatch}

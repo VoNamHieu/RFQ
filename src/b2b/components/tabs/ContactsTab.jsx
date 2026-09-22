@@ -41,7 +41,7 @@ export function ContactsTab({ company }) {
             <Text as="h2" variant="headingSm">Contacts</Text>
             <Text as="span" tone="subdued" variant="bodySm">Managed on the Shopify company record</Text>
           </BlockStack>
-          <Button onClick={() => dispatch({ type: 'TOAST', message: 'Opens the Shopify company record' })}>Open in Shopify</Button>
+          <Button onClick={() => dispatch({ type: 'TOAST', message: 'Opens in Shopify' })}>Open in Shopify</Button>
         </InlineStack>
       </Box>
       <IndexTable
