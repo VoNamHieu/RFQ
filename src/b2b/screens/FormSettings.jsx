@@ -110,14 +110,12 @@ function CreateStep({ toast, onBack, onCreate }) {
           title="B2B registration form"
           desc="Streamline sign-ups for B2B businesses working with wholesalers, retailers, or end customers using a single-step form"
           action={<Button onClick={onCreate}>Create form</Button>}
-          footer="Shown on all storefront pages. Ideal for legacy customer accounts"
         />
         <TemplateCard
           title="Multi-step form"
           badge="Coming soon"
           desc="Multi-step forms capture detailed information about potential wholesalers, retailers, or end customers"
           action={<Button disabled>Create form</Button>}
-          footer="Shown on Customer Account after login"
         />
       </InlineGrid>
       <LearnMore toast={toast} />
@@ -125,22 +123,17 @@ function CreateStep({ toast, onBack, onCreate }) {
   );
 }
 
-function TemplateCard({ title, badge, desc, action, footer }) {
+function TemplateCard({ title, badge, desc, action }) {
   return (
-    <Card padding="0">
-      <Box padding="400">
-        <BlockStack gap="200">
-          <InlineStack gap="200" blockAlign="center">
-            <Text as="h3" variant="headingSm">{title}</Text>
-            {badge ? <Badge tone="new">{badge}</Badge> : null}
-          </InlineStack>
-          <Text as="p" tone="subdued">{desc}</Text>
-          <Box paddingBlockStart="200">{action}</Box>
-        </BlockStack>
-      </Box>
-      <div style={{ background: '#f4f1fe', padding: '12px 16px' }}>
-        <Text as="span" tone="magic" variant="bodySm" fontWeight="medium">{footer}</Text>
-      </div>
+    <Card>
+      <BlockStack gap="200">
+        <InlineStack gap="200" blockAlign="center">
+          <Text as="h3" variant="headingSm">{title}</Text>
+          {badge ? <Badge tone="new">{badge}</Badge> : null}
+        </InlineStack>
+        <Text as="p" tone="subdued">{desc}</Text>
+        <Box paddingBlockStart="200">{action}</Box>
+      </BlockStack>
     </Card>
   );
 }
