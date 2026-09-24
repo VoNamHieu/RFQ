@@ -31,9 +31,53 @@ export const BUILTIN_FIELDS = [
   { id: 'aboutHeading', kind: 'heading', label: 'Tell us about your business (optional)' },
   { id: 'message', kind: 'textarea', label: 'Message / business details' },
   { id: 'marketing', kind: 'checkbox', label: 'Subscribe to our marketing emails' },
-  { id: 'submit', kind: 'submit', label: 'Submit B2B application', required: true },
+  { id: 'submit', kind: 'submit', label: 'Submit B2B application' },
 ];
 export const BUILTIN_ORDER = BUILTIN_FIELDS.map((f) => f.id);
+
+// ── Field rules ──────────────────────────────────────────────────────────────
+// One set of rules, read by the form builder, the storefront form and the review
+// screen, so "required" means the same thing on all three.
+//
+// Required only applies to inputs: headings and the submit button never are.
+export const canRequire = (f) => f.kind !== 'heading' && f.kind !== 'submit';
+// Always required and can't be removed: approving an application needs them — the
+// company name names the new Company, the email is its main contact.
+export const LOCKED_FIELDS = ['email', 'company'];
+export const isLocked = (f) => LOCKED_FIELDS.includes(f.id);
+export const isRequired = (f) => isLocked(f) || (canRequire(f) && !!f.required);
+// Every form keeps its submit button and its locked fields.
+export const canRemove = (f) => f.kind !== 'submit' && !isLocked(f);
+
+// A heading the merchant marked "(optional)" drops the note once a field in its
+// section (up to the next heading) is required — the section isn't optional then.
+const OPTIONAL_NOTE = /\s*\(optional\)\s*$/i;
+export const withoutOptionalNote = (label) => label.replace(OPTIONAL_NOTE, '');
+export function headingLabel(fields, index) {
+  const heading = fields[index];
+  const rest = fields.slice(index + 1);
+  const end = rest.findIndex((f) => f.kind === 'heading');
+  const section = end === -1 ? rest : rest.slice(0, end);
+  return section.some(isRequired) ? withoutOptionalNote(heading.label) : heading.label;
+}
+
+// Choices for Dropdown / Radio options fields (the builder has no options editor yet).
+export const DEFAULT_CHOICES = ['Option 1', 'Option 2', 'Option 3'];
+export const choicesFor = (f) => (Array.isArray(f.options) && f.options.length ? f.options : DEFAULT_CHOICES);
+
+// State / province by the chosen country; a country without a list types it in.
+export const STATES = {
+  Vietnam: ['Hà Nội', 'Hồ Chí Minh', 'Đà Nẵng', 'Hải Phòng', 'Cần Thơ', 'Bắc Ninh', 'Bình Dương', 'Đồng Nai', 'Quảng Ninh', 'Khánh Hòa'],
+  'United States': ['California', 'Florida', 'Georgia', 'Illinois', 'New York', 'North Carolina', 'Ohio', 'Pennsylvania', 'Texas', 'Washington'],
+  Japan: ['Tokyo', 'Osaka', 'Kanagawa', 'Aichi', 'Hokkaido', 'Fukuoka'],
+  Australia: ['New South Wales', 'Victoria', 'Queensland', 'Western Australia', 'South Australia', 'Tasmania'],
+};
+
+// Saved configs from before these rules: locked fields back to required, the
+// submit button never required.
+const normalizeFields = (fields) => fields.map((f) => (
+  f.kind === 'submit' ? { ...f, required: false } : isLocked(f) ? { ...f, required: true } : f
+));
 
 // The starter form: only what the merchant needs to decide "do I approve this
 // buyer, and which company do they belong to?". It reads as a B2B application,
@@ -58,17 +102,18 @@ export const DEFAULT_FORM = {
   message: 'Thank you for completing your registration. Our team will connect with you as soon as possible',
 };
 
-// Written by the B2B form builder on every edit.
+// Written by the B2B form builder when the merchant saves.
 export function writeRegistrationForm(config) {
   writeJSON(REGISTRATION_FORM_KEY, config);
 }
 
-// Read by the storefront. Falls back to the starter form when the merchant has
-// not opened the builder yet (or storage is unavailable).
+// Read by the storefront, the review screen and the builder's "Edit form". Falls
+// back to the starter form when the merchant hasn't saved one yet (or storage is
+// unavailable).
 export function readRegistrationForm() {
   const saved = readJSON(REGISTRATION_FORM_KEY);
   if (!saved || !Array.isArray(saved.fields) || !saved.fields.length) return DEFAULT_FORM;
-  return { ...DEFAULT_FORM, ...saved };
+  return { ...DEFAULT_FORM, ...saved, fields: normalizeFields(saved.fields) };
 }
 
 // The label the merchant gave the submit button, e.g. "Submit application".

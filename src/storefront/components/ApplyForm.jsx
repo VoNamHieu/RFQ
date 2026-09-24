@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { readRegistrationForm, submitLabel, visibleFields } from '../../shared/registrationForm.js';
+import {
+  readRegistrationForm, submitLabel, visibleFields, isRequired, headingLabel, choicesFor, STATES,
+} from '../../shared/registrationForm.js';
 
 // The storefront side of the merchant's registration form: it renders exactly the
 // fields configured in the B2B app's form builder (Registrations → form), so
@@ -9,26 +11,31 @@ import { readRegistrationForm, submitLabel, visibleFields } from '../../shared/r
 // are dropped — Shopify knows them — and shown as an "Applying as…" line instead.
 
 const COUNTRIES = ['Vietnam', 'United States', 'Japan', 'Singapore', 'Australia', 'United Kingdom', 'Other'];
-const BUSINESS_TYPES = ['Retailer', 'Wholesaler / Distributor', 'Reseller', 'Manufacturer', 'Contractor / Trade', 'Other'];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function ApplyForm({ session, onSubmitted, dispatch }) {
   const form = useMemo(readRegistrationForm, []);
-  const fields = useMemo(() => visibleFields(form, { signedIn: !!session }), [form, session]);
+  // Headings read against what's actually shown: "(optional)" drops once a field below is required.
+  const fields = useMemo(() => {
+    const shown = visibleFields(form, { signedIn: !!session });
+    return shown.map((f, i) => (f.kind === 'heading' ? { ...f, label: headingLabel(shown, i) } : f));
+  }, [form, session]);
   const [values, setValues] = useState(() => {
     const seed = {};
     fields.forEach((f) => { seed[f.id] = f.kind === 'checkbox' ? false : ''; });
     if (seed.company !== undefined && session?.companyName) seed.company = session.companyName;
-    if (seed.businessType !== undefined) seed.businessType = BUSINESS_TYPES[0];
     return seed;
   });
   const [agree, setAgree] = useState(false);
   const [tried, setTried] = useState(false);
 
-  const set = (id, value) => setValues((v) => ({ ...v, [id]: value }));
+  // A new country has its own states, so the picked one no longer applies.
+  const set = (id, value) => setValues((v) => ({ ...v, [id]: value, ...(id === 'country' && v.state !== undefined ? { state: '' } : {}) }));
+  // Same rule as the builder (shared isRequired); a required checkbox must be ticked.
   const errorFor = (f) => {
     const value = values[f.id];
-    if (f.required && !String(value ?? '').trim()) return 'Required';
+    const empty = f.kind === 'checkbox' ? !value : !String(value ?? '').trim();
+    if (isRequired(f) && empty) return 'Required';
     if (f.kind === 'email' && String(value).trim() && !EMAIL_RE.test(String(value).trim())) return 'Enter a valid email';
     return '';
   };
@@ -67,7 +74,8 @@ export function ApplyForm({ session, onSubmitted, dispatch }) {
       )}
 
       {fields.map((f) => (
-        <FormField key={f.id} field={f} value={values[f.id]} error={tried ? errorFor(f) : ''} onChange={(v) => set(f.id, v)} />
+        <FormField key={f.id} field={f} value={values[f.id]} country={values.country} error={tried ? errorFor(f) : ''}
+          onChange={(v) => set(f.id, v)} />
       ))}
 
       <label className="apply-check">
@@ -83,9 +91,9 @@ export function ApplyForm({ session, onSubmitted, dispatch }) {
 
 // One configured field. The label doubles as the placeholder, as in the design;
 // selects keep a small label above the value so the choice stays readable.
-function FormField({ field, value, error, onChange }) {
+function FormField({ field, value, country, error, onChange }) {
   const cls = `input${error ? ' has-error' : ''}`;
-  const label = field.label + (field.required ? ' *' : '');
+  const label = field.label + (isRequired(field) ? ' *' : '');
 
   if (field.kind === 'heading') return <h4 className="apply-heading">{field.label}</h4>;
 
@@ -101,15 +109,35 @@ function FormField({ field, value, error, onChange }) {
 
   if (field.kind === 'checkbox') {
     return (
-      <label className="apply-check">
-        <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} />
-        <span>{field.label}</span>
-      </label>
+      <div className="apply-field">
+        <label className="apply-check">
+          <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} />
+          <span>{label}</span>
+        </label>
+        {error && <p className="reg-error">{error}</p>}
+      </div>
     );
   }
 
-  if (field.kind === 'country' || field.kind === 'state' || field.kind === 'dropdown') {
-    const options = field.kind === 'country' ? COUNTRIES : field.options || BUSINESS_TYPES;
+  if (field.kind === 'radio') {
+    return (
+      <div className="apply-field apply-field--select" role="radiogroup" aria-label={field.label}>
+        <span className="apply-field-label">{label}</span>
+        {choicesFor(field).map((o) => (
+          <label key={o} className="apply-check">
+            <input type="radio" name={field.id} checked={value === o} onChange={() => onChange(o)} />
+            <span>{o}</span>
+          </label>
+        ))}
+        {error && <p className="reg-error">{error}</p>}
+      </div>
+    );
+  }
+
+  // State is a list only for a chosen country that has one; otherwise it's typed in.
+  const states = field.kind === 'state' ? STATES[country] : null;
+  if (field.kind === 'country' || states || field.kind === 'dropdown') {
+    const options = field.kind === 'country' ? COUNTRIES : states || choicesFor(field);
     return (
       <div className="apply-field apply-field--select">
         <span className="apply-field-label">{label}</span>

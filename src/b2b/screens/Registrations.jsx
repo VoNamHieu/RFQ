@@ -5,11 +5,12 @@ import {
 import { useStore } from '../store.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import registrationArt from '../assets/registration-empty.webp';
-import { REG_STATUS, fullName, fmtDate, matchCompany } from '../registrations.js';
+import noRequestArt from '../assets/no-request.webp';
+import { REG_STATUS, fullName, fmtDate } from '../registrations.js';
 
 // Wholesale B2B → Registrations: what buyers submitted through the storefront
 // registration form, waiting for the merchant to review. Opening a row leads to
-// the review (match Company → approve / decline); selecting rows allows bulk
+// the review (approve into a new Company / decline); selecting rows allows bulk
 // approve / decline / delete. The form itself is one click away ("Edit form").
 
 const FILTERS = [
@@ -165,9 +166,7 @@ export function Registrations() {
           ]}
           emptyState={
             q ? (
-              <Box padding="400">
-                <Text as="p" alignment="center" tone="subdued">No registrations match your search.</Text>
-              </Box>
+              <EmptyBlock image={noRequestArt} imageAlt="" heading="No registrations match your search" />
             ) : (
               <EmptyBlock heading={hasForm ? EMPTY_TAB[filter] : 'No registration forms yet'} action={formAction}>
                 {hasForm ? 'Applications from your registration form show up here.' : 'Create a registration form to start collecting B2B customer applications.'}
@@ -178,7 +177,6 @@ export function Registrations() {
           {rows.map((r, i) => {
             const status = REG_STATUS[r.status];
             const linked = r.companyId && companies.find((c) => c.id === r.companyId);
-            const match = r.status === 'pending' ? matchCompany(r, companies) : null;
             return (
               <IndexTable.Row id={r.id} key={r.id} position={i} selected={selectedResources.includes(r.id)} onClick={() => open(r.id)}>
                 <IndexTable.Cell>
@@ -194,10 +192,6 @@ export function Registrations() {
                 <IndexTable.Cell>
                   {linked ? (
                     <Text as="span" variant="bodySm">{linked.name}</Text>
-                  ) : match ? (
-                    <Text as="span" variant="bodySm">
-                      {match.company.name} <Text as="span" variant="bodySm" tone="subdued">· suggested</Text>
-                    </Text>
                   ) : (
                     <Text as="span" variant="bodySm" tone="subdued">{r.status === 'pending' ? 'New company' : '—'}</Text>
                   )}
@@ -213,7 +207,6 @@ export function Registrations() {
         <ConfirmBulk
           kind={confirm.kind}
           regs={all.filter((r) => confirm.ids.includes(r.id))}
-          companies={companies}
           onConfirm={runConfirm}
           onClose={() => setConfirm(null)}
         />
@@ -222,16 +215,15 @@ export function Registrations() {
   );
 }
 
-// Confirms a bulk action and spells out what happens to each registration —
-// for approve, which Company each buyer ends up in.
-function ConfirmBulk({ kind, regs, companies, onConfirm, onClose }) {
+// Confirms a bulk action and lists the registrations it applies to.
+function ConfirmBulk({ kind, regs, onConfirm, onClose }) {
   const n = regs.length;
   const noun = n === 1 ? 'registration' : `${n} registrations`;
   const copy = {
     approve: {
       title: `Approve ${noun}?`,
       action: 'Approve',
-      body: 'Each buyer joins their suggested company, or a new company is created for them. You can set up pricing afterwards.',
+      body: 'A new company is created for each buyer. You can set up pricing afterwards.',
     },
     decline: {
       title: `Decline ${noun}?`,
@@ -256,17 +248,9 @@ function ConfirmBulk({ kind, regs, companies, onConfirm, onClose }) {
         <BlockStack gap="300">
           <Text as="p">{copy.body}</Text>
           <List type="bullet">
-            {regs.map((r) => {
-              const match = kind === 'approve' ? matchCompany(r, companies) : null;
-              return (
-                <List.Item key={r.id}>
-                  {fullName(r)} · {r.company}
-                  {kind === 'approve' && (
-                    <Text as="span" tone="subdued"> → {match ? match.company.name : 'new company'}</Text>
-                  )}
-                </List.Item>
-              );
-            })}
+            {regs.map((r) => (
+              <List.Item key={r.id}>{fullName(r)} · {r.company}</List.Item>
+            ))}
           </List>
         </BlockStack>
       </Modal.Section>
