@@ -649,6 +649,9 @@ function reducer(state, action) {
       return { ...state, buildQuotes: null };
     case 'BUILD_QUOTES_PATCH':
       return { ...state, buildQuotes: { ...state.buildQuotes, ...action.patch } };
+    // Dev: simulate a merchant without the RFQ app (closed quotes come from it).
+    case 'SET_RFQ_INSTALLED':
+      return { ...state, db: { ...state.db, rfqAppInstalled: action.installed } };
     case 'APPLY_BUILD_QUOTES': {
       const db = clone(state.db);
       const companyId = state.buildQuotes?.companyId;

@@ -42,17 +42,10 @@ export function BasePricingCard({ company }) {
   const start = (page - 1) * size;
   const pageEntries = filtered.slice(start, start + size);
 
+  // Always offered (Latest's cross-sync), even with no closed quotes yet: the modal
+  // explains what's missing — no quotes, or the RFQ app isn't installed.
   const crossSync = versionFlags().priceCrossSync;
-  const closedQuotes = crossSync
-    ? (state.db.quotes || []).filter(
-        (query) =>
-          query.company === company.id &&
-          query.status === 'Deal Closed' &&
-          (query.lines || []).some((l) => l.quoted != null),
-      )
-    : [];
-
-  const toast = (m) => dispatch({ type: 'TOAST', message: m });
+  const buildFromQuotes = () => openBuildFromQuotes(dispatch, company, state.db);
 
   const priorityHeader = (
     <Tooltip content="Lower number applies first.">
@@ -107,11 +100,7 @@ export function BasePricingCard({ company }) {
         <Button icon={PlusIcon} onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'add' })}>
           Add base pricing
         </Button>
-        {closedQuotes.length > 0 && (
-          <Button onClick={() => openBuildFromQuotes(dispatch, company, state.db)}>
-            {`Build pricing from closed quote${closedQuotes.length === 1 ? '' : 's'}`}
-          </Button>
-        )}
+        {crossSync && <Button onClick={buildFromQuotes}>Build pricing from closed quotes</Button>}
         <Button variant="tertiary" onClick={() => dispatch({ type: 'OPEN_PRICE_BOARD', companyId: company.id })}>
           Preview prices
         </Button>
@@ -131,11 +120,7 @@ export function BasePricingCard({ company }) {
             imageAlt="A price list with a dollar amount on each line, next to boxes and a price tag"
             heading="No base pricing yet"
             action={{ content: 'Add base pricing', onAction: () => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'add' }) }}
-            secondaryAction={
-              closedQuotes.length
-                ? { content: 'Build pricing from closed quotes', onAction: () => toast('Build from quotes') }
-                : undefined
-            }
+            secondaryAction={crossSync ? { content: 'Build pricing from closed quotes', onAction: buildFromQuotes } : undefined}
           >
             Assign a base pricing so buyers get a B2B price. You can add more than one — the lowest priority applies first.
           </EmptyBlock>

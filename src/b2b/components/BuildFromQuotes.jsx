@@ -11,6 +11,8 @@ import {
   Divider,
   Link,
   Icon,
+  Badge,
+  Button,
 } from '@shopify/polaris';
 import { SearchIcon } from '@shopify/polaris-icons';
 import { useStore, newBaseBuilder } from '../store.jsx';
@@ -23,6 +25,11 @@ import emptyStateArt from '../assets/empty-state.png';
 // The RFQ app lives at the site root; its default view is the quotes submission
 // list. Keep the ?v= version param so the switch stays on the same prototype.
 const rfqSubmissionsUrl = () => (activeVersion() === 'latest' ? '/' : `/?v=${activeVersion()}`);
+// The RFQ app's Shopify App Store listing — where a merchant without it goes to install.
+const RFQ_APP_STORE_URL = 'https://apps.shopify.com/request-for-quote-by-omega';
+
+// Prototype: show the dev toggles in production too (flip to import.meta.env.DEV to hide in prod).
+const SHOW_DEV_TOOLS = true;
 
 // Sort options for the product list (mirrors the RFQ product-picker header).
 const SORT_OPTIONS = [
@@ -89,7 +96,9 @@ export function BuildFromQuotes() {
     { label: 'Create a new base pricing…', value: '__new__' },
     ...bases.map((e) => ({ label: e.policy.name, value: e.policy.id })),
   ];
-  const isEmpty = bq.rows.length === 0;
+  // Closed quotes come from the RFQ app; without it there is nothing to build from.
+  const rfqInstalled = !!state.db.rfqAppInstalled;
+  const isEmpty = !rfqInstalled || bq.rows.length === 0;
 
   // Search + sort the rows for display. Selection is keyed by SKU so it survives
   // filtering/re-ordering.
@@ -97,7 +106,7 @@ export function BuildFromQuotes() {
   const filtered = q
     ? bq.rows.filter((r) => `${skuTitle(r.sku)} ${r.sku}`.toLowerCase().includes(q))
     : bq.rows;
-  const shown = [...filtered].sort((a, b) => {
+  const shown = !rfqInstalled ? [] : [...filtered].sort((a, b) => {
     switch (sort) {
       case 'title-desc': return skuTitle(b.sku).localeCompare(skuTitle(a.sku));
       case 'quoted-asc': return (Number(a.quoted) || 0) - (Number(b.quoted) || 0);
@@ -211,6 +220,10 @@ export function BuildFromQuotes() {
     >
       <Modal.Section>
         <BlockStack gap="300">
+          {SHOW_DEV_TOOLS && (
+            <DevTools on={!rfqInstalled} onToggle={() => dispatch({ type: 'SET_RFQ_INSTALLED', installed: !rfqInstalled })} />
+          )}
+
           {!isEmpty && (
             <Text as="p" tone="subdued" variant="bodySm">
               Prices come from each product’s most recently closed quote. Tick the ones to include, edit the price, then add them to a base pricing.
@@ -247,14 +260,25 @@ export function BuildFromQuotes() {
                 selectedItemsCount={allShownSelected ? 'All' : selectedShown}
                 onSelectionChange={onSelectionChange}
                 emptyState={
-                  <EmptyBlock
-                    image={emptyStateArt}
-                    imageAlt=""
-                    heading="No products to add"
-                    action={{ content: 'Open RFQ app', onAction: () => { window.location.href = rfqSubmissionsUrl(); } }}
-                  >
-                    No products from closed quotes are available for this company. Check your quote statuses in the RFQ app.
-                  </EmptyBlock>
+                  rfqInstalled ? (
+                    <EmptyBlock
+                      image={emptyStateArt}
+                      imageAlt=""
+                      heading="No products to add"
+                      action={{ content: 'Open RFQ app', onAction: () => { window.location.href = rfqSubmissionsUrl(); } }}
+                    >
+                      No products from closed quotes are available for this company. Check your quote statuses in the RFQ app.
+                    </EmptyBlock>
+                  ) : (
+                    <EmptyBlock
+                      image={emptyStateArt}
+                      imageAlt=""
+                      heading="Install O:Request a Quote"
+                      action={{ content: 'Install app', onAction: () => window.open(RFQ_APP_STORE_URL, '_blank', 'noopener') }}
+                    >
+                      Closed quotes come from the O:Request a Quote app. Install it to collect quote requests and turn agreed prices into B2B pricing.
+                    </EmptyBlock>
+                  )
                 }
                 headings={[
                   { title: 'Product' },
@@ -297,5 +321,24 @@ export function BuildFromQuotes() {
         </BlockStack>
       </Modal.Section>
     </Modal>
+  );
+}
+
+// Dev-only strip (same pattern as Registrations / Analytics): preview the modal as a
+// merchant who hasn't installed the RFQ app. The "no closed quotes" case needs no
+// toggle — open it on a company without any.
+function DevTools({ on, onToggle }) {
+  return (
+    <Box background="bg-surface-secondary" borderColor="border" borderWidth="025" borderRadius="200" padding="200">
+      <InlineStack gap="200" blockAlign="center" wrap>
+        <Badge tone="info">Dev</Badge>
+        <Text as="span" variant="bodySm" tone="subdued">
+          {on ? 'Previewing without the RFQ app installed.' : 'Preview the modal before the RFQ app is installed.'}
+        </Text>
+        <Button size="slim" pressed={on} onClick={onToggle}>
+          {on ? 'Show installed' : 'Preview not installed'}
+        </Button>
+      </InlineStack>
+    </Box>
   );
 }
