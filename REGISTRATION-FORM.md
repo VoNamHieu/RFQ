@@ -5,7 +5,7 @@
 > và ghi lại các quyết định thiết kế (dùng làm nguyên liệu PRD), cùng kiểu với `PRD-NOTES.md`.
 > Nhãn UI để nguyên tiếng Anh đúng như trong app.
 >
-> Cập nhật: 2026-09-23 · Branch: `feature/b2b-registrations` · Stack: Vite + React + @shopify/polaris
+> Cập nhật: 2026-09-24 · Branch: `feature/b2b-registrations` · Stack: Vite + React + @shopify/polaris
 
 ---
 
@@ -23,7 +23,7 @@
 | Form builder (4 tab + preview) | `src/b2b/screens/FormSettings.jsx` |
 | Hàng đợi đơn (list, filter, bulk) | `src/b2b/screens/Registrations.jsx` |
 | Màn duyệt 1 đơn | `src/b2b/screens/RegistrationDetail.jsx` |
-| Helper (status, match company, ngày) | `src/b2b/registrations.js` |
+| Helper (status, ngày) | `src/b2b/registrations.js` |
 | Cấu hình form dùng chung 2 app | `src/shared/registrationForm.js` |
 | Form phía storefront | `src/storefront/components/ApplyForm.jsx`, `screens/BusinessAccount.jsx`, `screens/Account.jsx` |
 | Seed đơn demo | `src/b2b/data/registrations.js` |
@@ -35,7 +35,7 @@
 Merchant:  Create form → cấu hình (Form / Review process / Design) → Save
                       → Publish form: chọn place → add trong theme → Live
 Buyer:     Storefront → Apply for a business account → submit
-Merchant:  Registrations → mở đơn → match Company → Approve / Decline
+Merchant:  Registrations → mở đơn → Approve (tạo company mới) / Decline
                       → buyer thành contact của Company → gán pricing
 ```
 
@@ -61,6 +61,25 @@ Merchant:  Registrations → mở đơn → match Company → Approve / Decline
 - Field built-in bị xoá được nhớ trong `removed` (giữ nguyên label/required), thêm lại là về đúng
   vị trí cũ theo `BUILTIN_ORDER`.
 - Custom field: `CUSTOM_TYPES` (dropdown, checkbox, radio, text, textarea, heading, number, date, upload).
+  Chèn ngay trước nút submit, mặc định không bắt buộc. Dropdown / Radio dùng `choicesFor` (chưa có
+  trình sửa option → `Option 1–3`).
+- **Quy tắc field dùng chung** (builder, storefront và màn duyệt cùng đọc — `registrationForm.js`):
+
+  | Quy tắc | Áp dụng |
+  |---|---|
+  | `canRequire` — có ô Required | Mọi field trừ `heading`, `submit` |
+  | `isLocked` — luôn bắt buộc, không xoá được (`LOCKED_FIELDS`) | **Business email**, **Company name** — approve cần để đặt tên company mới và làm main contact |
+  | `canRemove` | Mọi field trừ nút submit và field khoá |
+  | `isRequired` | Field khoá, hoặc field nhập liệu có `required: true` |
+  | Label | Sửa được ở mọi field, kể cả nút submit (= chữ trên nút ở storefront) |
+  | `headingLabel` | Heading ghi "(optional)" tự bỏ chữ đó khi section bên dưới có field bắt buộc |
+
+- `readRegistrationForm` chuẩn hoá config cũ: field khoá → `required: true`, submit → `required: false`.
+- **Edit form** mở đúng bản đã lưu (title, fields, message) thay vì template.
+- Storefront: checkbox bắt buộc phải tick; State là dropdown theo Country (`STATES`), nước không có
+  danh sách thì gõ tay; Radio options hiện thành nhóm radio.
+- Màn duyệt (`RegistrationDetail`) dựng section theo config đã lưu (heading → section, bỏ password);
+  câu trả lời cho field đã bị gỡ khỏi form nằm ở **Other answers**.
 
 ### 4.3 Preview
 
@@ -83,7 +102,8 @@ Merchant:  Registrations → mở đơn → match Company → Approve / Decline
 - **Form mới** (đi từ template): coi như chưa từng lưu → save bar hiện ngay từ đầu. **Form cũ**
   (vào bằng Edit form): sạch, chỉ hiện khi có sửa.
 - **Save**: ghi config ra `localStorage` (`qsRegistrationForm`) → storefront đọc bản này. Toast
-  `Form saved` + banner xác nhận.
+  `Form saved`. Nếu còn Product page / Account page đã tick mà chưa thêm vào theme → cảnh báo đỏ
+  dưới từng place + focus vào nút `Add button` (xem §6).
 - **Discard**: trả mọi field về bản đã lưu; form chưa lưu lần nào thì về đúng template ban đầu.
 - **Nguyên tắc**: storefront chỉ thấy **bản đã Save**. Trước đây mỗi lần gõ phím là đẩy thẳng ra
   storefront, nên khái niệm "unsaved" vô nghĩa.
@@ -92,7 +112,7 @@ Merchant:  Registrations → mở đơn → match Company → Approve / Decline
 
 | Place (`PLACE_LABEL`) | Form xuất hiện ở đâu | Bước kế tiếp |
 |---|---|---|
-| **Create page** | Trang riêng `/pages/<slug>` do app tạo | `Add registration page` → rồi `Add form to theme →` |
+| **Create page** (tick sẵn) | Trang riêng `/pages/<slug>` do app tạo, có sẵn form | Không có nút — **Save** là tạo page và Live luôn |
 | **Product page** | Modal trên trang sản phẩm, hoặc link dẫn sang trang form | `Add button` (qua theme editor) |
 | **Account page** | Card "Apply for a business account" trong tài khoản khách | `Add button` (qua theme editor) |
 
@@ -100,8 +120,7 @@ Merchant:  Registrations → mở đơn → match Company → Approve / Decline
 
 | Trạng thái | Ý nghĩa | UI |
 |---|---|---|
-| `none` | Chưa làm gì | Nút hành động |
-| `pageCreated` | Đã tạo page (chỉ Create page) | ✓ Registration page created |
+| `none` | Chưa làm gì | Nút `Add button` (Product / Account); Create page không có nút |
 | `waiting` | Đã bấm sang theme editor, chưa xác nhận | ⏱ Waiting for theme editor + `I've added it` / `Open theme again` |
 | `live` | Merchant xác nhận đã thêm và save trong theme | ✓ Live + `View storefront` |
 
@@ -113,9 +132,14 @@ Merchant:  Registrations → mở đơn → match Company → Approve / Decline
 - App **không tự biết** merchant đã thêm + save block bên theme hay chưa → không nhảy thẳng sang
   `live`. Đi qua `waiting`, merchant xác nhận bằng `I've added it` thì mới `live` và mới dispatch
   `PUBLISH_REGISTRATION_FORM`. (App thật nên tự kiểm tra theme thay vì hỏi.)
-- Note nhắc trong banner sau khi Save, khi đã tick Product page / Account page:
-  *"Product page and Account page need to be added in your theme for changes to take effect.
-  Click Add button on each one to be redirected to the theme editor and choose where it goes."*
+- **Cảnh báo sau khi Save** (thay cho banner `Form saved` cũ): mỗi place Product page / Account page
+  đã tick mà còn `none` hiện `InlineError` đỏ ngay dưới nút của nó:
+  *"It won't appear on the dedicated page until you add this button to your theme. Please click Add button to go to your theme and add the app block."*
+
+  Editor tự chuyển sang tab **Publish form** (nếu Save từ tab khác), mở collapsible Product page,
+  cuộn tới và **focus nút `Add button` đầu tiên** còn thiếu. Cảnh báo mất khi place đó đã bấm Add
+  (`waiting`/`live`) hoặc bị bỏ tick; tick lại thì chờ lần Save sau. `Save and open` (modal) không
+  cảnh báo place đang được mở.
 - Mỗi place là **một lượt redirect riêng** (deep link vào đúng template), không có đích chung.
 - `Install manually instead` — fallback 5 bước: mở app embed block, chọn page, thêm block
   "Registration form", copy form ID, điền vào rồi Save.
@@ -124,9 +148,14 @@ Merchant:  Registrations → mở đơn → match Company → Approve / Decline
 
 - Badge cạnh tiêu đề editor: **Draft** (attention) cho tới khi form có mặt ở ít nhất một place,
   rồi thành **Live** (success). Nguồn: `db.registrationFormPublished`.
-- Cùng trạng thái đó ở **Home**: `Form live` / `Form draft` / `No form`.
+- **Off** (xám): merchant bấm `Turn form off` → `db.registrationFormOff` (`SET_REGISTRATION_FORM_OFF`).
+  Off thắng Live/Draft; nút đổi thành `Turn form on`, bật lại thì về đúng Live/Draft cũ (không mất
+  place đã publish). Tạo form mới hoặc bật "no data" thì reset về không off.
+- Cùng trạng thái đó ở **Home**: `Form off` / `Form live` / `Form draft` / `No form`. Bước setup
+  "Publish your registration form" vẫn tính là xong khi form đang off (đã publish rồi).
 - `hasRegistrationForm` bật khi chọn template (`CREATE_REGISTRATION_FORM`);
-  `registrationFormPublished` bật khi một place thành `live`.
+  `registrationFormPublished` bật khi một place thành `live` — với Create page (tick sẵn) là ngay
+  lần **Save** đầu tiên, vì app tự tạo page có form, không cần qua theme editor.
 
 ## 8. Registrations queue
 
@@ -134,28 +163,22 @@ Merchant:  Registrations → mở đơn → match Company → Approve / Decline
 - Search theo tên, email, company, country, tax ID. Sort theo Submitted / Applicant / Company /
   Country (2 chiều). Đổi tab hoặc search thì bỏ selection đang chọn.
 - Bulk: **Approve / Decline** (chỉ áp lên các dòng pending trong selection) và **Delete**, đều qua
-  modal xác nhận, có liệt kê từng đơn và company mà buyer sẽ vào.
-- Cột **Company match**: company đã nối, hoặc gợi ý (`· suggested`), hoặc `New company`.
+  modal xác nhận, có liệt kê từng đơn. Approve hàng loạt cũng như từng đơn: mỗi buyer một company mới.
+- Cột **Company match**: company đã tạo (đơn approved) hoặc `New company` (pending). Không còn gợi ý.
 - **Empty state (mỗi khối tự empty, không thay cả màn):**
   - Chưa có form: *No registration forms yet* + **Create form**.
   - Có form, chưa có đơn: *No registrations yet* + **Edit form**.
-  - Tab trống: empty riêng cho từng tab. Search không ra: một dòng chữ, không kèm nút.
+  - Tab trống: empty riêng cho từng tab. Search không ra: ảnh `no-request.webp` (danh sách + kính lúp dấu ✕) + *No registrations match your search*, không kèm nút.
 - **Dev toggle** (badge `Dev`, `SHOW_DEV_TOOLS`): *Preview no form* — xem empty state của trạng
   thái chưa có form, vì demo luôn có sẵn form.
 
 ## 9. Review → approve
 
-- Màn chi tiết bày đơn theo đúng các section của form, cột phải là quyết định: vào **company gợi ý**,
-  **company khác**, hay **company mới**.
-- `matchCompany` — gợi ý theo thứ tự tín hiệu mạnh dần xuống:
-  1. email đã là contact của company,
-  2. trùng **domain email công việc** (loại các domain cá nhân: gmail, yahoo, outlook…),
-  3. trùng **tên company** sau khi chuẩn hoá (bỏ dấu, bỏ `co/ltd/jsc/llc/inc/company`).
-- **Approve** (`APPROVE_REGISTRATION`):
-  - Vào company có sẵn → thêm contact (`Ordering only` / `Buys directly`) nếu email chưa có, cập
-    nhật số buyer và activity.
-  - Company mới → tạo company `source: 'Registration form'`, một location **Head office** (country
-    và Tax ID lấy từ đơn), contact đầu là **Location admin**, `pricing` rỗng.
+- Màn chi tiết bày đơn theo đúng các section của form. Cột phải: **Approve luôn tạo company mới**
+  (tên company + main contact lấy từ đơn). **Không có** lựa chọn "Add to an existing company" và
+  không còn gợi ý company (`matchCompany` đã bỏ).
+- **Approve** (`APPROVE_REGISTRATION`): tạo company `source: 'Registration form'`, một location
+  **Head office** (country và Tax ID lấy từ đơn), contact đầu là **Location admin**, `pricing` rỗng.
   - Đơn chuyển `approved`, ghi `decidedAt` + `companyId`.
 - **Decline** → `declined` + `decidedAt`. **Delete** → xoá khỏi hàng đợi, company đã tạo vẫn giữ.
 - `decidedAt` dùng `todayISO()` (giờ local). Không dùng `toISOString()` vì với UTC+7 thì sáng sớm
@@ -183,7 +206,7 @@ heading nào không còn field nào bên dưới.
 `SET_REGISTRATION_FILTER / _SEARCH / _SORT`, `APPROVE_REGISTRATION`, `APPROVE_REGISTRATIONS`,
 `DECLINE_REGISTRATIONS`, `DELETE_REGISTRATIONS`.
 
-## 11. Ghi chú thay đổi (22–23/09/2026)
+## 11. Ghi chú thay đổi (22–24/09/2026)
 
 | # | Thay đổi | Lý do |
 |---|---|---|
@@ -199,6 +222,12 @@ heading nào không còn field nào bên dưới.
 | 10 | Câu note: *"need to be added in your theme for changes to take effect"* | Bản cũ *"are added in your theme"* nghe như đã xong rồi |
 | 11 | Empty state tách 2 trường hợp: chưa có form vs chưa có đơn; thêm dev toggle *Preview no form* | Hai trạng thái cần hai hành động khác nhau (Create form vs Edit form) |
 | 12 | `todayISO()` thay `toISOString().slice(0,10)` | UTC+7 sáng sớm sẽ ghi nhầm sang ngày hôm trước |
+| 13 | Bỏ banner **Form saved** (thay #9, #10); sau Save, Product/Account page chưa thêm vào theme hiện cảnh báo đỏ dưới từng place + focus nút `Add button` | Banner dễ bị đóng/bỏ qua; nhắc ngay tại chỗ cần bấm |
+| 14 | Template card: bỏ dải chữ tím ở chân; copy mới, đổi tên *Multi-step form* → **Multi-step registration** | Gọn hơn, khớp copy mới |
+| 15 | Quy tắc field dùng chung (§4.2): khoá Business email + Company name; submit sửa được label, không `*`, không xoá được; checkbox bắt buộc được kiểm tra; heading "(optional)" tự điều chỉnh; State theo Country; Radio thành nhóm radio; màn duyệt theo config; Edit form mở bản đã lưu | Builder, storefront và màn duyệt từng hiểu "required" mỗi nơi một kiểu |
+| 16 | Create page: bỏ nút `Add registration page` / `Add form to theme →`; Save là tạo page + Live (khoá Page URL) | Page do app tạo đã chứa form, không cần vòng qua theme; trước đó Save xong vẫn Draft gây hiểu nhầm |
+| 17 | `Turn form off` thành trạng thái thật: badge **Off**, nút `Turn form on`, Home `Form off` | Trước chỉ là toast, bấm xong badge vẫn Live |
+| 18 | Bỏ "Add to an existing company" + gợi ý company (`matchCompany`); approve (từng đơn và hàng loạt) luôn tạo company mới | Theo yêu cầu: flow đăng ký chỉ tạo company mới |
 
 ## 12. Ảnh màn hình
 
@@ -228,9 +257,10 @@ theo từng journey. File gốc: `docs/registration-form/`.
    **Customer accounts editor** riêng. Copy hiện tại gộp chung là "theme editor".
 3. **Tab Design chưa có tác dụng.** `appr` nằm trong draft và được lưu, nhưng không được truyền
    xuống preview lẫn storefront.
-4. **Banner hướng dẫn gắn với lần Save.** Đóng banner hoặc tick place trước khi Save thì không còn
-   chỗ nào nhắc về vòng qua theme.
-5. **`Turn form off` mới chỉ là toast**, chưa đổi trạng thái form.
+4. **Cảnh báo theme chỉ hiện sau khi Save.** Tick Product/Account page mà chưa Save thì chưa có gì
+   nhắc; Save từ tab khác sẽ kéo merchant sang tab Publish form.
+5. **`Turn form off` mới đổi trạng thái phía admin.** Storefront vẫn hiện form (trang đăng ký,
+   apply trong Account); place trong tab Publish vẫn ghi ✓ Live.
 6. **Trạng thái `live` dựa vào merchant tự xác nhận** — app thật nên kiểm tra block trong theme.
-7. **Multi-step form** vẫn là template `Coming soon`.
+7. **Multi-step registration** vẫn là template `Coming soon`.
 8. Form ID trong `Install manually instead` đang hard-code một UUID.

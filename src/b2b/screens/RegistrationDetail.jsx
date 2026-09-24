@@ -1,24 +1,20 @@
 import React, { useState } from 'react';
 import {
-  Page, Card, BlockStack, InlineStack, InlineGrid, Text, Badge, Button, Link, Banner, RadioButton, Select, Divider, Box, Modal,
+  Page, Card, BlockStack, InlineStack, InlineGrid, Text, Badge, Button, Link, Banner, Divider, Box, Modal,
 } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
 import { companyNeedsPrice } from '../pricing.js';
-import { REG_STATUS, fullName, fmtDate, matchCompany } from '../registrations.js';
+import { REG_STATUS, fullName, fmtDate } from '../registrations.js';
+import { readRegistrationForm, BUILTIN_FIELDS, withoutOptionalNote } from '../../shared/registrationForm.js';
 
-// Reviewing one registration: registration → identify buyer → match Company →
-// approve (activate) → configure pricing. The application is shown in the
-// form's own sections; the right column is the decision — which Company the
-// buyer joins (a suggested match, another existing Company, or a new one).
+// Reviewing one registration: registration → identify buyer → approve (activate)
+// → configure pricing. The application is shown in the form's own sections; the
+// right column is the decision — approving always creates a new Company for the
+// buyer (joining an existing one isn't offered here).
 
 export function RegistrationDetail() {
   const { state, dispatch } = useStore();
-  const companies = state.db.companies;
   const reg = (state.db.registrations || []).find((r) => r.id === state.selectedRegistration);
-  const match = reg && reg.status === 'pending' ? matchCompany(reg, companies) : null;
-
-  const [target, setTarget] = useState(match ? 'existing' : 'new'); // 'existing' | 'new'
-  const [existingId, setExistingId] = useState(match?.company.id || companies[0]?.id || '');
   const [confirm, setConfirm] = useState(null); // 'decline' | 'delete'
 
   const back = () => dispatch({ type: 'NAVIGATE', view: 'registrations' });
@@ -33,8 +29,7 @@ export function RegistrationDetail() {
   const name = fullName(reg);
   const status = REG_STATUS[reg.status];
   const pending = reg.status === 'pending';
-  const canApprove = target === 'new' || !!companies.find((c) => c.id === existingId);
-  const approve = () => dispatch({ type: 'APPROVE_REGISTRATION', id: reg.id, companyId: target === 'existing' ? existingId : null });
+  const approve = () => dispatch({ type: 'APPROVE_REGISTRATION', id: reg.id });
 
   return (
     <Page
@@ -42,7 +37,7 @@ export function RegistrationDetail() {
       titleMetadata={<Badge tone={status.tone}>{status.label}</Badge>}
       subtitle={`${name} · submitted ${fmtDate(reg.submittedAt)} from the ${reg.source.toLowerCase()}`}
       backAction={{ content: 'Registrations', onAction: back }}
-      primaryAction={pending ? { content: 'Approve', onAction: approve, disabled: !canApprove } : undefined}
+      primaryAction={pending ? { content: 'Approve', onAction: approve } : undefined}
       secondaryActions={[
         ...(pending ? [{ content: 'Decline', destructive: true, onAction: () => setConfirm('decline') }] : []),
         { content: 'Delete', destructive: true, onAction: () => setConfirm('delete') },
@@ -52,21 +47,21 @@ export function RegistrationDetail() {
         <Card>
           <BlockStack gap="400">
             <Text as="h2" variant="headingSm">Application</Text>
-            <Section title="Contact information">
-              <Row label="First name" value={reg.firstName} />
-              <Row label="Last name" value={reg.lastName} />
-              <Row label="Business email" value={reg.email} />
-            </Section>
-            <Divider />
-            <Section title="Business information">
-              <Row label="Company name" value={reg.company} />
-              <Row label="Country" value={reg.country} />
-              <Row label="Tax / VAT ID" value={reg.taxId} />
-            </Section>
-            <Divider />
-            <Section title="Tell us about your business">
-              <Text as="p" tone={reg.message ? undefined : 'subdued'}>{reg.message || 'No message'}</Text>
-            </Section>
+            {applicationSections(reg).map((sec, i) => (
+              <React.Fragment key={sec.key}>
+                {i > 0 && <Divider />}
+                <Section title={sec.title}>
+                  {sec.fields.map((f) => (f.kind === 'textarea' ? (
+                    <BlockStack key={f.id} gap="100">
+                      {sec.fields.length > 1 && <Text as="span" tone="subdued">{f.label}</Text>}
+                      <Text as="p" tone={answerOf(reg, f) ? undefined : 'subdued'}>{answerOf(reg, f) || 'No answer'}</Text>
+                    </BlockStack>
+                  ) : (
+                    <Row key={f.id} label={f.label} value={answerOf(reg, f)} />
+                  )))}
+                </Section>
+              </React.Fragment>
+            ))}
           </BlockStack>
         </Card>
 
@@ -75,30 +70,11 @@ export function RegistrationDetail() {
             <BlockStack gap="300">
               <BlockStack gap="100">
                 <Text as="h2" variant="headingSm">Company</Text>
-                <Text as="p" tone="subdued">Approving gives {reg.firstName} B2B access through a company.</Text>
+                <Text as="p" tone="subdued">Approving gives {reg.firstName} B2B access through a new company.</Text>
               </BlockStack>
-              {match && (
-                <Banner tone="info" title={`Suggested: ${match.company.name}`}>
-                  {match.reason}.
-                </Banner>
-              )}
-              <BlockStack gap="200">
-                <RadioButton
-                  label="Add to an existing company" id="rg-existing" name="rg-target"
-                  checked={target === 'existing'} onChange={() => setTarget('existing')}
-                  helpText={`${reg.firstName} joins as a buyer.`}
-                />
-                {target === 'existing' && (
-                  <Box paddingInlineStart="600">
-                    <Select label="Company" labelHidden value={existingId} onChange={setExistingId}
-                      options={companies.map((c) => ({ label: c.name, value: c.id }))} />
-                  </Box>
-                )}
-                <RadioButton
-                  label="Create a new company" id="rg-new" name="rg-target"
-                  checked={target === 'new'} onChange={() => setTarget('new')}
-                  helpText={`“${reg.company}” with ${name} as the main contact.`}
-                />
+              <BlockStack gap="050">
+                <Text as="p" fontWeight="medium">{reg.company}</Text>
+                <Text as="p" variant="bodySm" tone="subdued">{`${name} as the main contact.`}</Text>
               </BlockStack>
               <Text as="p" variant="bodySm" tone="subdued">You’ll set up the company’s pricing after approving.</Text>
             </BlockStack>
@@ -180,10 +156,40 @@ function ApprovedCard({ reg }) {
   );
 }
 
+// The application laid out by the saved registration form — the same config the
+// storefront renders — so whatever the merchant put on the form (phone, address,
+// custom fields) is what gets reviewed. Headings become sections; answers to
+// fields since taken off the form are kept under "Other answers".
+function applicationSections(reg) {
+  const fields = readRegistrationForm().fields.filter((f) => f.kind !== 'submit' && f.kind !== 'password');
+  const sections = [];
+  fields.forEach((f) => {
+    if (f.kind === 'heading') {
+      sections.push({ key: f.id, title: withoutOptionalNote(f.label), fields: [] });
+    } else {
+      if (!sections.length) sections.push({ key: 'top', title: null, fields: [] });
+      sections[sections.length - 1].fields.push(f);
+    }
+  });
+  const onForm = new Set(fields.map((f) => f.id));
+  const extra = BUILTIN_FIELDS.filter((f) => !['heading', 'submit', 'password'].includes(f.kind)
+    && !onForm.has(f.id) && answerOf(reg, f));
+  if (extra.length) sections.push({ key: 'other', title: 'Other answers', fields: extra });
+  return sections.filter((sec) => sec.fields.length);
+}
+
+// A buyer's answer to one field: storefront submissions carry `values` keyed by
+// field id; seeded rows keep the built-in answers at the top level.
+function answerOf(reg, f) {
+  const v = reg.values?.[f.id] ?? reg[f.id];
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+  return v == null ? '' : String(v);
+}
+
 function Section({ title, children }) {
   return (
     <BlockStack gap="200">
-      <Text as="h3" variant="headingXs" tone="subdued">{title}</Text>
+      {title && <Text as="h3" variant="headingXs" tone="subdued">{title}</Text>}
       {children}
     </BlockStack>
   );

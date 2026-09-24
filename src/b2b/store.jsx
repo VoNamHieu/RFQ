@@ -3,7 +3,7 @@ import { shopifyCompanyDirectory } from './data/directory.js';
 import { policyUsageCount } from './pricing.js';
 import { newRule, newBaseBuilder, newQuantityBuilder } from './builders.js';
 import { buildInitialState } from './initialState.js';
-import { matchCompany, todayISO } from './registrations.js';
+import { todayISO } from './registrations.js';
 import {
   clone,
   companyBaseArray,
@@ -100,46 +100,36 @@ function applyAssignment(db, policyId, b) {
   else if (db.defaults.wholesalePolicyId === policyId) db.defaults.wholesalePolicyId = null;
 }
 
-// Approve = activate the buyer in a Company: as a new contact on an existing
-// Company (`companyId`), or as the main contact of a new Company. Mutates `db`.
-function approveRegistration(db, reg, companyId) {
+// Approve = activate the buyer as the main contact of a new Company (joining an
+// existing Company isn't offered from a registration). Mutates `db`.
+function approveRegistration(db, reg) {
   const name = `${reg.firstName} ${reg.lastName}`.trim();
   const when = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
-  let company = companyId ? db.companies.find((c) => c.id === companyId) : null;
-  if (company) {
-    const loc = company.locations?.[0]?.name || '';
-    if (!(company.contacts || []).some((ct) => ct.email === reg.email)) {
-      company.contacts = [...(company.contacts || []), { name, email: reg.email, role: 'Ordering only', access: 'Buys directly', locations: loc }];
-    }
-    recomputeBuyers(company);
-    company.activity = [{ when, what: `${name} approved from a B2B registration` }, ...(company.activity || [])];
-  } else {
-    let n = db.companies.length + 1;
-    while (db.companies.some((c) => c.id === `c${n}`)) n += 1;
-    const id = `c${n}`;
-    company = {
-      id,
-      name: reg.company,
-      mainContact: name,
-      source: 'Registration form',
-      pricing: { base: [], quantity: null },
-      revenue: 0,
-      // One starting location with the same defaults normalizeDb gives seeded ones.
-      locations: [{
-        id: `${id}-l1`, name: 'Head office', terms: 'Not set', ordering: 'Buys directly', buyers: 1, lastOrder: '—',
-        status: 'Active', paymentTerms: 'No payment terms', purchasingMode: 'DIRECT', externalId: '',
-        shipping: { country: reg.country || '', address1: '', address2: '', city: '', postal: '', phone: '' },
-        billingSameAsShipping: true, editableShipping: false, taxId: reg.taxId || '', taxSettings: 'collect',
-        pricing: { base: null, quantity: null },
-      }],
-      contacts: [{ name, email: reg.email, role: 'Location admin', access: 'Buys directly', locations: 'Head office' }],
-      quotes: [],
-      exceptions: [],
-      activity: [{ when, what: `Created from ${name}'s B2B registration` }],
-      orders: [],
-    };
-    db.companies.push(company);
-  }
+  let n = db.companies.length + 1;
+  while (db.companies.some((c) => c.id === `c${n}`)) n += 1;
+  const id = `c${n}`;
+  const company = {
+    id,
+    name: reg.company,
+    mainContact: name,
+    source: 'Registration form',
+    pricing: { base: [], quantity: null },
+    revenue: 0,
+    // One starting location with the same defaults normalizeDb gives seeded ones.
+    locations: [{
+      id: `${id}-l1`, name: 'Head office', terms: 'Not set', ordering: 'Buys directly', buyers: 1, lastOrder: '—',
+      status: 'Active', paymentTerms: 'No payment terms', purchasingMode: 'DIRECT', externalId: '',
+      shipping: { country: reg.country || '', address1: '', address2: '', city: '', postal: '', phone: '' },
+      billingSameAsShipping: true, editableShipping: false, taxId: reg.taxId || '', taxSettings: 'collect',
+      pricing: { base: null, quantity: null },
+    }],
+    contacts: [{ name, email: reg.email, role: 'Location admin', access: 'Buys directly', locations: 'Head office' }],
+    quotes: [],
+    exceptions: [],
+    activity: [{ when, what: `Created from ${name}'s B2B registration` }],
+    orders: [],
+  };
+  db.companies.push(company);
   Object.assign(reg, { status: 'approved', decidedAt: todayISO(), companyId: company.id });
 }
 
@@ -154,10 +144,14 @@ function reducer(state, action) {
     // ----- Registrations (storefront form submissions) -----
     // Picking a template in the form builder creates the registration form.
     case 'CREATE_REGISTRATION_FORM':
-      return { ...state, db: { ...state.db, hasRegistrationForm: true, registrationFormPublished: false } };
+      return { ...state, db: { ...state.db, hasRegistrationForm: true, registrationFormPublished: false, registrationFormOff: false } };
     // Adding the form to a storefront place (Theme Editor) publishes it — app home shows Draft until then.
     case 'PUBLISH_REGISTRATION_FORM':
       return { ...state, db: { ...state.db, registrationFormPublished: true } };
+    // "Turn form off" in the builder: buyers can't apply until it's turned back on. Where
+    // it's published is kept, so turning it on goes straight back to Live (or Draft).
+    case 'SET_REGISTRATION_FORM_OFF':
+      return { ...state, db: { ...state.db, registrationFormOff: action.off }, toast: action.off ? 'Form turned off' : 'Form turned on' };
     case 'SET_HOME_GUIDE':
       return { ...state, homeGuideHidden: action.hidden };
     case 'OPEN_REGISTRATION':
@@ -173,14 +167,14 @@ function reducer(state, action) {
       const db = clone(state.db);
       const reg = (db.registrations || []).find((r) => r.id === action.id);
       if (!reg || reg.status !== 'pending') return state;
-      approveRegistration(db, reg, action.companyId);
+      approveRegistration(db, reg);
       return { ...state, db, toast: 'Registration approved' };
     }
-    // Bulk: each buyer joins their suggested Company, or gets a new one.
+    // Bulk: same as one by one — each buyer gets a new Company.
     case 'APPROVE_REGISTRATIONS': {
       const db = clone(state.db);
       const regs = (db.registrations || []).filter((r) => action.ids.includes(r.id) && r.status === 'pending');
-      regs.forEach((reg) => approveRegistration(db, reg, matchCompany(reg, db.companies)?.company.id || null));
+      regs.forEach((reg) => approveRegistration(db, reg));
       return { ...state, db, toast: regs.length === 1 ? 'Registration approved' : `${regs.length} registrations approved` };
     }
     case 'DECLINE_REGISTRATIONS': {
@@ -625,6 +619,7 @@ function reducer(state, action) {
         db.registrations = [];
         db.hasRegistrationForm = false;
         db.registrationFormPublished = false;
+        db.registrationFormOff = false;
         db.defaults = { b2bPolicyId: null, wholesalePolicyId: null };
         return { ...state, db, emptyBackup, emptyMode: true, view: 'customers', selectedCompany: null, toast: 'Sample data hidden' };
       }
