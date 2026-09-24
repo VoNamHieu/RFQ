@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Page, Card, Box, BlockStack, InlineStack, InlineGrid, Text, Button, Badge,
-  TextField, Icon, Popover, Divider, Checkbox, RadioButton, Tooltip, Banner, Collapsible, InlineError,
+  Page, Card, Box, BlockStack, InlineStack, InlineGrid, Text, Button, Badge, ContextualSaveBar,
+  TextField, Icon, Popover, Divider, Checkbox, RadioButton, Tooltip, Banner, Collapsible, InlineError, Modal,
 } from '@shopify/polaris';
 import {
   TextTitleIcon, TextFontIcon, TextBlockIcon, EmailIcon, KeyIcon, StoreIcon,
@@ -10,10 +10,13 @@ import {
   CalendarIcon, UploadIcon, CheckboxIcon, HashtagIcon, CaretDownIcon,
   ListBulletedIcon, NotificationIcon, SearchIcon, ChevronRightIcon, ChevronLeftIcon,
   InfoIcon, TextAlignLeftIcon, TextAlignCenterIcon, TextAlignRightIcon,
-  ClipboardIcon, ExternalSmallIcon, CheckCircleIcon, MaximizeIcon, XIcon, ViewIcon,
+  ClipboardIcon, ExternalSmallIcon, CheckCircleIcon, ClockIcon, MaximizeIcon, XIcon, ViewIcon,
   ChevronUpIcon, ChevronDownIcon,
 } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
+import {
+  BUILTIN_FIELDS, BUILTIN_ORDER, TEMPLATE_FIELDS, DEFAULT_FORM, writeRegistrationForm,
+} from '../../shared/registrationForm.js';
 // The storefront's own Dawn icons, so the page preview matches the real store.
 import {
   SearchIcon as SfSearchIcon, AccountIcon as SfAccountIcon, CartIcon as SfCartIcon, BuildingIcon as SfBuildingIcon,
@@ -36,40 +39,6 @@ const ICON = {
 // Every built-in field in its canonical form order. A built-in is either in the
 // form or offered in "Add field": removing one makes it re-addable, and adding
 // it puts it in its place in this order.
-const BUILTIN_FIELDS = [
-  { id: 'contactHeading', kind: 'heading', label: 'Contact information' },
-  { id: 'firstName', kind: 'text', label: 'First name', required: true, half: true },
-  { id: 'lastName', kind: 'text', label: 'Last name', required: true, half: true },
-  { id: 'email', kind: 'email', label: 'Business email', required: true },
-  { id: 'password', kind: 'password', label: 'Password', required: true },
-  { id: 'phone', kind: 'phone', label: 'Phone number' },
-  { id: 'businessHeading', kind: 'heading', label: 'Business information' },
-  { id: 'company', kind: 'company', label: 'Company name', required: true },
-  { id: 'country', kind: 'country', label: 'Country', required: true },
-  { id: 'state', kind: 'state', label: 'State' },
-  { id: 'taxId', kind: 'text', label: 'Tax / VAT ID' },
-  { id: 'address', kind: 'location', label: 'Address' },
-  { id: 'apartment', kind: 'location', label: 'Apartment' },
-  { id: 'city', kind: 'location', label: 'City' },
-  { id: 'zip', kind: 'location', label: 'Zip code' },
-  { id: 'aboutHeading', kind: 'heading', label: 'Tell us about your business (optional)' },
-  { id: 'message', kind: 'textarea', label: 'Message / business details' },
-  { id: 'marketing', kind: 'checkbox', label: 'Subscribe to our marketing emails' },
-  { id: 'submit', kind: 'submit', label: 'Submit B2B application', required: true },
-];
-const BUILTIN_ORDER = BUILTIN_FIELDS.map((f) => f.id);
-
-// The starter form: only what the merchant needs to decide "do I approve this
-// buyer, and which company do they belong to?". It reads as a B2B application,
-// not a customer sign-up, so there's no password; address details are a layer
-// merchants add when they need them.
-const DEFAULT_FIELD_IDS = [
-  'contactHeading', 'firstName', 'lastName', 'email',
-  'businessHeading', 'company', 'country', 'taxId',
-  'aboutHeading', 'message', 'submit',
-];
-const TEMPLATE_FIELDS = BUILTIN_FIELDS.filter((f) => DEFAULT_FIELD_IDS.includes(f.id));
-
 const MENU_ICON = { apartment: StoreIcon, marketing: NotificationIcon };
 const menuSection = (f) => (f.kind === 'submit' || f.kind === 'checkbox' ? 'Others' : 'Information fields');
 
@@ -85,19 +54,23 @@ const CUSTOM_TYPES = [
   { kind: 'upload', label: 'Upload files' },
 ];
 
-// `entry` = 'editor' when opened from Registrations ("Edit form"): skip the
-// first-run steps and go straight to the editor, whose Back returns there.
+// `entry` = where Registrations sends you in: 'editor' ("Edit form") or 'create'
+// ("Create form", the template picker). Either skips the first-run landing, and
+// Back from that entry step returns to Registrations.
 export function FormSettings({ entry }) {
   const { dispatch } = useStore();
   const toast = (m) => dispatch({ type: 'TOAST', message: m });
-  const [step, setStep] = useState(entry === 'editor' ? 'editor' : 'empty'); // 'empty' | 'create' | 'editor'
+  const [step, setStep] = useState(entry === 'editor' || entry === 'create' ? entry : 'empty'); // 'empty' | 'create' | 'editor'
   const toRegistrations = () => dispatch({ type: 'NAVIGATE', view: 'registrations', patch: { formEntry: null } });
+  const create = () => { dispatch({ type: 'CREATE_REGISTRATION_FORM' }); setStep('editor'); };
 
-  if (step === 'create') return <CreateStep toast={toast} onBack={() => setStep('empty')} onCreate={() => setStep('editor')} />;
+  if (step === 'create') {
+    return <CreateStep toast={toast} onBack={entry === 'create' ? toRegistrations : () => setStep('empty')} onCreate={create} />;
+  }
   if (step === 'editor') {
     return entry === 'editor'
       ? <EditorStep toast={toast} onBack={toRegistrations} title="B2B registration form" />
-      : <EditorStep toast={toast} onBack={() => setStep('create')} />;
+      : <EditorStep toast={toast} onBack={() => setStep('create')} isNew />;
   }
   return <EmptyStep toast={toast} onCreate={() => setStep('create')} onManageList={toRegistrations} />;
 }
@@ -177,9 +150,15 @@ function TemplateCard({ title, badge, desc, action, footer }) {
 // registrations are reviewed · how it looks (optional) · where it goes live.
 const EDITOR_TABS = ['Form', 'Review process', 'Design', 'Publish form'];
 
-function EditorStep({ toast, onBack, title: pageTitle = 'Create B2B registration form' }) {
+function EditorStep({ toast, onBack, isNew = false, title: pageTitle = 'Create B2B registration form' }) {
+  // Live = the form is on at least one storefront place (same state Home reads).
+  const { state } = useStore();
+  const live = !!state.db.registrationFormPublished;
+  const [savedNote, setSavedNote] = useState(false); // "Form saved" confirmation, until dismissed
   const [tab, setTab] = useState('Form');
-  const [fullPreview, setFullPreview] = useState(false);
+  // Which surface the full-screen preview shows, or null when it is closed. The card's
+  // "Desktop" button opens the surface on screen; "Preview form" opens the one picked there.
+  const [fullPreview, setFullPreview] = useState(null);
   // Form
   const [title, setTitle] = useState('B2B registration form');
   const [fields, setFields] = useState(TEMPLATE_FIELDS);
@@ -217,6 +196,52 @@ function EditorStep({ toast, onBack, title: pageTitle = 'Create B2B registration
 
   // Removed built-ins keep their edits (label, required) so re-adding restores them as they were.
   const [removed, setRemoved] = useState({});
+
+  // ── Unsaved changes ─────────────────────────────────────────────────────────
+  // Everything the editor can change, in one object. The contextual save bar
+  // compares it with the last saved copy; what is only being LOOKED at (tab,
+  // expanded field, preview surface, full-screen preview) stays out — moving
+  // around the editor is not an edit. `status` stays out too: it is the publish
+  // PROGRESS (page created, waiting on the theme editor, live), not content —
+  // it must not make the form dirty again, and Discard must not undo it.
+  const draft = {
+    title, fields, slug, approval, afterSubmit, message, redirectUrl, tags, appr,
+    places, productMode, productLink, productLinkText, accountCopy, removed,
+  };
+  const [initialJson] = useState(() => JSON.stringify(draft)); // the template, as the editor opened
+  // A brand-new form has never been saved, so the bar is up from the start (nothing is live
+  // yet); an existing form starts clean and the bar appears on the first edit.
+  const [savedJson, setSavedJson] = useState(isNew ? null : initialJson);
+  const dirty = savedJson === null || JSON.stringify(draft) !== savedJson;
+  // The storefront's "Apply for a business account" page renders exactly these
+  // fields (shared/registrationForm), so it only changes when the merchant saves.
+  const save = () => {
+    writeRegistrationForm({ ...DEFAULT_FORM, title, fields, message });
+    setSavedJson(JSON.stringify(draft));
+    setSavedNote(true);
+    toast('Form saved');
+  };
+  // Saved → there is a form to look at, so the header offers "Preview form" and lets the
+  // merchant pick which storefront surface to open it on. The choices follow the places
+  // ticked on the Publish tab (product page has both of its options); with none ticked,
+  // the registration page — what the side preview shows by default — is still previewable.
+  const saved = savedJson !== null;
+  const previewTargets = [
+    ...(places.includes('create') || !places.length ? ['page'] : []),
+    ...(places.includes('product') ? ['product-modal', 'product-link'] : []),
+    ...(places.includes('account') ? ['account'] : []),
+  ];
+  const discard = () => {
+    const s = JSON.parse(savedJson ?? initialJson); // never saved → back to the template
+    setTitle(s.title); setFields(s.fields); setSlug(s.slug);
+    setApproval(s.approval); setAfterSubmit(s.afterSubmit); setMessage(s.message);
+    setRedirectUrl(s.redirectUrl); setTags(s.tags); setAppr(s.appr);
+    setPlaces(s.places); setProductMode(s.productMode);
+    setProductLink(s.productLink); setProductLinkText(s.productLinkText);
+    setAccountCopy(s.accountCopy); setRemoved(s.removed);
+    setExpandedId(null);
+  };
+
   const available = BUILTIN_FIELDS
     .filter((b) => !fields.some((f) => f.id === b.id))
     .map((b) => ({ ...b, ...removed[b.id] }));
@@ -248,13 +273,35 @@ function EditorStep({ toast, onBack, title: pageTitle = 'Create B2B registration
   };
 
   return (
+    <>
+      {dirty && (
+        <ContextualSaveBar
+          message="Unsaved changes"
+          saveAction={{ onAction: save }}
+          discardAction={{ onAction: discard }}
+        />
+      )}
     <Page
       title={pageTitle}
-      titleMetadata={<Badge tone="success">Active</Badge>}
+      titleMetadata={live ? <Badge tone="success">Live</Badge> : <Badge tone="attention">Draft</Badge>}
       backAction={{ content: 'Back', onAction: onBack }}
       secondaryActions={[{ content: 'Turn form off', onAction: () => toast('Form turned off') }]}
+      actionGroups={saved ? [{
+        title: 'Preview form',
+        actions: previewTargets.map((t) => ({ content: PREVIEW_PLACE[t], onAction: () => setFullPreview(t) })),
+      }] : []}
     >
       <BlockStack gap="400">
+        {/* Saving keeps the form in the app; it reaches buyers only once it is on a
+            storefront place, so the confirmation says so and points at that step. */}
+        {savedNote && (
+          <Banner tone="success" title="Form saved" onDismiss={() => setSavedNote(false)}>
+            {/* The theme round trip these two places need, said where the merchant just acted. */}
+            {(places.includes('product') || places.includes('account')) && (
+              <Text as="p">{THEME_NOTE}</Text>
+            )}
+          </Banner>
+        )}
         <InlineStack gap="100">
           {EDITOR_TABS.map((t) => (
             <button key={t} onClick={() => setTab(t)} style={tabBtn(tab === t)}>{t}</button>
@@ -285,6 +332,7 @@ function EditorStep({ toast, onBack, title: pageTitle = 'Create B2B registration
                 productLinkText={productLinkText} setProductLinkText={setProductLinkText}
                 accountCopy={accountCopy} setAccountCopy={setAccountCopy}
                 previewOn={previewOn} setPreviewOn={setPreviewOn} toast={toast}
+                dirty={dirty} onSave={save}
               />
             )}
           </BlockStack>
@@ -293,16 +341,17 @@ function EditorStep({ toast, onBack, title: pageTitle = 'Create B2B registration
             <BlockStack gap="200">
               <InlineStack align="space-between" blockAlign="center" wrap={false}>
                 <Text as="span" tone="subdued" variant="bodySm">{PREVIEW_TITLE[shownOn]}</Text>
-                <Button icon={MaximizeIcon} variant="tertiary" size="slim" onClick={() => setFullPreview(true)}
+                <Button icon={MaximizeIcon} variant="tertiary" size="slim" onClick={() => setFullPreview(shownOn)}
                   accessibilityLabel="Open full-screen desktop preview">Desktop</Button>
               </InlineStack>
               <StorefrontPreview {...preview} />
             </BlockStack>
           </Card>
-          {fullPreview && <DesktopPreview {...preview} onClose={() => setFullPreview(false)} />}
+          {fullPreview && <DesktopPreview {...preview} on={fullPreview} onClose={() => setFullPreview(null)} />}
         </InlineGrid>
       </BlockStack>
     </Page>
+    </>
   );
 }
 
@@ -538,13 +587,18 @@ const PLACE_HINT = {
   product: 'Show the form on your product pages.',
   account: 'Show the form on the customer account page.',
 };
+// Product / account pages are theme surfaces: the block lives in the theme and renders what
+// the app has saved, so the order matters. Said once, up front, since the round trip
+// (app → theme editor → back) is where it goes wrong.
+const THEME_NOTE = 'Product page and Account page need to be added in your theme for changes to take effect. Click Add button on each one to be redirected to the theme editor and choose where it goes.';
 
 function PublishTab({
   slug, setSlug, places, setPlaces, status, setStatus,
   productMode, setProductMode, productLink, setProductLink, productLinkText, setProductLinkText,
   accountCopy, setAccountCopy,
-  previewOn, setPreviewOn, toast,
+  previewOn, setPreviewOn, toast, dirty, onSave,
 }) {
+  const { dispatch } = useStore();
   const formId = '01a0c21c-dffa-76e8-8d86-062f0ffd24f4';
   const [manualOpen, setManualOpen] = useState(false);
   const [noteOpen, setNoteOpen] = useState(true);
@@ -562,9 +616,17 @@ function PublishTab({
   // GraphQL `pageCreate` (write_online_store_pages) creates it.
   const createPage = () => { setPlaceStatus('create', 'pageCreated'); toast('Registration page created'); };
   // Real app: deep-links into the Theme Editor on that place's template (page /
-  // product / customer account) with the app block ready to add, and flips to
-  // live once the merchant saves. The prototype skips the round trip.
-  const addToTheme = (place) => { setPlaceStatus(place, 'live'); toast('Opening Theme Editor'); };
+  // product / customer account) with the app block ready to add.
+  //
+  // The block renders whatever the app has SAVED, and leaving with unsaved edits would
+  // lose them — so a dirty form asks to save first, then opens the editor. The app can't
+  // see the merchant add and save the block over there either, so the place waits on
+  // their confirmation instead of claiming to be live the moment they leave.
+  const [confirmTheme, setConfirmTheme] = useState(null); // place whose save is being confirmed
+  const openTheme = (place) => { setPlaceStatus(place, 'waiting'); toast('Opening Theme Editor'); };
+  const addToTheme = (place) => (dirty ? setConfirmTheme(place) : openTheme(place));
+  const saveAndOpen = () => { onSave(); openTheme(confirmTheme); setConfirmTheme(null); };
+  const confirmAdded = (place) => { setPlaceStatus(place, 'live'); dispatch({ type: 'PUBLISH_REGISTRATION_FORM' }); toast('Form live'); };
 
   // Product page settings (two options + link fields) collapse behind a chevron
   // that's always there — open it to compare/preview the options before ticking.
@@ -583,7 +645,8 @@ function PublishTab({
 
   const placeSettings = (place, picked) => (
     <PlaceStep place={place} picked={picked} status={status[place]} ready={ready[place]}
-      onCreatePage={createPage} onAddToTheme={() => addToTheme(place)} onView={() => toast('Opening storefront')}>
+      onCreatePage={createPage} onAddToTheme={() => addToTheme(place)} onConfirmAdded={() => confirmAdded(place)}
+      onView={() => toast('Opening storefront')}>
       {place === 'create' && (
         // The handle is locked once the page exists on the online store.
         <TextField label="Page URL" requiredIndicator value={slug} onChange={setSlug} prefix={SHOP_PAGES}
@@ -695,6 +758,19 @@ function PublishTab({
         </BlockStack>
         )}
       </BlockStack>
+      {confirmTheme && (
+        <Modal
+          open
+          onClose={() => setConfirmTheme(null)}
+          title="Save your form first?"
+          primaryAction={{ content: 'Save and open', onAction: saveAndOpen }}
+          secondaryActions={[{ content: 'Cancel', onAction: () => setConfirmTheme(null) }]}
+        >
+          <Modal.Section>
+            <Text as="p">The theme block shows the saved version of your form, so unsaved changes won’t appear on your storefront.</Text>
+          </Modal.Section>
+        </Modal>
+      )}
     </Card>
   );
 }
@@ -711,7 +787,7 @@ function PreviewEye({ target, onShow }) {
 // One chosen place's progress + next step, nested under its checkbox. `children`
 // holds any per-place settings (e.g. how the form shows on product pages).
 // `picked` = the place is ticked; only then does it get its status + next step.
-function PlaceStep({ place, picked, status, ready, onCreatePage, onAddToTheme, onView, children }) {
+function PlaceStep({ place, picked, status, ready, onCreatePage, onAddToTheme, onConfirmAdded, onView, children }) {
   const done = status === 'live' ? 'Live' : status === 'pageCreated' ? 'Registration page created' : null;
   return (
     <Box paddingBlockStart="100">
@@ -724,9 +800,25 @@ function PlaceStep({ place, picked, status, ready, onCreatePage, onAddToTheme, o
             <Text as="span" variant="bodyMd" fontWeight="medium">{done}</Text>
           </InlineStack>
         )}
-        {picked && <InlineStack>
+        {/* The merchant is in the Theme Editor (or came back without finishing): the app
+            can't see the block being added there, so it says what is still to do. */}
+        {picked && status === 'waiting' && (
+          <BlockStack gap="050">
+            <InlineStack gap="100" blockAlign="center" wrap={false}>
+              <span style={{ display: 'inline-flex' }}><Icon source={ClockIcon} tone="caution" /></span>
+              <Text as="span" variant="bodyMd" fontWeight="medium">Waiting for theme editor</Text>
+            </InlineStack>
+            <Text as="p" variant="bodySm" tone="subdued">Add the block, then save it in the theme editor.</Text>
+          </BlockStack>
+        )}
+        {picked && <InlineStack gap="200">
           {status === 'live' ? (
             <Button onClick={onView}>View storefront</Button>
+          ) : status === 'waiting' ? (
+            <>
+              <Button variant="primary" onClick={onConfirmAdded}>I've added it</Button>
+              <Button onClick={onAddToTheme}>Open theme again</Button>
+            </>
           ) : place === 'create' && status === 'none' ? (
             <Button variant="primary" onClick={onCreatePage} disabled={!ready}>Add registration page</Button>
           ) : (
@@ -983,6 +1075,13 @@ const PREVIEW_TITLE = {
   'product-modal': 'Preview on product page · Modal',
   'product-link': 'Preview on product page · Redirect link',
   account: 'Preview on account page',
+};
+// The same surfaces as menu items under the header's "Preview form".
+const PREVIEW_PLACE = {
+  page: 'Registration page',
+  'product-modal': 'Product page · Modal',
+  'product-link': 'Product page · Redirect link',
+  account: 'Account page',
 };
 
 // The storefront surface a place renders on, with the form placed in it.

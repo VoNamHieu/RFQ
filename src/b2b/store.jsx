@@ -3,7 +3,7 @@ import { shopifyCompanyDirectory } from './data/directory.js';
 import { policyUsageCount } from './pricing.js';
 import { newRule, newBaseBuilder, newQuantityBuilder } from './builders.js';
 import { buildInitialState } from './initialState.js';
-import { matchCompany } from './registrations.js';
+import { matchCompany, todayISO } from './registrations.js';
 import {
   clone,
   companyBaseArray,
@@ -140,7 +140,7 @@ function approveRegistration(db, reg, companyId) {
     };
     db.companies.push(company);
   }
-  Object.assign(reg, { status: 'approved', decidedAt: new Date().toISOString().slice(0, 10), companyId: company.id });
+  Object.assign(reg, { status: 'approved', decidedAt: todayISO(), companyId: company.id });
 }
 
 function reducer(state, action) {
@@ -152,6 +152,14 @@ function reducer(state, action) {
     case 'SET_COMPANY_TAB':
       return { ...state, companyTab: action.tab };
     // ----- Registrations (storefront form submissions) -----
+    // Picking a template in the form builder creates the registration form.
+    case 'CREATE_REGISTRATION_FORM':
+      return { ...state, db: { ...state.db, hasRegistrationForm: true, registrationFormPublished: false } };
+    // Adding the form to a storefront place (Theme Editor) publishes it — app home shows Draft until then.
+    case 'PUBLISH_REGISTRATION_FORM':
+      return { ...state, db: { ...state.db, registrationFormPublished: true } };
+    case 'SET_HOME_GUIDE':
+      return { ...state, homeGuideHidden: action.hidden };
     case 'OPEN_REGISTRATION':
       return { ...state, view: 'registration', selectedRegistration: action.id };
     case 'SET_REGISTRATION_FILTER':
@@ -177,7 +185,7 @@ function reducer(state, action) {
     }
     case 'DECLINE_REGISTRATIONS': {
       const db = clone(state.db);
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayISO();
       const regs = (db.registrations || []).filter((r) => action.ids.includes(r.id) && r.status === 'pending');
       regs.forEach((reg) => Object.assign(reg, { status: 'declined', decidedAt: today }));
       return { ...state, db, toast: regs.length === 1 ? 'Registration declined' : `${regs.length} registrations declined` };
@@ -603,7 +611,7 @@ function reducer(state, action) {
       return { ...state, db, toast: 'Default pricing updated' };
     }
     // "Show the app with no data": clear app-owned records (companies, pricing,
-    // customers, tags, defaults, quotes, registrations) to reveal the fresh-install empty states;
+    // customers, tags, defaults, quotes, registrations, the registration form) to reveal the fresh-install empty states;
     // toggling off restores the sample data (legacy setEmptyMode / demoBackup).
     case 'SET_EMPTY_MODE': {
       if (action.on && !state.emptyMode) {
@@ -615,6 +623,8 @@ function reducer(state, action) {
         db.tagPricing = [];
         db.quotes = [];
         db.registrations = [];
+        db.hasRegistrationForm = false;
+        db.registrationFormPublished = false;
         db.defaults = { b2bPolicyId: null, wholesalePolicyId: null };
         return { ...state, db, emptyBackup, emptyMode: true, view: 'customers', selectedCompany: null, toast: 'Sample data hidden' };
       }

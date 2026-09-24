@@ -14,7 +14,7 @@ export function makeBaseState() {
     registrationFilter: 'pending', // pending | approved | declined | all
     registrationSearch: '',
     registrationSort: 'submitted desc', // `${field} ${dir}` — see Registrations SORT_OPTIONS
-    formEntry: null, // 'editor' → the Form builder opens straight into the editor (from Registrations)
+    formEntry: null, // from Registrations: 'editor' (Edit form) | 'create' (Create form → template picker)
     companyTab: 'pricing',
     selectedQuote: null,
     selectedLocation: null,
@@ -41,7 +41,8 @@ export function makeBaseState() {
     addCompany: null, // { step, shopifyId, baseId } — add-company wizard
     emptyMode: false, // "show the app with no data" (fresh-install simulation)
     emptyBackup: null,
-    db: normalizeDb({ ...dbSeed, registrations: registrationSeed }),
+    // The seeded registrations came in through the form, so it already exists.
+    db: normalizeDb({ ...dbSeed, registrations: registrationSeed, hasRegistrationForm: true, registrationFormPublished: true, rfqAppInstalled: true }),
     toast: null,
   };
 }

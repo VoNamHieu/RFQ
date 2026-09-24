@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer } from 'react';
-import { DEMO_ACCOUNT, productBySku, b2bPriceFor } from './data/products.js';
+import { accountForEmail, productBySku, b2bPriceFor } from './data/products.js';
 
 // Storefront state machine. Deliberately small — three pages (home / product /
 // account) plus the cross-cutting bits a Dawn storefront needs: a cart, a
@@ -13,7 +13,8 @@ const initialState = {
   cart: [], // [{ sku, variantId, qty }]
   cartOpen: false,
   quoteModal: null, // { sku } — the Request-a-quote modal
-  quoteRequests: [], // quotes submitted from the storefront this session
+  orderQuote: null, // { orderId } — "Request a quote" from a past order
+  quotes: [], // the signed-in account's quote requests + the seller's offers
   b2bApplications: [], // self-serve B2B account applications awaiting merchant approval
   toast: null,
 };
@@ -34,10 +35,14 @@ function reducer(state, action) {
       return { ...state, view: action.view, currentSku: action.sku ?? state.currentSku, cartOpen: false };
     case 'OPEN_PRODUCT':
       return { ...state, view: 'product', currentSku: action.sku, cartOpen: false };
-    case 'LOGIN':
-      return { ...state, session: DEMO_ACCOUNT, toast: 'Signed in' };
+    // Demo sign-in: the email picks which of the two demo accounts you get
+    // (not applied vs. approved B2B buyer) — see DEMO_ACCOUNTS.
+    case 'LOGIN': {
+      const account = accountForEmail(action.email);
+      return { ...state, session: account, quotes: account.quotes || [], toast: 'Signed in' };
+    }
     case 'LOGOUT':
-      return { ...state, session: null, view: state.view === 'account' ? 'home' : state.view, toast: 'Signed out' };
+      return { ...state, session: null, quotes: [], view: state.view === 'account' ? 'home' : state.view, toast: 'Signed out' };
     case 'ADD_TO_CART':
       return {
         ...state,
@@ -63,9 +68,31 @@ function reducer(state, action) {
       return {
         ...state,
         quoteModal: null,
-        quoteRequests: [action.request, ...state.quoteRequests],
+        orderQuote: null,
+        quotes: [action.request, ...state.quotes],
         toast: 'Quote request sent',
       };
+    // Seller's offer accepted: the agreed price is saved back as company pricing,
+    // so the buyer can reorder at it without asking for another quote.
+    case 'ACCEPT_QUOTE':
+      return {
+        ...state,
+        quotes: state.quotes.map((q) => (q.id === action.id ? { ...q, status: 'Accepted', savedToPricing: true } : q)),
+        toast: 'Offer accepted',
+      };
+    case 'COUNTER_QUOTE':
+      return {
+        ...state,
+        quotes: state.quotes.map((q) => (q.id === action.id
+          ? { ...q, status: 'Counter sent', counterUnitPrice: Number(action.unitPrice), message: 'Your counter offer is with the seller.' }
+          : q)),
+        toast: 'Counter sent',
+      };
+    // "Request a quote" from a past order — reuses that order's products.
+    case 'OPEN_ORDER_QUOTE':
+      return { ...state, orderQuote: { orderId: action.orderId } };
+    case 'CLOSE_ORDER_QUOTE':
+      return { ...state, orderQuote: null };
     case 'SUBMIT_B2B_APPLICATION':
       // Self-serve registration → lands in the merchant's approval queue. Here we
       // just record it and confirm; approval/tagging happens on the admin side.

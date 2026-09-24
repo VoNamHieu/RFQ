@@ -13,7 +13,14 @@ export function fmtDate(iso) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-export const pendingCount = (db) => (db.registrations || []).filter((r) => r.status === 'pending').length;
+// Today as YYYY-MM-DD in the merchant's local time (toISOString is UTC, which is
+// still "yesterday" early in the morning for UTC+ timezones like Vietnam).
+export function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+export const pendingCount =(db) => (db.registrations || []).filter((r) => r.status === 'pending').length;
 
 // Personal inboxes say nothing about the employer, so they never domain-match.
 const FREE_EMAIL = new Set(['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'icloud.com', 'live.com', 'proton.me']);

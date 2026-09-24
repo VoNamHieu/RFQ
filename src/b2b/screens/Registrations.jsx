@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Page, Card, IndexTable, IndexFilters, useSetIndexFiltersMode, useIndexResourceState, Badge, Text, BlockStack, Box, Modal, List,
+  Page, Card, IndexTable, IndexFilters, useSetIndexFiltersMode, useIndexResourceState, Badge, Text, BlockStack, InlineStack, Box, Button, Modal, List,
 } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
+import registrationArt from '../assets/registration-empty.webp';
 import { REG_STATUS, fullName, fmtDate, matchCompany } from '../registrations.js';
 
 // Wholesale B2B → Registrations: what buyers submitted through the storefront
@@ -12,11 +13,20 @@ import { REG_STATUS, fullName, fmtDate, matchCompany } from '../registrations.js
 // approve / decline / delete. The form itself is one click away ("Edit form").
 
 const FILTERS = [
+  { id: 'all', label: 'All' },
   { id: 'pending', label: 'Pending review' },
   { id: 'approved', label: 'Approved' },
   { id: 'declined', label: 'Declined' },
-  { id: 'all', label: 'All' },
 ];
+const EMPTY_TAB = {
+  pending: 'No registrations to review',
+  approved: 'No approved registrations',
+  declined: 'No declined registrations',
+  all: 'No registrations yet',
+};
+// Prototype: show the dev toggles in production too (flip to import.meta.env.DEV to hide in prod).
+const SHOW_DEV_TOOLS = true;
+
 const SORT_OPTIONS = [
   { label: 'Submitted', value: 'submitted desc', directionLabel: 'Newest first' },
   { label: 'Submitted', value: 'submitted asc', directionLabel: 'Oldest first' },
@@ -38,12 +48,21 @@ export function Registrations() {
   const { state, dispatch } = useStore();
   const { mode, setMode } = useSetIndexFiltersMode();
   const [confirm, setConfirm] = useState(null); // { kind: 'approve' | 'decline' | 'delete', ids }
-  const all = state.db.registrations || [];
+  const [devNoForm, setDevNoForm] = useState(false); // dev-only: preview the empty state before any form exists
+  const all = devNoForm ? [] : state.db.registrations || [];
+  const hasForm = !!state.db.hasRegistrationForm && !devNoForm;
   const companies = state.db.companies;
   const editForm = () => dispatch({ type: 'NAVIGATE', view: 'form', patch: { formEntry: 'editor' } });
-  // First run (no submissions yet): the form builder's own create flow (template → editor).
-  const createForm = () => dispatch({ type: 'NAVIGATE', view: 'form', patch: { formEntry: null } });
+  // Empty list / tab: straight into the form builder's create flow (template → editor).
+  const createForm = () => dispatch({ type: 'NAVIGATE', view: 'form', patch: { formEntry: 'create' } });
+  // No requests to show: create the form if there isn't one yet, otherwise edit it.
+  const formAction = hasForm
+    ? { content: 'Edit form', onAction: editForm }
+    : { content: 'Create form', onAction: createForm };
   const open = (id) => dispatch({ type: 'OPEN_REGISTRATION', id });
+  const devTools = SHOW_DEV_TOOLS && (
+    <DevTools disabled={!state.db.hasRegistrationForm} on={devNoForm} onToggle={() => setDevNoForm((v) => !v)} />
+  );
 
   const filter = FILTERS.some((f) => f.id === state.registrationFilter) ? state.registrationFilter : 'pending';
   const count = (id) => (id === 'all' ? all.length : all.filter((r) => r.status === id).length);
@@ -65,10 +84,17 @@ export function Registrations() {
   if (all.length === 0) {
     return (
       <Page fullWidth title="Registrations">
+        {devTools}
         <Card>
-          <EmptyBlock heading="No registrations yet" action={{ content: 'Create form', onAction: createForm }}>
-            When buyers apply for B2B access through your registration form, their applications show up here for you to review.
-          </EmptyBlock>
+          {hasForm ? (
+            <EmptyBlock heading="No registrations yet" action={formAction} image={registrationArt}>
+              When buyers apply for B2B access through your registration form, their applications show up here for you to review.
+            </EmptyBlock>
+          ) : (
+            <EmptyBlock heading="No registration forms yet" action={formAction} image={registrationArt}>
+              Create a registration form to start collecting B2B customer applications.
+            </EmptyBlock>
+          )}
         </Card>
       </Page>
     );
@@ -100,6 +126,7 @@ export function Registrations() {
       subtitle="Buyers who applied for B2B access through your registration form"
       secondaryActions={[{ content: 'Edit form', onAction: editForm }]}
     >
+      {devTools}
       <Card padding="0">
         <IndexFilters
           queryValue={state.registrationSearch}
@@ -137,11 +164,15 @@ export function Registrations() {
             { title: 'Status' },
           ]}
           emptyState={
-            <Box padding="400">
-              <Text as="p" alignment="center" tone="subdued">
-                {q ? 'No registrations match your search.' : `No ${FILTERS.find((f) => f.id === filter).label.toLowerCase()} registrations.`}
-              </Text>
-            </Box>
+            q ? (
+              <Box padding="400">
+                <Text as="p" alignment="center" tone="subdued">No registrations match your search.</Text>
+              </Box>
+            ) : (
+              <EmptyBlock heading={hasForm ? EMPTY_TAB[filter] : 'No registration forms yet'} action={formAction}>
+                {hasForm ? 'Applications from your registration form show up here.' : 'Create a registration form to start collecting B2B customer applications.'}
+              </EmptyBlock>
+            )
           }
         >
           {rows.map((r, i) => {
@@ -240,5 +271,30 @@ function ConfirmBulk({ kind, regs, companies, onConfirm, onClose }) {
         </BlockStack>
       </Modal.Section>
     </Modal>
+  );
+}
+
+// Dev-only strip (same pattern as Analytics): preview the empty state as it looks
+// before any registration form exists (it offers Create form). The "form exists,
+// no requests" case needs no toggle — delete the registrations to see it.
+function DevTools({ disabled, on, onToggle }) {
+  return (
+    <Box paddingBlockEnd="400">
+      <Box background="bg-surface-secondary" borderColor="border" borderWidth="025" borderRadius="200" padding="200">
+        <InlineStack gap="200" blockAlign="center" wrap>
+          <Badge tone="info">Dev</Badge>
+          <Text as="span" variant="bodySm" tone="subdued">
+            {disabled
+              ? 'No registration form exists, so the empty state already offers Create form.'
+              : on
+              ? 'Previewing the empty state with no registration form — it offers Create form.'
+              : 'Preview the empty state before a registration form exists.'}
+          </Text>
+          <Button size="slim" pressed={on} disabled={disabled} onClick={onToggle}>
+            {on ? 'Show data' : 'Preview no form'}
+          </Button>
+        </InlineStack>
+      </Box>
+    </Box>
   );
 }
