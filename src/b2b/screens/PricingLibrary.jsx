@@ -5,6 +5,7 @@ import {
   IndexTable,
   IndexFilters,
   useSetIndexFiltersMode,
+  IndexFiltersMode,
   ChoiceList,
   Badge,
   Text,
@@ -95,12 +96,18 @@ export function PricingLibrary() {
   const [audience, setAudience] = useState('all');
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
+  // App home's unassigned-pricing warning lands here filtered to Inactive.
+  const [statusFilter, setStatusFilter] = useState(state.pricingStatus || 'all');
   const [sort, setSort] = useState('name');
   const [page, setPage] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(null);
-  const [chooserOpen, setChooserOpen] = useState(false);
-  const { mode, setMode } = useSetIndexFiltersMode();
+  // App home's "Create pricing" lands here with the type chooser already open.
+  const [chooserOpen, setChooserOpen] = useState(!!state.pricingChooser);
+  useEffect(() => {
+    if (state.pricingChooser || state.pricingStatus) dispatch({ type: 'NAVIGATE', view: 'pricing', patch: { pricingChooser: false, pricingStatus: null } });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Arriving pre-filtered: open the filter bar so the applied filter shows.
+  const { mode, setMode } = useSetIndexFiltersMode(state.pricingStatus ? IndexFiltersMode.Filtering : undefined);
 
   // Jump back to the first page whenever the result set changes.
   useEffect(() => { setPage(0); }, [audience, search, kind, statusFilter, sort]);
