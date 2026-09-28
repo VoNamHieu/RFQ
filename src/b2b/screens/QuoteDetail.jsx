@@ -32,6 +32,8 @@ export function QuoteDetail() {
   const quote = (state.db.quotes || []).find((q) => q.id === state.selectedQuote);
   if (!quote) return null;
   const company = state.db.companies.find((c) => c.id === quote.company);
+  // The quote's location (by name) — its own pricing, if any, decides the B2B price.
+  const quoteLocation = (company?.locations || []).find((l) => l.name === quote.location) || null;
   const products = state.db.products;
 
   const lines = quote.lines || [];
@@ -50,7 +52,7 @@ export function QuoteDetail() {
 
   const rows = lines.map((l, index) => {
     const product = lineProduct(l);
-    const b2b = company ? resolvedPriceFor(company, product, state.db.policies) : null;
+    const b2b = company ? resolvedPriceFor(company, product, state.db.policies, undefined, quoteLocation) : null;
     return (
       <IndexTable.Row id={String(index)} key={index} position={index}>
         <IndexTable.Cell>

@@ -16,7 +16,7 @@ import {
 } from '@shopify/polaris';
 import { SearchIcon } from '@shopify/polaris-icons';
 import { useStore, newBaseBuilder } from '../store.jsx';
-import { companyBaseEntries, resolvedPriceFor } from '../pricing.js';
+import { companyBaseEntries, locationPricingEntries, resolvedPriceFor } from '../pricing.js';
 import { money } from '../format.js';
 import { activeVersion } from '../../shared/versions.js';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
@@ -80,7 +80,17 @@ export function BuildFromQuotes() {
   if (!bq) return null;
 
   const company = state.db.companies.find((c) => c.id === bq.companyId);
-  const bases = companyBaseEntries(company, state.db.policies);
+  // Where the prices go: the company's pricing (every location on it), or one
+  // location's own. The destination list and the Current column follow it.
+  const locations = company?.locations || [];
+  const target = bq.locationId ? locations.find((l) => l.id === bq.locationId) || null : null;
+  const basesOf = (loc) =>
+    loc ? locationPricingEntries(company, loc, state.db.policies, { includeInactive: true }).bases : companyBaseEntries(company, state.db.policies);
+  const bases = basesOf(target);
+  const setTarget = (id) => {
+    const loc = locations.find((l) => l.id === id) || null;
+    dispatch({ type: 'BUILD_QUOTES_PATCH', patch: { locationId: loc ? loc.id : null, dest: basesOf(loc)[0]?.policy.id || '__new__' } });
+  };
   const products = state.db.products;
   const productOf = (sku) => products.find((p) => p.sku === sku);
   const skuTitle = (sku) => productOf(sku)?.title || sku;
@@ -144,11 +154,16 @@ export function BuildFromQuotes() {
       chosen.forEach((r) => {
         adjustments[r.sku] = { rule: 'set', valueType: 'amount', value: Number(r.proposed) };
       });
-      const builder = { ...newBaseBuilder(), name: `${company.name} from closed quotes`, variantAdjustments: adjustments, explicitEnabled: true };
+      const builder = {
+        ...newBaseBuilder(),
+        name: `${company.name}${target ? ` · ${target.name}` : ''} from closed quotes`,
+        variantAdjustments: adjustments,
+        explicitEnabled: true,
+      };
       dispatch({ type: 'CLOSE_BUILD_QUOTES' });
-      dispatch({ type: 'OPEN_EDITOR', policy: builder, context: { mode: 'add-base', companyId: company.id } });
+      dispatch({ type: 'OPEN_EDITOR', policy: builder, context: { mode: 'add-base', companyId: company.id, locationId: target?.id || null } });
     } else {
-      dispatch({ type: 'APPLY_BUILD_QUOTES', companyId: company.id, dest: bq.dest, rows: chosen });
+      dispatch({ type: 'APPLY_BUILD_QUOTES', companyId: company.id, locationId: target?.id || null, dest: bq.dest, rows: chosen });
     }
   };
 
@@ -157,7 +172,7 @@ export function BuildFromQuotes() {
   const rowMarkup = shown.map((r, i) => {
     const product = productOf(r.sku);
     const shopify = product?.list;
-    const current = product ? resolvedPriceFor(company, product, state.db.policies) : null;
+    const current = product ? resolvedPriceFor(company, product, state.db.policies, undefined, target) : null;
     const cost = Math.round((Number(r.quoted) || 0) * 0.6);
     const proposed = Number(r.proposed) || 0;
     const margin = proposed ? Math.round(((proposed - cost) / proposed) * 100) : 0;
@@ -286,7 +301,7 @@ export function BuildFromQuotes() {
                   { title: 'Quoted' },
                   {
                     title: 'Current',
-                    tooltipContent: 'The price this company pays now, from its current B2B pricing. “—” means no B2B price is set yet.',
+                    tooltipContent: `The price ${target ? target.name : 'this company'} pays now, from its current B2B pricing. “—” means no B2B price is set yet.`,
                   },
                   {
                     title: 'Price to save',
@@ -310,8 +325,19 @@ export function BuildFromQuotes() {
           {!isEmpty && (
             <>
               <Divider />
+              {locations.length > 1 ? (
+                <Select
+                  label="Apply to"
+                  options={[
+                    { label: 'All locations (company pricing)', value: '' },
+                    ...locations.map((l) => ({ label: l.name, value: l.id })),
+                  ]}
+                  value={target?.id || ''}
+                  onChange={setTarget}
+                />
+              ) : null}
               <Select
-                label="Add to this company’s pricing"
+                label={`Add to ${target ? `${target.name}’s` : 'this company’s'} pricing`}
                 options={destOptions}
                 value={bq.dest}
                 onChange={(v) => dispatch({ type: 'BUILD_QUOTES_PATCH', patch: { dest: v } })}

@@ -223,27 +223,30 @@ export function policyPriceBreakdown(profile, product, variant) {
 // Resolve the B2B price a company pays for a product (legacy resolvedPriceFor):
 // the first in-scope Active base wins (a scope-all base is authoritative and
 // returns the Shopify price when nothing matches); else the first in-scope Active
-// quantity pricing; else null → the caller shows "No pricing".
-function resolveProductDetail(company, product, policies, variant) {
-  for (const p of companyActiveBasePolicies(company, policies)) {
+// quantity pricing; else null → the caller shows "No pricing". With a location,
+// its own list of a kind replaces the company's (see hasOwnSlot); without one,
+// it's what a location still on the company's pricing pays.
+function resolveProductDetail(company, product, policies, variant, location) {
+  const holder = (kind) => (hasOwnSlot(location, kind) ? location : company);
+  for (const p of companyActiveBasePolicies(holder('base'), policies)) {
     if (!baseInScope(p, product.sku)) continue;
     const r = priceForDetail(p, product, variant);
     if (r) return r;
   }
-  for (const q of companyActiveQuantityPolicies(company, policies)) {
+  for (const q of companyActiveQuantityPolicies(holder('quantity'), policies)) {
     const r = priceForDetail(q, product, variant);
     if (r) return r;
   }
   return null;
 }
-export function resolvedPriceFor(company, product, policies, variant) {
-  const r = resolveProductDetail(company, product, policies, variant);
+export function resolvedPriceFor(company, product, policies, variant, location) {
+  const r = resolveProductDetail(company, product, policies, variant, location);
   return r ? r.price : null;
 }
 // Like resolvedPriceFor, but reports which layer decided the price; the Price
 // Board falls back to the Shopify price row when nothing is assigned.
-export function resolveDetail(company, product, policies, variant) {
-  return resolveProductDetail(company, product, policies, variant) || { price: variantBase(product, variant), decidedBy: 'Shopify price', layer: 'shopify' };
+export function resolveDetail(company, product, policies, variant, location) {
+  return resolveProductDetail(company, product, policies, variant, location) || { price: variantBase(product, variant), decidedBy: 'Shopify price', layer: 'shopify' };
 }
 
 // ── Company-level resolution (source / status / needs-a-price) ───────────────
@@ -340,7 +343,7 @@ export function policyStatus(policy, db) {
 export const canToggleStatus = (policy, db) => !!(policy && policyUsageCount(policy, db) > 0);
 
 // ── Usage (derived from assignments, never stored) ───────────────────────────
-function policyUsageDetail(policy, db) {
+export function policyUsageDetail(policy, db) {
   const id = policy && policy.id;
   if (!id) return { companies: 0, locations: 0, tags: 0, customers: 0, globals: [], count: 0 };
   let companies = 0;

@@ -22,7 +22,7 @@ import {
 } from '@shopify/polaris';
 import { EditIcon, XIcon, PlusIcon, XCircleIcon, ExchangeIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
-import { locationPricingEntries, scopeLabel, policyStatus } from '../pricing.js';
+import { locationPricingEntries, scopeLabel, policyStatus, hasOwnSlot } from '../pricing.js';
 import { money } from '../format.js';
 
 import { AssignBuyerModal, GeneralModal, ShippingModal, PAYMENT_TERM_OPTIONS, TAX_SETTINGS, COUNTRY_NAMES } from '../components/LocationModals.jsx';
@@ -58,6 +58,24 @@ export function LocationDetail() {
     setAddPricingOpen(false);
     dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, locationId: location.id, kind, mode: 'add' });
   };
+  // Type cell: the label, plus "Use company pricing" when this location keeps its
+  // own list of that kind (even an empty one) — dropping it follows the company again.
+  const typeCell = (label, kind) => (
+    <BlockStack gap="050">
+      <Text as="span" variant="bodyMd">{label}</Text>
+      {hasOwnSlot(location, kind) ? (
+        <InlineStack>
+          <Button
+            variant="plain"
+            size="micro"
+            onClick={() => dispatch({ type: 'RESET_LOCATION_PRICING', companyId: company.id, locationId: location.id, kind })}
+          >
+            Use company pricing
+          </Button>
+        </InlineStack>
+      ) : null}
+    </BlockStack>
+  );
   const pricingActions = (policy, kind) => (
     <InlineStack gap="100" align="end" blockAlign="center" wrap={false}>
       <Button
@@ -112,7 +130,7 @@ export function LocationDetail() {
     bases.forEach((e, i) => {
       pricingRows.push(
         <IndexTable.Row id={`base-${e.policy.id}`} key={`base-${e.policy.id}`} position={i}>
-          <IndexTable.Cell>{i === 0 ? 'Base pricing' : ''}</IndexTable.Cell>
+          <IndexTable.Cell>{i === 0 ? typeCell('Base pricing', 'base') : ''}</IndexTable.Cell>
           <IndexTable.Cell>
             <BlockStack gap="050">
               <Text as="span" variant="bodyMd">{e.policy.name}</Text>
@@ -132,7 +150,7 @@ export function LocationDetail() {
   } else {
     pricingRows.push(
       <IndexTable.Row id="base-none" key="base-none" position={0}>
-        <IndexTable.Cell>Base pricing</IndexTable.Cell>
+        <IndexTable.Cell>{typeCell('Base pricing', 'base')}</IndexTable.Cell>
         <IndexTable.Cell><Badge tone="warning">Not set</Badge></IndexTable.Cell>
         <IndexTable.Cell>—</IndexTable.Cell>
         <IndexTable.Cell>—</IndexTable.Cell>
@@ -144,7 +162,7 @@ export function LocationDetail() {
     quantities.forEach((e, i) => {
       pricingRows.push(
         <IndexTable.Row id={`quantity-${e.policy.id}`} key={`quantity-${e.policy.id}`} position={pricingRows.length}>
-          <IndexTable.Cell>{i === 0 ? 'Quantity pricing' : ''}</IndexTable.Cell>
+          <IndexTable.Cell>{i === 0 ? typeCell('Quantity pricing', 'quantity') : ''}</IndexTable.Cell>
           <IndexTable.Cell>
             <BlockStack gap="050">
               <Text as="span" variant="bodyMd">{e.policy.name}</Text>
@@ -164,7 +182,7 @@ export function LocationDetail() {
   } else {
     pricingRows.push(
       <IndexTable.Row id="quantity-none" key="quantity-none" position={pricingRows.length}>
-        <IndexTable.Cell>Quantity pricing</IndexTable.Cell>
+        <IndexTable.Cell>{typeCell('Quantity pricing', 'quantity')}</IndexTable.Cell>
         <IndexTable.Cell><Badge tone="warning">Not set</Badge></IndexTable.Cell>
         <IndexTable.Cell>—</IndexTable.Cell>
         <IndexTable.Cell>—</IndexTable.Cell>

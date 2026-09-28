@@ -4,6 +4,7 @@ import { PlusIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { companyBaseEntries, companyQuantityEntries, locationPricingEntries, scopeTypeLabel } from '../pricing.js';
 import { PricingCombobox } from './PricingCombobox.jsx';
+import { LocationScopePicker } from './LocationScopePicker.jsx';
 
 const fmtDate = (d) =>
   d ? new Date(`${d}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
@@ -55,6 +56,12 @@ export function AssignModal() {
       !assignedIds.includes(p.id),
   );
 
+  // Adding from a company page with 2+ locations: all of them, or only some.
+  const locations = company?.locations || [];
+  const pickLocations = !location && !isSwap && locations.length > 1;
+  const someLocations = pickLocations && a.applyTo === 'some';
+  const pickedLocIds = someLocations ? a.locationIds || [] : [];
+
   const swapped = isSwap ? state.db.policies.find((p) => p.id === a.swapId) : null;
   const selectedIds = a.selectedIds || [];
   const selectedPolicies = candidates.filter((p) => selectedIds.includes(p.id));
@@ -67,7 +74,12 @@ export function AssignModal() {
       type: 'OPEN_EDITOR',
       policy: null,
       kind: a.kind,
-      context: { mode: isQuantity ? 'add-quantity' : 'add-base', companyId: a.companyId, locationId: a.locationId || null },
+      context: {
+        mode: isQuantity ? 'add-quantity' : 'add-base',
+        companyId: a.companyId,
+        locationId: a.locationId || null,
+        locationIds: someLocations ? pickedLocIds : null,
+      },
     });
   };
 
@@ -79,7 +91,7 @@ export function AssignModal() {
       primaryAction={{
         content: isSwap ? 'Change' : 'Assign',
         onAction: () => dispatch({ type: 'ASSIGN_CONFIRM' }),
-        disabled: selectedIds.length === 0,
+        disabled: selectedIds.length === 0 || (someLocations && pickedLocIds.length === 0),
       }}
       secondaryActions={[{ content: 'Cancel', onAction: () => dispatch({ type: 'CLOSE_ASSIGN' }) }]}
     >
@@ -109,6 +121,14 @@ export function AssignModal() {
               </>
             )}
           </BlockStack>
+
+          {pickLocations ? (
+            <LocationScopePicker
+              company={company}
+              locationIds={someLocations ? pickedLocIds : null}
+              onChange={(ids) => dispatch({ type: 'ASSIGN_PATCH', patch: { applyTo: ids ? 'some' : 'all', locationIds: ids || [] } })}
+            />
+          ) : null}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ flex: 1, height: 1, background: 'var(--p-color-border)' }} />

@@ -126,7 +126,7 @@ function AddLocationModal({ company, onClose, dispatch }) {
             value={purchasingMode}
             onChange={setPurchasingMode}
           />
-          <Text as="p" tone="subdued" variant="bodySm">The new location inherits the company pricing. Add an override later from the location.</Text>
+          <Text as="p" tone="subdued" variant="bodySm">The new location uses the company pricing. You can add its own pricing later from the location page.</Text>
         </BlockStack>
       </Modal.Section>
     </Modal>

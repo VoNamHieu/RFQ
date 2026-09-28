@@ -41,7 +41,7 @@ export function makeBaseState() {
     priceBoard: null, // { companyId, search } — resolved-prices preview
     assign: null, // { companyId, mode:'add'|'swap', swapId, selectedId } — assign/swap base
     assignMulti: null, // { policyId } — assign one policy to many companies/customers/tags/global
-    addCompany: null, // { step, shopifyId, baseId } — add-company wizard
+    addCompany: null, // { shopifyId, search } — add-company picker
     emptyMode: false, // "show the app with no data" (fresh-install simulation)
     emptyBackup: null,
     // The seeded registrations came in through the form, so it already exists. It starts

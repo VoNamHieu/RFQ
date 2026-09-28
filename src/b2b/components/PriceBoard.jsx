@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Modal, BlockStack, Badge, Text, Button } from '@shopify/polaris';
+import { Modal, BlockStack, Badge, Text, Button, Select } from '@shopify/polaris';
 import { ViewIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
-import { resolveDetail } from '../pricing.js';
+import { resolveDetail, hasOwnSlot } from '../pricing.js';
 import { money } from '../format.js';
 import { PriceWhyContent } from './PricePreviewModal.jsx';
 import { ProductPriceTable } from './ProductPriceTable.jsx';
@@ -26,15 +26,21 @@ export function PriceBoard() {
   const { state, dispatch } = useStore();
   const [detailSku, setDetailSku] = useState(null);
   const [sort, setSort] = useState('title-asc');
+  const [locationId, setLocationId] = useState(null);
   const pb = state.priceBoard;
   if (!pb) return null;
   const company = state.db.companies.find((c) => c.id === pb.companyId);
+  // Prices are per location once any location keeps its own pricing — pick which
+  // one to preview (the first by default). Otherwise every location pays the same.
+  const locations = company?.locations || [];
+  const differs = locations.length > 1 && locations.some((l) => hasOwnSlot(l, 'base') || hasOwnSlot(l, 'quantity'));
+  const location = locations.find((l) => l.id === locationId) || locations[0] || null;
   const closeBoard = () => dispatch({ type: 'CLOSE_PRICE_BOARD' });
   const detailProduct = detailSku ? state.db.products.find((p) => p.sku === detailSku) : null;
 
   const q = (pb.search || '').trim().toLowerCase();
   const entries = state.db.products.map((p) => {
-    const d = resolveDetail(company, p, state.db.policies);
+    const d = resolveDetail(company, p, state.db.policies, undefined, location);
     const off = p.list ? Math.round(((p.list - d.price) / p.list) * 100) : 0;
     return { p, d, off };
   });
@@ -78,11 +84,22 @@ export function PriceBoard() {
     >
       <Modal.Section>
         {detailProduct ? (
-          <PriceWhyContent key={detailSku} company={company} location={null} policies={state.db.policies} product={detailProduct} />
+          <PriceWhyContent key={detailSku} company={company} location={location} policies={state.db.policies} product={detailProduct} />
         ) : (
           <BlockStack gap="300">
+            {differs ? (
+              <Select
+                label="Location"
+                options={locations.map((l) => ({ label: l.name, value: l.id }))}
+                value={location?.id || ''}
+                onChange={setLocationId}
+                helpText="Some locations have their own pricing, so prices can differ by location."
+              />
+            ) : null}
             <Text as="p" tone="subdued" variant="bodySm">
-              What a buyer at this company pays for each product, and which pricing layer decided it.
+              {differs
+                ? `What a buyer at ${location?.name} pays for each product, and which pricing layer decided it.`
+                : 'What a buyer at this company pays for each product, and which pricing layer decided it.'}
             </Text>
             <ProductPriceTable
               search={pb.search || ''}

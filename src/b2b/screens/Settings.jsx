@@ -77,7 +77,7 @@ export function Settings() {
               </Text>
               <Select
                 label="Default B2B pricing"
-                helpText="Applies to every company that has no pricing of its own."
+                helpText="Applies to every company or location that has no pricing of its own."
                 options={[{ label: 'None', value: '' }, ...state.db.policies.filter((p) => p.audienceType === 'b2b' && p.priceKind !== 'quantity').map((p) => ({ label: p.name, value: p.id }))]}
                 value={state.db.defaults?.b2bPolicyId || ''}
                 onChange={(v) => dispatch({ type: 'SET_DEFAULT_POLICY', key: 'b2bPolicyId', value: v })}

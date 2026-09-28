@@ -26,13 +26,14 @@ import { useStore } from '../store.jsx';
 import { RuleBuilderCard } from './RuleBuilderCard.jsx';
 import { VolumeRangesCard } from './VolumeRangesCard.jsx';
 import { DefaultPriceCard } from './DefaultPriceCard.jsx';
+import { LocationScopePicker } from './LocationScopePicker.jsx';
 import { versionFlags } from '../../shared/versions.js';
 import { COLLECTIONS } from '../data/constants.js';
 import { money } from '../format.js';
 import { ActiveDatesCard, ProductScopeCard, VolumeBasisCard, ProductOverridesCard } from './pricingEditorCards.jsx';
 import { ProductPriceTable } from './ProductPriceTable.jsx';
 import { AssignmentCard } from './AssignmentCard.jsx';
-import { policyUsageCount, companyBaseEntries, companyQuantityEntries, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, ruleValuesSummary } from '../pricing.js';
+import { policyUsageCount, policyUsageDetail, companyBaseEntries, companyQuantityEntries, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, ruleValuesSummary } from '../pricing.js';
 
 // Pricing editor (spec §2.6). Open whenever state.builder is set. Rendered as an
 // in-frame page when opened from the Pricing screen (asPage), and as a full-screen
@@ -72,9 +73,9 @@ export function PricingEditor({ asPage = false }) {
     ? state.db.companies.find((c) => c.id === state.editorContext.companyId)
     : null;
   // "Who this pricing serves" applies only to the library flow (create/edit from
-  // Pricing). Opened from a Company page or the Add-company wizard, the target is
+  // Pricing). Opened from a Company or Location page, the target is
   // already fixed, so the card is hidden there — matching the god file's locked state.
-  const showAssignment = !state.editorContext?.companyId && !state.editorContext?.setupKind;
+  const showAssignment = !state.editorContext?.companyId;
   // From a Location page, "here" is that location's own list.
   const scopeLoc =
     scopeCompany && state.editorContext?.locationId
@@ -88,8 +89,44 @@ export function PricingEditor({ asPage = false }) {
         companyQuantityEntries(scopeCompany, state.db.policies).some((e) => e.policy.id === builder.id));
   const sharedCount = !isNew ? policyUsageCount({ id: builder.id }, state.db) - (usesHere ? 1 : 0) : 0;
   const sharedElsewhere = !isNew && scopeCompany && sharedCount > 0;
+  // Save dialog wording: what else holds it (companies / locations / other), and
+  // what "apply to all" covers — "here" is a location or a company.
+  const usage = !isNew ? policyUsageDetail({ id: builder.id }, state.db) : null;
+  const others = usage
+    ? {
+        companies: usage.companies - (usesHere && !scopeLoc ? 1 : 0),
+        locations: usage.locations - (usesHere && scopeLoc ? 1 : 0),
+        rest: usage.tags + usage.customers + usage.globals.length,
+      }
+    : { companies: 0, locations: 0, rest: 0 };
+  // e.g. "2 other companies", "1 other company and 2 locations".
+  const countOf = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const sharedWith = [
+    others.companies ? countOf(others.companies, 'company', 'companies') : null,
+    others.locations ? countOf(others.locations, 'location', 'locations') : null,
+    others.rest ? countOf(others.rest, 'other assignment', 'other assignments') : null,
+  ]
+    .filter(Boolean)
+    .map((t, i) => (i === 0 && !t.includes('other') ? t.replace(' ', ' other ') : t))
+    .join(' and ');
+  const hasCompanies = !scopeLoc || others.companies > 0;
+  const hasLocations = !!scopeLoc || others.locations > 0;
+  const allNoun = others.rest
+    ? null
+    : hasCompanies && hasLocations
+      ? 'companies and locations'
+      : hasLocations
+        ? 'locations'
+        : 'companies';
+
+  // Creating from a company page (2+ locations): which of its locations get it —
+  // all (null) or the picked ones (editorContext.locationIds, seeded from Assign).
+  const showCompanyLocations = isNew && !!scopeCompany && !scopeLoc && (scopeCompany.locations || []).length > 1;
+  const scopeLocationIds = showCompanyLocations ? state.editorContext?.locationIds ?? null : null;
+  const noLocationPicked = Array.isArray(scopeLocationIds) && scopeLocationIds.length === 0;
 
   const onSave = () => {
+    if (noLocationPicked) return;
     if (sharedElsewhere) {
       setApplyAll(false);
       setForkConfirm(true);
@@ -102,7 +139,7 @@ export function PricingEditor({ asPage = false }) {
     <BlockStack gap="400">
           {sharedElsewhere && (
             <Banner tone="info">
-              {`This pricing is also assigned to ${sharedCount} other ${sharedCount === 1 ? 'account' : 'accounts'}. Saving will offer to fork a copy for ${scopeName} or apply to all.`}
+              {`This pricing is also assigned to ${sharedWith}. Saving will offer to fork a copy for ${scopeName} or apply to all.`}
             </Banner>
           )}
 
@@ -191,6 +228,14 @@ export function PricingEditor({ asPage = false }) {
                     </>
                   )}
 
+                  {showCompanyLocations && (
+                    <CompanyLocationsCard
+                      company={scopeCompany}
+                      locationIds={scopeLocationIds}
+                      onChange={(ids) => dispatch({ type: 'EDITOR_CONTEXT_PATCH', patch: { locationIds: ids } })}
+                    />
+                  )}
+
                   {/* Scheduling last, matching the god-file editor order. */}
                   <ActiveDatesCard builder={builder} patch={patch} />
                 </>
@@ -229,14 +274,18 @@ export function PricingEditor({ asPage = false }) {
           <Modal.Section>
             <BlockStack gap="300">
               <Text as="p">
-                {`${builder.name} is shared with ${sharedCount} other ${sharedCount === 1 ? 'company' : 'companies'}. Save as a separate pricing for `}
+                {`${builder.name} is shared with ${sharedWith}. Save as a separate pricing for `}
                 <Text as="span" fontWeight="semibold">{scopeName}</Text>
                 {` — the others keep ${builder.name}.`}
               </Text>
               <Box padding="300" borderWidth="025" borderColor="border" borderRadius="200">
                 <Checkbox
-                  label={`Apply to all ${sharedCount + 1} companies instead`}
-                  helpText="Overwrites this pricing for every company using it."
+                  label={allNoun ? `Apply to all ${sharedCount + 1} ${allNoun} instead` : `Apply everywhere it’s used instead (${sharedCount + 1})`}
+                  helpText={
+                    allNoun
+                      ? `Overwrites this pricing for every ${allNoun === 'companies' ? 'company' : allNoun === 'locations' ? 'location' : 'company and location'} using it.`
+                      : 'Overwrites this pricing everywhere it’s used.'
+                  }
                   checked={applyAll}
                   onChange={setApplyAll}
                 />
@@ -249,7 +298,7 @@ export function PricingEditor({ asPage = false }) {
         <Page
           title={editorTitle}
           backAction={{ content: 'Back', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }}
-          primaryAction={{ content: isNew ? 'Create pricing' : 'Save', onAction: onSave }}
+          primaryAction={{ content: isNew ? 'Create pricing' : 'Save', onAction: onSave, disabled: noLocationPicked }}
           secondaryActions={[{ content: 'Cancel', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }]}
         >
           {editorBody}
@@ -275,7 +324,7 @@ export function PricingEditor({ asPage = false }) {
             <Text as="h2" variant="headingMd">{editorTitle}</Text>
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
               <Button onClick={() => dispatch({ type: 'CLOSE_EDITOR' })}>Cancel</Button>
-              <Button variant="primary" onClick={onSave}>{isNew ? 'Create pricing' : 'Save'}</Button>
+              <Button variant="primary" onClick={onSave} disabled={noLocationPicked}>{isNew ? 'Create pricing' : 'Save'}</Button>
               <Button variant="tertiary" icon={XIcon} accessibilityLabel="Close" onClick={() => dispatch({ type: 'CLOSE_EDITOR' })} />
             </div>
           </div>
@@ -473,6 +522,26 @@ function BuilderPricePreview({ builder, products, onClose }) {
 }
 
 // Settings summary (god-file asideSummary): an at-a-glance recap.
+// "Who this pricing serves" when creating from a company page: which of the
+// company's locations get it (see LocationScopePicker).
+function CompanyLocationsCard({ company, locationIds, onChange }) {
+  return (
+    <Card>
+      <BlockStack gap="300">
+        <BlockStack gap="100">
+          <Text as="h3" variant="headingSm">Who this pricing serves</Text>
+          <Text as="p" tone="subdued" variant="bodySm">
+            {'Choose which of '}
+            <Text as="span" variant="bodySm" fontWeight="semibold">{company.name}</Text>
+            {'’s locations get this pricing.'}
+          </Text>
+        </BlockStack>
+        <LocationScopePicker company={company} locationIds={locationIds} onChange={onChange} titleHidden />
+      </BlockStack>
+    </Card>
+  );
+}
+
 function SummaryCard({ builder, isQuantity }) {
   const items = [
     ['Type', isQuantity ? 'Quantity pricing' : 'Base pricing'],

@@ -69,7 +69,7 @@ function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompany, onTo
   const query = q.trim().toLowerCase();
   const shown = query ? companies.filter((c) => `${c.name} ${c.contact} ${c.email}`.toLowerCase().includes(query)) : companies;
   return (
-    <Modal open={open} onClose={onClose} title="Select companies" primaryAction={{ content: 'Done', onAction: onClose }}>
+    <Modal open={open} onClose={onClose} title="Select companies and locations" primaryAction={{ content: 'Done', onAction: onClose }}>
       <Modal.Section>
         <BlockStack gap="300">
           <TextField
