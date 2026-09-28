@@ -49,7 +49,7 @@ function coverReason(policy) {
 // covers this product sets the price. Returns each step (with status + the layer
 // math for the winner), plus the final buyer price and discount vs list.
 function resolveWalk(company, location, policies, product, variant) {
-  const { bases, quantity } = locationPricingEntries(company, location, policies);
+  const { bases, quantities } = locationPricingEntries(company, location, policies);
   let decided = false;
   const baseSteps = bases.map((entry, i) => {
     const covers = baseInScope(entry.policy, product.sku);
@@ -67,9 +67,8 @@ function resolveWalk(company, location, policies, product, variant) {
     return { entry, order: i + 1, status, breakdown };
   });
 
-  let qtyStep = null;
-  if (quantity) {
-    const bd = policyPriceBreakdown(quantity.policy, product, variant);
+  const qtySteps = quantities.map((entry) => {
+    const bd = policyPriceBreakdown(entry.policy, product, variant);
     const covers = bd.inScope;
     let status;
     if (!decided && covers) {
@@ -80,15 +79,15 @@ function resolveWalk(company, location, policies, product, variant) {
     } else {
       status = 'unreached';
     }
-    qtyStep = { entry: quantity, order: null, status, breakdown: status === 'applied' ? bd : null };
-  }
+    return { entry, order: null, status, breakdown: status === 'applied' ? bd : null };
+  });
 
-  const steps = [...baseSteps, ...(qtyStep ? [qtyStep] : [])];
+  const steps = [...baseSteps, ...qtySteps];
   const applied = steps.find((s) => s.status === 'applied');
   const list = variant?.list != null ? variant.list : product?.list ?? 0;
   const finalPrice = applied ? applied.breakdown.final : list;
   const pctOff = list > 0 ? Math.round((1 - finalPrice / list) * 100) : 0;
-  const assignedCount = bases.length + (quantity ? 1 : 0);
+  const assignedCount = bases.length + quantities.length;
   return { steps, applied, list, finalPrice, pctOff, assignedCount };
 }
 

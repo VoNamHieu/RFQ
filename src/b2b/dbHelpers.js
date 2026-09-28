@@ -9,16 +9,16 @@ import { newBaseBuilder } from './builders.js';
 export const clone = (obj) =>
   typeof structuredClone === 'function' ? structuredClone(obj) : JSON.parse(JSON.stringify(obj));
 
-// Light normalization at load: legacy scalar `pricing.base:'p1'` → [{id,priority}],
+// Light normalization at load: legacy scalar `pricing.base:'p1'` (or quantity) → [{id,priority}],
 // and fill the location fields the detail screen edits (non-destructive: keep the
 // legacy terms/ordering the other screens still read).
 export function normalizeDb(seed) {
   const db = clone(seed);
   (db.companies || []).forEach((c) => {
     c.pricing = c.pricing || { base: null, quantity: null };
-    if (typeof c.pricing.base === 'string') {
-      c.pricing.base = [{ id: c.pricing.base, priority: 1 }];
-    }
+    ['base', 'quantity'].forEach((k) => {
+      if (typeof c.pricing[k] === 'string') c.pricing[k] = [{ id: c.pricing[k], priority: 1 }];
+    });
     c.orders = orderSeed[c.id] || [];
     (c.locations || []).forEach((l, i) => {
       l.id = l.id || `${c.id}-l${i + 1}`;
@@ -43,17 +43,34 @@ export function recomputeBuyers(c) {
     l.buyers = (c.contacts || []).filter((ct) => ct.locations === l.name).length;
   });
 }
-export function companyBaseArray(c) {
-  if (!Array.isArray(c.pricing.base)) c.pricing.base = c.pricing.base ? [{ id: c.pricing.base, priority: 1 }] : [];
-  return c.pricing.base;
+// A company's list of one kind ('base' | 'quantity'), normalized in place.
+export function companySlotArray(c, kind) {
+  c.pricing = c.pricing || { base: null, quantity: null };
+  const v = c.pricing[kind];
+  if (!Array.isArray(v)) c.pricing[kind] = v ? [{ id: v, priority: 1 }] : [];
+  return c.pricing[kind];
 }
-export function addCompanyBase(c, policyId, priority) {
-  const arr = companyBaseArray(c);
+export function addCompanySlot(c, kind, policyId, priority) {
+  const arr = companySlotArray(c, kind);
   if (!arr.some((e) => e.id === policyId)) arr.push({ id: policyId, priority: priority || arr.length + 1 });
 }
-export function removeCompanyBase(c, policyId) {
-  if (Array.isArray(c.pricing.base)) c.pricing.base = c.pricing.base.filter((e) => e.id !== policyId);
+export function removeCompanySlot(c, kind, policyId) {
+  const v = c.pricing && c.pricing[kind];
+  if (Array.isArray(v)) c.pricing[kind] = v.filter((e) => e.id !== policyId);
+  else if (v === policyId) c.pricing[kind] = null;
 }
+// A location's own list of a kind. The first time it gets one it starts from what
+// it inherited from the company (its own list replaces the company's), so adding
+// or removing a pricing changes the list the location already had. An empty own
+// list stays empty (the location has none of that kind) — see hasOwnSlot.
+export function locationSlotArray(c, l, kind) {
+  l.pricing = l.pricing || { base: null, quantity: null };
+  if (l.pricing[kind] == null) l.pricing[kind] = companySlotArray(c, kind).map((e) => ({ ...e }));
+  return companySlotArray(l, kind);
+}
+export const companyBaseArray = (c) => companySlotArray(c, 'base');
+export const addCompanyBase = (c, policyId, priority) => addCompanySlot(c, 'base', policyId, priority);
+export const removeCompanyBase = (c, policyId) => removeCompanySlot(c, 'base', policyId);
 export function demoPolicyId(db) {
   let n = db.policies.length + 1;
   while (db.policies.some((p) => p.id === `pq${n}`)) n += 1;

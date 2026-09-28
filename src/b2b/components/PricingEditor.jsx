@@ -17,8 +17,11 @@ import {
   Banner,
   Divider,
   Tabs,
+  Checkbox,
+  Tooltip,
+  Icon,
 } from '@shopify/polaris';
-import { XIcon } from '@shopify/polaris-icons';
+import { XIcon, InfoIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { RuleBuilderCard } from './RuleBuilderCard.jsx';
 import { VolumeRangesCard } from './VolumeRangesCard.jsx';
@@ -29,7 +32,7 @@ import { money } from '../format.js';
 import { ActiveDatesCard, ProductScopeCard, VolumeBasisCard, ProductOverridesCard } from './pricingEditorCards.jsx';
 import { ProductPriceTable } from './ProductPriceTable.jsx';
 import { AssignmentCard } from './AssignmentCard.jsx';
-import { policyUsageCount, companyBaseEntries, companyQuantityPolicy, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, ruleValuesSummary } from '../pricing.js';
+import { policyUsageCount, companyBaseEntries, companyQuantityEntries, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, ruleValuesSummary } from '../pricing.js';
 
 // Pricing editor (spec §2.6). Open whenever state.builder is set. Rendered as an
 // in-frame page when opened from the Pricing screen (asPage), and as a full-screen
@@ -37,6 +40,8 @@ import { policyUsageCount, companyBaseEntries, companyQuantityPolicy, policyPric
 export function PricingEditor({ asPage = false }) {
   const { state, dispatch } = useStore();
   const [forkConfirm, setForkConfirm] = useState(false);
+  // Save dialog for a shared pricing: a separate copy for here, unless ticked to apply to all.
+  const [applyAll, setApplyAll] = useState(false);
   const builder = state.builder;
   // Overlay mode only: lock body scroll and close on Escape while open.
   useEffect(() => {
@@ -70,15 +75,25 @@ export function PricingEditor({ asPage = false }) {
   // Pricing). Opened from a Company page or the Add-company wizard, the target is
   // already fixed, so the card is hidden there — matching the god file's locked state.
   const showAssignment = !state.editorContext?.companyId && !state.editorContext?.setupKind;
-  const usesHere =
-    scopeCompany &&
-    (companyBaseEntries(scopeCompany, state.db.policies).some((e) => e.policy.id === builder.id) ||
-      companyQuantityPolicy(scopeCompany, state.db.policies)?.id === builder.id);
+  // From a Location page, "here" is that location's own list.
+  const scopeLoc =
+    scopeCompany && state.editorContext?.locationId
+      ? (scopeCompany.locations || []).find((l) => l.id === state.editorContext.locationId)
+      : null;
+  const scopeName = (scopeLoc || scopeCompany)?.name;
+  const usesHere = scopeLoc
+    ? KIND_ORDER.some((k) => slotIds(scopeLoc, k).includes(builder.id))
+    : scopeCompany &&
+      (companyBaseEntries(scopeCompany, state.db.policies).some((e) => e.policy.id === builder.id) ||
+        companyQuantityEntries(scopeCompany, state.db.policies).some((e) => e.policy.id === builder.id));
   const sharedCount = !isNew ? policyUsageCount({ id: builder.id }, state.db) - (usesHere ? 1 : 0) : 0;
   const sharedElsewhere = !isNew && scopeCompany && sharedCount > 0;
 
   const onSave = () => {
-    if (sharedElsewhere) setForkConfirm(true);
+    if (sharedElsewhere) {
+      setApplyAll(false);
+      setForkConfirm(true);
+    }
     else dispatch({ type: 'SAVE_EDITOR' });
   };
 
@@ -87,7 +102,7 @@ export function PricingEditor({ asPage = false }) {
     <BlockStack gap="400">
           {sharedElsewhere && (
             <Banner tone="info">
-              {`This pricing is also assigned to ${sharedCount} other ${sharedCount === 1 ? 'account' : 'accounts'}. Saving will offer to fork a copy for ${scopeCompany.name} or apply to all.`}
+              {`This pricing is also assigned to ${sharedCount} other ${sharedCount === 1 ? 'account' : 'accounts'}. Saving will offer to fork a copy for ${scopeName} or apply to all.`}
             </Banner>
           )}
 
@@ -125,27 +140,33 @@ export function PricingEditor({ asPage = false }) {
 
                   <Card>
                     <BlockStack gap="300">
-                      <Text as="h3" variant="headingSm">Pricing details</Text>
-                      <InlineGrid columns={{ xs: 1, sm: '2fr 1fr' }} gap="300">
-                        <TextField
-                          label="Name"
-                          value={builder.name}
-                          onChange={(v) => patch({ name: v })}
-                          maxLength={255}
-                          showCharacterCount
-                          autoComplete="off"
-                        />
-                        <TextField
-                          label="Priority (0–99)"
-                          type="number"
-                          min={0}
-                          max={99}
-                          value={String(builder.priority ?? '')}
-                          onChange={(v) => patch({ priority: Number(v) })}
-                          helpText="Lower number applies first. Company/Location and customer/tag precedence isn’t replaced by this."
-                          autoComplete="off"
-                        />
-                      </InlineGrid>
+                      <InlineStack gap="100" blockAlign="center">
+                        <Text as="h3" variant="headingSm">Pricing details</Text>
+                        <Tooltip content="Priority orders pricing within a company or location. Company/Location and customer/tag precedence isn’t replaced by it.">
+                          <span style={{ display: 'inline-flex' }}>
+                            <Icon source={InfoIcon} tone="subdued" accessibilityLabel="About pricing details" />
+                          </span>
+                        </Tooltip>
+                      </InlineStack>
+                      <TextField
+                        label="Name"
+                        requiredIndicator
+                        value={builder.name}
+                        onChange={(v) => patch({ name: v })}
+                        maxLength={255}
+                        showCharacterCount
+                        autoComplete="off"
+                      />
+                      <TextField
+                        label="Priority (0-99)"
+                        type="number"
+                        min={0}
+                        max={99}
+                        value={String(builder.priority ?? '')}
+                        onChange={(v) => patch({ priority: Number(v) })}
+                        helpText="Lower number applies first."
+                        autoComplete="off"
+                      />
                     </BlockStack>
                   </Card>
 
@@ -194,31 +215,33 @@ export function PricingEditor({ asPage = false }) {
         <Modal
           open
           onClose={() => setForkConfirm(false)}
-          title="This pricing is shared"
+          title={`Save changes to ${builder.name}`}
           primaryAction={{
-            content: `Save a copy for ${scopeCompany.name}`,
+            content: 'Save',
             onAction: () => {
               setForkConfirm(false);
-              dispatch({ type: 'SAVE_EDITOR' }); // default path forks for this company
+              // Unticked: a separate copy for here (the default path forks).
+              dispatch({ type: 'SAVE_EDITOR', applyToAll: applyAll });
             },
           }}
-          secondaryActions={[
-            {
-              content: `Apply to all ${sharedCount + 1}`,
-              onAction: () => {
-                setForkConfirm(false);
-                dispatch({ type: 'SAVE_EDITOR', applyToAll: true });
-              },
-            },
-            { content: 'Cancel', onAction: () => setForkConfirm(false) },
-          ]}
+          secondaryActions={[{ content: 'Cancel', onAction: () => setForkConfirm(false) }]}
         >
           <Modal.Section>
-            <Text as="p">
-              “{builder.name}” is assigned to {sharedCount} other {sharedCount === 1 ? 'account' : 'accounts'}. Saving a copy
-              changes the price only for {scopeCompany.name}; the others keep the original. Choose “Apply to all” to change
-              it everywhere it’s assigned.
-            </Text>
+            <BlockStack gap="300">
+              <Text as="p">
+                {`${builder.name} is shared with ${sharedCount} other ${sharedCount === 1 ? 'company' : 'companies'}. Save as a separate pricing for `}
+                <Text as="span" fontWeight="semibold">{scopeName}</Text>
+                {` — the others keep ${builder.name}.`}
+              </Text>
+              <Box padding="300" borderWidth="025" borderColor="border" borderRadius="200">
+                <Checkbox
+                  label={`Apply to all ${sharedCount + 1} companies instead`}
+                  helpText="Overwrites this pricing for every company using it."
+                  checked={applyAll}
+                  onChange={setApplyAll}
+                />
+              </Box>
+            </BlockStack>
           </Modal.Section>
         </Modal>
       )}

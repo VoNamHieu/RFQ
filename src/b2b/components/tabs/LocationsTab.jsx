@@ -13,9 +13,8 @@ export function LocationsTab({ company }) {
 
   const rows = locations.map((l, index) => {
     const buyers = typeof l.buyers === 'number' ? l.buyers : (company.contacts || []).filter((c) => c.locations === l.name).length;
-    const override = l.pricing && (l.pricing.base || l.pricing.quantity);
-    const { bases, quantity } = locationPricingEntries(company, l, state.db.policies);
-    const names = [...bases.map((e) => e.policy.name), ...(quantity ? [quantity.policy.name] : [])];
+    const { bases, quantities } = locationPricingEntries(company, l, state.db.policies);
+    const names = [...bases, ...quantities].map((e) => e.policy.name);
     return (
       <IndexTable.Row
         id={l.id || String(index)}
@@ -51,9 +50,6 @@ export function LocationsTab({ company }) {
             ) : (
               <Text as="span" variant="bodySm">Not set</Text>
             )}
-            {override ? (
-              <Badge tone="info" size="small">Location override</Badge>
-            ) : null}
           </BlockStack>
         </IndexTable.Cell>
         <IndexTable.Cell>{buyers}</IndexTable.Cell>

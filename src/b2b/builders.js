@@ -43,9 +43,12 @@ export function newBaseBuilder() {
     appearanceTitle: 'Wholesale pricing',
     appearanceLabel: 'Special price',
     // Who this pricing serves (god-file assignmentAdapter). B2B → the Companies
-    // that get it; D2C → a customer target (all/logged_in/logged_out/specific/tags)
-    // plus the specific customer/tag ids. Applied to the db on save.
+    // that get it (all their locations), or — for a company only partly ticked —
+    // its ticked locations as `companyId::locationId` keys; D2C → a customer target
+    // (all/logged_in/logged_out/specific/tags) plus the specific customer/tag ids.
+    // Applied to the db on save.
     b2bCompanyIds: [],
+    b2bLocationKeys: [],
     customerTarget: 'none',
     assignmentTargetIds: [],
   };

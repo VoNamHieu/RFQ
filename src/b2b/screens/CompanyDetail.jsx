@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Page, Tabs, Card, BlockStack, InlineStack, Button, Text, Modal } from '@shopify/polaris';
 import { useStore, currentCompany } from '../store.jsx';
-import { companyBaseEntries, companyQuantityPolicy } from '../pricing.js';
+import { companyBaseEntries, companyQuantityEntries } from '../pricing.js';
 import { BasePricingCard } from '../components/BasePricingCard.jsx';
 import { QuantityPricingCard } from '../components/QuantityPricingCard.jsx';
 import { QuotesTab } from '../components/tabs/QuotesTab.jsx';
@@ -27,7 +27,7 @@ export function CompanyDetail() {
   if (!company) return null;
 
   const assignedCount =
-    companyBaseEntries(company, state.db.policies).length + (companyQuantityPolicy(company, state.db.policies) ? 1 : 0);
+    companyBaseEntries(company, state.db.policies).length + companyQuantityEntries(company, state.db.policies).length;
 
   const tabIndex = Math.max(0, TABS.findIndex((t) => t.id === state.companyTab));
   const tabs = TABS.map((t) => {

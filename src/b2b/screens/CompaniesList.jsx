@@ -18,7 +18,7 @@ import {
 } from '@shopify/polaris';
 import { EditIcon, DeleteIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
-import { companyBaseEntries, companyQuantityPolicy, companyPricingStatus, companyNeedsPrice } from '../pricing.js';
+import { companyBaseEntries, companyQuantityEntries, companyPricingStatus, companyNeedsPrice } from '../pricing.js';
 
 const FILTER_TABS = [
   { id: 'all', label: 'All' },
@@ -43,11 +43,15 @@ export function CompaniesList() {
   const [page, setPage] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(null);
 
+  // Pricing held by the company and by any of its locations (a location's own
+  // pricing counts too), each listed once.
   const assignedPolicies = (c) => {
-    const bases = companyBaseEntries(c, policies).map((e) => e.policy);
-    const qp = companyQuantityPolicy(c, policies);
-    if (qp) bases.push(qp);
-    return bases;
+    const out = [];
+    [c, ...(c.locations || [])].forEach((holder) => {
+      out.push(...companyBaseEntries(holder, policies).map((e) => e.policy));
+      out.push(...companyQuantityEntries(holder, policies).map((e) => e.policy));
+    });
+    return out.filter((p, i) => out.findIndex((x) => x.id === p.id) === i);
   };
 
   const search = (state.companySearch || '').trim().toLowerCase();
