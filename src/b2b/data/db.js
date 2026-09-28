@@ -292,6 +292,62 @@ const quotes = [
     lines: [{ sku: 'HOS-12', qty: 20, quoted: null }],
     timeline: [{ when: 'Jun 2', what: 'Buyer submitted an RFQ through the form' },
       { when: 'Jun 2', what: 'Moved to trash' }]
+  },
+  // ── Previous-period quotes (Mar–May 2026) — the baseline for Analytics "Compare to → Previous
+  // period" on the default Last 3 months (prev window Feb 24 – May 24). All are finalized (won /
+  // lost / trashed) so the current-snapshot metrics (open value, stale, aging) are unchanged.
+  // Tuned for mixed signals: created / won / win rate up, lost down (good), avg quote value down.
+  {
+    id: '1024486', company: 'c1', buyer: 'John Nguyen', email: 'john@abcconstruction.com', location: 'Hanoi',
+    created: '2026-03-04 09:30:12', updated: '2026-03-11', leadScore: null,
+    progress: 'Draft Order Created', status: 'Deal Closed', assignee: 'Vo Nam Hieu', expires: '2026-04-05', source: 'RFQ form', note: '',
+    lines: [{ sku: 'FIL-XL', qty: 50, quoted: 68, refAtQuote: 62.4 }, { sku: 'SEA-30', qty: 400, quoted: 5.6, refAtQuote: 5.2 }],
+    timeline: [{ when: 'Mar 4', what: 'Buyer submitted an RFQ through the form' },
+      { when: 'Mar 6', what: 'Quote sent, valid 30 days' },
+      { when: 'Mar 11', what: 'Draft order created in Shopify' }]
+  },
+  {
+    id: '1022915', company: 'c2', buyer: 'Bui Quang', email: 'quang@vinhphat.vn', location: 'Da Nang',
+    created: '2026-03-18 10:02:44', updated: '2026-03-18', leadScore: null,
+    progress: 'Created', status: 'Trashed', assignee: null, expires: null, source: 'RFQ form', note: '',
+    lines: [{ sku: 'HOS-12', qty: 10, quoted: null }],
+    timeline: [{ when: 'Mar 18', what: 'Buyer submitted an RFQ through the form' },
+      { when: 'Mar 18', what: 'Moved to trash' }]
+  },
+  {
+    id: '1021730', company: 'c1', buyer: 'Pham Duc', email: 'duc@abcconstruction.com', location: 'Bac Ninh site',
+    created: '2026-03-26 14:05:40', updated: '2026-04-06', leadScore: null,
+    progress: 'Email Sent', status: 'Deal Rejected', assignee: 'Vo Nam Hieu', expires: '2026-04-29', source: 'RFQ form', note: '',
+    lines: [{ sku: 'HOS-12', qty: 25, quoted: 128 }, { sku: 'VLV-40', qty: 80, quoted: 42 }],
+    timeline: [{ when: 'Mar 26', what: 'Buyer submitted an RFQ through the form' },
+      { when: 'Mar 30', what: 'Quote sent, valid 30 days' },
+      { when: 'Apr 6', what: 'Buyer rejected the quote' }]
+  },
+  {
+    id: '1020388', company: 'c1', buyer: 'Le Thu Ha', email: 'ha@abcconstruction.com', location: 'Hanoi',
+    created: '2026-04-15 10:48:03', updated: '2026-04-24', leadScore: null,
+    progress: 'Email Sent', status: 'Deal Rejected', assignee: 'Vo Nam Hieu', expires: '2026-05-17', source: 'RFQ form', note: '',
+    lines: [{ sku: 'MCFC-TRAINING-JACKET', qty: 22, quoted: 1060 }],
+    timeline: [{ when: 'Apr 15', what: 'Buyer submitted an RFQ through the form' },
+      { when: 'Apr 17', what: 'Quote sent, valid 30 days' },
+      { when: 'Apr 24', what: 'Buyer rejected the quote' }]
+  },
+  {
+    id: '1019604', company: 'c4', buyer: 'Do Lan', email: 'lan@songhong.vn', location: 'Hanoi',
+    created: '2026-04-28 08:55:16', updated: '2026-05-08', leadScore: null,
+    progress: 'Email Sent', status: 'Deal Rejected', assignee: null, expires: '2026-05-30', source: 'RFQ form', note: '',
+    lines: [{ sku: 'FIL-XL', qty: 30, quoted: 76 }, { sku: 'SEA-30', qty: 150, quoted: 6.4 }],
+    timeline: [{ when: 'Apr 28', what: 'Buyer submitted an RFQ through the form' },
+      { when: 'Apr 30', what: 'Quote sent, valid 30 days' },
+      { when: 'May 8', what: 'Buyer rejected the quote' }]
+  },
+  {
+    id: '1018251', company: 'c2', buyer: 'Bui Quang', email: 'quang@vinhphat.vn', location: 'Da Nang',
+    created: '2026-05-06 16:12:27', updated: '2026-05-09', leadScore: null,
+    progress: 'Auto Confirmed', status: 'Deal Closed', assignee: 'Vo Nam Hieu', expires: '2026-06-09', source: 'RFQ form', note: '',
+    lines: [{ sku: 'FIL-STD', qty: 150, quoted: 43, refAtQuote: 40.3 }, { sku: 'VLV-40', qty: 60, quoted: 38, refAtQuote: 36.4 }],
+    timeline: [{ when: 'May 6', what: 'Buyer submitted an RFQ through the form' },
+      { when: 'May 9', what: 'Auto confirmed at the quoted prices' }]
   }
 ];
 
