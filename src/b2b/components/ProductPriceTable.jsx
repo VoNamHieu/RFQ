@@ -39,6 +39,7 @@ export function ProductPriceTable({
   emptyLabel,
   searchPlaceholder = 'Search by product name or SKU',
   maxHeight = 420,
+  toolbar = null, // extra control(s) between search and sort, e.g. a location picker
 }) {
   const hasAction = rows.some((r) => r.action);
   const grid = {
@@ -64,6 +65,7 @@ export function ProductPriceTable({
             onClearButtonClick={() => onSearch('')}
           />
         </div>
+        {toolbar}
         {sortOptions ? (
           <div style={{ width: 210, flex: '0 0 auto' }}>
             <Select label="Sort by" labelHidden options={sortOptions} value={sort} onChange={onSort} />

@@ -1,22 +1,33 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Page, Card, IndexTable, IndexFilters, useSetIndexFiltersMode, useIndexResourceState, Badge, Text, BlockStack, Box, Modal, List,
+  Page, Card, IndexTable, IndexFilters, useSetIndexFiltersMode, useIndexResourceState, Badge, Text, BlockStack, InlineStack, Box, Button, Modal, List,
 } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
-import { REG_STATUS, fullName, fmtDate, matchCompany } from '../registrations.js';
+import registrationArt from '../assets/registration-empty.webp';
+import noRequestArt from '../assets/no-request.webp';
+import { REG_STATUS, fullName, fmtDate, registrationDuplicates } from '../registrations.js';
 
 // Wholesale B2B → Registrations: what buyers submitted through the storefront
 // registration form, waiting for the merchant to review. Opening a row leads to
-// the review (match Company → approve / decline); selecting rows allows bulk
+// the review (approve into a new Company / decline); selecting rows allows bulk
 // approve / decline / delete. The form itself is one click away ("Edit form").
 
 const FILTERS = [
+  { id: 'all', label: 'All' },
   { id: 'pending', label: 'Pending review' },
   { id: 'approved', label: 'Approved' },
   { id: 'declined', label: 'Declined' },
-  { id: 'all', label: 'All' },
 ];
+const EMPTY_TAB = {
+  pending: 'No registrations to review',
+  approved: 'No approved registrations',
+  declined: 'No declined registrations',
+  all: 'No registrations yet',
+};
+// Prototype: show the dev toggles in production too (flip to import.meta.env.DEV to hide in prod).
+const SHOW_DEV_TOOLS = true;
+
 const SORT_OPTIONS = [
   { label: 'Submitted', value: 'submitted desc', directionLabel: 'Newest first' },
   { label: 'Submitted', value: 'submitted asc', directionLabel: 'Oldest first' },
@@ -38,12 +49,23 @@ export function Registrations() {
   const { state, dispatch } = useStore();
   const { mode, setMode } = useSetIndexFiltersMode();
   const [confirm, setConfirm] = useState(null); // { kind: 'approve' | 'decline' | 'delete', ids }
-  const all = state.db.registrations || [];
+  const [devNoForm, setDevNoForm] = useState(false); // dev-only: preview the empty state before any form exists
+  const all = devNoForm ? [] : state.db.registrations || [];
+  const hasForm = !!state.db.hasRegistrationForm && !devNoForm;
   const companies = state.db.companies;
   const editForm = () => dispatch({ type: 'NAVIGATE', view: 'form', patch: { formEntry: 'editor' } });
-  // First run (no submissions yet): the form builder's own create flow (template → editor).
-  const createForm = () => dispatch({ type: 'NAVIGATE', view: 'form', patch: { formEntry: null } });
+  // Empty list / tab: straight into the form builder's create flow (template → editor).
+  const createForm = () => dispatch({ type: 'NAVIGATE', view: 'form', patch: { formEntry: 'create' } });
+  // No requests to show: create the form if there isn't one yet, otherwise edit it.
+  const formAction = hasForm
+    ? { content: 'Edit form', onAction: editForm }
+    : { content: 'Create form', onAction: createForm };
   const open = (id) => dispatch({ type: 'OPEN_REGISTRATION', id });
+  // Existing-record matches for a pending registration (null otherwise).
+  const dupOf = (r) => (r.status === 'pending' ? registrationDuplicates(state.db, r) : null);
+  const devTools = SHOW_DEV_TOOLS && (
+    <DevTools disabled={!state.db.hasRegistrationForm} on={devNoForm} onToggle={() => setDevNoForm((v) => !v)} />
+  );
 
   const filter = FILTERS.some((f) => f.id === state.registrationFilter) ? state.registrationFilter : 'pending';
   const count = (id) => (id === 'all' ? all.length : all.filter((r) => r.status === id).length);
@@ -65,10 +87,17 @@ export function Registrations() {
   if (all.length === 0) {
     return (
       <Page fullWidth title="Registrations">
+        {devTools}
         <Card>
-          <EmptyBlock heading="No registrations yet" action={{ content: 'Create form', onAction: createForm }}>
-            When buyers apply for B2B access through your registration form, their applications show up here for you to review.
-          </EmptyBlock>
+          {hasForm ? (
+            <EmptyBlock heading="No registrations yet" action={formAction} image={registrationArt}>
+              When buyers apply for B2B access through your registration form, their applications show up here for you to review.
+            </EmptyBlock>
+          ) : (
+            <EmptyBlock heading="No registration forms yet" action={formAction} image={registrationArt}>
+              Create a registration form to start collecting B2B customer applications.
+            </EmptyBlock>
+          )}
         </Card>
       </Page>
     );
@@ -100,6 +129,7 @@ export function Registrations() {
       subtitle="Buyers who applied for B2B access through your registration form"
       secondaryActions={[{ content: 'Edit form', onAction: editForm }]}
     >
+      {devTools}
       <Card padding="0">
         <IndexFilters
           queryValue={state.registrationSearch}
@@ -137,17 +167,18 @@ export function Registrations() {
             { title: 'Status' },
           ]}
           emptyState={
-            <Box padding="400">
-              <Text as="p" alignment="center" tone="subdued">
-                {q ? 'No registrations match your search.' : `No ${FILTERS.find((f) => f.id === filter).label.toLowerCase()} registrations.`}
-              </Text>
-            </Box>
+            q ? (
+              <EmptyBlock image={noRequestArt} imageAlt="" heading="No registrations match your search" />
+            ) : (
+              <EmptyBlock heading={hasForm ? EMPTY_TAB[filter] : 'No registration forms yet'} action={formAction}>
+                {hasForm ? 'Applications from your registration form show up here.' : 'Create a registration form to start collecting B2B customer applications.'}
+              </EmptyBlock>
+            )
           }
         >
           {rows.map((r, i) => {
             const status = REG_STATUS[r.status];
             const linked = r.companyId && companies.find((c) => c.id === r.companyId);
-            const match = r.status === 'pending' ? matchCompany(r, companies) : null;
             return (
               <IndexTable.Row id={r.id} key={r.id} position={i} selected={selectedResources.includes(r.id)} onClick={() => open(r.id)}>
                 <IndexTable.Cell>
@@ -156,19 +187,32 @@ export function Registrations() {
                     <Text as="span" variant="bodySm" tone="subdued">{r.email}</Text>
                   </BlockStack>
                 </IndexTable.Cell>
-                <IndexTable.Cell>{r.company}</IndexTable.Cell>
+                <IndexTable.Cell>
+                  {/* Pending matches: an existing contact (same or other company) or a same-name company — the merchant decides.
+                      Info tone — it's something the app found, not an error, and yellow would blur
+                      into the Pending review status badge on the same row. */}
+                  <InlineStack gap="150" blockAlign="center" wrap={false}>
+                    <Text as="span">{r.company}</Text>
+                    {dupOf(r)?.kind === 'company' ? <Badge tone="info">Duplicate</Badge> : null}
+                    {dupOf(r)?.kind === 'contact' || dupOf(r)?.kind === 'same' ? <Badge tone="info">Existing contact</Badge> : null}
+                  </InlineStack>
+                </IndexTable.Cell>
                 <IndexTable.Cell>{r.country || '—'}</IndexTable.Cell>
                 <IndexTable.Cell><Text as="span" variant="bodySm">{r.source}</Text></IndexTable.Cell>
                 <IndexTable.Cell><Text as="span" variant="bodySm">{fmtDate(r.submittedAt)}</Text></IndexTable.Cell>
                 <IndexTable.Cell>
                   {linked ? (
                     <Text as="span" variant="bodySm">{linked.name}</Text>
-                  ) : match ? (
-                    <Text as="span" variant="bodySm">
-                      {match.company.name} <Text as="span" variant="bodySm" tone="subdued">· suggested</Text>
-                    </Text>
                   ) : (
-                    <Text as="span" variant="bodySm" tone="subdued">{r.status === 'pending' ? 'New company' : '—'}</Text>
+                    <Text as="span" variant="bodySm" tone="subdued">
+                      {r.status !== 'pending'
+                        ? '—'
+                        : dupOf(r)?.kind === 'company'
+                          ? `Matches ${dupOf(r).company.name}`
+                          : dupOf(r)?.kind === 'contact' || dupOf(r)?.kind === 'same'
+                            ? `Contact at ${dupOf(r).contactOf.name}`
+                            : 'New company'}
+                    </Text>
                   )}
                 </IndexTable.Cell>
                 <IndexTable.Cell><Badge tone={status.tone}>{status.label}</Badge></IndexTable.Cell>
@@ -182,7 +226,7 @@ export function Registrations() {
         <ConfirmBulk
           kind={confirm.kind}
           regs={all.filter((r) => confirm.ids.includes(r.id))}
-          companies={companies}
+          duplicates={all.filter((r) => confirm.ids.includes(r.id) && dupOf(r)?.blocking).length}
           onConfirm={runConfirm}
           onClose={() => setConfirm(null)}
         />
@@ -191,16 +235,17 @@ export function Registrations() {
   );
 }
 
-// Confirms a bulk action and spells out what happens to each registration —
-// for approve, which Company each buyer ends up in.
-function ConfirmBulk({ kind, regs, companies, onConfirm, onClose }) {
+// Confirms a bulk action and lists the registrations it applies to.
+function ConfirmBulk({ kind, regs, duplicates = 0, onConfirm, onClose }) {
   const n = regs.length;
   const noun = n === 1 ? 'registration' : `${n} registrations`;
   const copy = {
     approve: {
       title: `Approve ${noun}?`,
       action: 'Approve',
-      body: 'Each buyer joins their suggested company, or a new company is created for them. You can set up pricing afterwards.',
+      body: `A new company is created for each buyer. You can set up pricing afterwards.${
+        duplicates ? ` ${duplicates} ${duplicates === 1 ? 'registration matches' : 'registrations match'} an existing company or contact and ${duplicates === 1 ? 'is' : 'are'} skipped — open ${duplicates === 1 ? 'it' : 'them'} to resolve.` : ''
+      }`,
     },
     decline: {
       title: `Decline ${noun}?`,
@@ -225,20 +270,37 @@ function ConfirmBulk({ kind, regs, companies, onConfirm, onClose }) {
         <BlockStack gap="300">
           <Text as="p">{copy.body}</Text>
           <List type="bullet">
-            {regs.map((r) => {
-              const match = kind === 'approve' ? matchCompany(r, companies) : null;
-              return (
-                <List.Item key={r.id}>
-                  {fullName(r)} · {r.company}
-                  {kind === 'approve' && (
-                    <Text as="span" tone="subdued"> → {match ? match.company.name : 'new company'}</Text>
-                  )}
-                </List.Item>
-              );
-            })}
+            {regs.map((r) => (
+              <List.Item key={r.id}>{fullName(r)} · {r.company}</List.Item>
+            ))}
           </List>
         </BlockStack>
       </Modal.Section>
     </Modal>
+  );
+}
+
+// Dev-only strip (same pattern as Analytics): preview the empty state as it looks
+// before any registration form exists (it offers Create form). The "form exists,
+// no requests" case needs no toggle — delete the registrations to see it.
+function DevTools({ disabled, on, onToggle }) {
+  return (
+    <Box paddingBlockEnd="400">
+      <Box background="bg-surface-secondary" borderColor="border" borderWidth="025" borderRadius="200" padding="200">
+        <InlineStack gap="200" blockAlign="center" wrap>
+          <Badge tone="info">Dev</Badge>
+          <Text as="span" variant="bodySm" tone="subdued">
+            {disabled
+              ? 'No registration form exists, so the empty state already offers Create form.'
+              : on
+              ? 'Previewing the empty state with no registration form — it offers Create form.'
+              : 'Preview the empty state before a registration form exists.'}
+          </Text>
+          <Button size="slim" pressed={on} disabled={disabled} onClick={onToggle}>
+            {on ? 'Show data' : 'Preview no form'}
+          </Button>
+        </InlineStack>
+      </Box>
+    </Box>
   );
 }

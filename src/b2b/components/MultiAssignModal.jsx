@@ -4,8 +4,10 @@ import { useStore } from '../store.jsx';
 import { companyForCustomerEmail } from '../pricing.js';
 
 // Assign one pricing profile to many targets at once (legacy renderAssign, the
-// unlocked/target-picker path): companies, customers, customer tags, or the
-// store-wide default. Target types are constrained by the policy's audience.
+// unlocked/target-picker path): companies, locations, customers, customer tags, or
+// the store-wide default. Target types are constrained by the policy's audience.
+// A company pick adds it to the company's pricing; a location pick to that
+// location's own (see locationSlotArray).
 export function MultiAssignModal() {
   const { state, dispatch } = useStore();
   const am = state.assignMulti;
@@ -23,16 +25,20 @@ export function MultiAssignModal() {
       ]
     : [
         { id: 'company', label: 'Companies' },
+        { id: 'location', label: 'Locations' },
         { id: 'global', label: 'Store-wide' },
       ];
 
   const companyChoices = state.db.companies.map((c) => ({ label: c.name, value: c.id }));
+  const locationChoices = state.db.companies.flatMap((c) =>
+    (c.locations || []).map((l) => ({ label: `${c.name} · ${l.name}`, value: `${c.id}::${l.id}` })),
+  );
   const customerChoices = (state.db.customers || [])
     .filter((cu) => !companyForCustomerEmail(state.db, cu.email))
     .map((cu) => ({ label: `${cu.name} · ${cu.email}`, value: cu.id }));
   const tagChoices = (state.db.tagPricing || []).map((t) => ({ label: t.name, value: t.id }));
 
-  const choicesFor = { company: companyChoices, customer: customerChoices, tag: tagChoices }[targetType] || [];
+  const choicesFor = { company: companyChoices, location: locationChoices, customer: customerChoices, tag: tagChoices }[targetType] || [];
   const isGlobal = targetType === 'global';
   const globalLabel = isD2C ? 'All customers (store-wide wholesale default)' : 'All Companies (store-wide default)';
 

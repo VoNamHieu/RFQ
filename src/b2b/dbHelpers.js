@@ -3,22 +3,22 @@
 // These are separate from the reducer so both the reducer and the initial-state
 // builder can share them.
 import { orderSeed } from './data/db.js';
-import { policyById, policyUsageCount } from './pricing.js';
+import { policyById, policyUsageCount, slotIds } from './pricing.js';
 import { newBaseBuilder } from './builders.js';
 
 export const clone = (obj) =>
   typeof structuredClone === 'function' ? structuredClone(obj) : JSON.parse(JSON.stringify(obj));
 
-// Light normalization at load: legacy scalar `pricing.base:'p1'` → [{id,priority}],
+// Light normalization at load: legacy scalar `pricing.base:'p1'` (or quantity) → [{id,priority}],
 // and fill the location fields the detail screen edits (non-destructive: keep the
 // legacy terms/ordering the other screens still read).
 export function normalizeDb(seed) {
   const db = clone(seed);
   (db.companies || []).forEach((c) => {
     c.pricing = c.pricing || { base: null, quantity: null };
-    if (typeof c.pricing.base === 'string') {
-      c.pricing.base = [{ id: c.pricing.base, priority: 1 }];
-    }
+    ['base', 'quantity'].forEach((k) => {
+      if (typeof c.pricing[k] === 'string') c.pricing[k] = [{ id: c.pricing[k], priority: 1 }];
+    });
     c.orders = orderSeed[c.id] || [];
     (c.locations || []).forEach((l, i) => {
       l.id = l.id || `${c.id}-l${i + 1}`;
@@ -43,17 +43,50 @@ export function recomputeBuyers(c) {
     l.buyers = (c.contacts || []).filter((ct) => ct.locations === l.name).length;
   });
 }
-export function companyBaseArray(c) {
-  if (!Array.isArray(c.pricing.base)) c.pricing.base = c.pricing.base ? [{ id: c.pricing.base, priority: 1 }] : [];
-  return c.pricing.base;
+// A company's list of one kind ('base' | 'quantity'), normalized in place.
+export function companySlotArray(c, kind) {
+  c.pricing = c.pricing || { base: null, quantity: null };
+  const v = c.pricing[kind];
+  if (!Array.isArray(v)) c.pricing[kind] = v ? [{ id: v, priority: 1 }] : [];
+  return c.pricing[kind];
 }
-export function addCompanyBase(c, policyId, priority) {
-  const arr = companyBaseArray(c);
+export function addCompanySlot(c, kind, policyId, priority) {
+  const arr = companySlotArray(c, kind);
   if (!arr.some((e) => e.id === policyId)) arr.push({ id: policyId, priority: priority || arr.length + 1 });
 }
-export function removeCompanyBase(c, policyId) {
-  if (Array.isArray(c.pricing.base)) c.pricing.base = c.pricing.base.filter((e) => e.id !== policyId);
+export function removeCompanySlot(c, kind, policyId) {
+  const v = c.pricing && c.pricing[kind];
+  if (Array.isArray(v)) c.pricing[kind] = v.filter((e) => e.id !== policyId);
+  else if (v === policyId) c.pricing[kind] = null;
 }
+// A location's own list of a kind. The first time it gets one it starts from what
+// it inherited from the company (its own list replaces the company's), so adding
+// or removing a pricing changes the list the location already had. An empty own
+// list stays empty (the location has none of that kind) — see hasOwnSlot.
+export function locationSlotArray(c, l, kind) {
+  l.pricing = l.pricing || { base: null, quantity: null };
+  if (l.pricing[kind] == null) l.pricing[kind] = companySlotArray(c, kind).map((e) => ({ ...e }));
+  return companySlotArray(l, kind);
+}
+// Add a pricing to a company's locations — all of them (the company's list, which
+// locations added later inherit, plus any location keeping its own list) or only
+// some (each one's own list). Picking every location counts as all.
+export function addPricingToLocations(c, kind, policyId, priority, locationIds) {
+  const locs = c.locations || [];
+  const ensure = (list) => {
+    if (!list.some((e) => e.id === policyId)) list.push({ id: policyId, priority: priority || list.length + 1 });
+  };
+  const some = !!(locationIds && locationIds.length && locationIds.length < locs.length);
+  if (!some) {
+    addCompanySlot(c, kind, policyId, priority);
+    locs.forEach((l) => l.pricing && l.pricing[kind] != null && ensure(locationSlotArray(c, l, kind)));
+    return;
+  }
+  locs.filter((l) => locationIds.includes(l.id)).forEach((l) => ensure(locationSlotArray(c, l, kind)));
+}
+export const companyBaseArray = (c) => companySlotArray(c, 'base');
+export const addCompanyBase = (c, policyId, priority) => addCompanySlot(c, 'base', policyId, priority);
+export const removeCompanyBase = (c, policyId) => removeCompanySlot(c, 'base', policyId);
 export function demoPolicyId(db) {
   let n = db.policies.length + 1;
   while (db.policies.some((p) => p.id === `pq${n}`)) n += 1;
@@ -156,6 +189,13 @@ export function applyQuotePricingTransfer(db, companyId, lines, transfer) {
   if (!priced.length) return null;
   const overrides = {};
   priced.forEach((l) => { overrides[l.sku] = { rule: 'set', valueType: 'amount', value: Number(l.quoted) }; });
+  // Target: the company's base list, or (transfer.locationId) that location's own.
+  const loc = transfer && transfer.locationId ? (co.locations || []).find((l) => l.id === transfer.locationId) : null;
+  const addBase = (id, priority) => {
+    if (!loc) return addCompanyBase(co, id, priority);
+    const list = locationSlotArray(co, loc, 'base');
+    if (!list.some((e) => e.id === id)) list.push({ id, priority: priority || list.length + 1 });
+  };
   const tid = transfer && transfer.targetId;
   if (tid === '__new__' || !policyById(db.policies, tid)) {
     const prof = quoteToBasePricing(
@@ -166,22 +206,30 @@ export function applyQuotePricingTransfer(db, companyId, lines, transfer) {
     );
     prof.id = demoPolicyId(db);
     db.policies.push(prof);
-    addCompanyBase(co, prof.id, prof.priority);
+    addBase(prof.id, prof.priority);
     return 'Quote prices saved';
   }
   const base = policyById(db.policies, tid);
-  const usesBase = companyBaseArray(co).some((e) => e.id === base.id);
+  const usesBase = loc ? slotIds(loc, 'base').includes(base.id) : companyBaseArray(co).some((e) => e.id === base.id);
   const shared = policyUsageCount(base, db) - (usesBase ? 1 : 0) > 0;
-  if (shared) {
+  if (shared && !(transfer && transfer.updateShared)) {
     const fork = JSON.parse(JSON.stringify(base));
     fork.id = demoPolicyId(db);
     fork.type = 'Account-specific';
-    if (fork.name === base.name) fork.name = `${co.name} pricing`;
+    if (fork.name === base.name) fork.name = `${loc ? `${co.name} · ${loc.name}` : co.name} pricing`;
     fork.variantAdjustments = { ...(fork.variantAdjustments || {}), ...overrides };
     fork.explicitEnabled = true;
     db.policies.push(fork);
-    removeCompanyBase(co, base.id);
-    addCompanyBase(co, fork.id, base.priority);
+    if (loc) {
+      // The copy takes the original's place in the location's own list.
+      const list = locationSlotArray(co, loc, 'base');
+      const idx = list.findIndex((e) => e.id === base.id);
+      if (idx >= 0) list[idx] = { id: fork.id, priority: list[idx].priority };
+      else list.push({ id: fork.id, priority: base.priority || list.length + 1 });
+    } else {
+      removeCompanyBase(co, base.id);
+      addCompanyBase(co, fork.id, base.priority);
+    }
     return 'Pricing forked';
   }
   base.variantAdjustments = { ...(base.variantAdjustments || {}), ...overrides };

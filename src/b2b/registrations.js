@@ -13,31 +13,36 @@ export function fmtDate(iso) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-export const pendingCount = (db) => (db.registrations || []).filter((r) => r.status === 'pending').length;
+// Today as YYYY-MM-DD in the merchant's local time (toISOString is UTC, which is
+// still "yesterday" early in the morning for UTC+ timezones like Vietnam).
+export function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
-// Personal inboxes say nothing about the employer, so they never domain-match.
-const FREE_EMAIL = new Set(['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'icloud.com', 'live.com', 'proton.me']);
-const normName = (s) => (s || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\b(co|ltd|jsc|llc|inc|company)\b/g, '').replace(/\s+/g, ' ').trim();
+export const pendingCount =(db) => (db.registrations || []).filter((r) => r.status === 'pending').length;
 
-// Which linked Company this applicant most likely belongs to — the "match
-// Company" step of registration → review → activate. Strongest signal first:
-// already a contact there › same work-email domain › same company name.
-export function matchCompany(reg, companies) {
-  const email = (reg.email || '').toLowerCase();
-  const domain = email.split('@')[1] || '';
-  const emailsOf = (c) => (c.contacts || []).map((ct) => (ct.email || '').toLowerCase());
-
-  const contact = companies.find((c) => emailsOf(c).includes(email));
-  if (contact) return { company: contact, reason: 'Already a contact at this company' };
-
-  if (domain && !FREE_EMAIL.has(domain)) {
-    const byDomain = companies.find((c) => emailsOf(c).some((e) => e.endsWith(`@${domain}`)));
-    if (byDomain) return { company: byDomain, reason: `Same email domain (@${domain})` };
-  }
-
-  const name = normName(reg.company);
-  const byName = name && companies.find((c) => normName(c.name) === name);
-  if (byName) return { company: byName, reason: 'Same company name' };
-
-  return null;
+// Records a pending registration matches, and the merchant's options (a Shopify
+// customer is never created twice, and an email belongs to one Company only):
+//   'same'     — 1. the email is already a contact at the Company it names:
+//                   Merge (update their location / role) or Decline.
+//   'contact'  — 2. the email is a contact at a different Company: Merge into that
+//                   Company, or create the new one and move them there.
+//   'company'  — 3. a Company with the same name, different email: Merge into it,
+//                   or create a new Company anyway (Shopify allows duplicate names).
+//   'customer' — the email is a Shopify customer only: Approve reuses it.
+// `mergeTargets` are the Companies a Merge can go into: the email's Company first, then
+// every Company with the same name (Shopify allows several — the merchant picks one).
+export function registrationDuplicates(db, reg) {
+  const email = (reg.email || '').trim().toLowerCase();
+  const name = (reg.company || '').trim().toLowerCase();
+  const sameName = (db.companies || []).filter((c) => (c.name || '').trim().toLowerCase() === name);
+  const company = sameName[0] || null;
+  const contactOf =
+    (db.companies || []).find((c) => (c.contacts || []).some((ct) => (ct.email || '').trim().toLowerCase() === email)) || null;
+  const customer = (db.customers || []).find((cu) => (cu.email || '').trim().toLowerCase() === email) || null;
+  const kind = contactOf ? (sameName.some((c) => c.id === contactOf.id) ? 'same' : 'contact') : sameName.length ? 'company' : customer ? 'customer' : null;
+  const mergeTargets = [contactOf, ...sameName].filter((c, i, all) => c && all.findIndex((x) => x && x.id === c.id) === i);
+  // Cases 1–3 need the merchant's choice — they're never just approved.
+  return { company, sameName, contactOf, customer, kind, mergeTargets, blocking: kind === 'same' || kind === 'contact' || kind === 'company' };
 }

@@ -28,7 +28,10 @@ const companies = [
     id: 'c1', name: 'ABC Construction', mainContact: 'John Nguyen', source: 'QuoteSnap RFQ',
     pricing: { base: [{ id: 'p1', priority: 1 }, { id: 'p30', priority: 5 }, { id: 'p8', priority: 2 }, { id: 'p20', priority: 3 }, { id: 'p21', priority: 4 }, { id: 'p22', priority: 5 }, { id: 'p23', priority: 6 }, { id: 'p24', priority: 7 }, { id: 'p25', priority: 8 }, { id: 'p26', priority: 9 }, { id: 'p27', priority: 10 }, { id: 'p28', priority: 11 }, { id: 'p29', priority: 12 }], quantity: 'p6' }, revenue: 124000,
     locations: [
-      { id: 'l1', name: 'Hanoi', ordering: 'Buys directly', terms: 'Net 30', lastOrder: '2026-07-15', buyers: 2 },
+      // Demo: Hanoi has its own base list — the company's, plus a pricing assigned to
+      // Hanoi only (p31), so pickers show it as "Hanoi · ABC Construction".
+      { id: 'l1', name: 'Hanoi', ordering: 'Buys directly', terms: 'Net 30', lastOrder: '2026-07-15', buyers: 2,
+        pricing: { base: [{ id: 'p1', priority: 1 }, { id: 'p30', priority: 5 }, { id: 'p8', priority: 2 }, { id: 'p20', priority: 3 }, { id: 'p21', priority: 4 }, { id: 'p22', priority: 5 }, { id: 'p23', priority: 6 }, { id: 'p24', priority: 7 }, { id: 'p25', priority: 8 }, { id: 'p26', priority: 9 }, { id: 'p27', priority: 10 }, { id: 'p28', priority: 11 }, { id: 'p29', priority: 12 }, { id: 'p31', priority: 1 }], quantity: null } },
       { id: 'l2', name: 'Bac Ninh site', ordering: 'You approve first', terms: 'Due on receipt', lastOrder: '2026-06-28', buyers: 1 }
     ],
     contacts: [
@@ -82,6 +85,16 @@ const companies = [
       { when: 'Jul 01', what: 'AG-274 expired, negotiated price stopped applying' },
       { when: 'Jul 01', what: 'Ordering switched to quote only; the account stays active' }
     ]
+  },
+  // Demo: a second company named "Delta Mechanical" (Shopify allows duplicate names) —
+  // a registration for that name offers a Company picker ("Company — main contact").
+  {
+    id: 'c5', name: 'Delta Mechanical', mainContact: 'Le Van Tam', source: 'Merchant created',
+    pricing: { base: 'p1', quantity: null }, revenue: 0,
+    locations: [{ id: 'l6', name: 'Da Nang workshop', ordering: 'Buys directly', terms: 'Net 15', lastOrder: null, buyers: 1 }],
+    contacts: [{ name: 'Le Van Tam', email: 'tam@deltamech-dn.vn', role: 'Location admin', access: 'Buys directly', locations: 'Da Nang workshop' }],
+    quotes: [], exceptions: [],
+    activity: [{ when: 'Aug 04', what: 'Created by the merchant for the Da Nang workshop' }]
   }
 ];
 
@@ -98,7 +111,10 @@ const customers = [
   { id: 'w5', name: 'Bui Quang', email: 'quang@vinhphat.vn', status: 'Active', source: 'Shopify sync', tags: [], policyId: null, lastOrder: '2026-07-11', orders: 4 },
   { id: 'w6', name: 'Hoa Sen Interiors', email: 'mua@hoasen.vn', status: 'Active', source: 'Shopify sync', tags: [], policyId: null, lastOrder: '2026-07-02', orders: 6 },
   { id: 'w7', name: 'Bao Long Trading', email: 'sales@baolong.vn', status: 'Active', source: 'Shopify sync', tags: [], policyId: null, lastOrder: '2026-06-30', orders: 2 },
-  { id: 'w8', name: 'Nam Phuong Design', email: 'hello@namphuong.vn', status: 'Active', source: 'Shopify sync', tags: [], policyId: null, lastOrder: null, orders: 0 }
+  { id: 'w8', name: 'Nam Phuong Design', email: 'hello@namphuong.vn', status: 'Active', source: 'Shopify sync', tags: [], policyId: null, lastOrder: null, orders: 0 },
+  // Demo: a Shopify customer with the same email as the pending Saigon Build Mart
+  // registration — the review shows it as a duplicate and offers Merge.
+  { id: 'w9', name: 'Tuan Hoang', email: 'tuan@saigonbuildmart.vn', status: 'Active', source: 'Online store', tags: [], policyId: null, lastOrder: '2026-08-30', orders: 2 },
 ];
 
 const policies = [
@@ -112,6 +128,9 @@ const policies = [
   { id: 'p27', name: 'Fleet Discount', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 10, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 14, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
   { id: 'p28', name: 'Clearance Base', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 11, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 30, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
   { id: 'p29', name: 'New Year Promo', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 12, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 25, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  // Demo: a location-only price — assigned to ABC Construction · Hanoi only (see that
+  // location's own base list), a little below Distributor Tier 2 on two products.
+  { id: 'p31', name: 'ABC Hanoi Site Rates', type: 'Account-specific', status: 'Active', audienceType: 'b2b', priority: 1, priceKind: 'base', scopeType: 'products', collection: '', selectedProducts: ['FIL-XL', 'SEA-30'], pricingRule: 'keep', valueType: 'amount', value: 0, variantAdjustments: { 'FIL-XL': { rule: 'set', valueType: 'amount', value: 58 }, 'SEA-30': { rule: 'set', valueType: 'amount', value: 4.8 } }, explicitEnabled: true, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
   // Demo: an account-specific price pointed only at Ball valve 40mm (VLV-40). It
   // loses to the higher-priority Distributor Tier 2, so it surfaces under "Also
   // covers this product" in Preview price — the "why isn't my pricing applied?" case.

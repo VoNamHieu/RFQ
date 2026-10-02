@@ -1,7 +1,7 @@
 // Pricing engine — ported to full parity with the B2B god file (b2b/index.html
 // §1809-2503, §4455). Resolution walks a company's Active, in-date base pricings
 // in priority order (a scoped base that does not cover a product falls through to
-// the next), then the quantity slot; the first price wins. Status, usage and a
+// the next), then its quantity pricings the same way; the first price wins. Status, usage and a
 // company's "needs a price" are all DERIVED from the data, never stored.
 import { COLLECTIONS } from './data/constants.js';
 
@@ -18,20 +18,22 @@ export function policyById(policies, id) {
   return (policies || []).find((p) => p.id === id) || null;
 }
 
-// ── Company base list (resolution order) ─────────────────────────────────────
-// Priority is a property of the PROFILE (its "Priority 0-99" field), not a
-// per-company number: lower applies first. On a tie a SCOPED base (covers only
-// some SKUs — e.g. a quote pricing) beats an all-products base, then insertion
-// order. Dangling ids dropped; legacy scalar base normalized to a one-item list.
-export function companyBaseEntries(company, policies) {
-  let base = company?.pricing?.base;
-  if (!base) return [];
-  if (typeof base === 'string') base = [{ id: base, priority: 1 }];
+// ── Company base / quantity lists (resolution order) ─────────────────────────
+// A company (or location) holds a LIST per kind: pricing.base and pricing.quantity
+// are both [{id, priority}]. Priority is a property of the PROFILE (its "Priority
+// 0-99" field), not a per-company number: lower applies first. On a tie a SCOPED
+// profile (covers only some SKUs — e.g. a quote pricing) beats an all-products
+// one, then insertion order. Dangling ids dropped; a legacy scalar id normalized
+// to a one-item list.
+function slotEntries(holder, policies, kind) {
+  let list = holder?.pricing?.[kind];
+  if (!list) return [];
+  if (typeof list === 'string') list = [{ id: list, priority: 1 }];
   const spec = (id) => {
     const st = policyById(policies, id)?.scopeType;
     return st && st !== 'all' ? 0 : 1;
   };
-  return base
+  return list
     .map((e, idx) => {
       const id = (e && e.id) || e;
       const policy = policyById(policies, id);
@@ -51,15 +53,35 @@ export function basePriceableNow(policy) {
   if (policy.endDate && policy.endDate < TODAY) return false;
   return true;
 }
+export function companyBaseEntries(company, policies) {
+  return slotEntries(company, policies, 'base');
+}
+export function companyQuantityEntries(company, policies) {
+  return slotEntries(company, policies, 'quantity');
+}
+// Does a location hold its OWN list of a kind? Any list — even an empty one (the
+// location has none of that kind) — replaces the company's; null/missing inherits.
+export function hasOwnSlot(holder, kind) {
+  return holder?.pricing?.[kind] != null;
+}
+// Raw ids held in a holder's slot (legacy scalar or list), without looking the
+// policies up — for "does it hold this pricing" checks.
+export function slotIds(holder, kind) {
+  const v = holder?.pricing?.[kind];
+  if (!v) return [];
+  if (typeof v === 'string') return [v];
+  return v.map((e) => (e && e.id) || e);
+}
+
 export function companyActiveBasePolicies(company, policies) {
   return companyBaseEntries(company, policies)
     .map((e) => e.policy)
     .filter(basePriceableNow);
 }
-
-export function companyQuantityPolicy(company, policies) {
-  const q = company?.pricing?.quantity;
-  return q ? policyById(policies, q) : null;
+export function companyActiveQuantityPolicies(company, policies) {
+  return companyQuantityEntries(company, policies)
+    .map((e) => e.policy)
+    .filter(activePolicy);
 }
 
 // ── Variants ─────────────────────────────────────────────────────────────────
@@ -160,14 +182,14 @@ function priceForDetail(profile, product, variant) {
   const base = variantBase(product, v);
   const adj = explicitOn(profile) && v ? (profile.variantAdjustments || {})[v.id] : null;
   if (adj && adj.rule) {
-    return { price: applyAdjustment(adj.rule, adj.valueType || 'percentage', adj.value, base), layer: 'override', decidedBy: `${profile.name} · override` };
+    return { price: applyAdjustment(adj.rule, adj.valueType || 'percentage', adj.value, base), layer: 'override', decidedBy: profile.name, policy: profile };
   }
   const ri = matchConditionalRuleIndex(profile, product);
   if (ri >= 0) {
     const r = profile.conditionalRules[ri];
-    return { price: applyAdjustment(r.rule, r.valueType || 'percentage', r.value, base), layer: 'rule', decidedBy: `${profile.name} · Rule ${ri + 1}` };
+    return { price: applyAdjustment(r.rule, r.valueType || 'percentage', r.value, base), layer: 'rule', decidedBy: `${profile.name} · Rule ${ri + 1}`, policy: profile };
   }
-  return { price: applyAdjustment(profile.pricingRule, profile.valueType, profile.value, base), layer: 'base', decidedBy: `${profile.name} · Default price` };
+  return { price: applyAdjustment(profile.pricingRule, profile.valueType, profile.value, base), layer: 'base', decidedBy: `${profile.name} · Default price`, policy: profile };
 }
 
 // Single-profile price breakdown for the editor's "How the price resolves"
@@ -200,60 +222,64 @@ export function policyPriceBreakdown(profile, product, variant) {
 
 // Resolve the B2B price a company pays for a product (legacy resolvedPriceFor):
 // the first in-scope Active base wins (a scope-all base is authoritative and
-// returns the Shopify price when nothing matches); else the quantity slot; else
-// null → the caller shows "No pricing".
-function resolveProductDetail(company, product, policies, variant) {
-  for (const p of companyActiveBasePolicies(company, policies)) {
+// returns the Shopify price when nothing matches); else the first in-scope Active
+// quantity pricing; else null → the caller shows "No pricing". With a location,
+// its own list of a kind replaces the company's (see hasOwnSlot); without one,
+// it's what a location still on the company's pricing pays.
+function resolveProductDetail(company, product, policies, variant, location) {
+  const holder = (kind) => (hasOwnSlot(location, kind) ? location : company);
+  for (const p of companyActiveBasePolicies(holder('base'), policies)) {
     if (!baseInScope(p, product.sku)) continue;
     const r = priceForDetail(p, product, variant);
     if (r) return r;
   }
-  const q = companyQuantityPolicy(company, policies);
-  if (q && q.status !== 'Inactive') {
+  for (const q of companyActiveQuantityPolicies(holder('quantity'), policies)) {
     const r = priceForDetail(q, product, variant);
     if (r) return r;
   }
   return null;
 }
-export function resolvedPriceFor(company, product, policies, variant) {
-  const r = resolveProductDetail(company, product, policies, variant);
+export function resolvedPriceFor(company, product, policies, variant, location) {
+  const r = resolveProductDetail(company, product, policies, variant, location);
   return r ? r.price : null;
 }
 // Like resolvedPriceFor, but reports which layer decided the price; the Price
 // Board falls back to the Shopify price row when nothing is assigned.
-export function resolveDetail(company, product, policies, variant) {
-  return resolveProductDetail(company, product, policies, variant) || { price: variantBase(product, variant), decidedBy: 'Shopify price', layer: 'shopify' };
+export function resolveDetail(company, product, policies, variant, location) {
+  return resolveProductDetail(company, product, policies, variant, location) || { price: variantBase(product, variant), decidedBy: 'Shopify price', layer: 'shopify' };
 }
 
 // ── Company-level resolution (source / status / needs-a-price) ───────────────
-// Location override (single) replaces the whole company base list; else the
-// company's Active bases + quantity; else the store-wide All-Companies default.
+// A Location's own list of a kind (same shape as the company's: [{id, priority}],
+// or a legacy single id — see hasOwnSlot) replaces the company's list of that
+// kind; else the company's Active bases + quantities; else the store-wide
+// All-Companies default.
 export function resolvePricing(company, location, policies, defaults) {
-  const locPricing = (location && location.pricing) || {};
-  const locBase = activePolicy(policyById(policies, locPricing.base));
-  const basePolicies = locBase ? [locBase] : companyActiveBasePolicies(company, policies);
-  const qty = activePolicy(policyById(policies, locPricing.quantity)) || activePolicy(companyQuantityPolicy(company, policies));
-  const profiles = [...basePolicies, ...(qty ? [qty] : [])];
+  const holder = (kind) => (hasOwnSlot(location, kind) ? location : company);
+  const basePolicies = companyActiveBasePolicies(holder('base'), policies);
+  const qtyPolicies = companyActiveQuantityPolicies(holder('quantity'), policies);
+  const profiles = [...basePolicies, ...qtyPolicies];
   if (profiles.length) return { profiles, profile: profiles[0] };
   const def = activePolicy(policyById(policies, defaults && defaults.b2bPolicyId));
   if (def) return { profiles: [def], profile: def };
   return { profiles: [], profile: null };
 }
 
-// Per-kind resolved pricing for a Location: a single Location override replaces
-// the whole inherited base list; otherwise the company's Active bases (priority
-// order). Quantity keeps its single Location→Company slot. Used by the location
-// pricing card to show name + source (override vs inherited).
-export function locationPricingEntries(company, location, policies) {
-  const locPricing = (location && location.pricing) || {};
-  const locBase = activePolicy(policyById(policies, locPricing.base));
-  const bases = locBase
-    ? [{ policy: locBase, source: 'LOCATION' }]
-    : companyActiveBasePolicies(company, policies).map((p) => ({ policy: p, source: 'COMPANY' }));
-  const locQty = activePolicy(policyById(policies, locPricing.quantity));
-  const compQty = activePolicy(companyQuantityPolicy(company, policies));
-  const quantity = locQty ? { policy: locQty, source: 'LOCATION' } : compQty ? { policy: compQty, source: 'COMPANY' } : null;
-  return { bases, quantity };
+// Per-kind resolved pricing for a Location: the Location's own list of a kind
+// replaces the whole inherited list of that kind; otherwise the company's (priority
+// order). Active ones only, unless includeInactive (the location page lists
+// Scheduled/Inactive ones too, with their status). Each carries its source.
+export function locationPricingEntries(company, location, policies, { includeInactive = false } = {}) {
+  const pick = (kind, entries, active) => {
+    const own = hasOwnSlot(location, kind);
+    const holder = own ? location : company;
+    const list = includeInactive ? entries(holder, policies).map((e) => e.policy) : active(holder, policies);
+    return list.map((p) => ({ policy: p, source: own ? 'LOCATION' : 'COMPANY' }));
+  };
+  return {
+    bases: pick('base', companyBaseEntries, companyActiveBasePolicies),
+    quantities: pick('quantity', companyQuantityEntries, companyActiveQuantityPolicies),
+  };
 }
 
 // Products-column label for a policy (base defaults to all; quantity to products).
@@ -317,17 +343,16 @@ export function policyStatus(policy, db) {
 export const canToggleStatus = (policy, db) => !!(policy && policyUsageCount(policy, db) > 0);
 
 // ── Usage (derived from assignments, never stored) ───────────────────────────
-function policyUsageDetail(policy, db) {
+export function policyUsageDetail(policy, db) {
   const id = policy && policy.id;
   if (!id) return { companies: 0, locations: 0, tags: 0, customers: 0, globals: [], count: 0 };
   let companies = 0;
   let locations = 0;
+  const holds = (holder) => KIND_ORDER.some((k) => slotIds(holder, k).includes(id));
   (db.companies || []).forEach((c) => {
-    const base = c.pricing && c.pricing.base;
-    const ids = Array.isArray(base) ? base.map((e) => e.id) : base ? [base] : [];
-    if (ids.includes(id) || (c.pricing && c.pricing.quantity === id)) companies += 1;
+    if (holds(c)) companies += 1;
     (c.locations || []).forEach((l) => {
-      if (KIND_ORDER.some((k) => (l.pricing || {})[k] === id)) locations += 1;
+      if (holds(l)) locations += 1;
     });
   });
   const tags = (db.tagPricing || []).filter((t) => t.defaultPolicyId === id).length;

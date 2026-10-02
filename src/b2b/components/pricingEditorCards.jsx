@@ -108,8 +108,8 @@ export function VolumeBasisCard({ builder, patch }) {
                   <Text as="span" variant="bodySm" tone="subdued">The product's original store price.</Text>
                 </BlockStack>
                 <BlockStack gap="025">
-                  <Text as="span" variant="bodySm" fontWeight="semibold">Company base price</Text>
-                  <Text as="span" variant="bodySm" tone="subdued">The price set by the company's base pricing. Falls back to the Shopify price if none is set.</Text>
+                  <Text as="span" variant="bodySm" fontWeight="semibold">Base price</Text>
+                  <Text as="span" variant="bodySm" tone="subdued">The price set by the base pricing of the buyer's company or location. Falls back to the Shopify price if none is set.</Text>
                 </BlockStack>
               </BlockStack>
             }
@@ -121,7 +121,7 @@ export function VolumeBasisCard({ builder, patch }) {
           label="Take the volume discount off"
           options={[
             { label: 'The Shopify price', value: 'shopify' },
-            { label: 'The company base price', value: 'base' },
+            { label: 'The base price', value: 'base' },
           ]}
           value={builder.volumeBasis || 'shopify'}
           onChange={(v) => patch({ volumeBasis: v })}

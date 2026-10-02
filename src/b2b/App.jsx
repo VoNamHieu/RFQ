@@ -16,6 +16,7 @@ import {
 } from '@shopify/polaris-icons';
 import { AdminFrame } from '../shared/AdminFrame.jsx';
 import { useStore } from './store.jsx';
+import { Home } from './screens/Home.jsx';
 import { CompaniesList } from './screens/CompaniesList.jsx';
 import { CompanyDetail } from './screens/CompanyDetail.jsx';
 import { QuoteDetail } from './screens/QuoteDetail.jsx';
@@ -41,6 +42,8 @@ const withV = (path) => (activeVersion() === 'latest' ? path : `${path}?v=${acti
 function CurrentView() {
   const { state } = useStore();
   switch (state.view) {
+    case 'home':
+      return <Home />;
     case 'company':
       return <CompanyDetail />;
     case 'quote':
@@ -94,7 +97,7 @@ export function App() {
           label: 'Wholesale B2B Solution',
           icon: StoreIcon,
           url: '#/b2b',
-          onClick: () => dispatch({ type: 'NAVIGATE', view: 'customers' }),
+          onClick: () => dispatch({ type: 'NAVIGATE', view: 'home' }),
           subNavigationItems: [
             {
               // Count = registrations waiting for review (sub-nav items take no badge).

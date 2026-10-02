@@ -56,23 +56,62 @@ export const B2B_PRICE_LISTS = {
   watson: { name: 'Distributor Tier 2', prices: TIER2 },
 };
 
-// The demo customer account. Guests see D2C list prices; this B2B buyer sees
-// contract prices + their quote history. Matches Watson Co in the RFQ app / the
-// account-page design reference.
-export const DEMO_ACCOUNT = {
-  companyKey: 'watson',
-  companyName: 'Watson Co',
-  contact: 'Watson James',
-  email: 'namhieuxd@gmail.com',
-  role: 'Ordering only',
-  locationLabel: 'Phố Thái Hà',
-  location: 'Phố Thái Hà, Đống Đa, Vietnam',
-  priceListName: 'Distributor Tier 2',
-  marketing: { email: false },
-  shippingAddress: { name: 'Watson Co', line: 'Phố Thái Hà, Đống Đa, Vietnam' },
-  billingAddress: { name: 'Watson Co', line: 'Phố Thái Hà, Đống Đa, Vietnam' },
-  paymentMethods: [{ brand: 'Visa', last4: '4242', expires: '08/28' }],
-};
+// ── Demo accounts ────────────────────────────────────────────────────────────
+// Two sign-ins, one per B2B state, so both sides of the account page can be
+// checked without editing code. The login screen lists them for developers.
+//
+//   quotesnap.of@gmail.com — NOT applied. A plain customer: D2C list prices, no
+//     company, no quotes. Profile and B2B Portal show the "Buying for a
+//     business?" apply entry; applying moves this account to "Pending review".
+//   quatnap.of@gmail.com   — APPLIED and approved into Watson Co. Contract
+//     prices, company purchasing terms, quote history, order → quote request.
+//
+// Any other email signs in as the not-applied buyer.
+export const DEMO_ACCOUNTS = [
+  {
+    id: 'not-applied',
+    devNote: 'Not applied — plain customer, D2C prices, no company',
+    email: 'quotesnap.of@gmail.com',
+    contact: 'Mai Nguyen',
+    companyKey: null,
+    companyName: null,
+    locationLabel: null,
+    marketing: { email: false },
+    shippingAddress: { name: 'Mai Nguyen', line: '18 Lang Ha, Ba Dinh, Vietnam' },
+    billingAddress: { name: 'Mai Nguyen', line: '18 Lang Ha, Ba Dinh, Vietnam' },
+    paymentMethods: [],
+    addresses: [{ name: 'Mai Nguyen', line: '18 Lang Ha, Ba Dinh, Vietnam', default: true }],
+    orders: [],
+    quotes: [],
+  },
+  {
+    id: 'b2b',
+    devNote: 'Applied and approved — Watson Co, contract prices, quote history',
+    email: 'quatnap.of@gmail.com',
+    contact: 'Watson James',
+    companyKey: 'watson',
+    companyName: 'Watson Co',
+    role: 'Ordering only',
+    locationLabel: 'Phố Thái Hà',
+    location: 'Phố Thái Hà, Đống Đa, Vietnam',
+    priceListName: 'Distributor Tier 2',
+    marketing: { email: false },
+    shippingAddress: { name: 'Watson Co', line: 'Phố Thái Hà, Đống Đa, Vietnam' },
+    billingAddress: { name: 'Watson Co', line: 'Phố Thái Hà, Đống Đa, Vietnam' },
+    paymentMethods: [{ brand: 'Visa', last4: '4242', expires: '08/28' }],
+    get orders() { return ACCOUNT_ORDERS; },
+    get quotes() { return ACCOUNT_QUOTES; },
+  },
+];
+
+// The B2B buyer stays the default demo account (storefront pricing, prefills).
+export const DEMO_ACCOUNT = DEMO_ACCOUNTS[1];
+
+// Sign-in by email: an unknown address gets the not-applied buyer.
+export function accountForEmail(email) {
+  const key = String(email || '').trim().toLowerCase();
+  return DEMO_ACCOUNTS.find((a) => a.email === key) || DEMO_ACCOUNTS[0];
+}
 
 // The contract (B2B) price for a SKU under a session, or null if none applies.
 export function b2bPriceFor(sku, session) {
@@ -83,15 +122,60 @@ export function b2bPriceFor(sku, session) {
 }
 
 // ── Account mock data ────────────────────────────────────────────────────────
+// Shapes mirror the qs-b2b-portal customer-account extensions: orders come from
+// the Customer Account API (name, date, financial status, lines, total), quotes
+// from the app's own API (status, lines with the seller's unit price, and
+// whether the agreed price was saved back as reusable company pricing).
 export const ACCOUNT_ORDERS = [
-  { id: '#1042', date: 'Aug 28, 2026', status: 'Fulfilled', total: 2610, statusTone: 'green' },
-  { id: '#1017', date: 'Jul 09, 2026', status: 'Fulfilled', total: 890, statusTone: 'green' },
-  { id: '#0994', date: 'Jun 15, 2026', status: 'Fulfilled', total: 1465, statusTone: 'green' },
+  {
+    id: '#1042', date: 'Aug 28, 2026', status: 'Fulfilled', statusTone: 'green', total: 2610,
+    lines: [{ sku: 'HOS-12', title: 'Reinforced hose, 12m', quantity: 15 }, { sku: 'FIL-XL', title: 'Industrial filter, XL', quantity: 10 }],
+  },
+  {
+    id: '#1017', date: 'Jul 09, 2026', status: 'Fulfilled', statusTone: 'green', total: 890,
+    lines: [{ sku: 'SEA-30', title: 'Sealant cartridge, 30 pack', quantity: 8 }],
+  },
+  {
+    id: '#0994', date: 'Jun 15, 2026', status: 'Fulfilled', statusTone: 'green', total: 1465,
+    lines: [{ sku: 'FIL-XL', title: 'Industrial filter, XL', quantity: 12 }, { sku: 'HOS-12', title: 'Reinforced hose, 12m', quantity: 4 }],
+  },
 ];
 
+// What the buyer's company gets — the portal's "business summary" (price list,
+// terms and how many products carry reusable negotiated pricing).
+export const BUSINESS_SUMMARY = {
+  pricingActive: true,
+  priceListName: 'Distributor Tier 2',
+  paymentTerms: 'Net 30',
+  purchasingMode: 'Buy directly',
+  negotiatedProductCount: 12,
+};
+
 // Quote requests raised from the storefront / RFQ app (the B2B×RFQ touchpoint).
+// status: Pending (sent) → Quoted (seller priced it) → Counter sent → Accepted.
 export const ACCOUNT_QUOTES = [
-  { id: 'Q-2051', date: 'Sep 12, 2026', items: 'Reinforced hose, 12m ×40', status: 'Quoted', statusTone: 'blue' },
-  { id: 'Q-2033', date: 'Aug 30, 2026', items: 'Team Training Jacket ×120', status: 'Pending', statusTone: 'amber' },
-  { id: 'Q-1998', date: 'Aug 04, 2026', items: 'Industrial filter, XL ×200', status: 'Accepted', statusTone: 'green' },
+  {
+    id: 'Q-2051', date: 'Sep 12, 2026', status: 'Quoted', total: 4720, savedToPricing: false,
+    message: 'We can hold this price until Sep 30.',
+    lines: [{ sku: 'HOS-12', title: 'Reinforced hose, 12m', quantity: 40, unitPrice: 118, listPrice: 132 }],
+  },
+  {
+    id: 'Q-2033', date: 'Aug 30, 2026', status: 'Pending', total: null, savedToPricing: false,
+    message: 'Your request has been sent to the seller.',
+    lines: [{ sku: 'MCFC-TRAINING-JACKET', title: 'Team Training Jacket', quantity: 120, unitPrice: null, listPrice: 95 }],
+  },
+  {
+    id: 'Q-1998', date: 'Aug 04, 2026', status: 'Accepted', total: 14000, savedToPricing: true,
+    message: 'Accepted. The agreed price can be reused on future purchases.',
+    lines: [{ sku: 'FIL-XL', title: 'Industrial filter, XL', quantity: 200, unitPrice: 70, listPrice: 82 }],
+  },
 ];
+
+// Quote status → what the buyer can do with it, and the badge tone.
+export const QUOTE_STATUS = {
+  Quoted: { tone: 'blue', group: 'action' },
+  'Counter sent': { tone: 'amber', group: 'progress' },
+  Pending: { tone: 'amber', group: 'progress' },
+  Accepted: { tone: 'green', group: 'closed' },
+  Closed: { tone: '', group: 'closed' },
+};

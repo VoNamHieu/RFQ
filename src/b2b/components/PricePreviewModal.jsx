@@ -1,29 +1,16 @@
 import React, { useState } from 'react';
-import { Modal, Select, BlockStack, InlineStack, Box, Text, Badge, Divider, Button, Scrollable } from '@shopify/polaris';
-import { ViewIcon } from '@shopify/polaris-icons';
+import { Select, BlockStack, InlineStack, Box, Text, Badge, Divider, Button, Scrollable } from '@shopify/polaris';
 import { money } from '../format.js';
 import {
   locationPricingEntries,
   baseInScope,
   policyPriceBreakdown,
   productVariants,
-  defaultVariant,
   scopeLabel,
   ruleAdjustmentLabel,
   ruleTypeLabel,
   ruleValuesSummary,
 } from '../pricing.js';
-import { ProductPriceTable } from './ProductPriceTable.jsx';
-
-const PREVIEW_SORTS = [
-  { label: 'Product A–Z', value: 'title-asc' },
-  { label: 'Product Z–A', value: 'title-desc' },
-  { label: 'List: low to high', value: 'list-asc' },
-  { label: 'List: high to low', value: 'list-desc' },
-  { label: 'Buyer pays: low to high', value: 'final-asc' },
-  { label: 'Buyer pays: high to low', value: 'final-desc' },
-  { label: 'Biggest discount', value: 'off-desc' },
-];
 
 // The profile-level default adjustment as a short label ("12% off", "Set $75").
 const defaultAdjLabel = (p) =>
@@ -49,7 +36,7 @@ function coverReason(policy) {
 // covers this product sets the price. Returns each step (with status + the layer
 // math for the winner), plus the final buyer price and discount vs list.
 function resolveWalk(company, location, policies, product, variant) {
-  const { bases, quantity } = locationPricingEntries(company, location, policies);
+  const { bases, quantities } = locationPricingEntries(company, location, policies);
   let decided = false;
   const baseSteps = bases.map((entry, i) => {
     const covers = baseInScope(entry.policy, product.sku);
@@ -67,9 +54,8 @@ function resolveWalk(company, location, policies, product, variant) {
     return { entry, order: i + 1, status, breakdown };
   });
 
-  let qtyStep = null;
-  if (quantity) {
-    const bd = policyPriceBreakdown(quantity.policy, product, variant);
+  const qtySteps = quantities.map((entry) => {
+    const bd = policyPriceBreakdown(entry.policy, product, variant);
     const covers = bd.inScope;
     let status;
     if (!decided && covers) {
@@ -80,111 +66,16 @@ function resolveWalk(company, location, policies, product, variant) {
     } else {
       status = 'unreached';
     }
-    qtyStep = { entry: quantity, order: null, status, breakdown: status === 'applied' ? bd : null };
-  }
+    return { entry, order: null, status, breakdown: status === 'applied' ? bd : null };
+  });
 
-  const steps = [...baseSteps, ...(qtyStep ? [qtyStep] : [])];
+  const steps = [...baseSteps, ...qtySteps];
   const applied = steps.find((s) => s.status === 'applied');
   const list = variant?.list != null ? variant.list : product?.list ?? 0;
   const finalPrice = applied ? applied.breakdown.final : list;
   const pctOff = list > 0 ? Math.round((1 - finalPrice / list) * 100) : 0;
-  const assignedCount = bases.length + (quantity ? 1 : 0);
+  const assignedCount = bases.length + quantities.length;
   return { steps, applied, list, finalPrice, pctOff, assignedCount };
-}
-
-// Discount vs list as a small badge.
-function DiscountBadge({ pctOff }) {
-  if (pctOff > 0) return <Badge size="small">{`${pctOff}% off`}</Badge>;
-  if (pctOff < 0) return <Badge tone="warning" size="small">{`${-pctOff}% over`}</Badge>;
-  return <Badge size="small">At list</Badge>;
-}
-
-// ── Modal 1: the product list ────────────────────────────────────────────────
-export function PricePreviewModal({ company, location, db, onClose }) {
-  const policies = db.policies;
-  const products = db.products || [];
-  const [detailSku, setDetailSku] = useState(null);
-  const [query, setQuery] = useState('');
-  const [sort, setSort] = useState('title-asc');
-
-  // Resolve each product once, then search + sort the derived list.
-  const entries = products.map((p) => {
-    const v = defaultVariant(p);
-    const { finalPrice, list, pctOff } = resolveWalk(company, location, policies, p, v);
-    return { p, finalPrice, list, pctOff, nVariants: productVariants(p).length };
-  });
-  const q = query.trim().toLowerCase();
-  const filtered = q
-    ? entries.filter((e) => e.p.title.toLowerCase().includes(q) || e.p.sku.toLowerCase().includes(q))
-    : entries;
-  const sorted = [...filtered].sort((a, b) => {
-    switch (sort) {
-      case 'title-desc': return b.p.title.localeCompare(a.p.title);
-      case 'list-asc': return a.list - b.list;
-      case 'list-desc': return b.list - a.list;
-      case 'final-asc': return a.finalPrice - b.finalPrice;
-      case 'final-desc': return b.finalPrice - a.finalPrice;
-      case 'off-desc': return b.pctOff - a.pctOff;
-      default: return a.p.title.localeCompare(b.p.title);
-    }
-  });
-
-  const rows = sorted.map((e) => ({
-    key: e.p.sku,
-    title: e.p.title,
-    subtitle: `${e.p.sku}${e.nVariants > 1 ? ` · ${e.nVariants} variants` : ''}`,
-    cells: [
-      <Text as="span" tone="subdued">{money(e.list)}</Text>,
-      <InlineStack gap="150" blockAlign="center">
-        <Text as="span" variant="bodyMd" fontWeight="semibold">{money(e.finalPrice)}</Text>
-        <DiscountBadge pctOff={e.pctOff} />
-      </InlineStack>,
-    ],
-    action: <Button icon={ViewIcon} variant="tertiary" accessibilityLabel="Why this price" onClick={() => setDetailSku(e.p.sku)} />,
-  }));
-
-  const detailProduct = detailSku ? products.find((p) => p.sku === detailSku) : null;
-
-  // One modal, two views: the product list, or — after "Why this price" — the
-  // breakdown for a product (Back / X returns to the list). No stacked modals.
-  return (
-    <Modal
-      open
-      onClose={detailProduct ? () => setDetailSku(null) : onClose}
-      title={detailProduct ? 'Why this price' : 'Preview price'}
-      size={detailProduct ? undefined : 'large'}
-      secondaryActions={[
-        detailProduct
-          ? { content: 'Back', onAction: () => setDetailSku(null) }
-          : { content: 'Close', onAction: onClose },
-      ]}
-    >
-      <Modal.Section>
-        {detailProduct ? (
-          <PriceWhyContent key={detailSku} company={company} location={location} policies={policies} product={detailProduct} />
-        ) : (
-          <BlockStack gap="300">
-            <Text as="span" tone="subdued" variant="bodySm">
-              What buyers at {location.name} pay. Prices shown for the default variant.
-            </Text>
-            <ProductPriceTable
-              search={query}
-              onSearch={setQuery}
-              sort={sort}
-              onSort={setSort}
-              sortOptions={PREVIEW_SORTS}
-              columns={[
-                { title: 'List', width: '96px', align: 'end' },
-                { title: 'Buyer pays', width: '160px', align: 'end' },
-              ]}
-              rows={rows}
-              emptyLabel={`No products match “${query}”.`}
-            />
-          </BlockStack>
-        )}
-      </Modal.Section>
-    </Modal>
-  );
 }
 
 // ── Detail view: why this price (the resolution breakdown) ───────────────────

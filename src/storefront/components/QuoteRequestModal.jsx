@@ -33,9 +33,11 @@ export function QuoteRequestModal() {
       request: {
         id: `Q-${Math.floor(2100 + Math.random() * 800)}`,
         date: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
-        items: `${product.title} ×${form.qty}`,
         status: 'Pending',
-        statusTone: 'amber',
+        total: null,
+        savedToPricing: false,
+        message: form.note.trim() || 'Your request has been sent to the seller.',
+        lines: [{ sku: product.sku, title: product.title, quantity: Number(form.qty), unitPrice: null, listPrice: product.list }],
       },
     });
   };

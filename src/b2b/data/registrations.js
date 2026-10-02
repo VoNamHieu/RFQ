@@ -7,6 +7,22 @@
 // Approved rows carry `companyId`; decided rows carry `decidedAt`.
 
 export const registrationSeed = [
+  // Demo (case 1): same email, same company — Pham Duc is already an Ordering-only
+  // contact at ABC Construction · Bac Ninh site; merging can update his role.
+  {
+    id: 'r108', status: 'pending', submittedAt: '2026-09-22', source: 'Account page',
+    firstName: 'Duc', lastName: 'Pham', email: 'duc@abcconstruction.com',
+    company: 'ABC Construction', country: 'Vietnam', taxId: '0101234567',
+    message: 'I now manage purchasing for the Bac Ninh site and need to approve orders there.',
+  },
+  // Demo (case 2): the email is already a contact at ABC Construction, but the registration is
+  // for a different company — the review asks whether to join ABC or create it as well.
+  {
+    id: 'r107', status: 'pending', submittedAt: '2026-09-21', source: 'Registration page',
+    firstName: 'Ha', lastName: 'Le', email: 'ha@abcconstruction.com',
+    company: 'Le Ha Interiors', country: 'Vietnam', taxId: 'VN0109988776',
+    message: 'I also run a small interior fit-out studio and would like trade pricing for it.',
+  },
   {
     id: 'r106', status: 'pending', submittedAt: '2026-09-20', source: 'Account page',
     firstName: 'Thanh', lastName: 'Pham', email: 'thanh.pham@abcconstruction.com',

@@ -7,15 +7,18 @@ import { normalizeDb, injectRfqCompany, applyQuotePricingTransfer } from './dbHe
 
 export function makeBaseState() {
   return {
-    view: 'customers', // customers | company | pricing | analytics | settings | quote | location | registrations | registration | form
+    view: 'home', // home | customers | company | pricing | analytics | settings | quote | location | registrations | registration | form
     selectedCompany: 'c1',
     // Registrations (storefront form submissions)
     selectedRegistration: null,
     registrationFilter: 'pending', // pending | approved | declined | all
     registrationSearch: '',
     registrationSort: 'submitted desc', // `${field} ${dir}` — see Registrations SORT_OPTIONS
-    formEntry: null, // 'editor' → the Form builder opens straight into the editor (from Registrations)
+    formEntry: null, // from Registrations: 'editor' (Edit form) | 'create' (Create form → template picker)
     companyTab: 'pricing',
+    homeGuideHidden: false, // app home: "Hide guide" collapses the setup guide
+    pricingChooser: false, // open the Pricing screen straight on its type chooser (from app home)
+    pricingStatus: null, // open the Pricing screen pre-filtered by status, e.g. 'inactive' (from app home)
     selectedQuote: null,
     selectedLocation: null,
     // Companies list
@@ -38,10 +41,12 @@ export function makeBaseState() {
     priceBoard: null, // { companyId, search } — resolved-prices preview
     assign: null, // { companyId, mode:'add'|'swap', swapId, selectedId } — assign/swap base
     assignMulti: null, // { policyId } — assign one policy to many companies/customers/tags/global
-    addCompany: null, // { step, shopifyId, baseId } — add-company wizard
+    addCompany: null, // { shopifyId, search } — add-company picker
     emptyMode: false, // "show the app with no data" (fresh-install simulation)
     emptyBackup: null,
-    db: normalizeDb({ ...dbSeed, registrations: registrationSeed }),
+    // The seeded registrations came in through the form, so it already exists. It starts
+    // unpublished so Home shows the "form isn't published" warning without any clicks.
+    db: normalizeDb({ ...dbSeed, registrations: registrationSeed, hasRegistrationForm: true, registrationFormPublished: false, rfqAppInstalled: true }),
     toast: null,
   };
 }
@@ -88,6 +93,7 @@ export function buildInitialState() {
 // Map the URL hash (kept in sync by the nav's `url`s) to an initial view.
 function viewFromHash(hash) {
   const map = {
+    '#/b2b': 'home',
     '#/b2b/registrations': 'registrations',
     '#/b2b/pricing': 'pricing',
     '#/b2b/company': 'customers',

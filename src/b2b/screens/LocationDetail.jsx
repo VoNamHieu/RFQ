@@ -16,8 +16,11 @@ import {
   Checkbox,
   TextField,
   Modal,
+  Popover,
+  ActionList,
+  Tooltip,
 } from '@shopify/polaris';
-import { EditIcon, XIcon } from '@shopify/polaris-icons';
+import { EditIcon, XIcon, PlusIcon, XCircleIcon, ExchangeIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { locationPricingEntries, scopeLabel, policyStatus } from '../pricing.js';
 import { money } from '../format.js';
@@ -46,10 +49,42 @@ export function LocationDetail() {
   const [pricingPage, setPricingPage] = useState(0);
   const [quotesPage, setQuotesPage] = useState(0);
   const [ordersPage, setOrdersPage] = useState(0);
+  const [addPricingOpen, setAddPricingOpen] = useState(false);
   if (!company || !location) return null;
+  // Add / edit / change / remove pricing on this location (its own list of that
+  // kind — see locationSlotArray), with the same row actions as the company page.
+  // Edit of a pricing shared elsewhere offers a copy for here.
+  const addPricing = (kind) => {
+    setAddPricingOpen(false);
+    dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, locationId: location.id, kind, mode: 'add' });
+  };
+  const pricingActions = (policy, kind) => (
+    <InlineStack gap="100" align="end" blockAlign="center" wrap={false}>
+      <Button
+        icon={EditIcon}
+        variant="tertiary"
+        accessibilityLabel={`Edit ${policy.name}`}
+        onClick={() => dispatch({ type: 'OPEN_EDITOR', policy, context: { mode: 'edit', companyId: company.id, locationId: location.id } })}
+      />
+      <Button
+        icon={ExchangeIcon}
+        variant="tertiary"
+        accessibilityLabel={`Change ${policy.name}`}
+        onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, locationId: location.id, kind, mode: 'swap', swapId: policy.id })}
+      />
+      <Button
+        icon={XCircleIcon}
+        variant="tertiary"
+        tone="critical"
+        accessibilityLabel={`Remove ${policy.name}`}
+        onClick={() => dispatch({ type: 'REMOVE_LOCATION_PRICING', companyId: company.id, locationId: location.id, kind, policyId: policy.id })}
+      />
+    </InlineStack>
+  );
 
   const policies = state.db.policies;
-  const { bases, quantity } = locationPricingEntries(company, location, policies);
+  // Scheduled / Inactive ones listed too (with their status), so each can be edited or removed.
+  const { bases, quantities } = locationPricingEntries(company, location, policies, { includeInactive: true });
   const buyers = (company.contacts || []).filter((c) => c.locations === location.name);
   const locOrders = (company.orders || [])
     .filter((o) => o.location === location.name)
@@ -71,7 +106,7 @@ export function LocationDetail() {
     .filter(Boolean);
   const shipPreview = shipParts.length ? [...shipParts, COUNTRY_NAMES[ship.country] || ''].filter(Boolean) : [];
 
-  // Pricing rows: resolved base(s) + quantity — read-only (inherited from company).
+  // Pricing rows: resolved base(s) + quantities — the location's own, else inherited from the company.
   const pricingRows = [];
   if (bases.length) {
     bases.forEach((e, i) => {
@@ -81,17 +116,16 @@ export function LocationDetail() {
           <IndexTable.Cell>
             <BlockStack gap="050">
               <Text as="span" variant="bodyMd">{e.policy.name}</Text>
-              {e.source === 'LOCATION' ? (
-                <Badge tone="info" size="small">Location override</Badge>
-              ) : (
+              {e.source === 'COMPANY' ? (
                 <Text as="span" tone="subdued" variant="bodySm">Inherited from {company.name}</Text>
-              )}
+              ) : null}
             </BlockStack>
           </IndexTable.Cell>
           <IndexTable.Cell>{scopeLabel(e.policy)}</IndexTable.Cell>
           <IndexTable.Cell>
             <Badge tone={policyStatus(e.policy, state.db).tone}>{policyStatus(e.policy, state.db).label}</Badge>
           </IndexTable.Cell>
+          <IndexTable.Cell>{pricingActions(e.policy, 'base')}</IndexTable.Cell>
         </IndexTable.Row>,
       );
     });
@@ -102,30 +136,42 @@ export function LocationDetail() {
         <IndexTable.Cell><Badge tone="warning">Not set</Badge></IndexTable.Cell>
         <IndexTable.Cell>—</IndexTable.Cell>
         <IndexTable.Cell>—</IndexTable.Cell>
+        <IndexTable.Cell />
       </IndexTable.Row>,
     );
   }
-  pricingRows.push(
-    <IndexTable.Row id="quantity" key="quantity" position={pricingRows.length}>
-      <IndexTable.Cell>Quantity pricing</IndexTable.Cell>
-      <IndexTable.Cell>
-        {quantity ? (
-          <BlockStack gap="050">
-            <Text as="span" variant="bodyMd">{quantity.policy.name}</Text>
-            {quantity.source === 'LOCATION' ? (
-              <Badge tone="info" size="small">Location override</Badge>
-            ) : (
-              <Text as="span" tone="subdued" variant="bodySm">Inherited from {company.name}</Text>
-            )}
-          </BlockStack>
-        ) : (
-          <Badge tone="warning">Not set</Badge>
-        )}
-      </IndexTable.Cell>
-      <IndexTable.Cell>{quantity ? scopeLabel(quantity.policy) : '—'}</IndexTable.Cell>
-      <IndexTable.Cell>{quantity ? <Badge tone={policyStatus(quantity.policy, state.db).tone}>{policyStatus(quantity.policy, state.db).label}</Badge> : '—'}</IndexTable.Cell>
-    </IndexTable.Row>,
-  );
+  if (quantities.length) {
+    quantities.forEach((e, i) => {
+      pricingRows.push(
+        <IndexTable.Row id={`quantity-${e.policy.id}`} key={`quantity-${e.policy.id}`} position={pricingRows.length}>
+          <IndexTable.Cell>{i === 0 ? 'Quantity pricing' : ''}</IndexTable.Cell>
+          <IndexTable.Cell>
+            <BlockStack gap="050">
+              <Text as="span" variant="bodyMd">{e.policy.name}</Text>
+              {e.source === 'COMPANY' ? (
+                <Text as="span" tone="subdued" variant="bodySm">Inherited from {company.name}</Text>
+              ) : null}
+            </BlockStack>
+          </IndexTable.Cell>
+          <IndexTable.Cell>{scopeLabel(e.policy)}</IndexTable.Cell>
+          <IndexTable.Cell>
+            <Badge tone={policyStatus(e.policy, state.db).tone}>{policyStatus(e.policy, state.db).label}</Badge>
+          </IndexTable.Cell>
+          <IndexTable.Cell>{pricingActions(e.policy, 'quantity')}</IndexTable.Cell>
+        </IndexTable.Row>,
+      );
+    });
+  } else {
+    pricingRows.push(
+      <IndexTable.Row id="quantity-none" key="quantity-none" position={pricingRows.length}>
+        <IndexTable.Cell>Quantity pricing</IndexTable.Cell>
+        <IndexTable.Cell><Badge tone="warning">Not set</Badge></IndexTable.Cell>
+        <IndexTable.Cell>—</IndexTable.Cell>
+        <IndexTable.Cell>—</IndexTable.Cell>
+        <IndexTable.Cell />
+      </IndexTable.Row>,
+    );
+  }
 
   // Pricing table pagination.
   const pricingPageCount = Math.max(1, Math.ceil(pricingRows.length / PRICING_PAGE_SIZE));
@@ -176,52 +222,36 @@ export function LocationDetail() {
               </BlockStack>
             </Card>
 
-            {/* Buyers */}
+            {/* Pricing */}
             <Card padding="0">
               <Box padding="300" paddingBlockEnd="200">
                 <InlineStack align="space-between" blockAlign="center">
-                  <Text as="h2" variant="headingSm">Buyers{buyers.length ? ` (${buyers.length})` : ''}</Text>
-                  <Button variant="primary" size="slim" onClick={() => setAssignOpen(true)}>Assign buyer</Button>
+                  <Text as="h2" variant="headingSm">Pricing</Text>
+                  <Popover
+                    active={addPricingOpen}
+                    onClose={() => setAddPricingOpen(false)}
+                    preferredAlignment="right"
+                    activator={
+                      <Button size="slim" icon={PlusIcon} disclosure onClick={() => setAddPricingOpen((v) => !v)}>
+                        Add pricing
+                      </Button>
+                    }
+                  >
+                    <ActionList
+                      actionRole="menuitem"
+                      items={[
+                        { content: 'Base pricing', onAction: () => addPricing('base') },
+                        { content: 'Quantity pricing', onAction: () => addPricing('quantity') },
+                      ]}
+                    />
+                  </Popover>
                 </InlineStack>
-              </Box>
-              <IndexTable
-                resourceName={{ singular: 'buyer', plural: 'buyers' }}
-                itemCount={buyers.length}
-                selectable={false}
-                headings={[{ title: 'Name' }, { title: 'Role' }, { title: '' }]}
-                emptyState={
-                  <Box padding="400">
-                    <Text as="p" alignment="center" tone="subdued">No buyers assigned. Assign a buyer so someone can purchase under this location.</Text>
-                  </Box>
-                }
-              >
-                {buyers.map((b, i) => (
-                  <IndexTable.Row id={b.email || String(i)} key={b.email || i} position={i}>
-                    <IndexTable.Cell>
-                      <BlockStack gap="050">
-                        <Text as="span" variant="bodyMd" fontWeight="medium">{b.name}</Text>
-                        <Text as="span" tone="subdued" variant="bodySm">{b.email}</Text>
-                      </BlockStack>
-                    </IndexTable.Cell>
-                    <IndexTable.Cell>{b.role || 'Ordering only'}</IndexTable.Cell>
-                    <IndexTable.Cell>
-                      <Button icon={XIcon} variant="tertiary" accessibilityLabel="Remove buyer" onClick={() => dispatch({ type: 'UNASSIGN_BUYER', companyId: company.id, locationId: location.id, email: b.email })} />
-                    </IndexTable.Cell>
-                  </IndexTable.Row>
-                ))}
-              </IndexTable>
-            </Card>
-
-            {/* Pricing */}
-            <Card padding="0">
-              <Box padding="300" paddingBlockEnd="0">
-                <Text as="h2" variant="headingSm">Pricing</Text>
               </Box>
               <IndexTable
                 resourceName={{ singular: 'pricing', plural: 'pricings' }}
                 itemCount={pagePricingRows.length}
                 selectable={false}
-                headings={[{ title: 'Type' }, { title: 'Pricing' }, { title: 'Products' }, { title: 'Status' }]}
+                headings={[{ title: 'Type' }, { title: 'Pricing' }, { title: 'Products' }, { title: 'Status' }, { title: '', alignment: 'end' }]}
                 pagination={{
                   hasNext: pricingCurrent < pricingPageCount - 1,
                   hasPrevious: pricingCurrent > 0,
@@ -345,6 +375,36 @@ export function LocationDetail() {
                 <Text as="span" tone="subdued" variant="bodySm">
                   {location.billingSameAsShipping ? 'Billing address is same as shipping.' : 'Billing address is set separately.'}
                 </Text>
+              </BlockStack>
+            </Card>
+
+            {/* Buyers — names only; the role shows on hover */}
+            <Card>
+              <BlockStack gap="300">
+                <InlineStack align="space-between" blockAlign="center">
+                  <Text as="h2" variant="headingSm">Buyers{buyers.length ? ` (${buyers.length})` : ''}</Text>
+                  <Button size="micro" onClick={() => setAssignOpen(true)}>Assign buyer</Button>
+                </InlineStack>
+                {buyers.length ? (
+                  <BlockStack gap="100">
+                    {buyers.map((b, i) => (
+                      <InlineStack key={b.email || i} align="space-between" blockAlign="center" gap="200" wrap={false}>
+                        <Tooltip content={b.role || 'Ordering only'}>
+                          <Text as="span" variant="bodyMd">{b.name}</Text>
+                        </Tooltip>
+                        <Button
+                          icon={XIcon}
+                          variant="tertiary"
+                          size="micro"
+                          accessibilityLabel={`Remove ${b.name}`}
+                          onClick={() => dispatch({ type: 'UNASSIGN_BUYER', companyId: company.id, locationId: location.id, email: b.email })}
+                        />
+                      </InlineStack>
+                    ))}
+                  </BlockStack>
+                ) : (
+                  <Text as="p" tone="subdued" variant="bodySm">No buyers assigned. Assign a buyer so someone can purchase under this location.</Text>
+                )}
               </BlockStack>
             </Card>
 

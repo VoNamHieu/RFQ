@@ -2,8 +2,9 @@ import React from 'react';
 import { Modal, BlockStack, Box, Text, Button, InlineStack } from '@shopify/polaris';
 import { PlusIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
-import { companyBaseEntries, companyQuantityPolicy, scopeTypeLabel } from '../pricing.js';
+import { companyBaseEntries, companyQuantityEntries, locationPricingEntries, scopeTypeLabel } from '../pricing.js';
 import { PricingCombobox } from './PricingCombobox.jsx';
+import { LocationScopePicker } from './LocationScopePicker.jsx';
 
 const fmtDate = (d) =>
   d ? new Date(`${d}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
@@ -29,8 +30,8 @@ function SummaryRow({ label, value }) {
 // laid out like the god file's "Assign price list" modal: a Combobox dropdown whose
 // options carry checkboxes (Combobox manages the floating overlay so it positions
 // correctly inside the Modal), the picks shown as removable tags, OR create a new
-// one, then a "What they will get" summary. Base add is MULTI-select; quantity and
-// swap are single-slot.
+// one, then a "What they will get" summary. Add is MULTI-select (base and quantity
+// alike); swap is single.
 export function AssignModal() {
   const { state, dispatch } = useStore();
   const a = state.assign;
@@ -38,11 +39,14 @@ export function AssignModal() {
   const isQuantity = a.kind === 'quantity';
   const kindName = isQuantity ? 'quantity pricing' : 'base pricing';
   const isSwap = a.mode === 'swap';
-  const single = isQuantity || isSwap;
+  const single = isSwap;
   const company = state.db.companies.find((c) => c.id === a.companyId);
-  const assignedIds = isQuantity
-    ? [companyQuantityPolicy(company, state.db.policies)?.id].filter(Boolean)
-    : companyBaseEntries(company, state.db.policies).map((e) => e.policy.id);
+  // From a Location page: the target is that location, and what it already has
+  // (its own or inherited from the company) can't be picked again.
+  const location = a.locationId ? (company?.locations || []).find((l) => l.id === a.locationId) : null;
+  const assignedIds = location
+    ? (({ bases, quantities }) => (isQuantity ? quantities : bases))(locationPricingEntries(company, location, state.db.policies, { includeInactive: true })).map((e) => e.policy.id)
+    : (isQuantity ? companyQuantityEntries : companyBaseEntries)(company, state.db.policies).map((e) => e.policy.id);
 
   const candidates = state.db.policies.filter(
     (p) =>
@@ -52,12 +56,17 @@ export function AssignModal() {
       !assignedIds.includes(p.id),
   );
 
+  // Adding from a company page with 2+ locations: all of them, or only some.
+  const locations = company?.locations || [];
+  const pickLocations = !location && !isSwap && locations.length > 1;
+  const someLocations = pickLocations && a.applyTo === 'some';
+  const pickedLocIds = someLocations ? a.locationIds || [] : [];
+
   const swapped = isSwap ? state.db.policies.find((p) => p.id === a.swapId) : null;
   const selectedIds = a.selectedIds || [];
   const selectedPolicies = candidates.filter((p) => selectedIds.includes(p.id));
 
-  const optionLabel = (p) =>
-    isQuantity ? `${p.name} · ${scopeTypeLabel(p)}` : `${p.name} · Priority ${p.priority ?? '—'} · ${scopeTypeLabel(p)}`;
+  const optionLabel = (p) => `${p.name} · Priority ${p.priority ?? '—'} · ${scopeTypeLabel(p)}`;
 
   const createNew = () => {
     dispatch({ type: 'CLOSE_ASSIGN' });
@@ -65,7 +74,12 @@ export function AssignModal() {
       type: 'OPEN_EDITOR',
       policy: null,
       kind: a.kind,
-      context: { mode: isQuantity ? 'add-quantity' : 'add-base', companyId: a.companyId },
+      context: {
+        mode: isQuantity ? 'add-quantity' : 'add-base',
+        companyId: a.companyId,
+        locationId: a.locationId || null,
+        locationIds: someLocations ? pickedLocIds : null,
+      },
     });
   };
 
@@ -73,11 +87,11 @@ export function AssignModal() {
     <Modal
       open
       onClose={() => dispatch({ type: 'CLOSE_ASSIGN' })}
-      title={isSwap ? `Change ${swapped?.name || kindName}` : `Assign ${kindName}: ${company?.name || ''}`}
+      title={isSwap ? `Change ${swapped?.name || kindName}` : `Assign ${kindName}: ${location?.name || company?.name || ''}`}
       primaryAction={{
         content: isSwap ? 'Change' : 'Assign',
         onAction: () => dispatch({ type: 'ASSIGN_CONFIRM' }),
-        disabled: selectedIds.length === 0,
+        disabled: selectedIds.length === 0 || (someLocations && pickedLocIds.length === 0),
       }}
       secondaryActions={[{ content: 'Cancel', onAction: () => dispatch({ type: 'CLOSE_ASSIGN' }) }]}
     >
@@ -107,6 +121,14 @@ export function AssignModal() {
               </>
             )}
           </BlockStack>
+
+          {pickLocations ? (
+            <LocationScopePicker
+              company={company}
+              locationIds={someLocations ? pickedLocIds : null}
+              onChange={(ids) => dispatch({ type: 'ASSIGN_PATCH', patch: { applyTo: ids ? 'some' : 'all', locationIds: ids || [] } })}
+            />
+          ) : null}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ flex: 1, height: 1, background: 'var(--p-color-border)' }} />

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Page, Tabs, Card, BlockStack, InlineStack, Button, Text, Modal } from '@shopify/polaris';
+import { Page, Tabs, Card, BlockStack, InlineStack, Button, Text, Modal, Banner } from '@shopify/polaris';
 import { useStore, currentCompany } from '../store.jsx';
-import { companyBaseEntries, companyQuantityPolicy } from '../pricing.js';
+import { companyBaseEntries, companyQuantityEntries, hasOwnSlot } from '../pricing.js';
 import { BasePricingCard } from '../components/BasePricingCard.jsx';
 import { QuantityPricingCard } from '../components/QuantityPricingCard.jsx';
 import { QuotesTab } from '../components/tabs/QuotesTab.jsx';
@@ -26,8 +26,9 @@ export function CompanyDetail() {
   const company = currentCompany(state);
   if (!company) return null;
 
+  const ownPricingLocations = (company.locations || []).filter((l) => hasOwnSlot(l, 'base') || hasOwnSlot(l, 'quantity'));
   const assignedCount =
-    companyBaseEntries(company, state.db.policies).length + (companyQuantityPolicy(company, state.db.policies) ? 1 : 0);
+    companyBaseEntries(company, state.db.policies).length + companyQuantityEntries(company, state.db.policies).length;
 
   const tabIndex = Math.max(0, TABS.findIndex((t) => t.id === state.companyTab));
   const tabs = TABS.map((t) => {
@@ -64,6 +65,16 @@ export function CompanyDetail() {
 
         {state.companyTab === 'pricing' && (
           <>
+            {/* Locations on their own pricing don't follow changes or removals made here
+                (pricing added for all locations does reach them). */}
+            {ownPricingLocations.length ? (
+              <Banner
+                tone="info"
+                action={{ content: 'View locations', onAction: () => dispatch({ type: 'SET_COMPANY_TAB', tab: 'locations' }) }}
+              >
+                {`${ownPricingLocations.map((l) => l.name).join(', ')} ${ownPricingLocations.length === 1 ? 'uses its' : 'use their'} own pricing, so changing or removing pricing here doesn’t apply to ${ownPricingLocations.length === 1 ? 'it' : 'them'}.`}
+              </Banner>
+            ) : null}
             <BasePricingCard company={company} />
             <QuantityPricingCard company={company} />
           </>

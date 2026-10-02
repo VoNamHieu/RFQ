@@ -17,19 +17,23 @@ import {
   Banner,
   Divider,
   Tabs,
+  Checkbox,
+  Tooltip,
+  Icon,
 } from '@shopify/polaris';
-import { XIcon } from '@shopify/polaris-icons';
+import { XIcon, InfoIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { RuleBuilderCard } from './RuleBuilderCard.jsx';
 import { VolumeRangesCard } from './VolumeRangesCard.jsx';
 import { DefaultPriceCard } from './DefaultPriceCard.jsx';
+import { LocationScopePicker } from './LocationScopePicker.jsx';
 import { versionFlags } from '../../shared/versions.js';
 import { COLLECTIONS } from '../data/constants.js';
 import { money } from '../format.js';
 import { ActiveDatesCard, ProductScopeCard, VolumeBasisCard, ProductOverridesCard } from './pricingEditorCards.jsx';
-import { ProductPriceTable } from './ProductPriceTable.jsx';
+import { PricePreviewDialog } from './PricePreviewDialog.jsx';
 import { AssignmentCard } from './AssignmentCard.jsx';
-import { policyUsageCount, companyBaseEntries, companyQuantityPolicy, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, ruleValuesSummary } from '../pricing.js';
+import { policyUsageCount, policyUsageDetail, companyBaseEntries, companyQuantityEntries, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, ruleValuesSummary } from '../pricing.js';
 
 // Pricing editor (spec §2.6). Open whenever state.builder is set. Rendered as an
 // in-frame page when opened from the Pricing screen (asPage), and as a full-screen
@@ -37,6 +41,10 @@ import { policyUsageCount, companyBaseEntries, companyQuantityPolicy, policyPric
 export function PricingEditor({ asPage = false }) {
   const { state, dispatch } = useStore();
   const [forkConfirm, setForkConfirm] = useState(false);
+  // Save-time confirmation when the pricing switched Company-based B2B ↔ D2C Wholesale.
+  const [sideConfirm, setSideConfirm] = useState(false);
+  // Save dialog for a shared pricing: a separate copy for here, unless ticked to apply to all.
+  const [applyAll, setApplyAll] = useState(false);
   const builder = state.builder;
   // Overlay mode only: lock body scroll and close on Escape while open.
   useEffect(() => {
@@ -67,18 +75,83 @@ export function PricingEditor({ asPage = false }) {
     ? state.db.companies.find((c) => c.id === state.editorContext.companyId)
     : null;
   // "Who this pricing serves" applies only to the library flow (create/edit from
-  // Pricing). Opened from a Company page or the Add-company wizard, the target is
+  // Pricing). Opened from a Company or Location page, the target is
   // already fixed, so the card is hidden there — matching the god file's locked state.
-  const showAssignment = !state.editorContext?.companyId && !state.editorContext?.setupKind;
-  const usesHere =
-    scopeCompany &&
-    (companyBaseEntries(scopeCompany, state.db.policies).some((e) => e.policy.id === builder.id) ||
-      companyQuantityPolicy(scopeCompany, state.db.policies)?.id === builder.id);
+  const showAssignment = !state.editorContext?.companyId;
+  // From a Location page, "here" is that location's own list.
+  const scopeLoc =
+    scopeCompany && state.editorContext?.locationId
+      ? (scopeCompany.locations || []).find((l) => l.id === state.editorContext.locationId)
+      : null;
+  const scopeName = (scopeLoc || scopeCompany)?.name;
+  const usesHere = scopeLoc
+    ? KIND_ORDER.some((k) => slotIds(scopeLoc, k).includes(builder.id))
+    : scopeCompany &&
+      (companyBaseEntries(scopeCompany, state.db.policies).some((e) => e.policy.id === builder.id) ||
+        companyQuantityEntries(scopeCompany, state.db.policies).some((e) => e.policy.id === builder.id));
   const sharedCount = !isNew ? policyUsageCount({ id: builder.id }, state.db) - (usesHere ? 1 : 0) : 0;
   const sharedElsewhere = !isNew && scopeCompany && sharedCount > 0;
+  // Save dialog wording: what else holds it (companies / locations / other), and
+  // what "apply to all" covers — "here" is a location or a company.
+  const usage = !isNew ? policyUsageDetail({ id: builder.id }, state.db) : null;
+  const others = usage
+    ? {
+        companies: usage.companies - (usesHere && !scopeLoc ? 1 : 0),
+        locations: usage.locations - (usesHere && scopeLoc ? 1 : 0),
+        rest: usage.tags + usage.customers + usage.globals.length,
+      }
+    : { companies: 0, locations: 0, rest: 0 };
+  // e.g. "2 other companies", "1 other company and 2 locations".
+  const countOf = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const sharedWith = [
+    others.companies ? countOf(others.companies, 'company', 'companies') : null,
+    others.locations ? countOf(others.locations, 'location', 'locations') : null,
+    others.rest ? countOf(others.rest, 'other assignment', 'other assignments') : null,
+  ]
+    .filter(Boolean)
+    .map((t, i) => (i === 0 && !t.includes('other') ? t.replace(' ', ' other ') : t))
+    .join(' and ');
+  const hasCompanies = !scopeLoc || others.companies > 0;
+  const hasLocations = !!scopeLoc || others.locations > 0;
+  const allNoun = others.rest
+    ? null
+    : hasCompanies && hasLocations
+      ? 'companies and locations'
+      : hasLocations
+        ? 'locations'
+        : 'companies';
+
+  // Creating from a company page (2+ locations): which of its locations get it —
+  // all (null) or the picked ones (editorContext.locationIds, seeded from Assign).
+  const showCompanyLocations = isNew && !!scopeCompany && !scopeLoc && (scopeCompany.locations || []).length > 1;
+  const scopeLocationIds = showCompanyLocations ? state.editorContext?.locationIds ?? null : null;
+  const noLocationPicked = Array.isArray(scopeLocationIds) && scopeLocationIds.length === 0;
+
+  // Switched Company-based B2B ↔ D2C Wholesale on a pricing that's assigned on its
+  // saved side: saving clears that side, so confirm first ("Change who this pricing serves?").
+  const savedPolicy = !isNew ? state.db.policies.find((p) => p.id === builder.id) || null : null;
+  const savedSide = savedPolicy ? (savedPolicy.audienceType === 'd2c' ? 'd2c' : 'b2b') : null;
+  const sideChanged = !!savedPolicy && savedSide !== (builder.audienceType === 'd2c' ? 'd2c' : 'b2b');
+  const savedUsage = savedPolicy ? policyUsageDetail(savedPolicy, state.db) : null;
+  const companiesAssigned = savedPolicy
+    ? state.db.companies.filter((c) => [c, ...(c.locations || [])].some((h) => KIND_ORDER.some((k) => slotIds(h, k).includes(savedPolicy.id)))).length
+    : 0;
+  const hadAssignments = !savedUsage
+    ? false
+    : savedSide === 'b2b'
+      ? companiesAssigned > 0 || savedUsage.globals.includes('All Companies')
+      : savedUsage.customers + savedUsage.tags > 0 || savedUsage.globals.includes('All customers');
 
   const onSave = () => {
-    if (sharedElsewhere) setForkConfirm(true);
+    if (noLocationPicked) return;
+    if (sideChanged && hadAssignments) {
+      setSideConfirm(true);
+      return;
+    }
+    if (sharedElsewhere) {
+      setApplyAll(false);
+      setForkConfirm(true);
+    }
     else dispatch({ type: 'SAVE_EDITOR' });
   };
 
@@ -87,7 +160,7 @@ export function PricingEditor({ asPage = false }) {
     <BlockStack gap="400">
           {sharedElsewhere && (
             <Banner tone="info">
-              {`This pricing is also assigned to ${sharedCount} other ${sharedCount === 1 ? 'account' : 'accounts'}. Saving will offer to fork a copy for ${scopeCompany.name} or apply to all.`}
+              {`This pricing is also assigned to ${sharedWith}. Saving will offer to fork a copy for ${scopeName} or apply to all.`}
             </Banner>
           )}
 
@@ -125,27 +198,33 @@ export function PricingEditor({ asPage = false }) {
 
                   <Card>
                     <BlockStack gap="300">
-                      <Text as="h3" variant="headingSm">Pricing details</Text>
-                      <InlineGrid columns={{ xs: 1, sm: '2fr 1fr' }} gap="300">
-                        <TextField
-                          label="Name"
-                          value={builder.name}
-                          onChange={(v) => patch({ name: v })}
-                          maxLength={255}
-                          showCharacterCount
-                          autoComplete="off"
-                        />
-                        <TextField
-                          label="Priority (0–99)"
-                          type="number"
-                          min={0}
-                          max={99}
-                          value={String(builder.priority ?? '')}
-                          onChange={(v) => patch({ priority: Number(v) })}
-                          helpText="Lower number applies first. Company/Location and customer/tag precedence isn’t replaced by this."
-                          autoComplete="off"
-                        />
-                      </InlineGrid>
+                      <InlineStack gap="100" blockAlign="center">
+                        <Text as="h3" variant="headingSm">Pricing details</Text>
+                        <Tooltip content="Priority orders pricing within a company or location. Company/Location and customer/tag precedence isn’t replaced by it.">
+                          <span style={{ display: 'inline-flex' }}>
+                            <Icon source={InfoIcon} tone="subdued" accessibilityLabel="About pricing details" />
+                          </span>
+                        </Tooltip>
+                      </InlineStack>
+                      <TextField
+                        label="Name"
+                        requiredIndicator
+                        value={builder.name}
+                        onChange={(v) => patch({ name: v })}
+                        maxLength={255}
+                        showCharacterCount
+                        autoComplete="off"
+                      />
+                      <TextField
+                        label="Priority (0-99)"
+                        type="number"
+                        min={0}
+                        max={99}
+                        value={String(builder.priority ?? '')}
+                        onChange={(v) => patch({ priority: Number(v) })}
+                        helpText="Lower number applies first."
+                        autoComplete="off"
+                      />
                     </BlockStack>
                   </Card>
 
@@ -170,6 +249,14 @@ export function PricingEditor({ asPage = false }) {
                     </>
                   )}
 
+                  {showCompanyLocations && (
+                    <CompanyLocationsCard
+                      company={scopeCompany}
+                      locationIds={scopeLocationIds}
+                      onChange={(ids) => dispatch({ type: 'EDITOR_CONTEXT_PATCH', patch: { locationIds: ids } })}
+                    />
+                  )}
+
                   {/* Scheduling last, matching the god-file editor order. */}
                   <ActiveDatesCard builder={builder} patch={patch} />
                 </>
@@ -190,35 +277,78 @@ export function PricingEditor({ asPage = false }) {
 
   return (
     <>
+      {sideConfirm && (
+        <Modal
+          open
+          onClose={() => setSideConfirm(false)}
+          title="Change who this pricing serves?"
+          primaryAction={{
+            content: 'Save changes',
+            onAction: () => {
+              setSideConfirm(false);
+              dispatch({ type: 'SAVE_EDITOR' });
+            },
+          }}
+          secondaryActions={[{ content: 'Cancel', onAction: () => setSideConfirm(false) }]}
+        >
+          <Modal.Section>
+            {savedSide === 'b2b' ? (
+              <Text as="p">
+                {'This pricing is set up for '}
+                <Text as="span" fontWeight="semibold">Company-based B2B</Text>
+                {companiesAssigned
+                  ? `, with ${companiesAssigned} compan${companiesAssigned === 1 ? 'y' : 'ies'} assigned. Switching to `
+                  : ', as the default for all companies. Switching to '}
+                <Text as="span" fontWeight="semibold">D2C Wholesale</Text>
+                {` clears that assignment. ${companiesAssigned === 1 ? 'That company falls' : 'Those companies fall'} back to your Shopify prices until another pricing is assigned.`}
+              </Text>
+            ) : (
+              <Text as="p">
+                {'This pricing is set up for '}
+                <Text as="span" fontWeight="semibold">D2C Wholesale</Text>
+                {', with the customers and customer tags it targets. Switching to '}
+                <Text as="span" fontWeight="semibold">Company-based B2B</Text>
+                {' clears that selection. Only the companies you picked receive it.'}
+              </Text>
+            )}
+          </Modal.Section>
+        </Modal>
+      )}
       {forkConfirm && (
         <Modal
           open
           onClose={() => setForkConfirm(false)}
-          title="This pricing is shared"
+          title={`Save changes to ${builder.name}`}
           primaryAction={{
-            content: `Save a copy for ${scopeCompany.name}`,
+            content: 'Save',
             onAction: () => {
               setForkConfirm(false);
-              dispatch({ type: 'SAVE_EDITOR' }); // default path forks for this company
+              // Unticked: a separate copy for here (the default path forks).
+              dispatch({ type: 'SAVE_EDITOR', applyToAll: applyAll });
             },
           }}
-          secondaryActions={[
-            {
-              content: `Apply to all ${sharedCount + 1}`,
-              onAction: () => {
-                setForkConfirm(false);
-                dispatch({ type: 'SAVE_EDITOR', applyToAll: true });
-              },
-            },
-            { content: 'Cancel', onAction: () => setForkConfirm(false) },
-          ]}
+          secondaryActions={[{ content: 'Cancel', onAction: () => setForkConfirm(false) }]}
         >
           <Modal.Section>
-            <Text as="p">
-              “{builder.name}” is assigned to {sharedCount} other {sharedCount === 1 ? 'account' : 'accounts'}. Saving a copy
-              changes the price only for {scopeCompany.name}; the others keep the original. Choose “Apply to all” to change
-              it everywhere it’s assigned.
-            </Text>
+            <BlockStack gap="300">
+              <Text as="p">
+                {`${builder.name} is shared with ${sharedWith}. Save as a separate pricing for `}
+                <Text as="span" fontWeight="semibold">{scopeName}</Text>
+                {` — the others keep ${builder.name}.`}
+              </Text>
+              <Box padding="300" borderWidth="025" borderColor="border" borderRadius="200">
+                <Checkbox
+                  label={allNoun ? `Apply to all ${sharedCount + 1} ${allNoun} instead` : `Apply everywhere it’s used instead (${sharedCount + 1})`}
+                  helpText={
+                    allNoun
+                      ? `Overwrites this pricing for every ${allNoun === 'companies' ? 'company' : allNoun === 'locations' ? 'location' : 'company and location'} using it.`
+                      : 'Overwrites this pricing everywhere it’s used.'
+                  }
+                  checked={applyAll}
+                  onChange={setApplyAll}
+                />
+              </Box>
+            </BlockStack>
           </Modal.Section>
         </Modal>
       )}
@@ -226,7 +356,7 @@ export function PricingEditor({ asPage = false }) {
         <Page
           title={editorTitle}
           backAction={{ content: 'Back', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }}
-          primaryAction={{ content: isNew ? 'Create pricing' : 'Save', onAction: onSave }}
+          primaryAction={{ content: isNew ? 'Create pricing' : 'Save', onAction: onSave, disabled: noLocationPicked }}
           secondaryActions={[{ content: 'Cancel', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }]}
         >
           {editorBody}
@@ -252,7 +382,7 @@ export function PricingEditor({ asPage = false }) {
             <Text as="h2" variant="headingMd">{editorTitle}</Text>
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
               <Button onClick={() => dispatch({ type: 'CLOSE_EDITOR' })}>Cancel</Button>
-              <Button variant="primary" onClick={onSave}>{isNew ? 'Create pricing' : 'Save'}</Button>
+              <Button variant="primary" onClick={onSave} disabled={noLocationPicked}>{isNew ? 'Create pricing' : 'Save'}</Button>
               <Button variant="tertiary" icon={XIcon} accessibilityLabel="Close" onClick={() => dispatch({ type: 'CLOSE_EDITOR' })} />
             </div>
           </div>
@@ -356,100 +486,53 @@ function ResolutionCard({ builder, products }) {
   );
 }
 
-// The full table behind "Preview all prices": every product this base pricing
-// covers, the layer that decides each price, and what the buyer pays — computed
-// from the DRAFT builder, so it reflects unsaved rule/override edits. This is the
-// per-rule counterpart to the company-level PriceBoard (which reads saved policies).
-const PREVIEW_SORTS = [
-  { label: 'Product A–Z', value: 'title-asc' },
-  { label: 'Product Z–A', value: 'title-desc' },
-  { label: 'Shopify price: low to high', value: 'shopify-asc' },
-  { label: 'Shopify price: high to low', value: 'shopify-desc' },
-  { label: 'Buyer pays: low to high', value: 'final-asc' },
-  { label: 'Buyer pays: high to low', value: 'final-desc' },
-  { label: 'Biggest discount', value: 'off-desc' },
-];
-
+// "Preview all prices": every product this base pricing covers, the layer that
+// decides each price, and what the buyer pays — computed from the DRAFT builder, so
+// it reflects unsaved rule/override edits. Same modal as the company page's Preview
+// prices (PricePreviewDialog), which reads the saved pricing instead.
 function BuilderPricePreview({ builder, products, onClose }) {
-  const [query, setQuery] = useState('');
-  const [sort, setSort] = useState('title-asc');
-  const inScope = products.filter((p) => policyPriceBreakdown(builder, p)?.inScope);
-
-  const entries = inScope.map((p) => {
-    const bd = policyPriceBreakdown(builder, p);
-    const layer = bd.override != null ? 'override' : bd.rule ? 'rule' : 'default';
-    const rule = bd.rule ? (builder.conditionalRules || [])[bd.rule.index] : null;
-    const decidedBy =
-      layer === 'override'
-        ? 'Product override'
-        : layer === 'rule'
-          ? `Rule ${bd.rule.index + 1} · ${ruleTypeLabel(rule)}`
-          : 'Default';
-    const off = bd.shopify > 0 ? Math.round((1 - bd.final / bd.shopify) * 100) : 0;
-    return { p, bd, layer, decidedBy, off };
-  });
-
-  const q = query.trim().toLowerCase();
-  const filtered = q ? entries.filter((e) => e.p.title.toLowerCase().includes(q) || e.p.sku.toLowerCase().includes(q)) : entries;
-  const sorted = [...filtered].sort((a, b) => {
-    switch (sort) {
-      case 'title-desc': return b.p.title.localeCompare(a.p.title);
-      case 'shopify-asc': return a.bd.shopify - b.bd.shopify;
-      case 'shopify-desc': return b.bd.shopify - a.bd.shopify;
-      case 'final-asc': return a.bd.final - b.bd.final;
-      case 'final-desc': return b.bd.final - a.bd.final;
-      case 'off-desc': return b.off - a.off;
-      default: return a.p.title.localeCompare(b.p.title);
-    }
-  });
-
-  const rows = sorted.map((e) => ({
-    key: e.p.sku,
-    title: e.p.title,
-    subtitle: e.p.sku,
-    cells: [
-      <Text as="span" tone="subdued">{money(e.bd.shopify)}</Text>,
-      <Badge tone={e.layer === 'override' ? 'info' : undefined}>{e.decidedBy}</Badge>,
-      <Text as="span" fontWeight="semibold">{money(e.bd.final)}</Text>,
-      <Text as="span">{e.off > 0 ? `${e.off}% off` : e.off < 0 ? `${-e.off}% over` : '—'}</Text>,
-    ],
-  }));
-
+  const entries = products
+    .map((p) => ({ p, bd: policyPriceBreakdown(builder, p) }))
+    .filter(({ bd }) => bd?.inScope)
+    .map(({ p, bd }) => {
+      const layer = bd.override != null ? 'override' : bd.rule ? 'rule' : 'default';
+      const rule = bd.rule ? (builder.conditionalRules || [])[bd.rule.index] : null;
+      const decidedBy =
+        layer === 'override' ? 'Product override' : layer === 'rule' ? `Rule ${bd.rule.index + 1} · ${ruleTypeLabel(rule)}` : 'Default';
+      return { product: p, shopify: bd.shopify, final: bd.final, decidedBy, highlight: layer === 'override' };
+    });
   return (
-    <Modal
-      open
-      onClose={onClose}
-      size="large"
+    <PricePreviewDialog
       title={`Preview prices · ${builder.name || 'This pricing'}`}
-      secondaryActions={[{ content: 'Close', onAction: onClose }]}
-    >
-      <Modal.Section>
-        <BlockStack gap="300">
-          <Text as="p" tone="subdued" variant="bodySm">
-            Every product this pricing covers, with the layer that decides each price. Reflects your unsaved edits.
-          </Text>
-          <ProductPriceTable
-            search={query}
-            onSearch={setQuery}
-            sort={sort}
-            onSort={setSort}
-            sortOptions={PREVIEW_SORTS}
-            columns={[
-              { title: 'Shopify price', width: '96px', align: 'end' },
-              { title: 'Decided by', width: '160px', align: 'start' },
-              { title: 'Buyer pays', width: '96px', align: 'end' },
-              { title: 'Off', width: '72px', align: 'end' },
-            ]}
-            rows={rows}
-            emptyLabel={inScope.length === 0 ? 'This pricing covers no products yet.' : `No products match “${query}”.`}
-          />
-        </BlockStack>
-      </Modal.Section>
-    </Modal>
+      description="Every product this pricing covers, with the layer that decides each price. Reflects your unsaved edits."
+      entries={entries}
+      emptyLabel="This pricing covers no products yet."
+      onClose={onClose}
+    />
   );
 }
 
 // Settings summary (god-file asideSummary): an at-a-glance recap.
+// "Who this pricing serves" when creating from a company page: which of the
+// company's locations get it (see LocationScopePicker).
+function CompanyLocationsCard({ company, locationIds, onChange }) {
+  return (
+    <Card>
+      <BlockStack gap="300">
+        <BlockStack gap="100">
+          <Text as="h3" variant="headingSm">Who this pricing serves</Text>
+          <Text as="p" tone="subdued" variant="bodySm">
+            {'Choose which of '}
+            <Text as="span" variant="bodySm" fontWeight="semibold">{company.name}</Text>
+            {'’s locations get this pricing.'}
+          </Text>
+        </BlockStack>
+        <LocationScopePicker company={company} locationIds={locationIds} onChange={onChange} titleHidden />
+      </BlockStack>
+    </Card>
+  );
+}
+
 function SummaryCard({ builder, isQuantity }) {
   const items = [
     ['Type', isQuantity ? 'Quantity pricing' : 'Base pricing'],
