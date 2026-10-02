@@ -89,6 +89,8 @@ Merchant:  Registrations → mở đơn → Approve (tạo company mới) / Decl
   product page (Modal / Redirect link), account page.
 - **Preview form** ở header (menu, `Page actionGroups`) — chỉ hiện **sau khi form đã lưu** — cho
   chọn surface rồi mở thẳng preview toàn màn hình. Danh sách surface bám theo place đã tick.
+  Mỗi mục là một trang storefront thật, nên product page chỉ có **một** mục `Product page`,
+  hiện theo cách hiển thị đang chọn (Modal hoặc Redirect link) — không tách hai mục như icon con mắt.
 
 ## 5. Save model — "Unsaved changes"
 
@@ -147,7 +149,8 @@ Merchant:  Registrations → mở đơn → Approve (tạo company mới) / Decl
 ## 7. Trạng thái form: Draft / Live
 
 - Badge cạnh tiêu đề editor: **Draft** (attention) cho tới khi form có mặt ở ít nhất một place,
-  rồi thành **Live** (success). Nguồn: `db.registrationFormPublished`.
+  rồi thành **Live** (success). Nguồn: `db.registrationFormPublished`. Lúc **tạo** form mới
+  (`Create B2B registration form`) không hiện Draft — chỉ hiện Live / Off.
 - **Off** (xám): merchant bấm `Turn form off` → `db.registrationFormOff` (`SET_REGISTRATION_FORM_OFF`).
   Off thắng Live/Draft; nút đổi thành `Turn form on`, bật lại thì về đúng Live/Draft cũ (không mất
   place đã publish). Tạo form mới hoặc bật "no data" thì reset về không off.
@@ -174,12 +177,31 @@ Merchant:  Registrations → mở đơn → Approve (tạo company mới) / Decl
 
 ## 9. Review → approve
 
-- Màn chi tiết bày đơn theo đúng các section của form. Cột phải: **Approve luôn tạo company mới**
+- Màn chi tiết bày đơn theo đúng các section của form. Cột phải: **Approve tạo company mới** (trừ đơn trùng, xem dưới)
   (tên company + main contact lấy từ đơn). **Không có** lựa chọn "Add to an existing company" và
   không còn gợi ý company (`matchCompany` đã bỏ).
 - **Approve** (`APPROVE_REGISTRATION`): tạo company `source: 'Registration form'`, một location
   **Head office** (country và Tax ID lấy từ đơn), contact đầu là **Location admin**, `pricing` rỗng.
   - Đơn chuyển `approved`, ghi `decidedAt` + `companyId`.
+- **Trùng dữ liệu (29/09/2026)** — không bao giờ tạo customer Shopify thứ hai cho cùng một email, và **một email chỉ
+  thuộc một company**. Đơn trùng không có nút Approve thường; merchant chọn một trong hai hướng:
+
+  | # | Trường hợp | Lựa chọn |
+  |---|---|---|
+  | 1 | Cùng email, cùng company (email đã là contact của đúng company trong đơn) | **Merge** (giữ location / role) hoặc **Decline** |
+  | 2 | Cùng email, khác company (email là contact của company X) | **Merge into X**, hoặc **Create {company mới}** — cảnh báo: buyer bị gỡ khỏi X và thành main contact company mới |
+  | 3 | Cùng tên company, khác email | **Merge into company đó**, hoặc **Create a new company** cùng tên (Shopify cho phép trùng tên). Có nhiều company trùng tên → dropdown **Company** dạng "Company · main contact" để chọn company merge vào |
+
+  - **Location** và **Role** (Ordering only / Location admin) chỉ chọn khi buyer **mới** với company đó (trường hợp 3).
+    Email đã là contact (trường hợp 1–2, merge vào company họ đang ở) → **giữ nguyên location và role**, không có ô chọn.
+    Merge sang company khác company họ đang ở → chọn **Location** (giữ role), cảnh báo và gỡ khỏi company cũ.
+  - **Email chỉ là customer Shopify** (chưa thuộc company nào) → **thông tin**, vẫn **Approve**: company mới dùng lại
+    customer có sẵn làm main contact, giữ lịch sử đơn hàng.
+  - Khi buyer bị gỡ khỏi company cũ: activity ghi "… moved to …"; nếu họ là main contact thì chuyển sang contact kế tiếp.
+  - Nút quyết định (**Decline** + nút chính Approve / Merge / Create …) nằm cạnh nhau ở cuối card bên phải;
+    header chỉ còn **Delete**.
+  - Danh sách Registrations: badge **Existing contact** (trường hợp 1–2) / **Duplicate** (trường hợp 3), tone info; cột
+    company ghi "Contact at …" / "Matches …". Duyệt hàng loạt bỏ qua trường hợp 1–3, đơn chỉ trùng customer vẫn được duyệt.
 - **Decline** → `declined` + `decidedAt`. **Delete** → xoá khỏi hàng đợi, company đã tạo vẫn giữ.
 - `decidedAt` dùng `todayISO()` (giờ local). Không dùng `toISOString()` vì với UTC+7 thì sáng sớm
   sẽ ra ngày hôm trước.

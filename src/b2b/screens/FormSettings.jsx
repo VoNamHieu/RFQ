@@ -237,12 +237,13 @@ function EditorStep({ toast, onBack, isNew = false, title: pageTitle = 'Create B
   };
   // Saved → there is a form to look at, so the header offers "Preview form" and lets the
   // merchant pick which storefront surface to open it on. The choices follow the places
-  // ticked on the Publish tab (product page has both of its options); with none ticked,
-  // the registration page — what the side preview shows by default — is still previewable.
+  // ticked on the Publish tab; with none ticked, the registration page — what the side
+  // preview shows by default — is still previewable. Each choice stands for the real
+  // storefront page, so the product page is ONE item, shown the way it is set (modal / link).
   const saved = savedJson !== null;
   const previewTargets = [
     ...(places.includes('create') || !places.length ? ['page'] : []),
-    ...(places.includes('product') ? ['product-modal', 'product-link'] : []),
+    ...(places.includes('product') ? [productMode === 'link' ? 'product-link' : 'product-modal'] : []),
     ...(places.includes('account') ? ['account'] : []),
   ];
   const discard = () => {
@@ -298,7 +299,7 @@ function EditorStep({ toast, onBack, isNew = false, title: pageTitle = 'Create B
       )}
     <Page
       title={pageTitle}
-      titleMetadata={off ? <Badge>Off</Badge> : live ? <Badge tone="success">Live</Badge> : <Badge tone="attention">Draft</Badge>}
+      titleMetadata={off ? <Badge>Off</Badge> : live ? <Badge tone="success">Live</Badge> : isNew ? null : <Badge tone="attention">Draft</Badge>}
       backAction={{ content: 'Back', onAction: onBack }}
       secondaryActions={[{
         content: off ? 'Turn form on' : 'Turn form off',
@@ -1113,8 +1114,8 @@ const PREVIEW_TITLE = {
 // The same surfaces as menu items under the header's "Preview form".
 const PREVIEW_PLACE = {
   page: 'Registration page',
-  'product-modal': 'Product page · Modal',
-  'product-link': 'Product page · Redirect link',
+  'product-modal': 'Product page',
+  'product-link': 'Product page',
   account: 'Account page',
 };
 
