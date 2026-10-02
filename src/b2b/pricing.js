@@ -182,14 +182,14 @@ function priceForDetail(profile, product, variant) {
   const base = variantBase(product, v);
   const adj = explicitOn(profile) && v ? (profile.variantAdjustments || {})[v.id] : null;
   if (adj && adj.rule) {
-    return { price: applyAdjustment(adj.rule, adj.valueType || 'percentage', adj.value, base), layer: 'override', decidedBy: `${profile.name} · override` };
+    return { price: applyAdjustment(adj.rule, adj.valueType || 'percentage', adj.value, base), layer: 'override', decidedBy: profile.name, policy: profile };
   }
   const ri = matchConditionalRuleIndex(profile, product);
   if (ri >= 0) {
     const r = profile.conditionalRules[ri];
-    return { price: applyAdjustment(r.rule, r.valueType || 'percentage', r.value, base), layer: 'rule', decidedBy: `${profile.name} · Rule ${ri + 1}` };
+    return { price: applyAdjustment(r.rule, r.valueType || 'percentage', r.value, base), layer: 'rule', decidedBy: `${profile.name} · Rule ${ri + 1}`, policy: profile };
   }
-  return { price: applyAdjustment(profile.pricingRule, profile.valueType, profile.value, base), layer: 'base', decidedBy: `${profile.name} · Default price` };
+  return { price: applyAdjustment(profile.pricingRule, profile.valueType, profile.value, base), layer: 'base', decidedBy: `${profile.name} · Default price`, policy: profile };
 }
 
 // Single-profile price breakdown for the editor's "How the price resolves"

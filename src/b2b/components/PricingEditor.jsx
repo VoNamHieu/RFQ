@@ -31,7 +31,7 @@ import { versionFlags } from '../../shared/versions.js';
 import { COLLECTIONS } from '../data/constants.js';
 import { money } from '../format.js';
 import { ActiveDatesCard, ProductScopeCard, VolumeBasisCard, ProductOverridesCard } from './pricingEditorCards.jsx';
-import { ProductPriceTable } from './ProductPriceTable.jsx';
+import { PricePreviewDialog } from './PricePreviewDialog.jsx';
 import { AssignmentCard } from './AssignmentCard.jsx';
 import { policyUsageCount, policyUsageDetail, companyBaseEntries, companyQuantityEntries, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, ruleValuesSummary } from '../pricing.js';
 
@@ -41,6 +41,8 @@ import { policyUsageCount, policyUsageDetail, companyBaseEntries, companyQuantit
 export function PricingEditor({ asPage = false }) {
   const { state, dispatch } = useStore();
   const [forkConfirm, setForkConfirm] = useState(false);
+  // Save-time confirmation when the pricing switched Company-based B2B ↔ D2C Wholesale.
+  const [sideConfirm, setSideConfirm] = useState(false);
   // Save dialog for a shared pricing: a separate copy for here, unless ticked to apply to all.
   const [applyAll, setApplyAll] = useState(false);
   const builder = state.builder;
@@ -125,8 +127,27 @@ export function PricingEditor({ asPage = false }) {
   const scopeLocationIds = showCompanyLocations ? state.editorContext?.locationIds ?? null : null;
   const noLocationPicked = Array.isArray(scopeLocationIds) && scopeLocationIds.length === 0;
 
+  // Switched Company-based B2B ↔ D2C Wholesale on a pricing that's assigned on its
+  // saved side: saving clears that side, so confirm first ("Change who this pricing serves?").
+  const savedPolicy = !isNew ? state.db.policies.find((p) => p.id === builder.id) || null : null;
+  const savedSide = savedPolicy ? (savedPolicy.audienceType === 'd2c' ? 'd2c' : 'b2b') : null;
+  const sideChanged = !!savedPolicy && savedSide !== (builder.audienceType === 'd2c' ? 'd2c' : 'b2b');
+  const savedUsage = savedPolicy ? policyUsageDetail(savedPolicy, state.db) : null;
+  const companiesAssigned = savedPolicy
+    ? state.db.companies.filter((c) => [c, ...(c.locations || [])].some((h) => KIND_ORDER.some((k) => slotIds(h, k).includes(savedPolicy.id)))).length
+    : 0;
+  const hadAssignments = !savedUsage
+    ? false
+    : savedSide === 'b2b'
+      ? companiesAssigned > 0 || savedUsage.globals.includes('All Companies')
+      : savedUsage.customers + savedUsage.tags > 0 || savedUsage.globals.includes('All customers');
+
   const onSave = () => {
     if (noLocationPicked) return;
+    if (sideChanged && hadAssignments) {
+      setSideConfirm(true);
+      return;
+    }
     if (sharedElsewhere) {
       setApplyAll(false);
       setForkConfirm(true);
@@ -256,6 +277,43 @@ export function PricingEditor({ asPage = false }) {
 
   return (
     <>
+      {sideConfirm && (
+        <Modal
+          open
+          onClose={() => setSideConfirm(false)}
+          title="Change who this pricing serves?"
+          primaryAction={{
+            content: 'Save changes',
+            onAction: () => {
+              setSideConfirm(false);
+              dispatch({ type: 'SAVE_EDITOR' });
+            },
+          }}
+          secondaryActions={[{ content: 'Cancel', onAction: () => setSideConfirm(false) }]}
+        >
+          <Modal.Section>
+            {savedSide === 'b2b' ? (
+              <Text as="p">
+                {'This pricing is set up for '}
+                <Text as="span" fontWeight="semibold">Company-based B2B</Text>
+                {companiesAssigned
+                  ? `, with ${companiesAssigned} compan${companiesAssigned === 1 ? 'y' : 'ies'} assigned. Switching to `
+                  : ', as the default for all companies. Switching to '}
+                <Text as="span" fontWeight="semibold">D2C Wholesale</Text>
+                {` clears that assignment. ${companiesAssigned === 1 ? 'That company falls' : 'Those companies fall'} back to your Shopify prices until another pricing is assigned.`}
+              </Text>
+            ) : (
+              <Text as="p">
+                {'This pricing is set up for '}
+                <Text as="span" fontWeight="semibold">D2C Wholesale</Text>
+                {', with the customers and customer tags it targets. Switching to '}
+                <Text as="span" fontWeight="semibold">Company-based B2B</Text>
+                {' clears that selection. Only the companies you picked receive it.'}
+              </Text>
+            )}
+          </Modal.Section>
+        </Modal>
+      )}
       {forkConfirm && (
         <Modal
           open
@@ -428,96 +486,29 @@ function ResolutionCard({ builder, products }) {
   );
 }
 
-// The full table behind "Preview all prices": every product this base pricing
-// covers, the layer that decides each price, and what the buyer pays — computed
-// from the DRAFT builder, so it reflects unsaved rule/override edits. This is the
-// per-rule counterpart to the company-level PriceBoard (which reads saved policies).
-const PREVIEW_SORTS = [
-  { label: 'Product A–Z', value: 'title-asc' },
-  { label: 'Product Z–A', value: 'title-desc' },
-  { label: 'Shopify price: low to high', value: 'shopify-asc' },
-  { label: 'Shopify price: high to low', value: 'shopify-desc' },
-  { label: 'Buyer pays: low to high', value: 'final-asc' },
-  { label: 'Buyer pays: high to low', value: 'final-desc' },
-  { label: 'Biggest discount', value: 'off-desc' },
-];
-
+// "Preview all prices": every product this base pricing covers, the layer that
+// decides each price, and what the buyer pays — computed from the DRAFT builder, so
+// it reflects unsaved rule/override edits. Same modal as the company page's Preview
+// prices (PricePreviewDialog), which reads the saved pricing instead.
 function BuilderPricePreview({ builder, products, onClose }) {
-  const [query, setQuery] = useState('');
-  const [sort, setSort] = useState('title-asc');
-  const inScope = products.filter((p) => policyPriceBreakdown(builder, p)?.inScope);
-
-  const entries = inScope.map((p) => {
-    const bd = policyPriceBreakdown(builder, p);
-    const layer = bd.override != null ? 'override' : bd.rule ? 'rule' : 'default';
-    const rule = bd.rule ? (builder.conditionalRules || [])[bd.rule.index] : null;
-    const decidedBy =
-      layer === 'override'
-        ? 'Product override'
-        : layer === 'rule'
-          ? `Rule ${bd.rule.index + 1} · ${ruleTypeLabel(rule)}`
-          : 'Default';
-    const off = bd.shopify > 0 ? Math.round((1 - bd.final / bd.shopify) * 100) : 0;
-    return { p, bd, layer, decidedBy, off };
-  });
-
-  const q = query.trim().toLowerCase();
-  const filtered = q ? entries.filter((e) => e.p.title.toLowerCase().includes(q) || e.p.sku.toLowerCase().includes(q)) : entries;
-  const sorted = [...filtered].sort((a, b) => {
-    switch (sort) {
-      case 'title-desc': return b.p.title.localeCompare(a.p.title);
-      case 'shopify-asc': return a.bd.shopify - b.bd.shopify;
-      case 'shopify-desc': return b.bd.shopify - a.bd.shopify;
-      case 'final-asc': return a.bd.final - b.bd.final;
-      case 'final-desc': return b.bd.final - a.bd.final;
-      case 'off-desc': return b.off - a.off;
-      default: return a.p.title.localeCompare(b.p.title);
-    }
-  });
-
-  const rows = sorted.map((e) => ({
-    key: e.p.sku,
-    title: e.p.title,
-    subtitle: e.p.sku,
-    cells: [
-      <Text as="span" tone="subdued">{money(e.bd.shopify)}</Text>,
-      <Badge tone={e.layer === 'override' ? 'info' : undefined}>{e.decidedBy}</Badge>,
-      <Text as="span" fontWeight="semibold">{money(e.bd.final)}</Text>,
-      <Text as="span">{e.off > 0 ? `${e.off}% off` : e.off < 0 ? `${-e.off}% over` : '—'}</Text>,
-    ],
-  }));
-
+  const entries = products
+    .map((p) => ({ p, bd: policyPriceBreakdown(builder, p) }))
+    .filter(({ bd }) => bd?.inScope)
+    .map(({ p, bd }) => {
+      const layer = bd.override != null ? 'override' : bd.rule ? 'rule' : 'default';
+      const rule = bd.rule ? (builder.conditionalRules || [])[bd.rule.index] : null;
+      const decidedBy =
+        layer === 'override' ? 'Product override' : layer === 'rule' ? `Rule ${bd.rule.index + 1} · ${ruleTypeLabel(rule)}` : 'Default';
+      return { product: p, shopify: bd.shopify, final: bd.final, decidedBy, highlight: layer === 'override' };
+    });
   return (
-    <Modal
-      open
-      onClose={onClose}
-      size="large"
+    <PricePreviewDialog
       title={`Preview prices · ${builder.name || 'This pricing'}`}
-      secondaryActions={[{ content: 'Close', onAction: onClose }]}
-    >
-      <Modal.Section>
-        <BlockStack gap="300">
-          <Text as="p" tone="subdued" variant="bodySm">
-            Every product this pricing covers, with the layer that decides each price. Reflects your unsaved edits.
-          </Text>
-          <ProductPriceTable
-            search={query}
-            onSearch={setQuery}
-            sort={sort}
-            onSort={setSort}
-            sortOptions={PREVIEW_SORTS}
-            columns={[
-              { title: 'Shopify price', width: '96px', align: 'end' },
-              { title: 'Decided by', width: '160px', align: 'start' },
-              { title: 'Buyer pays', width: '96px', align: 'end' },
-              { title: 'Off', width: '72px', align: 'end' },
-            ]}
-            rows={rows}
-            emptyLabel={inScope.length === 0 ? 'This pricing covers no products yet.' : `No products match “${query}”.`}
-          />
-        </BlockStack>
-      </Modal.Section>
-    </Modal>
+      description="Every product this pricing covers, with the layer that decides each price. Reflects your unsaved edits."
+      entries={entries}
+      emptyLabel="This pricing covers no products yet."
+      onClose={onClose}
+    />
   );
 }
 

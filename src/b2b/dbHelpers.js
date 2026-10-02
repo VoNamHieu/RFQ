@@ -212,7 +212,7 @@ export function applyQuotePricingTransfer(db, companyId, lines, transfer) {
   const base = policyById(db.policies, tid);
   const usesBase = loc ? slotIds(loc, 'base').includes(base.id) : companyBaseArray(co).some((e) => e.id === base.id);
   const shared = policyUsageCount(base, db) - (usesBase ? 1 : 0) > 0;
-  if (shared) {
+  if (shared && !(transfer && transfer.updateShared)) {
     const fork = JSON.parse(JSON.stringify(base));
     fork.id = demoPolicyId(db);
     fork.type = 'Account-specific';

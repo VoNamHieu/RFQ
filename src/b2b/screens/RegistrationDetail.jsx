@@ -1,21 +1,33 @@
 import React, { useState } from 'react';
 import {
-  Page, Card, BlockStack, InlineStack, InlineGrid, Text, Badge, Button, Link, Banner, Divider, Box, Modal,
+  Page, Card, BlockStack, InlineStack, InlineGrid, Text, Badge, Button, Link, Banner, Divider, Modal, Select, ChoiceList,
 } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
 import { companyNeedsPrice } from '../pricing.js';
-import { REG_STATUS, fullName, fmtDate } from '../registrations.js';
+import { REG_STATUS, fullName, fmtDate, registrationDuplicates } from '../registrations.js';
 import { readRegistrationForm, BUILTIN_FIELDS, withoutOptionalNote } from '../../shared/registrationForm.js';
+import { ROLE_OPTIONS } from '../components/LocationModals.jsx';
 
 // Reviewing one registration: registration → identify buyer → approve (activate)
 // → configure pricing. The application is shown in the form's own sections; the
-// right column is the decision — approving always creates a new Company for the
-// buyer (joining an existing one isn't offered here).
+// right column is the decision — approving creates a new Company for the buyer.
+// Matches with existing records (see registrationDuplicates) turn the decision into
+// a choice: 1. same email, same company → Merge or Decline; 2. same email, another
+// company → Merge into it or create the new one (the contact moves — an email
+// belongs to one Company only); 3. same company name, new email → Merge or create a
+// new company anyway. Every Merge picks a location and a role. A Shopify customer
+// with the email is just noted — Approve reuses it.
 
 export function RegistrationDetail() {
   const { state, dispatch } = useStore();
   const reg = (state.db.registrations || []).find((r) => r.id === state.selectedRegistration);
   const [confirm, setConfirm] = useState(null); // 'decline' | 'delete'
+  // Match decision: 'merge' | 'create' (cases 2–3), and where a merge lands. The
+  // decision buttons (Decline + the primary one) sit at the bottom of the side card.
+  const [choice, setChoice] = useState('merge');
+  const [mergeCompanyId, setMergeCompanyId] = useState(null);
+  const [mergeLocationId, setMergeLocationId] = useState(null);
+  const [mergeRole, setMergeRole] = useState(null);
 
   const back = () => dispatch({ type: 'NAVIGATE', view: 'registrations' });
   if (!reg) {
@@ -30,6 +42,34 @@ export function RegistrationDetail() {
   const status = REG_STATUS[reg.status];
   const pending = reg.status === 'pending';
   const approve = () => dispatch({ type: 'APPROVE_REGISTRATION', id: reg.id });
+  const dup = pending ? registrationDuplicates(state.db, reg) : null;
+  // Merge: into which Company (the email's first), at which location, with which role.
+  // An email that's already a contact keeps its role (no Role choice); only a new
+  // email (case 3) picks one. An existing contact starts from their current location.
+  const merge = (() => {
+    if (!dup?.blocking) return null;
+    const company = dup.mergeTargets.find((c) => c.id === mergeCompanyId) || dup.mergeTargets[0];
+    const email = (reg.email || '').trim().toLowerCase();
+    const current = (company.contacts || []).find((ct) => (ct.email || '').trim().toLowerCase() === email) || null;
+    const locations = company.locations || [];
+    const location =
+      locations.find((l) => l.id === mergeLocationId) || locations.find((l) => l.name === current?.locations) || locations[0] || null;
+    const email0 = (reg.email || '').trim().toLowerCase();
+    const existingRole = dup.contactOf
+      ? (dup.contactOf.contacts || []).find((ct) => (ct.email || '').trim().toLowerCase() === email0)?.role
+      : null;
+    const role = existingRole || mergeRole || 'Ordering only';
+    return { company, current, location, role };
+  })();
+  const doMerge = () =>
+    dispatch({ type: 'MERGE_REGISTRATION', id: reg.id, companyId: merge.company.id, locationId: merge.location?.id, role: merge.role });
+  const primary = !pending
+    ? undefined
+    : !dup.blocking
+      ? { content: 'Approve', onAction: approve }
+      : choice === 'create' && dup.kind !== 'same'
+          ? { content: `Create ${reg.company}`, onAction: () => dispatch({ type: 'APPROVE_REGISTRATION', id: reg.id, createNew: true }) }
+          : { content: 'Merge', onAction: doMerge };
 
   return (
     <Page
@@ -37,11 +77,7 @@ export function RegistrationDetail() {
       titleMetadata={<Badge tone={status.tone}>{status.label}</Badge>}
       subtitle={`${name} · submitted ${fmtDate(reg.submittedAt)} from the ${reg.source.toLowerCase()}`}
       backAction={{ content: 'Registrations', onAction: back }}
-      primaryAction={pending ? { content: 'Approve', onAction: approve } : undefined}
-      secondaryActions={[
-        ...(pending ? [{ content: 'Decline', destructive: true, onAction: () => setConfirm('decline') }] : []),
-        { content: 'Delete', destructive: true, onAction: () => setConfirm('delete') },
-      ]}
+      secondaryActions={[{ content: 'Delete', destructive: true, onAction: () => setConfirm('delete') }]}
     >
       <InlineGrid columns={{ xs: 1, md: '2fr 1fr' }} gap="400" alignItems="start">
         <Card>
@@ -65,7 +101,19 @@ export function RegistrationDetail() {
           </BlockStack>
         </Card>
 
-        {pending ? (
+        {pending && dup.blocking ? (
+          <MatchCard
+            reg={reg}
+            dup={dup}
+            choice={choice}
+            onChoice={setChoice}
+            merge={merge}
+            onCompany={(id) => { setMergeCompanyId(id); setMergeLocationId(null); setMergeRole(null); }}
+            onLocation={setMergeLocationId}
+            onRole={setMergeRole}
+            actions={<DecisionActions primary={primary} onDecline={() => setConfirm('decline')} />}
+          />
+        ) : pending ? (
           <Card>
             <BlockStack gap="300">
               <BlockStack gap="100">
@@ -76,7 +124,13 @@ export function RegistrationDetail() {
                 <Text as="p" fontWeight="medium">{reg.company}</Text>
                 <Text as="p" variant="bodySm" tone="subdued">{`${name} as the main contact.`}</Text>
               </BlockStack>
+              {dup.customer ? (
+                <Banner tone="info">
+                  {`Uses the existing Shopify customer ${dup.customer.name} (${reg.email}). Their order history is kept.`}
+                </Banner>
+              ) : null}
               <Text as="p" variant="bodySm" tone="subdued">You’ll set up the company’s pricing after approving.</Text>
+              <DecisionActions primary={primary} onDecline={() => setConfirm('decline')} />
             </BlockStack>
           </Card>
         ) : reg.status === 'approved' ? (
@@ -117,6 +171,127 @@ export function RegistrationDetail() {
         </Modal>
       )}
     </Page>
+  );
+}
+
+// A registration matching existing records — what matches, and the choice:
+//   1 'same'    same email, same company  → Merge (or the card's Decline)
+//   2 'contact' same email, other company → Merge into it, or create the new company
+//                                           (the contact moves — one company per email)
+//   3 'company' same name, new email      → Merge into it, or create a new company
+// A Merge picks the company (when there are two to choose from), location and role.
+function MatchCard({ reg, dup, choice, onChoice, merge, onCompany, onLocation, onRole, actions }) {
+  const name = fullName(reg);
+  const title =
+    dup.kind === 'same'
+      ? `${name} is already a contact at ${dup.contactOf.name}`
+      : dup.kind === 'contact'
+        ? `${reg.email} is already a contact at ${dup.contactOf.name}`
+        : dup.sameName.length > 1
+          ? `${dup.sameName.length} companies named “${dup.company.name}” already exist`
+          : `A company named “${dup.company.name}” already exists`;
+  const mergeFields = (
+    <BlockStack gap="200">
+      {/* Several to pick from (e.g. companies sharing a name): "Company · main contact". */}
+      {dup.mergeTargets.length > 1 ? (
+        <Select
+          label="Company"
+          options={dup.mergeTargets.map((c) => ({ label: `${c.name} · ${c.mainContact || 'No main contact'}`, value: c.id }))}
+          value={merge.company.id}
+          onChange={onCompany}
+        />
+      ) : null}
+      {/* Already a contact there → they keep their location (and role); only someone
+          new to this company picks where they land. */}
+      {!merge.current && (merge.company.locations || []).length ? (
+        <Select
+          label="Location"
+          options={merge.company.locations.map((l) => ({ label: l.name, value: l.id }))}
+          value={merge.location?.id || ''}
+          onChange={onLocation}
+        />
+      ) : null}
+      {/* A new email picks a role; an existing contact keeps theirs. */}
+      {!dup.contactOf ? (
+        <Select label="Role" options={ROLE_OPTIONS.map((r) => ({ label: r, value: r }))} value={merge.role} onChange={onRole} />
+      ) : null}
+      {dup.contactOf && dup.contactOf.id !== merge.company.id ? (
+        <Banner tone="warning">
+          {`${name} is removed from ${dup.contactOf.name}. An email can only belong to one company.`}
+        </Banner>
+      ) : null}
+    </BlockStack>
+  );
+  const mergeHelp = merge.current
+    ? `${reg.firstName} stays at ${merge.company.name}${merge.current.locations ? ` · ${merge.current.locations}` : ''} as ${merge.role}. No new company is created.`
+    : dup.contactOf
+      ? `${reg.firstName} joins ${merge.company.name} as ${merge.role}. No new company is created.`
+      : `${reg.firstName} joins ${merge.company.name} as a contact. No new company is created.`;
+  const other =
+    dup.kind === 'contact'
+        ? {
+            label: `Create ${reg.company}`,
+            value: 'create',
+            renderChildren: (on) =>
+              on ? (
+                <Banner tone="warning">
+                  {`${name} is removed from ${dup.contactOf.name} and becomes the main contact of ${reg.company}. An email can only belong to one company.`}
+                </Banner>
+              ) : null,
+          }
+        : {
+            label: `Create a new company named ${reg.company}`,
+            value: 'create',
+            helpText: `Shopify allows several companies with the same name. ${reg.firstName} becomes its main contact.`,
+          };
+  return (
+    <Card>
+      <BlockStack gap="300">
+        <Text as="h2" variant="headingSm">Company</Text>
+        <Banner tone="warning" title={title}>
+          <Text as="p">{dup.kind === 'same' ? 'Merge it into their company, or decline it.' : 'Choose how to handle this registration.'}</Text>
+        </Banner>
+        {dup.kind === 'same' ? (
+          // One path: merge (or Decline, below).
+          <BlockStack gap="200">
+            <Text as="p">{mergeHelp}</Text>
+            {dup.mergeTargets.length > 1 || !merge.current ? mergeFields : null}
+          </BlockStack>
+        ) : (
+        <ChoiceList
+          title="Handle as"
+          titleHidden
+          selected={[choice]}
+          onChange={([v]) => onChoice(v)}
+          choices={[
+            {
+              label: 'Merge',
+              value: 'merge',
+              helpText: mergeHelp,
+              // Nothing to pick when they're already a contact there and there's one company.
+              renderChildren: (on) => (on && (dup.mergeTargets.length > 1 || !merge.current) ? mergeFields : null),
+            },
+            other,
+          ]}
+        />
+        )}
+        {actions}
+      </BlockStack>
+    </Card>
+  );
+}
+
+// The decision, side by side at the bottom of the side card: Decline, then the
+// primary action (Approve / Merge / Create …).
+function DecisionActions({ primary, onDecline }) {
+  return (
+    <BlockStack gap="300">
+      <Divider />
+      <InlineStack align="end" gap="200">
+        <Button tone="critical" onClick={onDecline}>Decline</Button>
+        <Button variant="primary" onClick={primary.onAction}>{primary.content}</Button>
+      </InlineStack>
+    </BlockStack>
   );
 }
 

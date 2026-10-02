@@ -13,10 +13,14 @@ import {
   Icon,
   Badge,
   Button,
+  Banner,
+  Popover,
+  ActionList,
 } from '@shopify/polaris';
-import { SearchIcon } from '@shopify/polaris-icons';
-import { useStore, newBaseBuilder } from '../store.jsx';
-import { companyBaseEntries, locationPricingEntries, resolvedPriceFor } from '../pricing.js';
+import { SearchIcon, LocationIcon } from '@shopify/polaris-icons';
+import { useStore } from '../store.jsx';
+import { quoteToBasePricing } from '../dbHelpers.js';
+import { companyBaseEntries, resolvedPriceFor, hasOwnSlot, slotIds } from '../pricing.js';
 import { money } from '../format.js';
 import { activeVersion } from '../../shared/versions.js';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
@@ -39,29 +43,45 @@ const SORT_OPTIONS = [
   { label: 'Quoted: high to low', value: 'quoted-desc' },
 ];
 
-// Aggregate a company's Deal-Closed quotes into proposed base prices (spec §5.4).
-// Most recent closed quote wins per SKU. Opens the modal.
-export function openBuildFromQuotes(dispatch, company, db) {
-  const closed = (db.quotes || []).filter((q) => q.company === company.id && q.status === 'Deal Closed');
+// A company's Deal-Closed quotes — all, or only one location's (by name, as
+// quotes store it).
+const closedQuotesOf = (company, db, locationName) =>
+  (db.quotes || []).filter(
+    (q) => q.company === company.id && q.status === 'Deal Closed' && (!locationName || q.location === locationName),
+  );
+
+// Proposed base prices from closed quotes (spec §5.4): most recent closed quote
+// wins per SKU.
+function rowsFromQuotes(company, db, locationName) {
+  const closed = closedQuotesOf(company, db, locationName);
   closed.sort((a, b) => (a.updated || a.created || '').localeCompare(b.updated || b.created || ''));
   const map = {};
   closed.forEach((q) =>
     (q.lines || []).forEach((l) => {
-      if (l.quoted != null) map[l.sku] = { sku: l.sku, quoted: l.quoted, proposed: l.quoted, from: q.id };
+      if (l.quoted != null) map[l.sku] = { sku: l.sku, quoted: l.quoted, proposed: l.quoted, from: q.id, location: q.location };
     }),
   );
-  const rows = Object.values(map);
-  const bases = companyBaseEntries(company, db.policies);
-  dispatch({ type: 'OPEN_BUILD_QUOTES', payload: { companyId: company.id, rows, dest: bases[0]?.id || '__new__' } });
+  return Object.values(map);
 }
 
-// "Turn into pricing" from a single quote: seed rows from just its priced lines.
+// Open from the company page: every location's closed quotes to start with; the
+// merchant can narrow to one location ("Quotes from"). Adds to the company's first
+// base pricing by default.
+export function openBuildFromQuotes(dispatch, company, db) {
+  const rows = rowsFromQuotes(company, db, null);
+  dispatch({ type: 'OPEN_BUILD_QUOTES', payload: { companyId: company.id, rows, source: null, dest: companyBaseEntries(company, db.policies)[0]?.policy.id || '__new__' } });
+}
+
+// "Turn into pricing" from a single quote: just its priced lines; its location is
+// the source (and the default location for a new pricing).
 export function openBuildFromQuote(dispatch, company, db, quote) {
   const rows = (quote.lines || [])
     .filter((l) => l.quoted != null)
-    .map((l) => ({ sku: l.sku, quoted: l.quoted, proposed: l.quoted, from: quote.id }));
-  const bases = companyBaseEntries(company, db.policies);
-  dispatch({ type: 'OPEN_BUILD_QUOTES', payload: { companyId: company.id, rows, dest: bases[0]?.id || '__new__' } });
+    .map((l) => ({ sku: l.sku, quoted: l.quoted, proposed: l.quoted, from: quote.id, location: quote.location }));
+  dispatch({
+    type: 'OPEN_BUILD_QUOTES',
+    payload: { companyId: company.id, rows, quoteId: quote.id, source: quote.location || null, dest: companyBaseEntries(company, db.policies)[0]?.policy.id || '__new__' },
+  });
 }
 
 export function BuildFromQuotes() {
@@ -72,25 +92,30 @@ export function BuildFromQuotes() {
   const [selected, setSelected] = React.useState(() => new Set());
   const [query, setQuery] = React.useState('');
   const [sort, setSort] = React.useState('title-asc');
+  const [sourceOpen, setSourceOpen] = React.useState(false);
   React.useEffect(() => {
     setSelected(new Set((state.buildQuotes?.rows || []).map((r) => r.sku)));
     setQuery('');
     setSort('title-asc');
-  }, [!!state.buildQuotes, state.buildQuotes?.companyId]);
+  }, [!!state.buildQuotes, state.buildQuotes?.companyId, state.buildQuotes?.source]);
   if (!bq) return null;
 
   const company = state.db.companies.find((c) => c.id === bq.companyId);
-  // Where the prices go: the company's pricing (every location on it), or one
-  // location's own. The destination list and the Current column follow it.
   const locations = company?.locations || [];
-  const target = bq.locationId ? locations.find((l) => l.id === bq.locationId) || null : null;
-  const basesOf = (loc) =>
-    loc ? locationPricingEntries(company, loc, state.db.policies, { includeInactive: true }).bases : companyBaseEntries(company, state.db.policies);
-  const bases = basesOf(target);
-  const setTarget = (id) => {
-    const loc = locations.find((l) => l.id === id) || null;
-    dispatch({ type: 'BUILD_QUOTES_PATCH', patch: { locationId: loc ? loc.id : null, dest: basesOf(loc)[0]?.policy.id || '__new__' } });
+  const patchBq = (patch) => dispatch({ type: 'BUILD_QUOTES_PATCH', patch });
+  // "Quotes from": all locations, or one — picking one rebuilds the rows from its
+  // quotes (and the Current column shows what it pays). Fixed from a single quote.
+  const sourceLoc = bq.source ? locations.find((l) => l.name === bq.source) || null : null;
+  const pickSource = locations.length > 1 && !bq.quoteId;
+  const setSource = (name) => {
+    const loc = locations.find((l) => l.name === name) || null;
+    patchBq({ source: loc ? loc.name : null, rows: rowsFromQuotes(company, state.db, loc ? loc.name : null) });
   };
+  // "Add to": an existing pricing used by this company (updated wherever it's
+  // assigned), or a new one — created in the pricing editor, whose "Who this
+  // pricing serves" picks the company's locations (seeded with the source location).
+  const isNew = bq.dest === '__new__';
+  const scopeIds = sourceLoc && locations.length > 1 ? [sourceLoc.id] : null;
   const products = state.db.products;
   const productOf = (sku) => products.find((p) => p.sku === sku);
   const skuTitle = (sku) => productOf(sku)?.title || sku;
@@ -100,11 +125,58 @@ export function BuildFromQuotes() {
     dispatch({ type: 'BUILD_QUOTES_PATCH', patch: { rows } });
   };
 
-  // "Create a new base pricing" is the FIRST dropdown option (not buried at the
-  // bottom), so it's easy to find no matter how many pricings the company has.
+  // Base pricings this company uses — its own, then any a location keeps on its
+  // own list (those labelled with the location). "Create a new base pricing" is
+  // the FIRST option so it's easy to find however many pricings there are.
+  const destPolicy = !isNew ? state.db.policies.find((p) => p.id === bq.dest) || null : null;
+  // Other companies using the chosen pricing (on their company list or a location's
+  // own) — the quote prices would reach them too, so that's worth a warning; within
+  // this company a hint under the field is enough.
+  // Where a pricing is assigned, per company: on the company (all its locations)
+  // and/or on some locations' own lists.
+  const assignmentsOf = (pid) =>
+    state.db.companies
+      .map((c) => ({
+        company: c,
+        onCompany: slotIds(c, 'base').includes(pid),
+        locations: (c.locations || []).filter((l) => hasOwnSlot(l, 'base') && slotIds(l, 'base').includes(pid)),
+      }))
+      .filter((a) => a.onCompany || a.locations.length);
+  const otherCompanies = destPolicy ? assignmentsOf(destPolicy.id).filter((a) => a.company.id !== company.id).map((a) => a.company) : [];
+  // This company's locations that get the chosen pricing (their own list, or the
+  // company's when they follow it) — named in the hint under "Add to".
+  const gettingIt = destPolicy
+    ? locations.filter((l) => (hasOwnSlot(l, 'base') ? slotIds(l, 'base') : slotIds(company, 'base')).includes(destPolicy.id))
+    : [];
+  const joinNames = (names) => (names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`);
+  const destHint = !destPolicy
+    ? undefined
+    : locations.length > 1 && gettingIt.length === locations.length
+      ? `Adds these prices to ${destPolicy.name}, so every location of ${company.name} gets them.`
+      : gettingIt.length
+        ? `Adds these prices to ${destPolicy.name}, so ${joinNames(gettingIt.map((l) => l.name))} ${gettingIt.length === 1 ? 'gets' : 'get'} them.`
+        : `Adds these prices to ${destPolicy.name}.`;
+  const companyPricings = [];
+  const addUse = (policy, where) => {
+    const hit = companyPricings.find((x) => x.policy.id === policy.id);
+    if (hit) hit.where.add(where);
+    else companyPricings.push({ policy, where: new Set([where]) });
+  };
+  companyBaseEntries(company, state.db.policies).forEach((e) => addUse(e.policy, 'company'));
+  locations.forEach((l) => hasOwnSlot(l, 'base') && companyBaseEntries(l, state.db.policies).forEach((e) => addUse(e.policy, l.name)));
+  // Each option names who it's assigned to: "Multiple companies" (2+ companies, even
+  // if one has it on a single location); a single location → "Location · Company";
+  // otherwise the company.
+  const assignedLabel = (pid) => {
+    const as = assignmentsOf(pid);
+    if (as.length > 1) return 'Multiple companies';
+    const a = as[0];
+    if (!a) return company.name;
+    return !a.onCompany && a.locations.length === 1 ? `${a.locations[0].name} · ${a.company.name}` : a.company.name;
+  };
   const destOptions = [
     { label: 'Create a new base pricing…', value: '__new__' },
-    ...bases.map((e) => ({ label: e.policy.name, value: e.policy.id })),
+    ...companyPricings.map(({ policy }) => ({ label: `${policy.name} · ${assignedLabel(policy.id)}`, value: policy.id })),
   ];
   // Closed quotes come from the RFQ app; without it there is nothing to build from.
   const rfqInstalled = !!state.db.rfqAppInstalled;
@@ -154,16 +226,18 @@ export function BuildFromQuotes() {
       chosen.forEach((r) => {
         adjustments[r.sku] = { rule: 'set', valueType: 'amount', value: Number(r.proposed) };
       });
-      const builder = {
-        ...newBaseBuilder(),
-        name: `${company.name}${target ? ` · ${target.name}` : ''} from closed quotes`,
-        variantAdjustments: adjustments,
-        explicitEnabled: true,
-      };
+      const only = Array.isArray(scopeIds) && scopeIds.length === 1 ? locations.find((l) => l.id === scopeIds[0]) : null;
+      // Same shape as the RFQ handoff's quote pricing: scoped to the quoted products
+      // at priority 1, so it wins for those products (a scoped pricing beats an
+      // all-products one on a tie) and leaves every other product to existing pricing.
+      const builder = quoteToBasePricing(`${company.name}${only ? ` · ${only.name}` : ''} from closed quotes`, 1, adjustments);
+      // The editor's "Who this pricing serves" shows the company's locations, set
+      // to the ones picked here.
       dispatch({ type: 'CLOSE_BUILD_QUOTES' });
-      dispatch({ type: 'OPEN_EDITOR', policy: builder, context: { mode: 'add-base', companyId: company.id, locationId: target?.id || null } });
+      dispatch({ type: 'OPEN_EDITOR', policy: builder, context: { mode: 'add-base', companyId: company.id, locationIds: scopeIds } });
     } else {
-      dispatch({ type: 'APPLY_BUILD_QUOTES', companyId: company.id, locationId: target?.id || null, dest: bq.dest, rows: chosen });
+      // Adds into the chosen pricing as is — everywhere it's assigned (see the note).
+      dispatch({ type: 'APPLY_BUILD_QUOTES', companyId: company.id, dest: bq.dest, rows: chosen, updateShared: true });
     }
   };
 
@@ -172,7 +246,7 @@ export function BuildFromQuotes() {
   const rowMarkup = shown.map((r, i) => {
     const product = productOf(r.sku);
     const shopify = product?.list;
-    const current = product ? resolvedPriceFor(company, product, state.db.policies, undefined, target) : null;
+    const current = product ? resolvedPriceFor(company, product, state.db.policies, undefined, sourceLoc) : null;
     const cost = Math.round((Number(r.quoted) || 0) * 0.6);
     const proposed = Number(r.proposed) || 0;
     const margin = proposed ? Math.round(((proposed - cost) / proposed) * 100) : 0;
@@ -214,7 +288,7 @@ export function BuildFromQuotes() {
               dispatch({ type: 'CLOSE_BUILD_QUOTES' });
               dispatch({ type: 'OPEN_QUOTE', id: r.from });
             }}
-          >{`from #${r.from}`}</Link>
+          >{`from #${r.from}${!bq.source && locations.length > 1 && r.location ? ` · ${r.location}` : ''}`}</Link>
         </IndexTable.Cell>
       </IndexTable.Row>
     );
@@ -224,7 +298,14 @@ export function BuildFromQuotes() {
     <Modal
       open
       onClose={() => dispatch({ type: 'CLOSE_BUILD_QUOTES' })}
-      title="Build pricing from closed quotes"
+      title={
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          Build pricing from closed quotes
+          {SHOW_DEV_TOOLS ? (
+            <DevToggle on={!rfqInstalled} onToggle={() => dispatch({ type: 'SET_RFQ_INSTALLED', installed: !rfqInstalled })} />
+          ) : null}
+        </span>
+      }
       size="large"
       primaryAction={{
         content: bq.dest === '__new__' ? 'Create base pricing' : 'Add prices',
@@ -235,13 +316,43 @@ export function BuildFromQuotes() {
     >
       <Modal.Section>
         <BlockStack gap="300">
-          {SHOW_DEV_TOOLS && (
-            <DevTools on={!rfqInstalled} onToggle={() => dispatch({ type: 'SET_RFQ_INSTALLED', installed: !rfqInstalled })} />
-          )}
+          {/* "Quotes from" — a small filter pill (secondary slim button, icon + chevron,
+              like the Analytics date pickers); the menu lists every location with its
+              closed-quote count. */}
+          {pickSource && rfqInstalled ? (
+            <BlockStack gap="100">
+              <Text as="span" variant="bodyMd">Quotes from</Text>
+              <InlineStack>
+                <Popover
+                  active={sourceOpen}
+                  onClose={() => setSourceOpen(false)}
+                  activator={
+                    <Button size="slim" icon={LocationIcon} disclosure onClick={() => setSourceOpen((v) => !v)}>
+                      {`${bq.source || 'All locations'} (${closedQuotesOf(company, state.db, bq.source).length})`}
+                    </Button>
+                  }
+                >
+                  <ActionList
+                    actionRole="menuitemradio"
+                    items={[
+                      { content: `All locations (${closedQuotesOf(company, state.db, null).length})`, active: !bq.source, onAction: () => { setSourceOpen(false); setSource(''); } },
+                      ...locations.map((l) => ({
+                        content: `${l.name} (${closedQuotesOf(company, state.db, l.name).length})`,
+                        active: bq.source === l.name,
+                        onAction: () => { setSourceOpen(false); setSource(l.name); },
+                      })),
+                    ]}
+                  />
+                </Popover>
+              </InlineStack>
+            </BlockStack>
+          ) : null}
 
           {!isEmpty && (
             <Text as="p" tone="subdued" variant="bodySm">
-              Prices come from each product’s most recently closed quote. Tick the ones to include, edit the price, then add them to a base pricing.
+              {bq.quoteId
+                ? `Prices from quote #${bq.quoteId}${bq.source ? ` (${bq.source})` : ''}. Tick the ones to include, edit the price, then add them to a base pricing.`
+                : `Prices come from each product’s most recently closed quote${bq.source ? ` at ${bq.source}` : ''}. Tick the ones to include, edit the price, then add them to a base pricing.`}
             </Text>
           )}
 
@@ -301,7 +412,7 @@ export function BuildFromQuotes() {
                   { title: 'Quoted' },
                   {
                     title: 'Current',
-                    tooltipContent: `The price ${target ? target.name : 'this company'} pays now, from its current B2B pricing. “—” means no B2B price is set yet.`,
+                    tooltipContent: `The price ${sourceLoc ? sourceLoc.name : 'this company'} pays now, from its current B2B pricing. “—” means no B2B price is set yet.`,
                   },
                   {
                     title: 'Price to save',
@@ -322,26 +433,25 @@ export function BuildFromQuotes() {
             </Text>
           )}
 
+
+
+          {/* Where the prices go: an existing pricing (updated wherever it's assigned)
+              or a new one — its locations are picked in the pricing editor. */}
           {!isEmpty && (
             <>
               <Divider />
-              {locations.length > 1 ? (
-                <Select
-                  label="Apply to"
-                  options={[
-                    { label: 'All locations (company pricing)', value: '' },
-                    ...locations.map((l) => ({ label: l.name, value: l.id })),
-                  ]}
-                  value={target?.id || ''}
-                  onChange={setTarget}
-                />
-              ) : null}
               <Select
-                label={`Add to ${target ? `${target.name}’s` : 'this company’s'} pricing`}
+                label="Add to"
                 options={destOptions}
                 value={bq.dest}
-                onChange={(v) => dispatch({ type: 'BUILD_QUOTES_PATCH', patch: { dest: v } })}
+                onChange={(v) => patchBq({ dest: v })}
+                helpText={!otherCompanies.length ? destHint : undefined}
               />
+              {otherCompanies.length ? (
+                <Banner tone="warning">
+                  {`“${destPolicy.name}” is also assigned to ${otherCompanies.length} other compan${otherCompanies.length === 1 ? 'y' : 'ies'}, so they’ll get these quote prices too. To use them only for ${company.name} or its location, pick a pricing assigned only to it, or create a new one.`}
+                </Banner>
+              ) : null}
             </>
           )}
         </BlockStack>
@@ -350,21 +460,16 @@ export function BuildFromQuotes() {
   );
 }
 
-// Dev-only strip (same pattern as Registrations / Analytics): preview the modal as a
-// merchant who hasn't installed the RFQ app. The "no closed quotes" case needs no
-// toggle — open it on a company without any.
-function DevTools({ on, onToggle }) {
+// Dev-only toggle in the modal header: preview the modal as a merchant who hasn't
+// installed the RFQ app. The "no closed quotes" case needs no toggle — open it on a
+// company without any.
+function DevToggle({ on, onToggle }) {
   return (
-    <Box background="bg-surface-secondary" borderColor="border" borderWidth="025" borderRadius="200" padding="200">
-      <InlineStack gap="200" blockAlign="center" wrap>
-        <Badge tone="info">Dev</Badge>
-        <Text as="span" variant="bodySm" tone="subdued">
-          {on ? 'Previewing without the RFQ app installed.' : 'Preview the modal before the RFQ app is installed.'}
-        </Text>
-        <Button size="slim" pressed={on} onClick={onToggle}>
-          {on ? 'Show installed' : 'Preview not installed'}
-        </Button>
-      </InlineStack>
-    </Box>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 'normal' }}>
+      <Badge tone="info">Dev</Badge>
+      <Button size="micro" pressed={on} onClick={onToggle}>
+        {on ? 'Show installed' : 'Preview not installed'}
+      </Button>
+    </span>
   );
 }

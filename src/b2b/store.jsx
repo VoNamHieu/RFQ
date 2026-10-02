@@ -3,7 +3,7 @@ import { shopifyCompanyDirectory } from './data/directory.js';
 import { policyUsageCount, slotIds, hasOwnSlot } from './pricing.js';
 import { newRule, newBaseBuilder, newQuantityBuilder } from './builders.js';
 import { buildInitialState } from './initialState.js';
-import { todayISO } from './registrations.js';
+import { todayISO, registrationDuplicates } from './registrations.js';
 import {
   clone,
   companySlotArray,
@@ -72,6 +72,8 @@ function applyAssignment(db, policyId, b) {
         removeCompanySlot(holder, 'base', policyId);
       });
     });
+    // Nor the store-wide B2B default ("All Companies").
+    if (db.defaults?.b2bPolicyId === policyId) db.defaults.b2bPolicyId = null;
   }
   if (audience !== 'd2c') {
     (db.customers || []).forEach((cu) => { if (cu.policyId === policyId) cu.policyId = null; });
@@ -128,8 +130,8 @@ function applyAssignment(db, policyId, b) {
   else if (db.defaults.wholesalePolicyId === policyId) db.defaults.wholesalePolicyId = null;
 }
 
-// Approve = activate the buyer as the main contact of a new Company (joining an
-// existing Company isn't offered from a registration). Mutates `db`.
+// Approve = activate the buyer as the main contact of a new Company. Duplicates are
+// resolved first (see registrationDuplicates / joinRegistration). Mutates `db`.
 function approveRegistration(db, reg) {
   const name = `${reg.firstName} ${reg.lastName}`.trim();
   const when = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
@@ -159,6 +161,54 @@ function approveRegistration(db, reg) {
   };
   db.companies.push(company);
   Object.assign(reg, { status: 'approved', decidedAt: todayISO(), companyId: company.id });
+}
+
+// An email belongs to one Company only: take the buyer off the Company they're a
+// contact at before they land in another one. Mutates `db`.
+function removeContactFrom(db, company, email, movedTo) {
+  const c = db.companies.find((x) => x.id === company.id);
+  if (!c) return;
+  const key = (email || '').trim().toLowerCase();
+  const leaving = (c.contacts || []).find((ct) => (ct.email || '').trim().toLowerCase() === key);
+  if (!leaving) return;
+  c.contacts = c.contacts.filter((ct) => ct !== leaving);
+  recomputeBuyers(c);
+  if (c.mainContact === leaving.name) c.mainContact = c.contacts[0]?.name || '';
+  const when = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+  c.activity = [{ when, what: `${leaving.name} moved to ${movedTo} from a B2B registration` }, ...(c.activity || [])];
+}
+
+// Merge a registration's buyer into an existing Company, at the picked location and
+// role: added as a contact, or — already one there — their location / role updated.
+// No new Company. Mutates `db`; returns the Company.
+function joinRegistration(db, reg, companyId, locationId, role) {
+  const target = db.companies.find((c) => c.id === companyId);
+  if (!target) return null;
+  const name = `${reg.firstName} ${reg.lastName}`.trim();
+  const when = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+  const loc = (target.locations || []).find((l) => l.id === locationId) || (target.locations || [])[0] || null;
+  const email = (reg.email || '').trim().toLowerCase();
+  target.contacts = target.contacts || [];
+  const existing = target.contacts.find((ct) => (ct.email || '').trim().toLowerCase() === email);
+  if (existing) {
+    Object.assign(existing, { role: role || existing.role, locations: loc?.name || existing.locations, access: loc?.ordering || existing.access });
+    target.activity = [{ when, what: `${existing.name}'s access updated from a B2B registration` }, ...(target.activity || [])];
+  } else {
+    target.contacts.push({ name, email: reg.email, role: role || 'Ordering only', access: loc?.ordering || 'Buys directly', locations: loc?.name || '' });
+    target.activity = [{ when, what: `${name} added from a B2B registration` }, ...(target.activity || [])];
+  }
+  recomputeBuyers(target);
+  Object.assign(reg, { status: 'approved', decidedAt: todayISO(), companyId: target.id, mergedInto: target.id });
+  return target;
+}
+
+// Approve into a new Company; an existing Shopify customer with the email is
+// reused as its main contact (never a second customer). Mutates `db`.
+function approveReusingCustomer(db, reg, customer) {
+  approveRegistration(db, reg);
+  const created = db.companies.find((c) => c.id === reg.companyId);
+  if (created && customer) created.activity[0].what += ` (existing customer ${customer.name})`;
+  reg.linkedCustomerId = customer ? customer.id : null;
 }
 
 function reducer(state, action) {
@@ -195,15 +245,57 @@ function reducer(state, action) {
       const db = clone(state.db);
       const reg = (db.registrations || []).find((r) => r.id === action.id);
       if (!reg || reg.status !== 'pending') return state;
-      approveRegistration(db, reg);
-      return { ...state, db, toast: 'Registration approved' };
+      // Matches need the merchant's choice: a new Company is created only when they
+      // pick it (case 2 — the contact moves there; case 3 — same name allowed).
+      // Case 1 (same email, same company) is merge or decline only.
+      const d = registrationDuplicates(db, reg);
+      if (d.kind === 'same' || ((d.kind === 'contact' || d.kind === 'company') && !action.createNew)) {
+        return { ...state, toast: 'This registration matches existing records — choose how to handle it' };
+      }
+      // A contact elsewhere moves to the new Company (an email belongs to one Company).
+      if (d.contactOf) removeContactFrom(db, d.contactOf, reg.email, reg.company);
+      approveReusingCustomer(db, reg, d.customer);
+      return {
+        ...state,
+        db,
+        toast: d.contactOf ? `Registration approved · ${reg.firstName} moved from ${d.contactOf.name}` : d.customer ? 'Registration approved · existing customer reused' : 'Registration approved',
+      };
     }
-    // Bulk: same as one by one — each buyer gets a new Company.
+    // Merge into an existing Company (the email's, or the same-name one) at a location + role.
+    case 'MERGE_REGISTRATION': {
+      const db = clone(state.db);
+      const reg = (db.registrations || []).find((r) => r.id === action.id);
+      if (!reg || reg.status !== 'pending') return state;
+      const d = registrationDuplicates(db, reg);
+      if (!d.mergeTargets.some((c) => c.id === action.companyId)) return state;
+      // Joining a different Company than the one they're a contact at moves them.
+      const moving = d.contactOf && d.contactOf.id !== action.companyId;
+      const targetName = db.companies.find((c) => c.id === action.companyId)?.name;
+      const already = d.contactOf && d.contactOf.id === action.companyId;
+      if (moving) removeContactFrom(db, d.contactOf, reg.email, targetName);
+      const target = joinRegistration(db, reg, action.companyId, action.locationId, action.role);
+      const toast = moving ? `Moved to ${target.name} from ${d.contactOf.name}` : already ? `Merged into ${target.name}` : `Added to ${target.name}`;
+      return { ...state, db, toast };
+    }
+    // Bulk: each buyer gets a new Company (reusing an existing customer); registrations
+    // matching an existing contact or company name are skipped (open one to choose).
     case 'APPROVE_REGISTRATIONS': {
       const db = clone(state.db);
       const regs = (db.registrations || []).filter((r) => action.ids.includes(r.id) && r.status === 'pending');
-      regs.forEach((reg) => approveRegistration(db, reg));
-      return { ...state, db, toast: regs.length === 1 ? 'Registration approved' : `${regs.length} registrations approved` };
+      // One by one, so two in the same batch for the same new company don't both create it.
+      const ok = [];
+      const dupes = [];
+      regs.forEach((reg) => {
+        const d = registrationDuplicates(db, reg);
+        if (d.blocking) dupes.push(reg);
+        else {
+          approveReusingCustomer(db, reg, d.customer);
+          ok.push(reg);
+        }
+      });
+      const approved = ok.length === 1 ? '1 registration approved' : `${ok.length} registrations approved`;
+      const skipped = dupes.length ? ` · ${dupes.length} duplicate${dupes.length === 1 ? '' : 's'} to review` : '';
+      return { ...state, db, toast: `${approved}${skipped}` };
     }
     case 'DECLINE_REGISTRATIONS': {
       const db = clone(state.db);
@@ -230,17 +322,6 @@ function reducer(state, action) {
       return { ...state, view: 'quote', selectedQuote: action.id };
     case 'OPEN_LOCATION':
       return { ...state, view: 'location', selectedCompany: action.companyId, selectedLocation: action.locationId };
-    // "Use company pricing": drop a location's own list of a kind, so it follows
-    // the company's again.
-    case 'RESET_LOCATION_PRICING': {
-      const db = clone(state.db);
-      const c = db.companies.find((x) => x.id === action.companyId);
-      const l = c?.locations?.find((x) => x.id === action.locationId);
-      if (l && l.pricing) l.pricing[action.kind] = null;
-      return { ...state, db, toast: `${action.kind === 'quantity' ? 'Quantity' : 'Base'} pricing follows the company again` };
-    }
-    // Assign / remove a buyer (contact) at a location. Buyer counts derive from
-    // contact assignment, so recompute every location's count on change.
     case 'ASSIGN_BUYER': {
       const db = clone(state.db);
       const c = db.companies.find((x) => x.id === action.companyId);
@@ -300,9 +381,7 @@ function reducer(state, action) {
       return { ...state, db, ...(action.silent ? {} : { toast: 'Location updated' }) };
     }
     case 'OPEN_PRICE_BOARD':
-      return { ...state, priceBoard: { companyId: action.companyId, search: '' } };
-    case 'PRICE_BOARD_PATCH':
-      return { ...state, priceBoard: { ...state.priceBoard, ...action.patch } };
+      return { ...state, priceBoard: { companyId: action.companyId } };
     case 'CLOSE_PRICE_BOARD':
       return { ...state, priceBoard: null };
     // ----- Assign / swap base pricing -----
@@ -730,6 +809,9 @@ function reducer(state, action) {
         newName: action.dest === '__new__' ? `${(co && co.name) || 'Company'}${loc ? ` · ${loc.name}` : ''} quote prices` : '',
         newPriority: 1,
         locationId: loc ? loc.id : null,
+        // Build from quotes adds into the chosen pricing where it's used (the modal
+        // warns first); the RFQ handoff still forks a shared pricing.
+        updateShared: !!action.updateShared,
       };
       // Same engine as the RFQ→B2B handoff: create a scoped base, or merge into
       // the chosen base — forking it first if it is shared with other companies.

@@ -141,6 +141,7 @@ export function AssignmentCard({ builder, patch, db, isNew }) {
   const target = builder.customerTarget && builder.customerTarget !== 'none' ? builder.customerTarget : 'all';
   const [companyModal, setCompanyModal] = useState(false);
 
+
   const setSide = (side) =>
     side === 'b2b'
       ? patch({ audienceType: 'b2b', customerTarget: 'none', assignmentTargetIds: [] })
@@ -202,10 +203,10 @@ export function AssignmentCard({ builder, patch, db, isNew }) {
         <Text as="h3" variant="headingSm">Who this pricing serves</Text>
 
         <ButtonGroup variant="segmented" fullWidth>
-          <Button pressed={audience === 'b2b'} disabled={!isNew && audience !== 'b2b'} onClick={() => setSide('b2b')}>
+          <Button pressed={audience === 'b2b'} onClick={() => setSide('b2b')}>
             Company-based B2B
           </Button>
-          <Button pressed={audience === 'd2c'} disabled={!isNew && audience !== 'd2c'} onClick={() => setSide('d2c')}>
+          <Button pressed={audience === 'd2c'} onClick={() => setSide('d2c')}>
             D2C Wholesale
           </Button>
         </ButtonGroup>

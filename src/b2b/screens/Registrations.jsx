@@ -6,7 +6,7 @@ import { useStore } from '../store.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import registrationArt from '../assets/registration-empty.webp';
 import noRequestArt from '../assets/no-request.webp';
-import { REG_STATUS, fullName, fmtDate } from '../registrations.js';
+import { REG_STATUS, fullName, fmtDate, registrationDuplicates } from '../registrations.js';
 
 // Wholesale B2B → Registrations: what buyers submitted through the storefront
 // registration form, waiting for the merchant to review. Opening a row leads to
@@ -61,6 +61,8 @@ export function Registrations() {
     ? { content: 'Edit form', onAction: editForm }
     : { content: 'Create form', onAction: createForm };
   const open = (id) => dispatch({ type: 'OPEN_REGISTRATION', id });
+  // Existing-record matches for a pending registration (null otherwise).
+  const dupOf = (r) => (r.status === 'pending' ? registrationDuplicates(state.db, r) : null);
   const devTools = SHOW_DEV_TOOLS && (
     <DevTools disabled={!state.db.hasRegistrationForm} on={devNoForm} onToggle={() => setDevNoForm((v) => !v)} />
   );
@@ -185,7 +187,16 @@ export function Registrations() {
                     <Text as="span" variant="bodySm" tone="subdued">{r.email}</Text>
                   </BlockStack>
                 </IndexTable.Cell>
-                <IndexTable.Cell>{r.company}</IndexTable.Cell>
+                <IndexTable.Cell>
+                  {/* Pending matches: an existing contact (same or other company) or a same-name company — the merchant decides.
+                      Info tone — it's something the app found, not an error, and yellow would blur
+                      into the Pending review status badge on the same row. */}
+                  <InlineStack gap="150" blockAlign="center" wrap={false}>
+                    <Text as="span">{r.company}</Text>
+                    {dupOf(r)?.kind === 'company' ? <Badge tone="info">Duplicate</Badge> : null}
+                    {dupOf(r)?.kind === 'contact' || dupOf(r)?.kind === 'same' ? <Badge tone="info">Existing contact</Badge> : null}
+                  </InlineStack>
+                </IndexTable.Cell>
                 <IndexTable.Cell>{r.country || '—'}</IndexTable.Cell>
                 <IndexTable.Cell><Text as="span" variant="bodySm">{r.source}</Text></IndexTable.Cell>
                 <IndexTable.Cell><Text as="span" variant="bodySm">{fmtDate(r.submittedAt)}</Text></IndexTable.Cell>
@@ -193,7 +204,15 @@ export function Registrations() {
                   {linked ? (
                     <Text as="span" variant="bodySm">{linked.name}</Text>
                   ) : (
-                    <Text as="span" variant="bodySm" tone="subdued">{r.status === 'pending' ? 'New company' : '—'}</Text>
+                    <Text as="span" variant="bodySm" tone="subdued">
+                      {r.status !== 'pending'
+                        ? '—'
+                        : dupOf(r)?.kind === 'company'
+                          ? `Matches ${dupOf(r).company.name}`
+                          : dupOf(r)?.kind === 'contact' || dupOf(r)?.kind === 'same'
+                            ? `Contact at ${dupOf(r).contactOf.name}`
+                            : 'New company'}
+                    </Text>
                   )}
                 </IndexTable.Cell>
                 <IndexTable.Cell><Badge tone={status.tone}>{status.label}</Badge></IndexTable.Cell>
@@ -207,6 +226,7 @@ export function Registrations() {
         <ConfirmBulk
           kind={confirm.kind}
           regs={all.filter((r) => confirm.ids.includes(r.id))}
+          duplicates={all.filter((r) => confirm.ids.includes(r.id) && dupOf(r)?.blocking).length}
           onConfirm={runConfirm}
           onClose={() => setConfirm(null)}
         />
@@ -216,14 +236,16 @@ export function Registrations() {
 }
 
 // Confirms a bulk action and lists the registrations it applies to.
-function ConfirmBulk({ kind, regs, onConfirm, onClose }) {
+function ConfirmBulk({ kind, regs, duplicates = 0, onConfirm, onClose }) {
   const n = regs.length;
   const noun = n === 1 ? 'registration' : `${n} registrations`;
   const copy = {
     approve: {
       title: `Approve ${noun}?`,
       action: 'Approve',
-      body: 'A new company is created for each buyer. You can set up pricing afterwards.',
+      body: `A new company is created for each buyer. You can set up pricing afterwards.${
+        duplicates ? ` ${duplicates} ${duplicates === 1 ? 'registration matches' : 'registrations match'} an existing company or contact and ${duplicates === 1 ? 'is' : 'are'} skipped — open ${duplicates === 1 ? 'it' : 'them'} to resolve.` : ''
+      }`,
     },
     decline: {
       title: `Decline ${noun}?`,
