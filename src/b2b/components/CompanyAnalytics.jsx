@@ -1,10 +1,24 @@
 import React, { useState } from 'react';
-import { Card, BlockStack, InlineGrid, InlineStack, Box, Text, Badge, Banner, Divider, Tooltip, Select, Button, Tabs, IndexTable } from '@shopify/polaris';
+import { Card, BlockStack, InlineGrid, InlineStack, Box, Text, Badge, Banner, Divider, Select, Button, IndexTable, Popover, ActionList } from '@shopify/polaris';
+import { MetricTooltip } from './MetricTooltip.jsx';
+import { CalendarIcon, CalendarTimeIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { money } from '../format.js';
 import { moneyShort, LineChart, RankBars } from './charts.jsx';
 import { buildAttributedLines, pricingProfileRows, appliedEconomics } from '../pricingAttribution.js';
 import { analyticsPricingChanges, analyticsQuantityEvents, analyticsOrderItems } from '../data/analytics.js';
+
+// Date range + comparison, shown as filter buttons above the analytics.
+const PERIOD_OPTIONS = [
+  { label: 'Last 30 days', value: '30d' },
+  { label: 'Last 3 months', value: '3m' },
+  { label: 'Last 6 months', value: '6m' },
+  { label: 'Last 12 months', value: '12m' },
+];
+const COMPARE_OPTIONS = [
+  { label: 'Previous period', value: 'previous' },
+  { label: 'No comparison', value: 'none' },
+];
 
 // ── Company Analytics — account intelligence: everything compares the company with ITS OWN
 // history, not the portfolio. Four tabs (Overview / Buying / Quotes / Pricing). Metrics that
@@ -53,9 +67,9 @@ function DeltaChip({ v, suffix = '%', goodDown = false }) {
     // A compared metric whose previous period has no baseline (e.g. no quotes back then): still
     // show a signal instead of nothing, so "compared but nothing to compare with" is visible.
     return (
-      <Tooltip content="No data in the previous period to compare with." preferredPosition="above">
+      <MetricTooltip help="No data in the previous period to compare with.">
         <Text as="span" variant="bodySm" tone="subdued">—</Text>
-      </Tooltip>
+      </MetricTooltip>
     );
   }
   const up = v > 0, down = v < 0;
@@ -65,14 +79,14 @@ function DeltaChip({ v, suffix = '%', goodDown = false }) {
 }
 // `blank` (dev "Compare only") = this stat has no previous-period comparison: keep the label and
 // its tooltip, show "—" and drop the sub line / delta — the layout stays put.
-function Stat({ label, value, sub, help, tone, delta, blank = false }) {
+function Stat({ label, value, sub, help, formula, tone, delta, blank = false }) {
   if (blank) { value = '—'; sub = null; delta = null; tone = undefined; }
   return (
     <BlockStack gap="050">
       {help ? (
-        <Tooltip content={help} preferredPosition="above" width="wide">
+        <MetricTooltip title={label} help={help} formula={formula}>
           <Text as="span" tone="subdued" variant="bodySm"><span style={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 2 }}>{label}</span></Text>
-        </Tooltip>
+        </MetricTooltip>
       ) : <Text as="span" tone="subdued" variant="bodySm">{label}</Text>}
       <Text as="span" variant="headingLg" tone={tone}>{value}</Text>
       {(sub || delta) ? <InlineStack gap="150" blockAlign="center" wrap={false}>{delta || null}{sub ? <Text as="span" tone="subdued" variant="bodySm">{sub}</Text> : null}</InlineStack> : null}
@@ -81,9 +95,9 @@ function Stat({ label, value, sub, help, tone, delta, blank = false }) {
 }
 function SectionCard({ title, subtitle, action, help, children }) {
   const titleEl = help ? (
-    <Tooltip content={help} preferredPosition="above" width="wide">
+    <MetricTooltip title={title} help={help}>
       <Text as="h3" variant="headingSm"><span style={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 3 }}>{title}</span></Text>
-    </Tooltip>
+    </MetricTooltip>
   ) : <Text as="h3" variant="headingSm">{title}</Text>;
   return (
     <Card>
@@ -98,11 +112,11 @@ function SectionCard({ title, subtitle, action, help, children }) {
   );
 }
 // Column heading with a dotted-underline hover tooltip, for IndexTable `headings`.
-function ColHelp({ label, help }) {
+function ColHelp({ label, help, formula }) {
   return (
-    <Tooltip content={help} preferredPosition="above" width="wide">
+    <MetricTooltip title={label} help={help} formula={formula}>
       <span style={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 2 }}>{label}</span>
-    </Tooltip>
+    </MetricTooltip>
   );
 }
 function ShiftRow({ label, prev, cur, fmt = (x) => String(x) }) {
@@ -139,6 +153,8 @@ export function CompanyAnalytics({ company }) {
   const [tab, setTab] = useState(0);
   const [period, setPeriod] = useState('3m');
   const [compare, setCompare] = useState('previous');
+  const [periodOpen, setPeriodOpen] = useState(false); // date-range menu
+  const [compareOpen, setCompareOpen] = useState(false); // comparison menu
   const [marginFloor, setMarginFloor] = useState(MARGIN_FLOOR); // merchant-adjustable margin threshold
   const [devEmpty, setDevEmpty] = useState(false); // dev-only: preview the empty state on a company that has data
   const [compareOnly, setCompareOnly] = useState(false); // dev-only: "Compare only" — data only where there's a previous-period comparison
@@ -384,10 +400,10 @@ export function CompanyAnalytics({ company }) {
       <Card>
         <BlockStack gap="300">
           <InlineGrid columns={{ xs: 2, sm: 4 }} gap="400">
-            <Stat label="Net sales" value={money(curS.rev)} delta={cmpDelta(salesDelta)} sub={cmp ? 'vs previous period' : 'in selected period'} help="Net sales generated by this company in the selected period." />
+            <Stat label="Net sales" value={money(curS.rev)} delta={cmpDelta(salesDelta)} sub={cmp ? 'vs previous period' : 'in selected period'} help="Net sales generated by this company in the selected period." formula="Net sales = gross sales − discounts − returns" />
             <Stat label="Orders" value={String(curS.n)} delta={cmpDelta(ordersDelta)} sub={cmp ? 'vs previous period' : 'in selected period'} help="Number of orders placed by this company in the selected period." />
-            <Stat label="Average order value" value={money(curS.aov)} delta={cmpDelta(aovDelta)} sub={cmp ? 'vs previous period' : 'per order'} help="Average net sales per order in the selected period." />
-            <Stat blank={compareOnly} label="Open quote value" value={money(openQuoteValue)} sub="Current snapshot · not affected by date range" help="Total value of this company's quotes that are still open. This is a current snapshot and is not affected by the date range." />
+            <Stat label="Average order value" value={money(curS.aov)} delta={cmpDelta(aovDelta)} sub={cmp ? 'vs previous period' : 'per order'} help="Average net sales per order in the selected period." formula="Average order value = net sales / orders" />
+            <Stat blank={compareOnly} label="Open quote value" value={money(openQuoteValue)} sub="Current snapshot · not affected by date range" help="Total value of this company's quotes that are still open as of today. Not limited to the selected date range." />
           </InlineGrid>
           {changedSentence ? <Text as="p" variant="bodyMd">{changedSentence}</Text> : null}
         </BlockStack>
@@ -405,8 +421,8 @@ export function CompanyAnalytics({ company }) {
         <Divider />
         <InlineGrid columns={{ xs: 2, sm: 4 }} gap="400">
           <Stat blank={compareOnly} label="Last order" value={since == null ? '—' : `${since} days ago`} sub={last ? fmtDate(last) : undefined} help="How long ago this company placed its most recent order." />
-          <Stat blank={compareOnly} label="Typical reorder" value={typical == null ? '—' : `~${typical} days`} help="How long this company typically goes between orders." />
-          <Stat blank={compareOnly} label="Current gap" value={ratio == null ? '—' : `${ratio.toFixed(1)}× usual`} tone={ratio != null && ratio > 1.5 ? 'critical' : undefined} help="How the time since the last order compares with this company's usual reorder interval." />
+          <Stat blank={compareOnly} label="Typical reorder" value={typical == null ? '—' : `~${typical} days`} help="How long this company typically goes between orders." formula="Typical reorder = median(days between orders)" />
+          <Stat blank={compareOnly} label="Current gap" value={ratio == null ? '—' : `${ratio.toFixed(1)}× usual`} tone={ratio != null && ratio > 1.5 ? 'critical' : undefined} help="How long it has been since the last order, compared with how long this company usually waits between orders." formula="Current gap = days since last order / usual days between orders" />
           <Stat blank={compareOnly} label="Order history" value={`${allCompleted.length} orders`} help="Total number of past orders available for this company." />
         </InlineGrid>
       </SectionCard>
@@ -450,14 +466,14 @@ export function CompanyAnalytics({ company }) {
     <BlockStack gap="400">
       <SectionCard title="Buying rhythm" subtitle="How often and how large this company orders." help="Summarizes this company's usual reorder timing and order size using its own purchase history." action={<Button variant="plain" onClick={() => goTab('orders')}>View orders →</Button>}>
         <InlineGrid columns={{ xs: 2, sm: 4 }} gap="400">
-          <Stat blank={compareOnly} label="Typical reorder" value={typical == null ? '—' : `${typical} days`} help="How long this company typically goes between orders." />
+          <Stat blank={compareOnly} label="Typical reorder" value={typical == null ? '—' : `${typical} days`} help="How long this company typically goes between orders." formula="Typical reorder = median(days between orders)" />
           <Stat blank={compareOnly} label="Last order" value={since == null ? '—' : `${since} days ago`} sub={last ? fmtDate(last) : undefined} help="How long ago this company placed its most recent order." />
-          <Stat blank={compareOnly} label="Current gap" value={ratio == null ? '—' : `${ratio.toFixed(1)}× usual`} tone={ratio != null && ratio > 1.5 ? 'critical' : undefined} help="How the time since the last order compares with this company's usual reorder interval." />
+          <Stat blank={compareOnly} label="Current gap" value={ratio == null ? '—' : `${ratio.toFixed(1)}× usual`} tone={ratio != null && ratio > 1.5 ? 'critical' : undefined} help="How long it has been since the last order, compared with how long this company usually waits between orders." formula="Current gap = days since last order / usual days between orders" />
           <Stat label="Orders in period" value={String(curS.n)} delta={cmpDelta(ordersDelta)} help="Number of orders placed in the selected period." />
           <Stat blank={compareOnly} label="Total orders" value={`${allCompleted.length}`} help="Total number of past orders for this company." />
           <Stat blank={compareOnly} label="Largest order" value={money(largest)} help="The largest order this company has placed." />
-          <Stat blank={compareOnly} label="Median order value" value={money0(medianOrder)} help="The typical order size for this company, using the middle value across its order history." />
-          <Stat blank={compareOnly} label="Products per order" value={avgProds ? avgProds.toFixed(1) : '—'} help="Average number of different products purchased in each order." />
+          <Stat blank={compareOnly} label="Median order value" value={money0(medianOrder)} help="The typical order size for this company, using the middle value across its order history." formula="Median order value = median(order value)" />
+          <Stat blank={compareOnly} label="Products per order" value={avgProds ? avgProds.toFixed(1) : '—'} help="Average number of different products purchased in each order." formula="Products per order = products across all orders / orders" />
         </InlineGrid>
       </SectionCard>
 
@@ -502,10 +518,10 @@ export function CompanyAnalytics({ company }) {
     <BlockStack gap="400">
       <Card>
         <InlineGrid columns={{ xs: 2, sm: 4 }} gap="400">
-          <Stat blank={compareOnly} label="Open quote value" value={money(openQuoteValue)} sub="Current snapshot" help="Total value of this company's quotes that are still open. This is a current snapshot." />
+          <Stat blank={compareOnly} label="Open quote value" value={money(openQuoteValue)} sub="Current snapshot" help="Total value of this company's quotes that are still open as of today." />
           <Stat blank={compareOnly} label="Open quotes" value={String(openQuotes.length)} help="Number of quotes that are still open and have not yet been won or lost." />
-          <Stat label="Win rate" value={winRateCount == null ? '—' : `${winRateCount}%`} delta={cmpDelta(winRateDelta, { suffix: ' pp' })} sub="by count, in period" help="Share of this company's decided quotes that were won in the selected period." />
-          <Stat blank={compareOnly} label="First response time" value={fmtDur(responseMedian)} help="How long this company's quotes typically take to receive their first price or reply." />
+          <Stat label="Win rate" value={winRateCount == null ? '—' : `${winRateCount}%`} delta={cmpDelta(winRateDelta, { suffix: ' pp' })} sub="by count, in period" help="Share of this company's decided quotes that were won in the selected period." formula="Win rate = won quotes / (won quotes + lost quotes)" />
+          <Stat blank={compareOnly} label="First response time" value={fmtDur(responseMedian)} help="How long this company's quotes typically take to receive their first price or reply." formula="First response time = median(first priced or sent − created)" />
         </InlineGrid>
       </Card>
 
@@ -534,8 +550,8 @@ export function CompanyAnalytics({ company }) {
           <Stat label="Quotes created" value={String(periodQuotes.length)} delta={cmpDelta(quotesCreatedDelta)} help="Number of quotes created for this company in the selected period." />
           <Stat label="Won" value={String(wonP.length)} delta={cmpDelta(wonDelta)} help="Number of quotes that ended as won in the selected period." />
           <Stat label="Lost" value={String(lostP.length)} delta={cmpDelta(lostDelta, { goodDown: true })} help="Number of quotes that ended as lost in the selected period." />
-          <Stat label="Win rate by count" value={winRateCount == null ? '—' : `${winRateCount}%`} delta={cmpDelta(winRateDelta, { suffix: ' pp' })} help="Share of decided quotes that were won." />
-          <Stat label="Typical time to decision" value={fmtDur(decisionMedian)} delta={cmpDelta(decisionDelta, { goodDown: true })} help="How long a quote typically takes to be won or lost after it is created." />
+          <Stat label="Win rate by count" value={winRateCount == null ? '—' : `${winRateCount}%`} delta={cmpDelta(winRateDelta, { suffix: ' pp' })} help="Share of decided quotes that were won." formula="Win rate by count = won quotes / (won quotes + lost quotes)" />
+          <Stat label="Typical time to decision" value={fmtDur(decisionMedian)} delta={cmpDelta(decisionDelta, { goodDown: true })} help="How long a quote typically takes to be won or lost after it is created." formula="Typical time to decision = median(won or lost date − created date)" />
         </InlineGrid>
       </SectionCard>
 
@@ -550,7 +566,7 @@ export function CompanyAnalytics({ company }) {
         });
         const maxRate = Math.max(1, ...bands.map((b) => b.rate || 0));
         return bands.some((b) => b.count) ? (
-          <SectionCard title="Win rate by discount" subtitle="Compare win rate across discount ranges from the Shopify price." help="Shows the share of won quotes within each discount range, using the Shopify price as the reference. Only won and lost quotes are included. This shows a pattern, not that the discount caused the outcome.">
+          <SectionCard title="Win rate by discount" subtitle="Compare win rate across discount ranges from the Shopify price." help="Shows the share of won quotes within each discount range, compared with your regular Shopify prices. Only won and lost quotes are included. This shows a pattern, not that the discount caused the outcome.">
             <RankBars rows={blankRows(bands).map((b) => ({ key: b.name, name: `${b.name} off`, sub: `${b.wins} of ${b.count} won or lost`, width: b.rate == null ? 0 : (b.rate / maxRate) * 100, valueLabel: b.rate == null ? '—' : `${b.rate}%` }))} empty="No won or lost quotes." />
           </SectionCard>
         ) : null;
@@ -563,17 +579,17 @@ export function CompanyAnalytics({ company }) {
     <BlockStack gap="400">
       <Card>
         <InlineGrid columns={{ xs: 2, sm: 4 }} gap="400">
-          <Stat blank={compareOnly} label="B2B price vs Shopify" value={vsShopify == null ? '—' : signedPct(vsShopify)} sub="on B2B-priced lines" help="How much lower or higher this company's B2B prices are than its regular Shopify prices." />
-          <Stat label="Margin at order creation" value={pct1(marginAtCreation)} delta={cmpDelta(marginDelta, { suffix: ' pp' })} sub="costed lines" help="Profit margin based on the price and product cost recorded when each order was placed. Items without cost data are excluded." />
-          <Stat label="Order value" value={money(allEcon.value)} delta={cmpDelta(orderValueDelta)} sub="in selected period" help="Total value of this company's order lines in the selected period." />
+          <Stat blank={compareOnly} label="B2B price vs Shopify" value={vsShopify == null ? '—' : signedPct(vsShopify)} sub="on B2B-priced lines" help="How much lower or higher this company's B2B prices are than its regular Shopify prices." formula="B2B price vs Shopify = (B2B price − Shopify price) / Shopify price" />
+          <Stat label="Margin at order creation" value={pct1(marginAtCreation)} delta={cmpDelta(marginDelta, { suffix: ' pp' })} sub="costed lines" help="The share of order value you keep as profit, based on prices and product costs when each order was placed. Items without a product cost aren't included." formula="Margin at order creation = (order value − product cost) / order value" />
+          <Stat label="Order value" value={money(allEcon.value)} delta={cmpDelta(orderValueDelta)} sub="in selected period" help="Total value of what this company ordered in the selected period." />
           <Stat label={`Order value below ${marginFloor}% margin`} value={money(exceptionValue)} delta={cmpDelta(exceptionDelta, { goodDown: true })} sub={`${exceptionLines.length} line${exceptionLines.length === 1 ? '' : 's'}`} help="Total value of items sold below your selected profit-margin threshold." />
         </InlineGrid>
       </Card>
 
       <SectionCard title="B2B pricing usage" subtitle="How much of this company's purchasing used B2B pricing in the selected period." help="Shows both how many orders used B2B pricing and how much order value actually came from B2B-priced items.">
         <InlineGrid columns={{ xs: 1, sm: 2 }} gap="400">
-          <Stat label="Orders using B2B pricing" value={adoptionOrders == null ? '—' : `${adoptionOrders}%`} delta={cmpDelta(adoptionOrdersDelta, { suffix: ' pp' })} sub={`${b2bOrderIds.size} of ${periodOrders.length} orders`} help="Share of this company's orders where at least one item used B2B pricing." />
-          <Stat label="Order value using B2B pricing" value={adoptionValue == null ? '—' : `${adoptionValue}%`} delta={cmpDelta(adoptionValueDelta, { suffix: ' pp' })} sub={`${money(b2bEcon.value)} of ${money(allEcon.value)} order value`} help="Share of this company's order value that came from items using B2B pricing." />
+          <Stat label="Orders using B2B pricing" value={adoptionOrders == null ? '—' : `${adoptionOrders}%`} delta={cmpDelta(adoptionOrdersDelta, { suffix: ' pp' })} sub={`${b2bOrderIds.size} of ${periodOrders.length} orders`} help="Share of this company's orders where at least one item used B2B pricing." formula="Orders using B2B pricing = orders with a B2B-priced line / orders" />
+          <Stat label="Order value using B2B pricing" value={adoptionValue == null ? '—' : `${adoptionValue}%`} delta={cmpDelta(adoptionValueDelta, { suffix: ' pp' })} sub={`${money(b2bEcon.value)} of ${money(allEcon.value)} order value`} help="Share of this company's order value that came from items using B2B pricing." formula="Order value using B2B pricing = B2B-priced order value / order value" />
         </InlineGrid>
         <Text as="p" variant="bodyMd">{adoptionSummary}</Text>
       </SectionCard>
@@ -581,7 +597,7 @@ export function CompanyAnalytics({ company }) {
       {varRows.length ? (
         <SectionCard title="Won quotes vs your pricing" subtitle="How recent won quotes compare with the pricing set for this company." help="Compares recent won quote prices with the B2B pricing that was in place for this company at the time of each quote.">
           <InlineGrid columns={{ xs: 1, sm: 2 }} gap="400">
-            <Stat blank={compareOnly} label="Average vs your pricing" value={`${negoAbs}%`} sub={`${negoDir} your set price`} help="Average difference between recent won quote prices and the pricing that was set for this company at the time." />
+            <Stat blank={compareOnly} label="Average vs your pricing" value={`${negoAbs}%`} sub={`${negoDir} your set price`} help="Average difference between recent won quote prices and the pricing that was set for this company at the time." formula="Average vs your pricing = (won quote price − your set price) / your set price" />
             <Stat blank={compareOnly} label={below5 ? 'Below your set price' : 'At or above your set price'} value={`${below5 || varRows.length} of ${varRows.length}`} sub="recent won quotes" help={below5 ? 'Number of recent won quotes that landed below your set price.' : 'Number of recent won quotes that landed at or above your set price.'} />
           </InlineGrid>
           {!compareOnly && <Text as="p" variant="bodyMd">{negoSummary}</Text>}
@@ -592,10 +608,10 @@ export function CompanyAnalytics({ company }) {
         {blankRows(companyProfiles).length > 1 ? (
           <IndexTable resourceName={{ singular: 'pricing', plural: 'pricings' }} itemCount={companyProfiles.length} selectable={false}
             headings={[
-              { title: <ColHelp label="Pricing" help="The B2B pricing used by these order lines." /> },
+              { title: <ColHelp label="Pricing" help="The B2B pricing that set the price for these items." /> },
               { title: <ColHelp label="Order value" help="Total order value on this pricing in the selected period." />, alignment: 'end' },
-              { title: <ColHelp label="Margin" help="Profit margin on orders that used this pricing." />, alignment: 'end' },
-              { title: <ColHelp label="vs Shopify" help="How this pricing compares with this company's regular Shopify prices." />, alignment: 'end' },
+              { title: <ColHelp label="Margin" help="Profit margin on orders that used this pricing." formula="Margin = gross profit / order value" />, alignment: 'end' },
+              { title: <ColHelp label="vs Shopify" help="How this pricing compares with this company's regular Shopify prices." formula="vs Shopify = (B2B price − Shopify price) / Shopify price" />, alignment: 'end' },
               { title: <ColHelp label="Orders" help="Number of orders that used this pricing." />, alignment: 'end' },
             ]}>
             {companyProfiles.map((p, i) => (
@@ -613,8 +629,8 @@ export function CompanyAnalytics({ company }) {
             <Text as="span" variant="bodyMd" fontWeight="semibold">{companyProfiles[0].name}</Text>
             <InlineGrid columns={{ xs: 2, sm: 4 }} gap="400">
               <Stat label="Order value" value={money(companyProfiles[0].value)} help="Total order value on this pricing in the selected period." />
-              <Stat label="Margin" value={pct1(companyProfiles[0].margin)} help="Profit margin on orders that used this pricing." />
-              <Stat label="vs Shopify" value={companyProfiles[0].deltaPct == null ? '—' : signedPct(companyProfiles[0].deltaPct)} help="How this pricing compares with this company's regular Shopify prices." />
+              <Stat label="Margin" value={pct1(companyProfiles[0].margin)} help="Profit margin on orders that used this pricing." formula="Margin = gross profit / order value" />
+              <Stat label="vs Shopify" value={companyProfiles[0].deltaPct == null ? '—' : signedPct(companyProfiles[0].deltaPct)} help="How this pricing compares with this company's regular Shopify prices." formula="vs Shopify = (B2B price − Shopify price) / Shopify price" />
               <Stat label="Orders" value={String(companyProfiles[0].orders)} help="Number of orders that used this pricing." />
             </InlineGrid>
           </BlockStack>
@@ -624,9 +640,9 @@ export function CompanyAnalytics({ company }) {
       <SectionCard title="Quantity pricing usage" subtitle="How often this company buys enough to reach the quantity pricing available to it." help="Shows whether this company reaches its available quantity tiers, how much order value those purchases create, and the average discount received.">
         {hasQuantityPricing && tierEvents.length ? (
           <InlineGrid columns={{ xs: 1, sm: 3 }} gap="400">
-            <Stat blank={compareOnly} label="Tier reach rate" value={tierEvents.length ? `${Math.round((tierReached.length / tierEvents.length) * 100)}%` : '—'} sub={`${tierReached.length} of ${tierEvents.length} eligible`} help="Share of eligible purchases where this company ordered enough to reach a quantity-price tier." />
+            <Stat blank={compareOnly} label="Tier reach rate" value={tierEvents.length ? `${Math.round((tierReached.length / tierEvents.length) * 100)}%` : '—'} sub={`${tierReached.length} of ${tierEvents.length} eligible`} help="Share of eligible purchases where this company ordered enough to reach a quantity-price tier." formula="Tier reach rate = purchases that reached a tier / eligible purchases" />
             <Stat blank={compareOnly} label="Order value at reached tiers" value={money(tierReached.reduce((a, e) => a + (Number(e.orderValue) || 0), 0))} help="Total value of purchases where this company reached a quantity-price tier." />
-            <Stat blank={compareOnly} label="Average tier discount" value={(() => { const d = tierRefWeighted(tierReached); return d == null ? '—' : `${d.toFixed(1)}%`; })()} help="Average discount received on purchases that reached a quantity-price tier." />
+            <Stat blank={compareOnly} label="Average tier discount" value={(() => { const d = tierRefWeighted(tierReached); return d == null ? '—' : `${d.toFixed(1)}%`; })()} help="Average discount received on purchases that reached a quantity-price tier." formula="Average tier discount = discount from tiers / value before tier discount" />
           </InlineGrid>
         ) : <Text as="p" tone="subdued" variant="bodySm">No quantity pricing assigned.</Text>}
       </SectionCard>
@@ -634,7 +650,7 @@ export function CompanyAnalytics({ company }) {
       <SectionCard
         title={`Products below ${marginFloor}% margin`}
         subtitle="Products sold below your selected profit-margin threshold."
-        help={`Shows products this company bought on order lines below ${marginFloor}% margin, including the value sold, margin, and pricing used. Change the threshold with the picker.`}
+        help={`Shows products this company bought below ${marginFloor}% margin, including the value sold, margin, and pricing used. Change the threshold with the picker.`}
         action={
           <InlineStack gap="300" blockAlign="center" wrap={false}>
             <div style={{ minWidth: 160 }}>
@@ -650,7 +666,7 @@ export function CompanyAnalytics({ company }) {
             headings={[
               { title: <ColHelp label="Product" help="Product sold below the selected margin threshold." /> },
               { title: <ColHelp label="Value below threshold" help="Total value sold below the selected margin threshold." />, alignment: 'end' },
-              { title: <ColHelp label="Margin" help="Profit margin on the value shown in this row." />, alignment: 'end' },
+              { title: <ColHelp label="Margin" help="Profit margin on the value shown in this row." formula="Margin = gross profit / order value" />, alignment: 'end' },
               { title: <ColHelp label="Pricing" help="B2B pricing used for the value shown in this row." /> },
             ]}>
             {exceptionLines.slice(0, 8).map((l, i) => { const m = l.lineValue ? ((l.lineValue - l.lineCost) / l.lineValue) * 100 : 0; return (
@@ -705,13 +721,49 @@ export function CompanyAnalytics({ company }) {
           This company hasn't placed any orders or received any quotes yet. As it starts buying and you send quotes, its buying rhythm, quotes and pricing performance will fill in below.
         </Banner>
       )}
-      <Card>
-        <InlineStack gap="300" blockAlign="end" wrap>
-          <div style={{ minWidth: 160 }}><Select label="Date range" options={[{ label: 'Last 30 days', value: '30d' }, { label: 'Last 3 months', value: '3m' }, { label: 'Last 6 months', value: '6m' }, { label: 'Last 12 months', value: '12m' }]} value={period} onChange={setPeriod} disabled={showEmpty} /></div>
-          <div style={{ minWidth: 170 }}><Select label="Compare" options={[{ label: 'Previous period', value: 'previous' }, { label: 'No comparison', value: 'none' }]} value={compareOnly ? 'previous' : compare} onChange={setCompare} disabled={showEmpty || compareOnly} /></div>
+      {/* One bar: the section tabs, compact on the left, and the date range /
+          comparison as filter buttons on the right (like Shopify Analytics). */}
+      <InlineStack align="space-between" blockAlign="center" gap="300" wrap>
+        <Box background="bg-surface" borderRadius="300" padding="100" shadow="100">
+          <InlineStack gap="100" wrap={false}>
+            {tabs.map((t, i) => (
+              <Button key={t.id} variant="tertiary" pressed={tab === i} onClick={() => setTab(i)}>{t.content}</Button>
+            ))}
+          </InlineStack>
+        </Box>
+        <InlineStack gap="200" blockAlign="center">
+          <Popover
+            active={periodOpen}
+            onClose={() => setPeriodOpen(false)}
+            preferredAlignment="right"
+            activator={
+              <Button size="slim" icon={CalendarIcon} disclosure disabled={showEmpty} onClick={() => setPeriodOpen((v) => !v)}>
+                {PERIOD_OPTIONS.find((o) => o.value === period)?.label}
+              </Button>
+            }
+          >
+            <ActionList
+              actionRole="menuitemradio"
+              items={PERIOD_OPTIONS.map((o) => ({ content: o.label, active: o.value === period, onAction: () => { setPeriod(o.value); setPeriodOpen(false); } }))}
+            />
+          </Popover>
+          <Popover
+            active={compareOpen}
+            onClose={() => setCompareOpen(false)}
+            preferredAlignment="right"
+            activator={
+              <Button size="slim" icon={CalendarTimeIcon} disclosure disabled={showEmpty || compareOnly} onClick={() => setCompareOpen((v) => !v)}>
+                {COMPARE_OPTIONS.find((o) => o.value === (compareOnly ? 'previous' : compare))?.label}
+              </Button>
+            }
+          >
+            <ActionList
+              actionRole="menuitemradio"
+              items={COMPARE_OPTIONS.map((o) => ({ content: o.label, active: o.value === compare, onAction: () => { setCompare(o.value); setCompareOpen(false); } }))}
+            />
+          </Popover>
         </InlineStack>
-      </Card>
-      <Card padding="0"><Tabs tabs={tabs} selected={tab} onSelect={setTab} /></Card>
+      </InlineStack>
       {body}
     </BlockStack>
   );

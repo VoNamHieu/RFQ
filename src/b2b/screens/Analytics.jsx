@@ -15,13 +15,13 @@ import {
   Badge,
   Banner,
   Button,
-  Tooltip,
   Icon,
 } from '@shopify/polaris';
 import { InfoIcon, MaximizeIcon, XIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { money } from '../format.js';
 import { LineChart, VBarChart, StackedBar, FunnelV2, RankBars, Timeline, moneyShort } from '../components/charts.jsx';
+import { MetricTooltip } from '../components/MetricTooltip.jsx';
 import { resolveDetail, defaultVariant } from '../pricing.js';
 import { buildAttributedLines, pricingProfileRows } from '../pricingAttribution.js';
 import {
@@ -104,9 +104,9 @@ function DeltaChip({ v, suffix = '%', goodDown = false }) {
     // A compared metric whose previous period has no baseline (e.g. no quotes back then): still
     // show a signal instead of nothing, so "compared but nothing to compare with" is visible.
     return (
-      <Tooltip content="No data in the previous period to compare with." preferredPosition="above">
+      <MetricTooltip help="No data in the previous period to compare with.">
         <Text as="span" variant="bodySm" tone="subdued">—</Text>
-      </Tooltip>
+      </MetricTooltip>
     );
   }
   const up = v > 0;
@@ -131,9 +131,9 @@ function ScoreGrid({ items }) {
             {it.help ? (
               <InlineStack gap="050" blockAlign="center" wrap={false}>
                 <Text as="span" tone="subdued" variant="bodySm">{it.label}</Text>
-                <Tooltip content={it.help} preferredPosition="above" width="wide">
+                <MetricTooltip title={it.label} help={it.help} formula={it.formula}>
                   <span style={{ display: 'inline-flex', cursor: 'help' }}><Icon source={InfoIcon} tone="subdued" /></span>
-                </Tooltip>
+                </MetricTooltip>
               </InlineStack>
             ) : (
               <Text as="span" tone="subdued" variant="bodySm">{it.label}</Text>
@@ -160,11 +160,11 @@ function MiniCompare({ items, plain = false }) {
       {items.map((it) => (
         <BlockStack gap="050" key={it.label}>
           {it.help ? (
-            <Tooltip content={it.help} preferredPosition="above" width="wide">
+            <MetricTooltip title={it.label} help={it.help} formula={it.formula}>
               <Text as="span" tone="subdued" variant="bodySm">
                 <span style={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 2 }}>{it.label}</span>
               </Text>
-            </Tooltip>
+            </MetricTooltip>
           ) : (
             <Text as="span" tone="subdued" variant="bodySm">{it.label}</Text>
           )}
@@ -209,21 +209,21 @@ function InsightCard({ headline, value, tone, context, note, cta, onAction }) {
 
 // A table column heading with a dotted underline + hover tooltip explaining the metric.
 // Used on the Pricing performance table so each column's definition is one hover away.
-function HeadHelp({ label, help }) {
+function HeadHelp({ label, help, formula }) {
   return (
-    <Tooltip content={help} preferredPosition="above" width="wide">
+    <MetricTooltip title={label} help={help} formula={formula}>
       <span style={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 3 }}>{label}</span>
-    </Tooltip>
+    </MetricTooltip>
   );
 }
 
 // An h4 sub-card heading with a dotted underline + hover tooltip (same idea as HeadHelp).
-function HeadingHelp({ label, help }) {
+function HeadingHelp({ label, help, formula }) {
   return (
     <Text as="h4" variant="headingXs">
-      <Tooltip content={help} preferredPosition="above" width="wide">
+      <MetricTooltip title={label} help={help} formula={formula}>
         <span style={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 3 }}>{label}</span>
-      </Tooltip>
+      </MetricTooltip>
     </Text>
   );
 }
@@ -252,7 +252,7 @@ function RelationshipStateHelp() {
   );
 }
 
-function ReportCard({ title, subtitle, controls, help, children }) {
+function ReportCard({ title, subtitle, controls, help, formula, children }) {
   return (
     <Card>
       <BlockStack gap="300">
@@ -264,9 +264,9 @@ function ReportCard({ title, subtitle, controls, help, children }) {
             {help && controls ? (
               <InlineStack gap="100" align="start" blockAlign="center" wrap={false}>
                 <Text as="h3" variant="headingSm">{title}</Text>
-                <Tooltip content={help} preferredPosition="above" width="wide">
+                <MetricTooltip title={title} help={help} formula={formula}>
                   <span style={{ display: 'inline-flex', cursor: 'help' }}><Icon source={InfoIcon} tone="subdued" /></span>
-                </Tooltip>
+                </MetricTooltip>
               </InlineStack>
             ) : (
               <Text as="h3" variant="headingSm">{title}</Text>
@@ -277,9 +277,9 @@ function ReportCard({ title, subtitle, controls, help, children }) {
             <InlineStack gap="200" blockAlign="center" wrap={false}>
               {controls || null}
               {help && !controls ? (
-                <Tooltip content={help} preferredPosition="above" width="wide">
+                <MetricTooltip title={title} help={help} formula={formula}>
                   <span style={{ display: 'inline-flex', cursor: 'help' }}><Icon source={InfoIcon} tone="subdued" /></span>
-                </Tooltip>
+                </MetricTooltip>
               ) : null}
             </InlineStack>
           ) : null}
@@ -402,7 +402,7 @@ export function Analytics({ embeddedCompanyId = null }) {
   // previous-period comparison show data. KPI items flagged `cmp` keep their value + delta; every
   // other KPI shows "—", and blocks with no comparison render their own per-block empty state
   // (rows/segments emptied via blankRows → "No … " table/chart messages).
-  const cmpOnly = (items) => (compareOnly ? items.map((it) => (it.cmp ? it : { label: it.label, help: it.help, value: '—' })) : items);
+  const cmpOnly = (items) => (compareOnly ? items.map((it) => (it.cmp ? it : { label: it.label, help: it.help, formula: it.formula, value: '—' })) : items);
   const blankRows = (rows) => (compareOnly ? [] : rows);
 
   const inDateRange = (d, start, end) => {
@@ -1175,13 +1175,13 @@ export function Analytics({ embeddedCompanyId = null }) {
       {/* §3.1 — Hero KPIs */}
       <ScoreGrid
         items={cmpOnly([
-          { cmp: true, label: 'Net B2B sales', value: money(sales), delta: cmpDelta(salesDelta), foot: compareEnabled ? 'vs previous period' : 'net completed orders', help: 'Net revenue from completed B2B orders (Fulfilled or Paid) in the selected period. Blocked or unfinished orders are excluded.' },
-          { cmp: true, label: 'Gross profit', value: moneyN(grossProfit), delta: cmpDelta(gpDelta), foot: costCoverage != null && costCoverage < 99.5 ? `${Math.round(costCoverage)}% of sales have cost data` : compareEnabled ? 'vs previous period' : 'net sales − COGS', help: 'Net sales minus COGS (unit cost × quantity per line, from Shopify InventoryItem.unitCost). Computed on the costed portion of sales only — no estimate is fabricated. When some orders have no cost, the footer shows what % of sales the figure covers.' },
-          { cmp: true, label: 'Gross margin', value: pct1N(grossMargin), delta: cmpDelta(marginDelta, { suffix: ' pp' }), foot: costCoverage != null && costCoverage < 99.5 ? `on ${Math.round(costCoverage)}% of sales with cost data` : compareEnabled ? 'vs previous period' : 'gross profit / net sales', help: 'Gross profit ÷ the sales it was costed on. When cost data is incomplete, this is the margin of the costed portion (footer shows its coverage), not a store-wide figure.' },
+          { cmp: true, label: 'Net B2B sales', value: money(sales), delta: cmpDelta(salesDelta), foot: compareEnabled ? 'vs previous period' : 'net completed orders', help: 'Sales from completed B2B orders in the selected period, after discounts and returns. Orders that are blocked or not yet completed aren’t counted.', formula: 'Net B2B sales = gross sales − discounts − returns' },
+          { cmp: true, label: 'Gross profit', value: moneyN(grossProfit), delta: cmpDelta(gpDelta), foot: costCoverage != null && costCoverage < 99.5 ? `${Math.round(costCoverage)}% of sales have cost data` : compareEnabled ? 'vs previous period' : 'net sales − COGS', help: 'What you keep from sales after paying for the products you sold. Only orders with product costs are counted — if some costs are missing, the note below shows how much of your sales this covers.', formula: 'Gross profit = net sales − product costs' },
+          { cmp: true, label: 'Gross margin', value: pct1N(grossMargin), delta: cmpDelta(marginDelta, { suffix: ' pp' }), foot: costCoverage != null && costCoverage < 99.5 ? `on ${Math.round(costCoverage)}% of sales with cost data` : compareEnabled ? 'vs previous period' : 'gross profit / net sales', help: 'The share of sales you keep as profit after product costs. Only orders with product costs are counted — if some costs are missing, the note below shows how much of your sales this covers.', formula: 'Gross margin = gross profit / net sales' },
           selected
             ? { label: 'Active locations', value: `${activeLocations} / ${selected?.locations?.length || 0}`, foot: 'locations with an order', help: 'Locations of this company with at least one completed order in the period, out of its total locations.' }
             : { cmp: true, label: 'Active companies', value: String(activeCompanyIds.size), delta: cmpDelta(activeDelta, { suffix: '' }), foot: `of ${managedCount} managed companies`, help: 'Managed companies with at least one completed order in the period, out of all the companies you manage.' },
-          { cmp: true, label: 'Repeat revenue', value: `${repeatShare}%`, delta: cmpDelta(repeatDelta, { suffix: ' pp' }), foot: money(repeatRevenue), help: "Share of net sales from reorders — every completed order except each company's first-ever order." },
+          { cmp: true, label: 'Repeat revenue', value: `${repeatShare}%`, delta: cmpDelta(repeatDelta, { suffix: ' pp' }), foot: money(repeatRevenue), help: "Share of sales that came from reorders — every order after a company's first one.", formula: 'Repeat revenue = sales from reorders / net sales' },
         ])}
       />
 
@@ -1391,7 +1391,7 @@ export function Analytics({ embeddedCompanyId = null }) {
         { title: 'Gross profit', alignment: 'end' },
         { title: 'Margin', alignment: 'end' },
         ...(compareEnabled ? [{ title: 'Growth', alignment: 'end' }] : []),
-        { title: <Tooltip content="Share of sales from repeat orders (revenue after each company's first order ÷ its revenue)." preferredPosition="above" width="wide"><span style={{ cursor: 'help' }}>Repeat revenue</span></Tooltip>, alignment: 'end' },
+        { title: <HeadHelp label="Repeat revenue" help="Share of sales from repeat orders." formula="Repeat revenue = sales after first order / company sales" />, alignment: 'end' },
         { title: 'Last order', alignment: 'end' },
         { title: 'Typical reorder', alignment: 'end' },
         { title: 'Status' },
@@ -1414,9 +1414,9 @@ export function Analytics({ embeddedCompanyId = null }) {
           <IndexTable.Cell><Text as="span" alignment="end">{r.typical != null ? `~${r.typical}d` : '—'}</Text></IndexTable.Cell>
           <IndexTable.Cell>
             {r.ratio != null ? (
-              <Tooltip content={`${r.ratio.toFixed(1)}× its usual reorder gap${r.overdue ? ` · ${r.overdue} days past its typical reorder time` : ''}`} preferredPosition="above" width="wide">
+              <MetricTooltip title={r.health} help={`${r.ratio.toFixed(1)}× its usual reorder gap${r.overdue ? ` · ${r.overdue} days past its typical reorder time` : ''}`}>
                 <span style={{ display: 'inline-flex', cursor: 'help' }}><Badge tone={HEALTH_TONE[r.health]}>{r.health}</Badge></span>
-              </Tooltip>
+              </MetricTooltip>
             ) : (
               <Badge tone={HEALTH_TONE[r.health]}>{r.health}</Badge>
             )}
@@ -1449,8 +1449,8 @@ export function Analytics({ embeddedCompanyId = null }) {
           subtitle="Historical revenue from companies now past their normal reorder cadence — not a prediction of loss."
           help={
             <BlockStack gap="150">
-              <Text as="span" variant="bodySm">Companies that are past their usual reorder cycle — Watch, At risk, or Inactive by relationship state.</Text>
-              <Text as="span" variant="bodySm" tone="subdued">Sales and gross profit reflect the group's trailing 90 days of activity. These are historical figures, not a prediction of churn or future loss. When cost data is incomplete, gross profit shows the percentage of sales with cost data.</Text>
+              <Text as="span" variant="bodySm">Companies ordering later than they usually do — marked Watch, At risk or Inactive.</Text>
+              <Text as="span" variant="bodySm" tone="subdued">Sales and gross profit are from these companies’ last 90 days. They show what already happened, not a forecast of what you might lose. If some product costs are missing, gross profit notes how much of sales it covers.</Text>
             </BlockStack>
           }
         >
@@ -1474,7 +1474,7 @@ export function Analytics({ embeddedCompanyId = null }) {
         >{companyPerfTable}</ReportCard>
       ) : (
         <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
-          <ReportCard title="Relationship state" subtitle="Reorder ratio vs each company's own rhythm — separate from lifecycle. Click a segment to filter the table." help={<RelationshipStateHelp />}>
+          <ReportCard title="Relationship state" subtitle="Reorder ratio vs each company's own rhythm — separate from lifecycle. Click a segment to filter the table." help={<RelationshipStateHelp />} formula="Reorder gap = days since last order / usual days between orders">
             <BlockStack gap="300">
               <div style={{ display: 'flex', height: 12, borderRadius: 6, overflow: 'hidden', gap: 2 }}>
                 {healthCounts.filter((s) => s.count > 0).map((s) => (
@@ -1501,7 +1501,7 @@ export function Analytics({ embeddedCompanyId = null }) {
               <BlockStack gap="150">
                 <Text as="span" variant="bodySm"><Text as="span" variant="bodySm" fontWeight="semibold">New</Text> — Revenue from companies whose first purchase falls within the selected period.</Text>
                 <Text as="span" variant="bodySm"><Text as="span" variant="bodySm" fontWeight="semibold">Existing</Text> — Revenue from companies that first purchased before the selected period.</Text>
-                <Text as="span" variant="bodySm" tone="subdued">Percentages show each cohort's share of total B2B sales in the period.</Text>
+                <Text as="span" variant="bodySm" tone="subdued">Percentages show each group's share of total B2B sales in the period.</Text>
               </BlockStack>
             }
           >
@@ -1523,7 +1523,7 @@ export function Analytics({ embeddedCompanyId = null }) {
             help={
               <BlockStack gap="150">
                 <Text as="span" variant="bodySm">One row per company, combining performance for the selected period with its current relationship state.</Text>
-                <Text as="span" variant="bodySm" tone="subdued">Sales, gross profit, margin, growth, and repeat revenue follow the selected period. Last order, typical reorder, and status reflect the company's current relationship state and are not limited by the date range.</Text>
+                <Text as="span" variant="bodySm" tone="subdued">Sales, gross profit, margin, growth, and repeat revenue follow the selected period. Last order, typical reorder, and status show where each company stands today and aren't limited by the date range.</Text>
               </BlockStack>
             }
             controls={
@@ -1568,10 +1568,7 @@ export function Analytics({ embeddedCompanyId = null }) {
           title="B2B activation"
           subtitle="Registration cohort — companies that registered in the selected period, tracked to their approval and first purchase to date."
           help={
-            <BlockStack gap="025">
-              <Text as="span" variant="bodySm" fontWeight="semibold">Registration cohort</Text>
-              <Text as="span" variant="bodySm" tone="subdued">Companies are grouped by registration date, then tracked through approval and first purchase to date. Earlier cohorts may continue to increase as more companies convert.</Text>
-            </BlockStack>
+            <Text as="span" variant="bodySm">Companies that registered in the selected period, followed through approval and first purchase up to today. Recent registrations may still convert, so their numbers can keep growing.</Text>
           }
         >
           <BlockStack gap="300">
@@ -1672,9 +1669,9 @@ export function Analytics({ embeddedCompanyId = null }) {
       itemCount={blankRows(quotes).length}
       selectable={false}
       headings={[
-        { title: <HeadHelp label="Quote" help="Quote record." /> },
+        { title: <HeadHelp label="Quote" help="The quote number." /> },
         { title: <HeadHelp label="Status" help="Current quote status." /> },
-        { title: <HeadHelp label="Age" help="Number of days since the quote was created." />, alignment: 'end' },
+        { title: <HeadHelp label="Age" help="Number of days since the quote was created." formula="Age = today − created date" />, alignment: 'end' },
         { title: <HeadHelp label="Quoted value" help="Total quoted value across all lines in the quote." />, alignment: 'end' },
       ]}
       emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No RFQs.</Text></Box>}
@@ -1695,10 +1692,10 @@ export function Analytics({ embeddedCompanyId = null }) {
       {/* §5.1 — hero metrics: future revenue + where it's stuck */}
       <ScoreGrid
         items={cmpOnly([
-          { label: 'Open quote value', value: money(openQuoteValue), foot: `${openQuotes.length} open quote${openQuotes.length === 1 ? '' : 's'}`, help: 'Total value of quotes that are still open. This is a current snapshot and is not limited to the selected period.' },
-          { cmp: true, label: 'Win rate by value', value: winRateValue == null ? '—' : `${winRateValue}%`, delta: cmpDelta(winRateValueDelta, { suffix: ' pp' }), foot: `${moneyShort(wonValue)} won of ${moneyShort(finalizedValue)} finalized`, help: 'Share of won quote value among all quote value that was won or lost in the selected period.' },
+          { label: 'Open quote value', value: money(openQuoteValue), foot: `${openQuotes.length} open quote${openQuotes.length === 1 ? '' : 's'}`, help: 'Total value of quotes that are still open as of today. Not limited to the selected date range.' },
+          { cmp: true, label: 'Win rate by value', value: winRateValue == null ? '—' : `${winRateValue}%`, delta: cmpDelta(winRateValueDelta, { suffix: ' pp' }), foot: `${moneyShort(wonValue)} won of ${moneyShort(finalizedValue)} finalized`, help: 'Share of won quote value among all quote value that was won or lost in the selected period.', formula: 'Win rate by value = won value / (won value + lost value)' },
           { label: 'Stale quote value', value: money(staleValue), foot: `${staleQuotes.length} quote${staleQuotes.length === 1 ? '' : 's'} idle >10 days`, help: 'Value of open quotes with no activity for more than 10 days.' },
-          { label: 'First response time', value: formatTypicalTime(responseMedian), foot: 'median RFQ → first response', help: 'Median time from quote creation to the first time the quote was priced or sent.' },
+          { label: 'First response time', value: formatTypicalTime(responseMedian), foot: 'median RFQ → first response', help: 'Typical time from when a quote comes in until you first price or send it.', formula: 'First response time = median(first priced or sent − created)' },
         ])}
       />
 
@@ -1709,8 +1706,8 @@ export function Analytics({ embeddedCompanyId = null }) {
           { cmp: true, label: 'Total quoted value', value: money(quoteValueTotal), delta: cmpDelta(quoteValueTotalDelta), help: 'Total quoted value of quotes created in the selected period.' },
           { cmp: true, label: 'Won quotes', value: String(wonQuotes.length), delta: cmpDelta(wonQuotesDelta, { suffix: '' }), help: 'Number of quotes won in the selected period.' },
           { cmp: true, label: 'Lost quotes', value: String(lostQuotes.length), delta: cmpDelta(lostQuotesDelta, { suffix: '', goodDown: true }), help: 'Number of quotes lost in the selected period.' },
-          { cmp: true, label: 'Average quote value', value: money(avgQuoteValue), delta: cmpDelta(avgQuoteValueDelta), help: 'Average quoted value of quotes created in the selected period.' },
-          { cmp: true, label: 'Win rate by count', value: winRateCount == null ? '—' : `${winRateCount}%`, delta: cmpDelta(winRateCountDelta, { suffix: ' pp' }), help: 'Share of won quotes among all quotes that were won or lost in the selected period.' },
+          { cmp: true, label: 'Average quote value', value: money(avgQuoteValue), delta: cmpDelta(avgQuoteValueDelta), help: 'Average quoted value of quotes created in the selected period.', formula: 'Average quote value = total quoted value / quotes created' },
+          { cmp: true, label: 'Win rate by count', value: winRateCount == null ? '—' : `${winRateCount}%`, delta: cmpDelta(winRateCountDelta, { suffix: ' pp' }), help: 'Share of won quotes among all quotes that were won or lost in the selected period.', formula: 'Win rate by count = won quotes / (won quotes + lost quotes)' },
         ])}
       />
 
@@ -1735,7 +1732,7 @@ export function Analytics({ embeddedCompanyId = null }) {
       </InlineGrid>
 
       {/* §5.4 sales cycle */}
-      <ReportCard title="Median time to decision" help="Median time from quote creation until the quote was won or lost.">
+      <ReportCard title="Median time to decision" help="Typical time from when a quote comes in until it is won or lost." formula="Time to decision = median(won or lost date − created date)">
         <Text as="span" variant="headingLg">{formatTypicalTime(compareOnly ? null : decisionMedian)}</Text>
       </ReportCard>
 
@@ -1766,9 +1763,9 @@ export function Analytics({ embeddedCompanyId = null }) {
                     { title: <HeadHelp label="Quotes" help="Number of quotes for this company in the selected period." />, alignment: 'end' },
                     { title: <HeadHelp label="Quoted value" help="Total quoted value of this company's quotes." />, alignment: 'end' },
                     { title: <HeadHelp label="Open quote value" help="Quoted value of this company's quotes that are still open." />, alignment: 'end' },
-                    { title: <HeadHelp label="Win rate (count)" help="Share of won quotes among this company's quotes that were won or lost." />, alignment: 'end' },
-                    { title: <HeadHelp label="Win rate (value)" help="Share of won quote value among this company's quote value that was won or lost." />, alignment: 'end' },
-                    { title: <HeadHelp label="First response time" help="Median time from quote creation to the first time it was priced or sent, for this company." />, alignment: 'end' },
+                    { title: <HeadHelp label="Win rate (count)" help="Share of won quotes among this company's quotes that were won or lost." formula="Win rate (count) = won quotes / (won quotes + lost quotes)" />, alignment: 'end' },
+                    { title: <HeadHelp label="Win rate (value)" help="Share of won quote value among this company's quote value that was won or lost." formula="Win rate (value) = won value / (won value + lost value)" />, alignment: 'end' },
+                    { title: <HeadHelp label="First response time" help="Typical time from when this company's quotes come in until you first price or send them." formula="First response time = median(first priced or sent − created)" />, alignment: 'end' },
                   ]}
                   emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No RFQs in this scope.</Text></Box>}
                 >
@@ -1796,23 +1793,23 @@ export function Analytics({ embeddedCompanyId = null }) {
                 <Box borderColor="border" borderWidth="025" borderRadius="300" padding="400">
                   <BlockStack gap="150">
                     <HeadingHelp label="Win rate by discount" help="Shows how win rate changes at different discount levels from the Shopify price." />
-                    <MiniCompare plain items={cmpOnly([{ label: 'Average discount vs Shopify', value: avgListDiscount == null ? '—' : `${avgListDiscount.toFixed(1)}%`, sub: 'Weighted by the Shopify value of each quote.', help: 'Average discount from Shopify price, weighted by the Shopify value of each quote.' }])} />
+                    <MiniCompare plain items={cmpOnly([{ label: 'Average discount vs Shopify', value: avgListDiscount == null ? '—' : `${avgListDiscount.toFixed(1)}%`, sub: 'Weighted by the Shopify value of each quote.', help: 'How much lower your quoted prices are than your regular Shopify prices, on average. Bigger quotes count more.', formula: 'Average discount vs Shopify = (Shopify value − quoted value) / Shopify value' }])} />
                     <RankBars rows={blankRows(discountBuckets).map((b) => ({ key: b.name, name: b.name, sub: `${b.count} won or lost quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / maxDiscountRate) * 100, valueLabel: b.rate == null ? '—' : `${b.rate}% won` }))} empty="No won or lost quotes." />
                   </BlockStack>
                 </Box>
                 <Box borderColor="border" borderWidth="025" borderRadius="300" padding="400">
                   <BlockStack gap="150">
                     <HeadingHelp label="Quoted price vs company pricing" help="Shows how quoted prices compare with the pricing already assigned to each company." />
-                    <MiniCompare plain items={cmpOnly([{ label: 'Average difference from company pricing', value: avgPriceVariance == null ? '—' : `${avgPriceVariance > 0 ? '+' : ''}${avgPriceVariance.toFixed(1)}%`, sub: avgPriceVariance == null ? 'No quotes with company pricing in this period.' : `Quotes were ${Math.abs(avgPriceVariance).toFixed(1)}% ${avgPriceVariance >= 0 ? 'higher' : 'lower'} than assigned company prices on average.`, help: 'Average difference between quoted prices and assigned company prices, weighted by value. Positive means quoted prices were higher; negative means they were lower.' }])} />
+                    <MiniCompare plain items={cmpOnly([{ label: 'Average difference from company pricing', value: avgPriceVariance == null ? '—' : `${avgPriceVariance > 0 ? '+' : ''}${avgPriceVariance.toFixed(1)}%`, sub: avgPriceVariance == null ? 'No quotes with company pricing in this period.' : `Quotes were ${Math.abs(avgPriceVariance).toFixed(1)}% ${avgPriceVariance >= 0 ? 'higher' : 'lower'} than assigned company prices on average.`, help: 'How far your quoted prices are from the pricing you set for each company, on average. Bigger quotes count more. Positive means you quoted higher; negative means lower.', formula: 'Average difference from company pricing = (quoted value − company pricing value) / company pricing value' }])} />
                     <RankBars rows={blankRows(varianceBuckets).map((b) => ({ key: b.name, name: b.name, sub: `${b.count} won or lost quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / varianceMaxRate) * 100, valueLabel: b.rate == null ? '—' : `${b.rate}% won` }))} empty="No won or lost quotes with company pricing." />
                   </BlockStack>
                 </Box>
                 <Box borderColor="border" borderWidth="025" borderRadius="300" padding="400">
                   <BlockStack gap="150">
-                    <HeadingHelp label="Win rate with vs without company pricing" help="Compares win rate for quotes where the company had assigned pricing at quote time with quotes based on Shopify price only." />
+                    <HeadingHelp label="Win rate with vs without company pricing" help="Compares how often you win quotes for companies with their own pricing versus quotes based on your regular Shopify prices." />
                     <MiniCompare plain items={cmpOnly([
-                      { label: 'Company pricing', value: winWithPricing == null ? '—' : `${winWithPricing}%`, sub: `${withPricing.length} won or lost quote${withPricing.length === 1 ? '' : 's'}`, help: 'Win rate for quotes where the company had assigned pricing at quote time.' },
-                      { label: 'Shopify price only', value: winWithoutPricing == null ? '—' : `${winWithoutPricing}%`, sub: withoutPricing.length === 0 ? 'No won or lost quotes in this period.' : `${withoutPricing.length} won or lost quote${withoutPricing.length === 1 ? '' : 's'}`, help: 'Win rate for quotes where no company pricing was assigned and Shopify price was used as the reference.' },
+                      { label: 'Company pricing', value: winWithPricing == null ? '—' : `${winWithPricing}%`, sub: `${withPricing.length} won or lost quote${withPricing.length === 1 ? '' : 's'}`, help: 'Win rate for quotes to companies that had their own pricing when the quote was made.', formula: 'Win rate = won quotes / (won quotes + lost quotes)' },
+                      { label: 'Shopify price only', value: winWithoutPricing == null ? '—' : `${winWithoutPricing}%`, sub: withoutPricing.length === 0 ? 'No won or lost quotes in this period.' : `${withoutPricing.length} won or lost quote${withoutPricing.length === 1 ? '' : 's'}`, help: 'Win rate for quotes to companies without their own pricing, quoted from your regular Shopify prices.', formula: 'Win rate = won quotes / (won quotes + lost quotes)' },
                     ])} />
                   </BlockStack>
                 </Box>
@@ -1836,10 +1833,10 @@ export function Analytics({ embeddedCompanyId = null }) {
       {/* §6.1 — core economics, ALL at the price applied when the order was created */}
       <ScoreGrid
         items={cmpOnly([
-          { label: 'B2B price vs Shopify', value: b2bVsShopifyPct == null ? '—' : `${Math.abs(b2bVsShopifyPct).toFixed(1)}% ${b2bVsShopifyDelta >= 0 ? 'higher' : 'lower'}`, foot: `${money(Math.abs(b2bVsShopifyDelta))} ${b2bVsShopifyDelta >= 0 ? 'above' : 'below'} Shopify on B2B-priced lines`, help: 'How B2B prices compare with Shopify prices on lines where app pricing was applied. Uses the price resolved by the app before any additional discount or later adjustment.' },
-          { cmp: true, label: 'Margin at order creation', value: pct1N(appliedMargin), delta: cmpDelta(appliedMarginDelta, { suffix: ' pp' }), foot: appliedMarginCoverage != null && appliedMarginCoverage < 99.5 ? `${moneyN(appliedGP)} GP · ${Math.round(appliedMarginCoverage)}% cost coverage` : `${moneyN(appliedGP)} gross profit`, help: 'Gross margin based on the price on each line when the order was created. Later refunds, returns, or price adjustments are not included.' },
-          { cmp: true, label: 'Orders using B2B pricing', value: orderCountAll ? `${Math.round(b2bOrderShare)}%` : '—', delta: cmpDelta(b2bOrderShareDelta, { suffix: ' pp' }), foot: `${b2bOrderIds.size} of ${orderCountAll} order${orderCountAll === 1 ? '' : 's'}`, help: 'Share of orders with at least one line using pricing created from the app when the order was created.' },
-          { cmp: true, label: 'Order value below margin threshold', value: money(marginExceptionValue), delta: cmpDelta(marginExceptionDelta, { goodDown: true }), foot: `${marginExceptionLines.length} line${marginExceptionLines.length === 1 ? '' : 's'} below ${marginFloor}% margin${marginCoverage != null && marginCoverage < 99.5 ? ` · Based on ${Math.round(marginCoverage)}% cost coverage` : ''}`, help: 'Order value from lines whose margin at order creation is below the selected threshold. Lines without cost data are excluded.' },
+          { label: 'B2B price vs Shopify', value: b2bVsShopifyPct == null ? '—' : `${Math.abs(b2bVsShopifyPct).toFixed(1)}% ${b2bVsShopifyDelta >= 0 ? 'higher' : 'lower'}`, foot: `${money(Math.abs(b2bVsShopifyDelta))} ${b2bVsShopifyDelta >= 0 ? 'above' : 'below'} Shopify on B2B-priced lines`, help: 'How your B2B prices compare with your regular Shopify prices on items sold at B2B prices. Uses the B2B price itself, before any extra discount or later change.', formula: 'B2B price vs Shopify = (B2B price − Shopify price) / Shopify price' },
+          { cmp: true, label: 'Margin at order creation', value: pct1N(appliedMargin), delta: cmpDelta(appliedMarginDelta, { suffix: ' pp' }), foot: appliedMarginCoverage != null && appliedMarginCoverage < 99.5 ? `${moneyN(appliedGP)} GP · ${Math.round(appliedMarginCoverage)}% cost coverage` : `${moneyN(appliedGP)} gross profit`, help: 'The share of order value you keep as profit, based on prices and product costs when each order was placed. Later refunds, returns or price changes aren’t included.', formula: 'Margin at order creation = (order value − product cost) / order value' },
+          { cmp: true, label: 'Orders using B2B pricing', value: orderCountAll ? `${Math.round(b2bOrderShare)}%` : '—', delta: cmpDelta(b2bOrderShareDelta, { suffix: ' pp' }), foot: `${b2bOrderIds.size} of ${orderCountAll} order${orderCountAll === 1 ? '' : 's'}`, help: 'Share of orders with at least one item sold at your B2B pricing.', formula: 'Orders using B2B pricing = orders with a B2B-priced line / orders' },
+          { cmp: true, label: 'Order value below margin threshold', value: money(marginExceptionValue), delta: cmpDelta(marginExceptionDelta, { goodDown: true }), foot: `${marginExceptionLines.length} line${marginExceptionLines.length === 1 ? '' : 's'} below ${marginFloor}% margin${marginCoverage != null && marginCoverage < 99.5 ? ` · Based on ${Math.round(marginCoverage)}% cost coverage` : ''}`, help: 'Value of items sold below the profit margin you picked. Items without a product cost aren’t included.' },
         ])}
       />
       <InlineStack align="end" blockAlign="center" gap="200">
@@ -1853,17 +1850,17 @@ export function Analytics({ embeddedCompanyId = null }) {
       <MiniCompare
         items={cmpOnly([
           { label: 'Active pricing agreements', value: String(activePolicyCount), help: 'Number of B2B pricing agreements that are currently active.' },
-          { label: 'Companies with pricing', value: String(companiesWithPricing), help: 'Number of companies that currently have pricing created from the app assigned.' },
-          { cmp: true, label: 'Order value using B2B pricing', value: money(b2bValue), delta: cmpDelta(b2bValueDelta), sub: `${Math.round(b2bValueShare)}% of order value`, help: 'Order value from lines that used pricing created from the app when the order was created.' },
+          { label: 'Companies with pricing', value: String(companiesWithPricing), help: 'Number of companies that currently have B2B pricing from this app.' },
+          { cmp: true, label: 'Order value using B2B pricing', value: money(b2bValue), delta: cmpDelta(b2bValueDelta), sub: `${Math.round(b2bValueShare)}% of order value`, help: 'Value of items sold at your B2B pricing.' },
         ])}
       />
 
       {/* §6.3 provenance + margin by source */}
       <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
-        <ReportCard title="Order value by pricing source" help="Shows how order value is split between B2B pricing and other pricing, based on the price source used when each order line was created.">
+        <ReportCard title="Order value by pricing source" help="How your order value splits between items sold at B2B pricing and items sold at other prices.">
           <StackedBar segments={blankRows(provenanceSegments)} />
         </ReportCard>
-        <ReportCard title="Margin by pricing source" help="Compares margin at order creation between lines using B2B pricing and lines using other pricing. Later refunds, returns, and price adjustments are excluded.">
+        <ReportCard title="Margin by pricing source" help="Compares profit margin on items sold at B2B pricing with items sold at other prices, based on prices and costs when each order was placed. Later refunds, returns and price changes aren’t included.">
           <RankBars rows={blankRows(pricingSourceRows).map((s) => ({ key: s.name, name: s.name, sub: `${money(s.value)} order value · ${moneyN(s.gp)} gross profit${s.coverage != null && s.coverage < 99.5 ? ` · ${Math.round(s.coverage)}% cost coverage` : ''}`, value: s.margin ?? 0, width: s.margin == null ? 0 : (s.margin / pricingSourceMaxMargin) * 100, valueLabel: pctN(s.margin) }))} empty="No completed orders." />
         </ReportCard>
       </InlineGrid>
@@ -1875,13 +1872,13 @@ export function Analytics({ embeddedCompanyId = null }) {
           itemCount={blankRows(pricingUsage).length}
           selectable={false}
           headings={[
-            { title: <HeadHelp label="Pricing" help="The B2B pricing profile that set the price for these order lines." /> },
-            { title: <HeadHelp label="Order value" help="Total value of order lines that used this pricing when the order was created." />, alignment: 'end' },
-            { title: <HeadHelp label="Gross profit" help="Order value minus product cost for lines with known cost data." />, alignment: 'end' },
-            { title: <HeadHelp label="Margin" help="Gross profit as a share of order value for lines with known cost data." />, alignment: 'end' },
-            { title: <HeadHelp label="vs Shopify" help="How this pricing's resolved prices compare with Shopify prices across the lines it priced. Larger-value lines carry more weight." />, alignment: 'end' },
-            { title: <HeadHelp label="Orders" help="Number of distinct orders with at least one line using this pricing." />, alignment: 'end' },
-            { title: <HeadHelp label="Companies" help="Number of distinct companies with at least one order line using this pricing." />, alignment: 'end' },
+            { title: <HeadHelp label="Pricing" help="The B2B pricing that set the price for these items." /> },
+            { title: <HeadHelp label="Order value" help="Total value of items sold at this pricing." />, alignment: 'end' },
+            { title: <HeadHelp label="Gross profit" help="Order value minus product cost, for items that have a product cost." formula="Gross profit = order value − product cost" />, alignment: 'end' },
+            { title: <HeadHelp label="Margin" help="The share of order value you keep as profit, for items that have a product cost." formula="Margin = gross profit / order value" />, alignment: 'end' },
+            { title: <HeadHelp label="vs Shopify" help="How this pricing compares with your regular Shopify prices on the items it priced. Bigger orders count more." formula="vs Shopify = (B2B price − Shopify price) / Shopify price" />, alignment: 'end' },
+            { title: <HeadHelp label="Orders" help="Number of orders with at least one item sold at this pricing." />, alignment: 'end' },
+            { title: <HeadHelp label="Companies" help="Number of companies that bought at least one item at this pricing." />, alignment: 'end' },
           ]}
           emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No pricing usage on completed orders.</Text></Box>}
         >
@@ -1904,9 +1901,9 @@ export function Analytics({ embeddedCompanyId = null }) {
         <BlockStack gap="300">
           <MiniCompare
             items={cmpOnly([
-              { label: 'Tier reach rate', value: tierReachRate == null ? '—' : `${Math.round(tierReachRate)}%`, sub: `${tierReached} of ${tierEligible} eligible purchase${tierEligible === 1 ? '' : 's'} reached a tier`, help: 'Share of eligible purchases that reached the quantity required for a pricing tier.' },
+              { label: 'Tier reach rate', value: tierReachRate == null ? '—' : `${Math.round(tierReachRate)}%`, sub: `${tierReached} of ${tierEligible} eligible purchase${tierEligible === 1 ? '' : 's'} reached a tier`, help: 'Share of eligible purchases that reached the quantity required for a pricing tier.', formula: 'Tier reach rate = purchases that reached a tier / eligible purchases' },
               { label: 'Order value at reached tiers', value: money(tierOrderValue), help: 'Total order value from purchases that reached a quantity pricing tier.' },
-              { label: 'Average tier discount', value: tierAvgDiscount == null ? '—' : `${tierAvgDiscount.toFixed(1)}%`, help: 'Average discount on purchases that reached a quantity tier, weighted by the value before the tier discount.' },
+              { label: 'Average tier discount', value: tierAvgDiscount == null ? '—' : `${tierAvgDiscount.toFixed(1)}%`, help: 'Average discount buyers got when they bought enough to reach a quantity tier. Bigger purchases count more.', formula: 'Average tier discount = discount from tiers / value before tier discount' },
             ])}
           />
           <IndexTable
@@ -1914,12 +1911,12 @@ export function Analytics({ embeddedCompanyId = null }) {
             itemCount={blankRows(tierPolicies).length}
             selectable={false}
             headings={[
-              { title: <HeadHelp label="Quantity pricing" help="The quantity pricing rule being evaluated." /> },
+              { title: <HeadHelp label="Quantity pricing" help="The quantity pricing shown in this row." /> },
               { title: <HeadHelp label="Eligible purchases" help="Number of purchases where this quantity pricing tier could be reached." />, alignment: 'end' },
               { title: <HeadHelp label="Reached tier" help="Number of eligible purchases that reached the quantity required for this tier." />, alignment: 'end' },
-              { title: <HeadHelp label="Reach rate" help="Share of eligible purchases that reached this tier." />, alignment: 'end' },
+              { title: <HeadHelp label="Reach rate" help="Share of eligible purchases that reached this tier." formula="Reach rate = reached tier / eligible purchases" />, alignment: 'end' },
               { title: <HeadHelp label="Order value at tier" help="Total order value from purchases that reached this tier." />, alignment: 'end' },
-              { title: <HeadHelp label="Tier discount" help="Average discount received when this tier was reached, weighted by the value before the tier discount." />, alignment: 'end' },
+              { title: <HeadHelp label="Tier discount" help="Average discount buyers got when they reached this tier. Bigger purchases count more." formula="Tier discount = discount from tier / value before tier discount" />, alignment: 'end' },
             ]}
             emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No quantity-rule observations in this scope.</Text></Box>}
           >
@@ -1954,15 +1951,15 @@ export function Analytics({ embeddedCompanyId = null }) {
                 selectable={false}
                 headings={[
                   { title: <HeadHelp label="Date" help="When this pricing change took effect." /> },
-                  { title: <HeadHelp label="Company / pricing" help="The company or pricing profile affected by this change." /> },
-                  { title: <HeadHelp label="Pricing change" help="What changed in the pricing rule, shown as before → after." /> },
+                  { title: <HeadHelp label="Company / pricing" help="The company or pricing that changed." /> },
+                  { title: <HeadHelp label="Pricing change" help="What changed in the pricing, shown as before → after." /> },
                   { title: <HeadHelp label="Comparison period" help="Equal periods before and after the pricing change." />, alignment: 'end' },
                   { title: <HeadHelp label="Sales before" help="Total sales during the period before the pricing change." />, alignment: 'end' },
                   { title: <HeadHelp label="Sales after" help="Total sales during the period after the pricing change." />, alignment: 'end' },
-                  { title: <HeadHelp label="AOV before" help="Average order value during the period before the pricing change." />, alignment: 'end' },
-                  { title: <HeadHelp label="AOV after" help="Average order value during the period after the pricing change." />, alignment: 'end' },
-                  { title: <HeadHelp label="vs Shopify before" help="How B2B prices compared with Shopify prices before the change. Negative means B2B prices were lower." />, alignment: 'end' },
-                  { title: <HeadHelp label="vs Shopify after" help="How B2B prices compared with Shopify prices after the change. Negative means B2B prices were lower." />, alignment: 'end' },
+                  { title: <HeadHelp label="AOV before" help="Average order value during the period before the pricing change." formula="AOV before = sales before / orders before" />, alignment: 'end' },
+                  { title: <HeadHelp label="AOV after" help="Average order value during the period after the pricing change." formula="AOV after = sales after / orders after" />, alignment: 'end' },
+                  { title: <HeadHelp label="vs Shopify before" help="How B2B prices compared with Shopify prices before the change. Negative means B2B prices were lower." formula="vs Shopify before = (B2B price − Shopify price) / Shopify price" />, alignment: 'end' },
+                  { title: <HeadHelp label="vs Shopify after" help="How B2B prices compared with Shopify prices after the change. Negative means B2B prices were lower." formula="vs Shopify after = (B2B price − Shopify price) / Shopify price" />, alignment: 'end' },
                 ]}
                 emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No tracked pricing changes in this scope.</Text></Box>}
               >
