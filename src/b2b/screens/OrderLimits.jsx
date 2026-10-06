@@ -99,17 +99,20 @@ export function OrderLimits() {
           <Badge tone={isOff ? undefined : 'success'}>{isOff ? 'Inactive' : 'Active'}</Badge>
         </IndexTable.Cell>
         <IndexTable.Cell>
-          <InlineStack gap="100" align="end" wrap={false}>
-            <Tooltip content={isOff ? 'Turn on' : 'Turn off'}>
-              <Button icon={isOff ? ToggleOffIcon : ToggleOnIcon} variant="tertiary" accessibilityLabel={isOff ? 'Turn on' : 'Turn off'} onClick={() => dispatch({ type: 'TOGGLE_LIMIT_STATUS', id: l.id })} />
-            </Tooltip>
-            <Tooltip content="Edit limit">
-              <Button icon={EditIcon} variant="tertiary" accessibilityLabel="Edit limit" onClick={() => edit(l)} />
-            </Tooltip>
-            <Tooltip content="Delete limit">
-              <Button icon={DeleteIcon} variant="tertiary" tone="critical" accessibilityLabel="Delete limit" onClick={() => setConfirmDelete(l)} />
-            </Tooltip>
-          </InlineStack>
+          {/* Keep these clicks from also opening the row's limit. */}
+          <div onClick={(e) => e.stopPropagation()}>
+            <InlineStack gap="100" align="end" wrap={false}>
+              <Tooltip content={isOff ? 'Turn on' : 'Turn off'}>
+                <Button icon={isOff ? ToggleOffIcon : ToggleOnIcon} variant="tertiary" accessibilityLabel={isOff ? 'Turn on' : 'Turn off'} onClick={() => dispatch({ type: 'TOGGLE_LIMIT_STATUS', id: l.id })} />
+              </Tooltip>
+              <Tooltip content="Edit limit">
+                <Button icon={EditIcon} variant="tertiary" accessibilityLabel="Edit limit" onClick={() => edit(l)} />
+              </Tooltip>
+              <Tooltip content="Delete limit">
+                <Button icon={DeleteIcon} variant="tertiary" tone="critical" accessibilityLabel="Delete limit" onClick={() => setConfirmDelete(l)} />
+              </Tooltip>
+            </InlineStack>
+          </div>
         </IndexTable.Cell>
       </IndexTable.Row>
     );

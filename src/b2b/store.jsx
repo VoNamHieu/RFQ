@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer } from 'react';
-import { shopifyCompanyDirectory } from './data/directory.js';
+import { shopifyCompanies } from './data/directory.js';
 import { policyUsageCount, slotIds, hasOwnSlot } from './pricing.js';
 import { newRule, newBaseBuilder, newQuantityBuilder } from './builders.js';
 import { buildInitialState } from './initialState.js';
@@ -31,6 +31,16 @@ const locKey = (companyId, locationId) => `${companyId}::${locationId}`;
 // Does this location get the pricing — its own list if it has one, else the company's.
 // Read-only (slotIds / hasOwnSlot never normalize in place).
 const locationHolds = (c, l, kind, policyId) => (hasOwnSlot(l, kind) ? slotIds(l, kind) : slotIds(c, kind)).includes(policyId);
+
+// ----- Companies from Shopify -----
+// A Shopify location as it joins the app — it follows the company's pricing until
+// given its own.
+const fromShopifyLocation = (l) => ({
+  id: l.id, name: l.name, terms: l.terms, ordering: l.ordering, buyers: 0, lastOrder: '—',
+  pricing: { base: null, quantity: null },
+});
+// Names for the locations the Prototype card creates in Shopify.
+const NEW_LOCATION_NAMES = ['Hue', 'Nha Trang', 'Vung Tau', 'Bien Hoa', 'Quy Nhon', 'Vinh', 'Thai Nguyen', 'Da Lat', 'Buon Ma Thuot', 'Nam Dinh'];
 
 // Read a saved policy's current assignment back into builder fields, so opening it
 // shows who it serves and re-saving preserves that unless the merchant changes it.
@@ -508,59 +518,108 @@ function reducer(state, action) {
       return { ...state, db, assignMulti: null, toast: 'Pricing assigned' };
     }
     // ----- Add-company wizard -----
-    // Add a Shopify company: pick it, add it — pricing is set afterwards.
+    // Add Shopify companies: pick one or more, add them — pricing is set afterwards.
+    // selected: shopifyCompanyIds — each comes with all its locations not in the app yet.
     case 'OPEN_ADD_COMPANY':
-      return { ...state, addCompany: { shopifyId: null, search: '' } };
+      return { ...state, addCompany: { selected: [], search: '', autoAddLocations: false } };
     case 'ADD_COMPANY_PATCH':
       return { ...state, addCompany: { ...state.addCompany, ...action.patch } };
     case 'CLOSE_ADD_COMPANY':
       return { ...state, addCompany: null };
     case 'ADD_COMPANY_CONFIRM': {
       const ac = state.addCompany;
-      const shp = Object.values(shopifyCompanyDirectory).find((s) => s.id === ac.shopifyId);
-      if (!shp) return { ...state, addCompany: null };
+      const directory = shopifyCompanies(state.shopifyNewLocations);
       const db = clone(state.db);
-      // Only the ticked locations come in, each with the contacts at it (a contact
-      // with no location comes with the company). New locations follow the
-      // company's pricing until given their own.
-      const picked = (shp.locations || []).filter((l) => (ac.locationIds || []).includes(l.id));
-      if (!picked.length) return state;
-      const toLocation = (l) => ({
-        id: l.id, name: l.name, terms: l.terms, ordering: l.ordering, buyers: 0, lastOrder: '—',
-        pricing: { base: null, quantity: null },
+      // Every location not in the app yet comes in, each with the contacts at it (a
+      // contact with no location comes with the company). New locations follow the
+      // company's pricing until given their own. With auto-add ticked, locations
+      // created on the company in Shopify later join it too (SHOPIFY_LOCATION_CREATED);
+      // left unticked, a company that already auto-adds keeps doing so (it's turned
+      // off from its Locations tab).
+      const autoAdd = !!ac.autoAddLocations;
+      const added = []; // { id, isNew, n }
+      // The first company is added on its own (the picker allows one).
+      const ids = db.companies.length === 0 ? (ac.selected || []).slice(0, 1) : ac.selected || [];
+      ids.forEach((shopifyId) => {
+        const shp = directory.find((s) => s.id === shopifyId);
+        if (!shp) return;
+        // Already in the app (added before with some locations): add the rest to it.
+        const existing = db.companies.find((c) => c.shopifyCompanyId === shp.id || c.name === shp.name);
+        const has = (l) => (existing?.locations || []).some((x) => x.id === l.id || x.name === l.name);
+        const picked = (shp.locations || []).filter((l) => !has(l));
+        if (!picked.length) return;
+        const contactsAt = (names, withUnplaced) =>
+          (shp.contacts || [])
+            .filter((c) => names.includes(c.location) || (withUnplaced && !c.location))
+            .map((c) => ({ name: c.name, email: c.email, role: c.role, access: c.access, locations: c.location }));
+        if (existing) {
+          existing.locations = [...(existing.locations || []), ...picked.map(fromShopifyLocation)];
+          existing.autoAddLocations = !!existing.autoAddLocations || autoAdd;
+          const known = new Set((existing.contacts || []).map((c) => c.email));
+          existing.contacts = [...(existing.contacts || []), ...contactsAt(picked.map((l) => l.name), false).filter((c) => !known.has(c.email))];
+          added.push({ id: existing.id, isNew: false, n: picked.length });
+          return;
+        }
+        let seq = db.companies.length + 1;
+        while (db.companies.some((c) => c.id === `c${seq}`)) seq += 1;
+        const id = `c${seq}`;
+        const contacts = contactsAt(picked.map((l) => l.name), true);
+        db.companies.push({
+          id,
+          name: shp.name,
+          mainContact: contacts[0]?.name || '',
+          source: 'Company application',
+          pricing: { base: null, quantity: null },
+          revenue: 0,
+          locations: picked.map(fromShopifyLocation),
+          autoAddLocations: autoAdd,
+          contacts,
+          quotes: [],
+          exceptions: [],
+          activity: [],
+          orders: [],
+          shopifyCompanyId: shp.id,
+        });
+        added.push({ id, isNew: true, n: picked.length });
       });
-      const contactsAt = (names, withUnplaced) =>
-        (shp.contacts || [])
-          .filter((c) => names.includes(c.location) || (withUnplaced && !c.location))
-          .map((c) => ({ name: c.name, email: c.email, role: c.role, access: c.access, locations: c.location }));
-      // Already in the app (added before with some locations): add the rest to it.
-      const existing = db.companies.find((c) => c.shopifyCompanyId === shp.id || c.name === shp.name);
-      if (existing) {
-        existing.locations = [...(existing.locations || []), ...picked.map(toLocation)];
-        const known = new Set((existing.contacts || []).map((c) => c.email));
-        existing.contacts = [...(existing.contacts || []), ...contactsAt(picked.map((l) => l.name), false).filter((c) => !known.has(c.email))];
-        const n = picked.length;
-        return { ...state, db, addCompany: null, view: 'company', selectedCompany: existing.id, companyTab: 'locations', toast: `${n} location${n === 1 ? '' : 's'} added` };
+      if (!added.length) return state;
+      // One company: land on it — a new one on its Pricing tab (the empty states
+      // there offer Add base / quantity pricing), an existing one on Locations.
+      // Several: back to the list.
+      if (added.length === 1) {
+        const [a] = added;
+        const toast = a.isNew ? 'Company added' : `${a.n} location${a.n === 1 ? '' : 's'} added`;
+        return { ...state, db, addCompany: null, view: 'company', selectedCompany: a.id, companyTab: a.isNew ? 'pricing' : 'locations', toast };
       }
-      const id = `c${db.companies.length + 1}`;
-      const contacts = contactsAt(picked.map((l) => l.name), true);
-      db.companies.push({
-        id,
-        name: shp.name,
-        mainContact: contacts[0]?.name || '',
-        source: 'Company application',
-        pricing: { base: null, quantity: null },
-        revenue: 0,
-        locations: picked.map(toLocation),
-        contacts,
-        quotes: [],
-        exceptions: [],
-        activity: [],
-        orders: [],
-        shopifyCompanyId: ac.shopifyId,
-      });
-      // Land on its Pricing tab — the empty states there offer Add base / quantity pricing.
-      return { ...state, db, addCompany: null, view: 'company', selectedCompany: id, companyTab: 'pricing', toast: 'Company added' };
+      const nNew = added.filter((a) => a.isNew).length;
+      const toast = nNew === added.length ? `${nNew} companies added` : `${added.length} companies updated`;
+      return { ...state, db, addCompany: null, view: 'customers', toast };
+    }
+    case 'SET_AUTO_ADD_LOCATIONS': {
+      const db = clone(state.db);
+      const c = db.companies.find((x) => x.id === action.companyId);
+      if (c) c.autoAddLocations = action.on;
+      return { ...state, db, toast: action.on ? 'New Shopify locations will be added' : 'New Shopify locations won\'t be added' };
+    }
+    // Prototype: a location is created on a company in Shopify (the
+    // company_locations/create webhook). It joins the Shopify directory; if the
+    // company is in the app with auto-add on, it joins the company too.
+    case 'SHOPIFY_LOCATION_CREATED': {
+      const shp = shopifyCompanies(state.shopifyNewLocations).find((s) => s.id === action.shopifyId);
+      if (!shp) return state;
+      const created = state.shopifyNewLocations[shp.id] || [];
+      const taken = new Set((shp.locations || []).map((l) => l.name));
+      const name = NEW_LOCATION_NAMES.find((n) => !taken.has(n)) || `Location ${shp.locations.length + 1}`;
+      const loc = { id: `${shp.id}_new${created.length + 1}`, name, terms: 'Net 30', ordering: 'Buys directly' };
+      const shopifyNewLocations = { ...state.shopifyNewLocations, [shp.id]: [...created, loc] };
+      const linked = state.db.companies.find((c) => c.shopifyCompanyId === shp.id || c.name === shp.name);
+      if (!linked) return { ...state, shopifyNewLocations, toast: `${name} created in Shopify` };
+      if (!linked.autoAddLocations) return { ...state, shopifyNewLocations, toast: `${name} created in Shopify — auto-add is off for ${linked.name}` };
+      const db = clone(state.db);
+      const c = db.companies.find((x) => x.id === linked.id);
+      c.locations = [...(c.locations || []), fromShopifyLocation(loc)];
+      c.activity = [{ when: 'Today', what: `${name} added automatically from Shopify` }, ...(c.activity || [])];
+      return { ...state, db, shopifyNewLocations, toast: `${name} added to ${c.name}` };
     }
     case 'SET_LIST_FILTER':
       return { ...state, listFilter: action.filter };

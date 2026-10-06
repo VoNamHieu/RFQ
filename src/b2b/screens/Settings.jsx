@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Page, Card, Text, BlockStack, InlineGrid, InlineStack, Badge, Select, Checkbox, Divider, Box } from '@shopify/polaris';
+import { Page, Card, Text, BlockStack, InlineGrid, InlineStack, Badge, Select, Checkbox, Divider, Box, Button } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
+import { shopifyCompanyDirectory } from '../data/directory.js';
 import { resetDemo } from '../../shared/persistence.js';
 
 const APPROVED_APP = [
@@ -24,6 +25,7 @@ export function Settings() {
   const toast = (m) => dispatch({ type: 'TOAST', message: m });
   const [behaviors, setBehaviors] = useState({ approvedApp: 'standard', expiredPrice: 'shopify', acceptedQuote: 'order' });
   const setB = (k) => (v) => setBehaviors((p) => ({ ...p, [k]: v }));
+  const [newLocationCompany, setNewLocationCompany] = useState(shopifyCompanyDirectory[0]?.id || '');
 
   const connections = [
     { name: 'Shopify B2B', status: 'Connected', tone: 'success' },
@@ -113,6 +115,22 @@ export function Settings() {
               checked={state.emptyMode}
               onChange={(v) => dispatch({ type: 'SET_EMPTY_MODE', on: v })}
             />
+            <Divider />
+            {/* Stands in for a merchant adding a location to a company in Shopify admin. */}
+            <InlineStack gap="200" blockAlign="end" wrap={false}>
+              <Box width="100%">
+                <Select
+                  label="Add a location to a company in Shopify"
+                  options={shopifyCompanyDirectory.map((s) => ({ label: s.name, value: s.id }))}
+                  value={newLocationCompany}
+                  onChange={setNewLocationCompany}
+                />
+              </Box>
+              <Button onClick={() => dispatch({ type: 'SHOPIFY_LOCATION_CREATED', shopifyId: newLocationCompany })}>Add in Shopify</Button>
+            </InlineStack>
+            <Text as="p" tone="subdued" variant="bodySm">
+              A company with "Automatically add new locations" on gets the new location right away. Otherwise it waits in Add company.
+            </Text>
           </BlockStack>
         </Card>
       </BlockStack>

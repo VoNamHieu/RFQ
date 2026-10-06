@@ -3,12 +3,16 @@ import { ChoiceList, Box, BlockStack, Checkbox, Divider, Text } from '@shopify/p
 
 // Which of a company's locations get a pricing: all of them (company pricing —
 // locations added later get it too) or only some. `locationIds` null = all; an
-// array = the picked ones. Shared by the Assign modal and the pricing editor.
+// array = the picked ones. Ticking every location switches back to All locations.
+// Shared by the Assign modal and the pricing editor.
 export function LocationScopePicker({ company, locationIds, onChange, title = 'Apply to', titleHidden = false }) {
   const locations = company?.locations || [];
   const some = Array.isArray(locationIds);
   const picked = some ? locationIds : [];
-  const toggle = (id, on) => onChange(on ? [...new Set([...picked, id])] : picked.filter((x) => x !== id));
+  const toggle = (id, on) => {
+    const next = on ? [...new Set([...picked, id])] : picked.filter((x) => x !== id);
+    onChange(locations.length > 0 && locations.every((l) => next.includes(l.id)) ? null : next);
+  };
 
   const list = (
     <BlockStack gap="150">

@@ -43,7 +43,8 @@ export function makeBaseState() {
     assignMulti: null, // { policyId } — assign one policy to many companies/customers/tags/global
     limitEditor: null, // { draft, returnTo } — the order-limit editor (see limits.js)
     agreementEditor: null, // { draft, returnTo } — the agreement editor (see agreements.js)
-    addCompany: null, // { shopifyId, search } — add-company picker
+    addCompany: null, // { selected: shopifyCompanyIds, search, autoAddLocations } — add-company picker
+    shopifyNewLocations: {}, // { [shopifyCompanyId]: [location] } — created in Shopify this session (Settings → Prototype)
     emptyMode: false, // "show the app with no data" (fresh-install simulation)
     emptyBackup: null,
     // The seeded registrations came in through the form, so it already exists. It starts

@@ -69,3 +69,8 @@ export const shopifyCompanyDirectory = [
     ]
   }
 ];
+
+// The directory as Shopify has it now: each company plus the locations created on
+// it in Shopify since the app loaded (state.shopifyNewLocations, keyed by company id).
+export const shopifyCompanies = (newLocations = {}) =>
+  shopifyCompanyDirectory.map((s) => (newLocations[s.id]?.length ? { ...s, locations: [...(s.locations || []), ...newLocations[s.id]] } : s));

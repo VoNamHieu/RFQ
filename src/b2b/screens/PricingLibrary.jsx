@@ -159,17 +159,20 @@ export function PricingLibrary() {
         <IndexTable.Cell><Badge tone={st.tone}>{st.label}</Badge></IndexTable.Cell>
         <IndexTable.Cell><Text as="span" variant="bodyMd">{p.priority ?? 0}</Text></IndexTable.Cell>
         <IndexTable.Cell>
-          <InlineStack gap="100" align="end" wrap={false}>
-            <Tooltip content={isOff ? 'Turn on' : 'Turn off'}>
-              <Button icon={isOff ? ToggleOffIcon : ToggleOnIcon} variant="tertiary" accessibilityLabel={isOff ? 'Turn on' : 'Turn off'} onClick={() => dispatch({ type: 'TOGGLE_POLICY_STATUS', id: p.id })} />
-            </Tooltip>
-            <Tooltip content="Edit pricing">
-              <Button icon={EditIcon} variant="tertiary" accessibilityLabel="Edit pricing" onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: p, context: { mode: 'edit' } })} />
-            </Tooltip>
-            <Tooltip content="Delete pricing">
-              <Button icon={DeleteIcon} variant="tertiary" tone="critical" accessibilityLabel="Delete pricing" onClick={() => setConfirmDelete(p)} />
-            </Tooltip>
-          </InlineStack>
+          {/* Keep these clicks from also opening the row's pricing. */}
+          <div onClick={(e) => e.stopPropagation()}>
+            <InlineStack gap="100" align="end" wrap={false}>
+              <Tooltip content={isOff ? 'Turn on' : 'Turn off'}>
+                <Button icon={isOff ? ToggleOffIcon : ToggleOnIcon} variant="tertiary" accessibilityLabel={isOff ? 'Turn on' : 'Turn off'} onClick={() => dispatch({ type: 'TOGGLE_POLICY_STATUS', id: p.id })} />
+              </Tooltip>
+              <Tooltip content="Edit pricing">
+                <Button icon={EditIcon} variant="tertiary" accessibilityLabel="Edit pricing" onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: p, context: { mode: 'edit' } })} />
+              </Tooltip>
+              <Tooltip content="Delete pricing">
+                <Button icon={DeleteIcon} variant="tertiary" tone="critical" accessibilityLabel="Delete pricing" onClick={() => setConfirmDelete(p)} />
+              </Tooltip>
+            </InlineStack>
+          </div>
         </IndexTable.Cell>
       </IndexTable.Row>
     );

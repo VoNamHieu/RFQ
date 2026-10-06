@@ -142,14 +142,17 @@ export function CompaniesList() {
           </Text>
         </IndexTable.Cell>
         <IndexTable.Cell>
-          <InlineStack gap="100" align="end" wrap={false}>
-            <Tooltip content="Edit">
-              <Button icon={EditIcon} variant="tertiary" accessibilityLabel="Edit company" onClick={() => dispatch({ type: 'OPEN_COMPANY', id: c.id })} />
-            </Tooltip>
-            <Tooltip content="Delete">
-              <Button icon={DeleteIcon} variant="tertiary" tone="critical" accessibilityLabel="Delete company" onClick={() => setConfirmDelete(c)} />
-            </Tooltip>
-          </InlineStack>
+          {/* Keep these clicks from also opening the row's company. */}
+          <div onClick={(e) => e.stopPropagation()}>
+            <InlineStack gap="100" align="end" wrap={false}>
+              <Tooltip content="Edit">
+                <Button icon={EditIcon} variant="tertiary" accessibilityLabel="Edit company" onClick={() => dispatch({ type: 'OPEN_COMPANY', id: c.id })} />
+              </Tooltip>
+              <Tooltip content="Delete">
+                <Button icon={DeleteIcon} variant="tertiary" tone="critical" accessibilityLabel="Delete company" onClick={() => setConfirmDelete(c)} />
+              </Tooltip>
+            </InlineStack>
+          </div>
         </IndexTable.Cell>
       </IndexTable.Row>
     );

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, IndexTable, Badge, Text, BlockStack, Box, InlineStack, Button, Modal, TextField, Select, Tooltip } from '@shopify/polaris';
+import { Card, IndexTable, Badge, Text, BlockStack, Box, InlineStack, Button, Modal, TextField, Select, Tooltip, Checkbox } from '@shopify/polaris';
 import { PlusIcon } from '@shopify/polaris-icons';
 import { useStore } from '../../store.jsx';
 import { locationPricingEntries } from '../../pricing.js';
@@ -71,6 +71,14 @@ export function LocationsTab({ company }) {
             Add location
           </Button>
         </InlineStack>
+        <Box paddingBlock="200">
+          <Checkbox
+            label="Automatically add new locations"
+            helpText="Locations added to this company in Shopify are added here too and use the company's pricing."
+            checked={!!company.autoAddLocations}
+            onChange={(on) => dispatch({ type: 'SET_AUTO_ADD_LOCATIONS', companyId: company.id, on })}
+          />
+        </Box>
       </Box>
       <IndexTable
         resourceName={{ singular: 'location', plural: 'locations' }}
