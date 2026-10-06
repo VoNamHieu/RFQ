@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { DEMO_ACCOUNTS, BUSINESS_SUMMARY, QUOTE_STATUS } from '../data/products.js';
+import { DEMO_ACCOUNTS, BUSINESS_SUMMARY, QUOTE_STATUS, agreementForSession } from '../data/products.js';
 import { ApplyForm } from '../components/ApplyForm.jsx';
 import { readRegistrationForm } from '../../shared/registrationForm.js';
 import { money } from '../utils.js';
@@ -136,6 +136,7 @@ function AccountLogin({ dispatch }) {
 // terms that apply, and the last orders they can turn into a quote request.
 function Portal({ session, company, application, go, dispatch }) {
   const s = BUSINESS_SUMMARY;
+  const agreement = agreementForSession(session);
   const orders = session.orders || [];
   const terms = [
     { label: 'Pricing', value: session.priceListName || s.priceListName },
@@ -176,6 +177,31 @@ function Portal({ session, company, application, go, dispatch }) {
         </section>
       ) : (
         <BusinessRegistration application={application} go={go} />
+      )}
+
+      {/* The company's agreement with the merchant (B2B app → Agreements), read-only. */}
+      {company && agreement && (
+        <section className="acct-panel">
+          <div className="acct-panel-head">
+            <h3>Agreement</h3>
+            <span className="badge badge--green">Active</span>
+          </div>
+          <p className="muted">{`${agreement.number} · ${agreement.name} · version ${agreement.version} · since ${agreement.since}`}</p>
+          <div className="acct-terms">
+            {agreement.pricing && (
+              <div className="acct-term">
+                <span className="muted">Pricing</span>
+                <strong>{agreement.pricing}</strong>
+              </div>
+            )}
+            {agreement.limits.length > 0 && (
+              <div className="acct-term">
+                <span className="muted">Order limits</span>
+                {agreement.limits.map((t) => <strong key={t}>{t}</strong>)}
+              </div>
+            )}
+          </div>
+        </section>
       )}
 
       <section className="acct-panel">

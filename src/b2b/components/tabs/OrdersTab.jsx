@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { Card, IndexTable, Badge, Text, BlockStack, Box, InlineStack, Select } from '@shopify/polaris';
 import { EmptyBlock } from '../../../shared/EmptyBlock.jsx';
 import { money } from '../../format.js';
+import { useStore } from '../../store.jsx';
+import { versionFlags } from '../../../shared/versions.js';
+import { isHeld, heldReason, heldFirst, HeldOrderActions } from '../HeldOrders.jsx';
 
 const STATUS_TONE = {
   Fulfilled: 'success',
@@ -10,15 +13,20 @@ const STATUS_TONE = {
   Blocked: 'critical',
   Cancelled: 'critical',
   'Draft order': 'info',
+  Unfulfilled: 'attention',
+  Declined: 'critical',
 };
 const orderTone = (s) => STATUS_TONE[s]; // neutral tone for unmapped statuses
 
 export function OrdersTab({ company }) {
+  const { state } = useStore();
   const [loc, setLoc] = useState('all');
+  // Orders held by a review threshold sit on top, with Approve / Decline (order limits).
+  const reviewOrders = versionFlags().orderLimits;
   const allOrders = company.orders || [];
   const orders = (loc === 'all' ? allOrders : allOrders.filter((o) => o.location === loc))
     .slice()
-    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    .sort(reviewOrders ? heldFirst : (a, b) => String(b.date).localeCompare(String(a.date)));
   const locationNames = [...new Set(allOrders.map((o) => o.location).filter(Boolean))];
 
   if (allOrders.length === 0) {
@@ -41,6 +49,7 @@ export function OrdersTab({ company }) {
               {o.po}
             </Text>
           ) : null}
+          {reviewOrders && isHeld(o) ? <Text as="span" tone="caution" variant="bodySm">{heldReason(o, state.db)}</Text> : null}
         </BlockStack>
       </IndexTable.Cell>
       <IndexTable.Cell>{o.location || '—'}</IndexTable.Cell>
@@ -54,6 +63,11 @@ export function OrdersTab({ company }) {
       <IndexTable.Cell>
         <Badge tone={orderTone(o.status)}>{o.status}</Badge>
       </IndexTable.Cell>
+      {reviewOrders ? (
+        <IndexTable.Cell>
+          {isHeld(o) ? <InlineStack align="end"><HeldOrderActions companyId={company.id} order={o} /></InlineStack> : null}
+        </IndexTable.Cell>
+      ) : null}
     </IndexTable.Row>
   ));
 
@@ -86,6 +100,7 @@ export function OrdersTab({ company }) {
           { title: 'Date' },
           { title: 'Total', alignment: 'end' },
           { title: 'Status' },
+          ...(reviewOrders ? [{ title: '', alignment: 'end' }] : []),
         ]}
       >
         {rows}

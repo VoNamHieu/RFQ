@@ -19,6 +19,7 @@ import {
   Popover,
   ActionList,
   Tooltip,
+  Banner,
 } from '@shopify/polaris';
 import { EditIcon, XIcon, PlusIcon, XCircleIcon, ExchangeIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
@@ -26,6 +27,9 @@ import { locationPricingEntries, scopeLabel, policyStatus } from '../pricing.js'
 import { money } from '../format.js';
 
 import { AssignBuyerModal, GeneralModal, ShippingModal, PAYMENT_TERM_OPTIONS, TAX_SETTINGS, COUNTRY_NAMES } from '../components/LocationModals.jsx';
+import { LocationLimitsCard } from '../components/LocationLimitsCard.jsx';
+import { isHeld, heldReason, heldFirst, HeldOrderActions } from '../components/HeldOrders.jsx';
+import { versionFlags } from '../../shared/versions.js';
 
 const ORDER_TONE = {
   Fulfilled: 'success',
@@ -33,6 +37,8 @@ const ORDER_TONE = {
   'Needs review': 'warning',
   Cancelled: 'critical',
   'Draft order': 'info',
+  Unfulfilled: 'attention',
+  Declined: 'critical',
 };
 const orderTone = (s) => ORDER_TONE[s];
 const QUOTE_TONE = { 'New Received': 'attention', Read: undefined, Updated: 'info', 'Deal Closed': 'success', 'Deal Rejected': 'critical' };
@@ -86,10 +92,12 @@ export function LocationDetail() {
   // Scheduled / Inactive ones listed too (with their status), so each can be edited or removed.
   const { bases, quantities } = locationPricingEntries(company, location, policies, { includeInactive: true });
   const buyers = (company.contacts || []).filter((c) => c.locations === location.name);
+  // Orders held by a review threshold sit on top, with Approve / Decline (order limits).
+  const reviewOrders = versionFlags().orderLimits;
   const locOrders = (company.orders || [])
     .filter((o) => o.location === location.name)
     .slice()
-    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    .sort(reviewOrders ? heldFirst : (a, b) => String(b.date).localeCompare(String(a.date)));
   const totalSales = locOrders.reduce((s, o) => s + (o.amount || 0), 0);
   const locQuotes = (state.db.quotes || [])
     .filter((q) => q.company === company.id && q.location === location.name)
@@ -309,6 +317,17 @@ export function LocationDetail() {
                   <Button size="slim" onClick={() => dispatch({ type: 'OPEN_COMPANY', id: company.id, tab: 'orders' })}>View all company orders</Button>
                 </InlineStack>
               </Box>
+              {/* Held by a review threshold: the decision sits above the list (this column is too narrow for a row of buttons). */}
+              {reviewOrders && locOrders.filter(isHeld).map((o) => (
+                <Box key={o.id} paddingInline="300" paddingBlockEnd="300">
+                  <Banner tone="warning" title={`Order ${o.id} for ${money(o.amount)} is waiting for your review`}>
+                    <BlockStack gap="200">
+                      <Text as="p">{`${heldReason(o, state.db)}. ${o.buyer} couldn’t check out, so it stays a draft order until you decide.`}</Text>
+                      <InlineStack align="start"><HeldOrderActions companyId={company.id} order={o} /></InlineStack>
+                    </BlockStack>
+                  </Banner>
+                </Box>
+              ))}
               <IndexTable
                 resourceName={{ singular: 'order', plural: 'orders' }}
                 itemCount={pageOrders.length}
@@ -333,6 +352,7 @@ export function LocationDetail() {
                       <BlockStack gap="050">
                         <Text as="span" variant="bodyMd" fontWeight="medium">{o.id}</Text>
                         {o.po && o.po !== 'None' ? <Text as="span" tone="subdued" variant="bodySm">{o.po}</Text> : null}
+                        {reviewOrders && isHeld(o) ? <Text as="span" tone="caution" variant="bodySm">{heldReason(o, state.db)}</Text> : null}
                       </BlockStack>
                     </IndexTable.Cell>
                     <IndexTable.Cell>{o.buyer}</IndexTable.Cell>
@@ -448,6 +468,9 @@ export function LocationDetail() {
                 />
               </BlockStack>
             </Card>
+
+            {/* Order limits that reach this location, next to Shopify's own checkout settings */}
+            {versionFlags().orderLimits && <LocationLimitsCard company={company} location={location} />}
           </BlockStack>
         </Layout.Section>
       </Layout>

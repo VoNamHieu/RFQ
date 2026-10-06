@@ -3,7 +3,7 @@
 // in priority order (a scoped base that does not cover a product falls through to
 // the next), then its quantity pricings the same way; the first price wins. Status, usage and a
 // company's "needs a price" are all DERIVED from the data, never stored.
-import { COLLECTIONS } from './data/constants.js';
+import { COLLECTIONS, CATALOG_PRICES } from './data/constants.js';
 
 // Demo "today" anchor for dated validity (legacy TODAY = new Date('2026-07-28')).
 // Dates are plain YYYY-MM-DD, so lexical string comparison matches Date order.
@@ -58,6 +58,45 @@ export function companyBaseEntries(company, policies) {
 }
 export function companyQuantityEntries(company, policies) {
   return slotEntries(company, policies, 'quantity');
+}
+// Which of a company's locations get a pricing: a location on its own list
+// checks that list, the rest follow the company's. 'All locations' when every
+// one does (or the company has none and holds it), else their names.
+export function pricingLocationsLabel(company, kind, policyId) {
+  const locs = company.locations || [];
+  if (!locs.length) return slotIds(company, kind).includes(policyId) ? 'All locations' : 'No locations';
+  const got = locs.filter((l) => (hasOwnSlot(l, kind) ? slotIds(l, kind) : slotIds(company, kind)).includes(policyId));
+  if (got.length === locs.length) return 'All locations';
+  if (!got.length) return 'No locations';
+  const names = got.map((l) => l.name);
+  return names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ');
+}
+
+// A location's catalog: the products its buyers can buy, and the fixed prices its
+// price list sets (by variant id). `catalog` names a collection; a location
+// without one gets every product at its Shopify price.
+export function locationCatalog(location, products) {
+  const name = location?.catalog || null;
+  return {
+    name: name || 'All products',
+    skus: name ? COLLECTIONS[name] || [] : (products || []).map((p) => p.sku),
+    prices: (name && CATALOG_PRICES[name]) || {},
+  };
+}
+
+// Pricing only some of a company's locations get — on their own lists, not the
+// company's — each with those locations, so the company page lists it too.
+export function locationOnlyEntries(company, policies, kind) {
+  const onCompany = new Set(slotIds(company, kind));
+  const byId = new Map();
+  (company.locations || []).forEach((l) => {
+    slotEntries(l, policies, kind).forEach((e) => {
+      if (onCompany.has(e.id)) return;
+      if (!byId.has(e.id)) byId.set(e.id, { ...e, locations: [] });
+      byId.get(e.id).locations.push(l);
+    });
+  });
+  return [...byId.values()];
 }
 // Does a location hold its OWN list of a kind? Any list — even an empty one (the
 // location has none of that kind) — replaces the company's; null/missing inherits.

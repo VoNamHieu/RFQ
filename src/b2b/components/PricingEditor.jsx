@@ -33,7 +33,7 @@ import { money } from '../format.js';
 import { ActiveDatesCard, ProductScopeCard, VolumeBasisCard, ProductOverridesCard } from './pricingEditorCards.jsx';
 import { PricePreviewDialog } from './PricePreviewDialog.jsx';
 import { AssignmentCard } from './AssignmentCard.jsx';
-import { policyUsageCount, policyUsageDetail, companyBaseEntries, companyQuantityEntries, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, ruleValuesSummary } from '../pricing.js';
+import { policyUsageCount, policyUsageDetail, companyBaseEntries, companyQuantityEntries, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, ruleValuesSummary, locationCatalog } from '../pricing.js';
 
 // Pricing editor (spec §2.6). Open whenever state.builder is set. Rendered as an
 // in-frame page when opened from the Pricing screen (asPage), and as a full-screen
@@ -45,6 +45,8 @@ export function PricingEditor({ asPage = false }) {
   const [sideConfirm, setSideConfirm] = useState(false);
   // Save dialog for a shared pricing: a separate copy for here, unless ticked to apply to all.
   const [applyAll, setApplyAll] = useState(false);
+  // Preview by location, from the several-locations note under "Who this pricing serves".
+  const [catalogPreview, setCatalogPreview] = useState(false);
   const builder = state.builder;
   // Overlay mode only: lock body scroll and close on Escape while open.
   useEffect(() => {
@@ -126,6 +128,26 @@ export function PricingEditor({ asPage = false }) {
   const showCompanyLocations = isNew && !!scopeCompany && !scopeLoc && (scopeCompany.locations || []).length > 1;
   const scopeLocationIds = showCompanyLocations ? state.editorContext?.locationIds ?? null : null;
   const noLocationPicked = Array.isArray(scopeLocationIds) && scopeLocationIds.length === 0;
+
+  // Every location this pricing reaches: the picks in "Who this pricing serves"
+  // (library), or the company / location it was opened from. Overrides can be
+  // viewed by these locations.
+  const reach = builder.audienceType === 'd2c'
+    ? []
+    : showAssignment
+      ? state.db.companies.flatMap((c) =>
+          (c.locations || [])
+            .filter((l) => (builder.b2bCompanyIds || []).includes(c.id) || (builder.b2bLocationKeys || []).includes(`${c.id}::${l.id}`))
+            .map((l) => ({ company: c, location: l })))
+      : scopeLoc
+        ? [{ company: scopeCompany, location: scopeLoc }]
+        : scopeCompany
+          ? (scopeCompany.locations || []).filter((l) => !scopeLocationIds || scopeLocationIds.includes(l.id)).map((l) => ({ company: scopeCompany, location: l }))
+          : [];
+  // Picked in "Who this pricing serves" and more than one: catalogs can differ, so
+  // a note says how that plays out and offers a by-location preview.
+  const targets = !isQuantity && (showAssignment || showCompanyLocations) ? reach : [];
+  const catalogNote = targets.length > 1 ? <MultiCatalogNote onPreview={() => setCatalogPreview(true)} /> : null;
 
   // Switched Company-based B2B ↔ D2C Wholesale on a pricing that's assigned on its
   // saved side: saving clears that side, so confirm first ("Change who this pricing serves?").
@@ -228,7 +250,16 @@ export function PricingEditor({ asPage = false }) {
                     </BlockStack>
                   </Card>
 
-                  {showAssignment && <AssignmentCard builder={builder} patch={patch} db={state.db} isNew={isNew} />}
+                  {showAssignment && <AssignmentCard builder={builder} patch={patch} db={state.db} isNew={isNew} footer={catalogNote} />}
+                  {/* Who it serves comes before how it prices, in both flows. */}
+                  {showCompanyLocations && (
+                    <CompanyLocationsCard
+                      company={scopeCompany}
+                      locationIds={scopeLocationIds}
+                      onChange={(ids) => dispatch({ type: 'EDITOR_CONTEXT_PATCH', patch: { locationIds: ids } })}
+                      footer={catalogNote}
+                    />
+                  )}
 
                   {isQuantity ? (
                     <>
@@ -245,16 +276,8 @@ export function PricingEditor({ asPage = false }) {
                       {!versionFlags().multiBase && <ProductScopeCard builder={builder} patch={patch} products={state.db.products} />}
                       {!versionFlags().multiBase && <DefaultPriceCard />}
                       <RuleBuilderCard />
-                      <ProductOverridesCard builder={builder} patch={patch} products={state.db.products} />
+                      <ProductOverridesCard builder={builder} patch={patch} products={state.db.products} locations={reach} />
                     </>
-                  )}
-
-                  {showCompanyLocations && (
-                    <CompanyLocationsCard
-                      company={scopeCompany}
-                      locationIds={scopeLocationIds}
-                      onChange={(ids) => dispatch({ type: 'EDITOR_CONTEXT_PATCH', patch: { locationIds: ids } })}
-                    />
                   )}
 
                   {/* Scheduling last, matching the god-file editor order. */}
@@ -351,6 +374,9 @@ export function PricingEditor({ asPage = false }) {
             </BlockStack>
           </Modal.Section>
         </Modal>
+      )}
+      {catalogPreview && targets.length > 1 && (
+        <CatalogPricePreview builder={builder} products={state.db.products} targets={targets} onClose={() => setCatalogPreview(false)} />
       )}
       {asPage ? (
         <Page
@@ -512,10 +538,66 @@ function BuilderPricePreview({ builder, products, onClose }) {
   );
 }
 
+// Shown under "Who this pricing serves" when a base pricing reaches several
+// locations: each can have its own catalog, and the pricing only reaches the
+// products in it. Preview checks one location at a time.
+function MultiCatalogNote({ onPreview }) {
+  return (
+    <Banner tone="info" action={{ content: 'Preview by location', onAction: onPreview }}>
+      <Text as="p">
+        Multiple locations can have different catalogs. This base pricing is applied per catalog, so selected products that aren’t in a location’s catalog won’t get the price you set up.
+      </Text>
+    </Banner>
+  );
+}
+
+// What this base pricing (unsaved edits included) gives at one of the locations
+// it reaches, picked from the toolbar. Products outside that location's catalog
+// don't get it — they show "—".
+function CatalogPricePreview({ builder, products, targets, onClose }) {
+  const keyOf = (t) => `${t.company.id}::${t.location.id}`;
+  const [key, setKey] = useState(keyOf(targets[0]));
+  const target = targets.find((t) => keyOf(t) === key) || targets[0];
+  const catalog = locationCatalog(target.location, products);
+  const severalCompanies = new Set(targets.map((t) => t.company.id)).size > 1;
+  const entries = products
+    .map((p) => ({ p, bd: policyPriceBreakdown(builder, p) }))
+    .filter(({ bd }) => bd?.inScope)
+    .map(({ p, bd }) =>
+      catalog.skus.includes(p.sku)
+        ? { product: p, shopify: bd.shopify, final: bd.final, decidedBy: 'This pricing' }
+        : { product: p, shopify: bd.shopify, final: null, decidedBy: 'Not in catalog', highlight: true });
+  const outside = entries.filter((e) => e.final == null).length;
+  return (
+    <PricePreviewDialog
+      title={`Preview prices · ${builder.name || 'This pricing'}`}
+      description={`${target.location.name}${severalCompanies ? ` (${target.company.name})` : ''} uses the ${catalog.name} catalog. ${
+        outside
+          ? `${outside} of the products this pricing covers ${outside === 1 ? 'isn’t' : 'aren’t'} in it, so ${outside === 1 ? 'it doesn’t' : 'they don’t'} get this price there.`
+          : 'Every product this pricing covers is in it.'
+      }`}
+      entries={entries}
+      emptyLabel="This pricing covers no products yet."
+      toolbar={
+        <div style={{ width: 340, flex: '0 0 auto' }}>
+          <Select
+            label="Location"
+            labelInline
+            options={targets.map((t) => ({ label: severalCompanies ? `${t.location.name} · ${t.company.name}` : t.location.name, value: keyOf(t) }))}
+            value={key}
+            onChange={setKey}
+          />
+        </div>
+      }
+      onClose={onClose}
+    />
+  );
+}
+
 // Settings summary (god-file asideSummary): an at-a-glance recap.
 // "Who this pricing serves" when creating from a company page: which of the
 // company's locations get it (see LocationScopePicker).
-function CompanyLocationsCard({ company, locationIds, onChange }) {
+function CompanyLocationsCard({ company, locationIds, onChange, footer = null }) {
   return (
     <Card>
       <BlockStack gap="300">
@@ -528,6 +610,7 @@ function CompanyLocationsCard({ company, locationIds, onChange }) {
           </Text>
         </BlockStack>
         <LocationScopePicker company={company} locationIds={locationIds} onChange={onChange} titleHidden />
+        {footer}
       </BlockStack>
     </Card>
   );

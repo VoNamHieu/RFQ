@@ -1,20 +1,11 @@
-// Storefront product model. Adapted from the SHARED admin catalog (rfq/data/catalog.js)
-// so the storefront, the RFQ app and the B2B app all speak about the same SKUs and
-// prices. We add the customer-facing bits Dawn needs (vendor, description, image)
-// that the admin catalog doesn't carry.
-import { RFQ_CATALOG } from '../../rfq/data/catalog.js';
-
-const VENDOR = '221 Baker';
-
-// Extra storefront copy per SKU (admin catalog has none).
-const COPY = {
-  'FIL-STD': { tagline: 'Standard-flow industrial filter', description: 'A dependable standard-flow filter for general industrial lines. Rated for continuous operation with an easy drop-in cartridge for fast maintenance.' },
-  'FIL-XL':  { tagline: 'High-capacity industrial filter', description: 'Our XL filter doubles the media area for high-throughput systems. Choose the heavy-duty variant for abrasive or high-pressure environments.' },
-  'SEA-30':  { tagline: 'Fast-cure sealant, 300 ml', description: 'A 300 ml cartridge of fast-curing industrial sealant. Bonds to metal, concrete and most plastics with a flexible, weatherproof finish.' },
-  'HOS-12':  { tagline: 'Reinforced hose', description: 'Braided, reinforced hose built for pressure and abrasion. Available in 12, 18 and 24 metre lengths for fixed and mobile installations.' },
-  'VLV-40':  { tagline: '40 mm ball valve', description: 'A full-bore 40 mm ball valve with a corrosion-resistant body and quarter-turn lever. Rated for water, oil and compressed air.' },
-  'MCFC-TRAINING-JACKET': { tagline: 'Official team training jacket', description: 'The official Manchester City team training jacket. Moisture-wicking technical fabric with an embroidered crest. Team and bulk orders available on request.' },
-};
+// Storefront product model, built from the REAL catalog of the dev store
+// (221jumpstreet.myshopify.com). shopifyProducts.json is pulled from the Admin API
+// with `node scripts/pull-products.mjs` — re-run it to refresh. `sku` stays the
+// product key the cart, product page and quote requests use: the first variant's
+// SKU, or the handle when the store has none. `list` is the D2C price.
+import storeCatalog from './shopifyProducts.json';
+import { newLimit, productRuleFor, cartProblems, limitLevel, limitSummary } from '../../b2b/limits.js';
+import { money } from '../utils.js';
 
 // A soft, always-rendering placeholder image per product (Dawn ships gray
 // placeholders too). Self-contained SVG data URI — no external asset to load.
@@ -33,28 +24,87 @@ function placeholder(title, sku) {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
-export const PRODUCTS = RFQ_CATALOG.map((p) => ({
-  sku: p.sku,
-  handle: p.sku.toLowerCase(),
-  title: p.title,
-  vendor: VENDOR,
-  list: p.list,
-  stock: p.stock,
-  variants: p.variants,
-  image: placeholder(p.title, p.sku),
-  ...(COPY[p.sku] || { tagline: '', description: '' }),
-}));
+// Shopify's CDN resizes on request; cards and the product page never need more.
+const sized = (url) => `${url}${url.includes('?') ? '&' : '?'}width=900`;
+const textOf = (html) => html.replace(/<br\s*\/?>|<\/p>/g, ' ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+
+export const PRODUCTS = storeCatalog.products.map((p) => {
+  const sku = p.variants[0]?.sku || p.handle;
+  const description = textOf(p.descriptionHtml);
+  return {
+    sku,
+    handle: p.handle,
+    title: p.title,
+    vendor: p.vendor,
+    list: p.variants[0]?.price ?? p.priceMin,
+    variants: p.variants.map((v) => ({
+      id: v.id,
+      title: v.title === 'Default Title' ? '' : v.title,
+      sku: v.sku,
+      list: v.price,
+      available: v.available,
+    })),
+    image: p.image ? sized(p.image.url) : placeholder(p.title, sku),
+    tagline: p.productType,
+    description, // plain text, for compact previews (e.g. the B2B app's form preview)
+    descriptionHtml: description ? p.descriptionHtml : '',
+  };
+});
 
 export const productBySku = (sku) => PRODUCTS.find((p) => p.sku === sku) || null;
 
 // ── B2B pricing ─────────────────────────────────────────────────────────────
-// A logged-in B2B buyer sees their company's contract prices. This mirrors the
-// RFQ app's "Distributor Tier 2" base pricing (rfq/data/catalog.js → p1/p8).
-const TIER2 = { 'FIL-STD': 45, 'SEA-30': 5.9, 'FIL-XL': 70, 'VLV-40': 39, 'HOS-12': 118 };
-export const B2B_PRICE_LISTS = {
-  abc: { name: 'Distributor Tier 2', prices: TIER2 },
-  watson: { name: 'Distributor Tier 2', prices: TIER2 },
+// A logged-in B2B buyer sees their company's contract prices. The store has no
+// per-SKU contract prices for its real catalog, so "Distributor Tier 2" is a
+// Shopify-style price list with one percentage adjustment off the list price.
+const TIER2 = { name: 'Distributor Tier 2', percentOff: 15 };
+export const B2B_PRICE_LISTS = { abc: TIER2, watson: TIER2 };
+
+// ── Order limits ────────────────────────────────────────────────────────────
+// The B2B app's order limits as they reach this storefront's demo company (shape
+// and rules: b2b/limits.js — the same checks the validation function runs).
+// Watson Co · Phố Thái Hà gets the store-wide minimum, jersey case packs for the
+// company, and its own review threshold.
+const JERSEYS = PRODUCTS.filter((p) => /jersey/i.test(p.title)).map((p) => p.sku);
+const STORE_LIMITS = {
+  products: PRODUCTS,
+  limits: [
+    { ...newLimit('order'), id: 'sl1', name: 'Wholesale minimum', minValue: 500 },
+    { ...newLimit('product'), id: 'sl2', name: 'Jersey case packs', min: 10, increment: 5, selectedProducts: JERSEYS, storeWide: false, companyIds: ['watson'] },
+    { ...newLimit('review'), id: 'sl3', name: 'Watson review', threshold: 5000, storeWide: false, locationKeys: ['watson::thai-ha'] },
+  ],
 };
+
+// Order limits only reach buyers signed in to a company location.
+const atLocation = (session) => !!(session?.companyKey && session.locationId);
+
+// The quantity rule on a product for the signed-in buyer, or null.
+export function productRuleForSession(sku, session) {
+  return atLocation(session) ? productRuleFor(STORE_LIMITS, session.companyKey, session.locationId, sku) : null;
+}
+
+// ── Agreement ───────────────────────────────────────────────────────────────
+// The buyer's agreement as their account shows it (b2b/agreements.js): its
+// pricing (the price list above) and the order limits it sets for their company
+// or location. Store-wide limits apply to every buyer, so they aren't part of it.
+const STORE_AGREEMENT = { number: 'AG-412', name: '2026 trade terms', version: 2, since: 'Jan 5, 2026' };
+
+export function agreementForSession(session) {
+  if (!atLocation(session)) return null;
+  const list = B2B_PRICE_LISTS[session.companyKey];
+  const limits = STORE_LIMITS.limits.filter((l) => l.status === 'Active' && ['company', 'location'].includes(limitLevel(l, session.companyKey, session.locationId)));
+  return {
+    ...STORE_AGREEMENT,
+    pricing: list ? `${list.name} · ${list.percentOff}% off list prices` : null,
+    // Buyer wording for a review threshold; the rest read the same for both sides.
+    limits: limits.map((l) => (l.kind === 'review' ? `Orders over ${money(l.threshold).replace(/\.00$/, '')} are sent for approval` : limitSummary(l, STORE_LIMITS))),
+  };
+}
+
+// What's wrong with the cart for the signed-in buyer (see cartProblems).
+export function cartProblemsForSession(lines, subtotal, session) {
+  return atLocation(session) ? cartProblems(STORE_LIMITS, session.companyKey, session.locationId, lines, subtotal) : [];
+}
 
 // ── Demo accounts ────────────────────────────────────────────────────────────
 // Two sign-ins, one per B2B state, so both sides of the account page can be
@@ -93,6 +143,7 @@ export const DEMO_ACCOUNTS = [
     companyName: 'Watson Co',
     role: 'Ordering only',
     locationLabel: 'Phố Thái Hà',
+    locationId: 'thai-ha',
     location: 'Phố Thái Hà, Đống Đa, Vietnam',
     priceListName: 'Distributor Tier 2',
     marketing: { email: false },
@@ -117,8 +168,9 @@ export function accountForEmail(email) {
 export function b2bPriceFor(sku, session) {
   if (!session) return null;
   const list = B2B_PRICE_LISTS[session.companyKey];
-  const price = list && list.prices[sku];
-  return typeof price === 'number' ? price : null;
+  const product = productBySku(sku);
+  if (!list || !product) return null;
+  return Math.round(product.list * (100 - list.percentOff)) / 100;
 }
 
 // ── Account mock data ────────────────────────────────────────────────────────

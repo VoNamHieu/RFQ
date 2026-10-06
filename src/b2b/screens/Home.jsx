@@ -9,6 +9,8 @@ import { useStore } from '../store.jsx';
 import { companyNeedsPrice, kindOf, policyStatus, policyUsageCount } from '../pricing.js';
 import { versionFlags, activeVersion } from '../../shared/versions.js';
 import quotesArt from '../assets/quote-block.webp';
+import { heldOrders, heldReason, HeldOrderActions } from '../components/HeldOrders.jsx';
+import { money } from '../format.js';
 
 // Prototype: show the dev toggles in production too (flip to import.meta.env.DEV to hide in prod).
 const SHOW_DEV_TOOLS = true;
@@ -52,6 +54,8 @@ export function Home() {
   const dealsClosed = (db.quotes || []).filter((q) => q.status === 'Deal Closed').length;
   // Quotes come from the companion O:Request a Quote app, which may not be installed.
   const rfqInstalled = !!db.rfqAppInstalled;
+  // Orders an order limit's review threshold held back, waiting on the merchant.
+  const held = flags.orderLimits ? heldOrders(db) : [];
 
   const toast = (m) => dispatch({ type: 'TOAST', message: m });
   const nav = (view, patch) => dispatch({ type: 'NAVIGATE', view, patch });
@@ -90,6 +94,12 @@ export function Home() {
 
   // What needs the merchant now — each row one action, most blocking first.
   const attention = [
+    // Buyers are waiting on these, so they go first; each order has its own decision.
+    held.length && {
+      title: `${plural(held.length, 'order', 'orders')} waiting for your review`,
+      meta: 'They’re over a review threshold, so the buyers couldn’t check out. Approving one creates the order.',
+      orders: held,
+    },
     needPrice && {
       title: `${plural(needPrice, 'company needs', 'companies need')} B2B pricing`,
       meta: 'No pricing applies to at least one of their locations.',
@@ -168,8 +178,18 @@ export function Home() {
                           <Text as="p" variant="bodyMd" fontWeight="semibold">{a.title}</Text>
                           <Text as="p" variant="bodySm" tone="subdued">{a.meta}</Text>
                         </BlockStack>
-                        <Box minWidth="fit-content"><Button onClick={a.action.onAction}>{a.action.content}</Button></Box>
+                        {a.action ? <Box minWidth="fit-content"><Button onClick={a.action.onAction}>{a.action.content}</Button></Box> : null}
                       </InlineStack>
+                      {a.orders ? (
+                        <HeldOrderList
+                          items={a.orders}
+                          db={db}
+                          onOpen={(company, location) =>
+                            location
+                              ? dispatch({ type: 'OPEN_LOCATION', companyId: company.id, locationId: location.id })
+                              : dispatch({ type: 'OPEN_COMPANY', id: company.id, tab: 'orders' })}
+                        />
+                      ) : null}
                     </Box>
                   </div>
                 ))}
@@ -241,6 +261,41 @@ export function Home() {
 // Shopify's setup-guide composition: progress "X of Y", collapsible, dismissible,
 // one step open at a time (the first unfinished one by default); a click on a
 // step's title opens it instead.
+// Held orders under their Needs attention row: which company and location, how
+// much, why it's held, and Approve / Decline right there.
+const HELD_SHOWN = 5;
+const shortDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+function HeldOrderList({ items, db, onOpen }) {
+  const shown = items.slice(0, HELD_SHOWN);
+  return (
+    <Box paddingBlockStart="300">
+      <BlockStack gap="200">
+        <Box borderWidth="025" borderColor="border" borderRadius="200">
+          {shown.map(({ order, company, location }, i) => (
+            <Box key={`${company.id}${order.id}`} padding="300" borderBlockStartWidth={i ? '025' : '0'} borderColor="border">
+              <InlineStack align="space-between" blockAlign="center" gap="300" wrap={false}>
+                <BlockStack gap="050">
+                  {/* align="start": nested stacks inherit the row's space-between otherwise */}
+                  <InlineStack align="start" gap="200" blockAlign="center" wrap>
+                    <Button variant="plain" onClick={() => onOpen(company, location)}>{order.id}</Button>
+                    <Text as="span" variant="bodyMd">{`${company.name}${location ? ` · ${location.name}` : ''}`}</Text>
+                    <Text as="span" variant="bodyMd" fontWeight="semibold">{money(order.amount)}</Text>
+                  </InlineStack>
+                  <Text as="p" variant="bodySm" tone="subdued">{`${order.buyer} · ${shortDate(order.date)} · ${heldReason(order, db)}`}</Text>
+                </BlockStack>
+                <HeldOrderActions companyId={company.id} order={order} />
+              </InlineStack>
+            </Box>
+          ))}
+        </Box>
+        {items.length > shown.length ? (
+          <Text as="p" variant="bodySm" tone="subdued">{`And ${items.length - shown.length} more in each company’s Orders tab.`}</Text>
+        ) : null}
+      </BlockStack>
+    </Box>
+  );
+}
+
 function SetupGuide({ steps, doneCount, onDismiss }) {
   const firstOpen = steps.findIndex((s) => !s.done);
   const [open, setOpen] = useState(firstOpen);

@@ -2,14 +2,18 @@ import React from 'react';
 import { Card, IndexTable, Badge, Button, InlineStack, Text, Box, BlockStack } from '@shopify/polaris';
 import { EditIcon, ExchangeIcon, XCircleIcon, PlusIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
-import { companyQuantityEntries, policyStatus, scopeTypeLabel } from '../pricing.js';
+import { companyQuantityEntries, locationOnlyEntries, pricingLocationsLabel, policyStatus, scopeTypeLabel } from '../pricing.js';
+import { LocationOnlyActions } from './BasePricingCard.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import quantityPricingArt from '../assets/quantity-pricing-empty.webp';
 
 export function QuantityPricingCard({ company }) {
   const { state, dispatch } = useStore();
   // A company can hold several quantity pricings (lowest priority applies first).
-  const policies = companyQuantityEntries(company, state.db.policies).map((e) => e.policy);
+  // The company's own list plus pricing only some locations get (labelled with them),
+  // in priority order — the stable sort keeps the company's own tie-breaks.
+  const entries = [...companyQuantityEntries(company, state.db.policies), ...locationOnlyEntries(company, state.db.policies, 'quantity')].sort((a, b) => a.priority - b.priority);
+  const policies = entries.map((e) => e.policy);
   const openAdd = () => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, kind: 'quantity', mode: 'add' });
 
   // No quantity pricing yet — a proper empty state so the Add action is obvious
@@ -50,9 +54,10 @@ export function QuantityPricingCard({ company }) {
         resourceName={{ singular: 'quantity pricing', plural: 'quantity pricings' }}
         itemCount={policies.length}
         selectable={false}
-        headings={[{ title: 'Pricing' }, { title: 'Products' }, { title: 'Status' }, { title: '', alignment: 'end' }]}
+        headings={[{ title: 'Pricing' }, { title: 'Location' }, { title: 'Products' }, { title: 'Status' }, { title: '', alignment: 'end' }]}
       >
-        {policies.map((policy, index) => {
+        {entries.map((entry, index) => {
+          const policy = entry.policy;
           const st = policyStatus(policy, state.db);
           return (
             <IndexTable.Row id={policy.id} key={policy.id} position={index}>
@@ -61,6 +66,7 @@ export function QuantityPricingCard({ company }) {
                   {policy.name}
                 </Text>
               </IndexTable.Cell>
+              <IndexTable.Cell>{pricingLocationsLabel(company, 'quantity', policy.id)}</IndexTable.Cell>
               <IndexTable.Cell>
                 <Text as="span" tone="subdued">
                   {scopeTypeLabel(policy)}
@@ -70,11 +76,15 @@ export function QuantityPricingCard({ company }) {
                 <Badge tone={st.tone}>{st.label}</Badge>
               </IndexTable.Cell>
               <IndexTable.Cell>
+                {entry.locations ? (
+                  <LocationOnlyActions company={company} kind="quantity" entry={entry} />
+                ) : (
                 <InlineStack gap="100" align="end" blockAlign="center" wrap={false}>
                   <Button icon={EditIcon} variant="tertiary" accessibilityLabel="Edit pricing" onClick={() => dispatch({ type: 'OPEN_EDITOR', policy, context: { mode: 'edit', companyId: company.id } })} />
                   <Button icon={ExchangeIcon} variant="tertiary" accessibilityLabel="Change pricing" onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, kind: 'quantity', mode: 'swap', swapId: policy.id })} />
                   <Button icon={XCircleIcon} variant="tertiary" tone="critical" accessibilityLabel="Remove" onClick={() => dispatch({ type: 'REMOVE_COMPANY_QUANTITY', companyId: company.id, policyId: policy.id })} />
                 </InlineStack>
+                )}
               </IndexTable.Cell>
             </IndexTable.Row>
           );

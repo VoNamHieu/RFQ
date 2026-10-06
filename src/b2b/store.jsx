@@ -3,6 +3,8 @@ import { shopifyCompanyDirectory } from './data/directory.js';
 import { policyUsageCount, slotIds, hasOwnSlot } from './pricing.js';
 import { newRule, newBaseBuilder, newQuantityBuilder } from './builders.js';
 import { buildInitialState } from './initialState.js';
+import { newLimit, normalizeLimit } from './limits.js';
+import { newAgreement, applyAgreement, unapplyAgreement, agreementChanges } from './agreements.js';
 import { todayISO, registrationDuplicates } from './registrations.js';
 import {
   clone,
@@ -570,6 +572,12 @@ function reducer(state, action) {
       const db = clone(state.db);
       db.companies = db.companies.filter((c) => c.id !== action.id);
       db.quotes = (db.quotes || []).filter((q) => q.company !== action.id);
+      db.limits = (db.limits || []).map((l) => ({
+        ...l,
+        companyIds: (l.companyIds || []).filter((id) => id !== action.id),
+        locationKeys: (l.locationKeys || []).filter((k) => !k.startsWith(`${action.id}::`)),
+      }));
+      db.agreements = (db.agreements || []).filter((a) => a.companyId !== action.id);
       const goList = state.selectedCompany === action.id;
       return {
         ...state,
@@ -765,6 +773,8 @@ function reducer(state, action) {
         db.customers = [];
         db.tagPricing = [];
         db.quotes = [];
+        db.limits = [];
+        db.agreements = [];
         db.registrations = [];
         db.hasRegistrationForm = false;
         db.registrationFormPublished = false;
@@ -818,6 +828,104 @@ function reducer(state, action) {
       // With a location, it lands in that location's own base list.
       const msg = applyQuotePricingTransfer(db, companyId, lines, transfer) || 'No prices added';
       return { ...state, db, buildQuotes: null, toast: msg };
+    }
+    // ----- Orders held by a review threshold (order limits) -----
+    // Approving completes the held draft order into a real order; declining cancels
+    // it (the buyer is told, and can change the order and submit it again).
+    case 'APPROVE_ORDER':
+    case 'DECLINE_ORDER': {
+      const approve = action.type === 'APPROVE_ORDER';
+      const db = clone(state.db);
+      const c = db.companies.find((x) => x.id === action.companyId);
+      const o = c?.orders?.find((x) => x.id === action.orderId);
+      if (!o) return state;
+      Object.assign(o, approve ? { status: 'Unfulfilled', shopifyStatus: 'Unfulfilled' } : { status: 'Declined', shopifyStatus: 'Cancelled' });
+      c.activity = [{ when: 'Today', what: `Order ${o.id} ${approve ? 'approved' : 'declined'} after review` }, ...(c.activity || [])];
+      return { ...state, db, toast: `Order ${o.id} ${approve ? 'approved' : 'declined'}` };
+    }
+    // ----- Agreements (see agreements.js) -----
+    // The editor is a page in the Agreements view; opened from a company's
+    // Agreement tab it goes back there on save or cancel.
+    case 'OPEN_AGREEMENT_EDITOR': {
+      const found = action.agreementId && (state.db.agreements || []).find((a) => a.id === action.agreementId);
+      const company = state.db.companies.find((c) => c.id === (found?.companyId || action.companyId));
+      if (!company) return state;
+      const draft = found ? clone(found) : newAgreement(state.db, company);
+      return { ...state, view: 'agreements', agreementEditor: { draft, returnTo: action.returnTo || null } };
+    }
+    case 'AGREEMENT_EDITOR_PATCH':
+      return { ...state, agreementEditor: { ...state.agreementEditor, draft: { ...state.agreementEditor.draft, ...action.patch } } };
+    case 'CLOSE_AGREEMENT_EDITOR':
+      return { ...state, ...(state.agreementEditor?.returnTo || {}), agreementEditor: null };
+    // Save the editor's draft (or `action.draft`, e.g. Activate from the Agreement
+    // tab). Activating, or saving an active agreement, applies its terms now: the
+    // previous version's terms come off, the new ones go on, as a new version.
+    case 'SAVE_AGREEMENT': {
+      const db = clone(state.db);
+      const draft = clone(action.draft || state.agreementEditor.draft);
+      draft.name = (draft.name || '').trim();
+      const prev = draft.id ? (db.agreements || []).find((a) => a.id === draft.id) : null;
+      const wasActive = prev?.status === 'Active';
+      const goLive = wasActive || !!action.activate;
+      if (!draft.id) draft.id = `ag${Date.now()}`;
+      if (goLive) {
+        if (wasActive) unapplyAgreement(db, prev);
+        applyAgreement(db, draft);
+        draft.status = 'Active';
+        draft.version = (prev?.version || 0) + 1;
+        const note = wasActive ? agreementChanges(prev, draft, db) : 'Activated';
+        draft.history = [{ version: draft.version, date: todayISO(), note }, ...(prev?.history || [])];
+      }
+      db.agreements = prev ? db.agreements.map((a) => (a.id === draft.id ? draft : a)) : [...(db.agreements || []), draft];
+      const returnTo = action.draft ? {} : state.agreementEditor?.returnTo || {};
+      const toast = wasActive ? `Saved as version ${draft.version}` : goLive ? `${draft.number} activated` : 'Draft saved';
+      return { ...state, db, ...returnTo, agreementEditor: action.draft ? state.agreementEditor : null, toast };
+    }
+    // Ending takes the agreement's terms off the company; it stays as history.
+    case 'END_AGREEMENT': {
+      const db = clone(state.db);
+      const ag = (db.agreements || []).find((a) => a.id === action.id);
+      if (!ag || ag.status !== 'Active') return state;
+      unapplyAgreement(db, ag);
+      ag.status = 'Ended';
+      ag.history = [{ version: ag.version, date: todayISO(), note: 'Ended' }, ...(ag.history || [])];
+      return { ...state, db, toast: `${ag.number} ended` };
+    }
+    case 'DELETE_AGREEMENT':
+      return {
+        ...state,
+        db: { ...state.db, agreements: (state.db.agreements || []).filter((a) => !(a.id === action.id && a.status === 'Draft')) },
+        agreementEditor: state.agreementEditor?.draft.id === action.id ? null : state.agreementEditor,
+        toast: 'Draft deleted',
+      };
+    // ----- Order limits -----
+    // The editor is a page in the Order limits view. Opened from somewhere else (a
+    // location's Order limits card), it goes back there on save or cancel.
+    case 'OPEN_LIMIT_EDITOR': {
+      const draft = action.limit ? clone(action.limit) : { ...newLimit(action.kind), ...(action.preset || {}) };
+      return { ...state, view: 'limits', limitEditor: { draft, returnTo: action.returnTo || null } };
+    }
+    case 'LIMIT_EDITOR_PATCH':
+      return { ...state, limitEditor: { ...state.limitEditor, draft: { ...state.limitEditor.draft, ...action.patch } } };
+    case 'CLOSE_LIMIT_EDITOR':
+      return { ...state, ...(state.limitEditor?.returnTo || {}), limitEditor: null };
+    case 'SAVE_LIMIT': {
+      const limit = normalizeLimit(state.limitEditor.draft);
+      const isNew = !limit.id;
+      if (isNew) limit.id = `ol${Date.now()}`;
+      const limits = state.db.limits || [];
+      const db = { ...state.db, limits: isNew ? [...limits, limit] : limits.map((l) => (l.id === limit.id ? limit : l)) };
+      return { ...state, db, ...(state.limitEditor.returnTo || {}), limitEditor: null, toast: isNew ? 'Order limit created' : 'Order limit saved' };
+    }
+    case 'DELETE_LIMIT': {
+      const db = { ...state.db, limits: (state.db.limits || []).filter((l) => l.id !== action.id) };
+      const editing = state.limitEditor?.draft.id === action.id;
+      return { ...state, db, ...(editing ? { ...(state.limitEditor.returnTo || {}), limitEditor: null } : {}), toast: 'Order limit deleted' };
+    }
+    case 'TOGGLE_LIMIT_STATUS': {
+      const limits = (state.db.limits || []).map((l) => (l.id === action.id ? { ...l, status: l.status === 'Active' ? 'Inactive' : 'Active' } : l));
+      const on = limits.find((l) => l.id === action.id)?.status === 'Active';
+      return { ...state, db: { ...state.db, limits }, toast: on ? 'Order limit turned on' : 'Order limit turned off' };
     }
     case 'TOAST':
       return { ...state, toast: action.message };

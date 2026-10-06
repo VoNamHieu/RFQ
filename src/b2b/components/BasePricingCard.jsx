@@ -17,7 +17,7 @@ import {
 } from '@shopify/polaris';
 import { EditIcon, ExchangeIcon, XCircleIcon, PlusIcon, SearchIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
-import { companyBaseEntries, policyStatus } from '../pricing.js';
+import { companyBaseEntries, locationOnlyEntries, pricingLocationsLabel, policyStatus } from '../pricing.js';
 import { openBuildFromQuotes } from './BuildFromQuotes.jsx';
 import { versionFlags } from '../../shared/versions.js';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
@@ -25,10 +25,37 @@ import basePricingArt from '../assets/base-pricing-empty.webp';
 
 const PAGE_SIZES = [5, 10, 20, 100];
 
+// Edit / Remove for pricing only some locations get: editing opens it for those
+// locations, removing takes it off those locations only.
+export function LocationOnlyActions({ company, kind, entry }) {
+  const { dispatch } = useStore();
+  const locs = entry.locations;
+  const one = locs.length === 1 ? locs[0] : null;
+  return (
+    <InlineStack gap="100" align="end" blockAlign="center" wrap={false}>
+      <Button
+        icon={EditIcon}
+        variant="tertiary"
+        accessibilityLabel="Edit pricing"
+        onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: entry.policy, context: { mode: 'edit', companyId: company.id, ...(one ? { locationId: one.id } : {}) } })}
+      />
+      <Button
+        icon={XCircleIcon}
+        variant="tertiary"
+        tone="critical"
+        accessibilityLabel={`Remove from ${locs.map((l) => l.name).join(', ')}`}
+        onClick={() => locs.forEach((l) => dispatch({ type: 'REMOVE_LOCATION_PRICING', companyId: company.id, locationId: l.id, kind, policyId: entry.policy.id }))}
+      />
+    </InlineStack>
+  );
+}
+
 export function BasePricingCard({ company }) {
   const { state, dispatch } = useStore();
   const policies = state.db.policies;
-  const entries = companyBaseEntries(company, policies);
+  // The company's own list plus pricing only some locations get (labelled with them),
+  // in priority order — the stable sort keeps the company's own tie-breaks.
+  const entries = [...companyBaseEntries(company, policies), ...locationOnlyEntries(company, policies, 'base')].sort((a, b) => a.priority - b.priority);
 
   // v1: single base pricing per company (no priority list / pagination).
   if (!versionFlags().multiBase) return <SingleBaseCard company={company} />;
@@ -56,6 +83,7 @@ export function BasePricingCard({ company }) {
   const rows = pageEntries.map((entry, index) => {
     const p = entry.policy;
     const st = policyStatus(p);
+    const locs = entry.locations;
     return (
       <IndexTable.Row id={p.id} key={p.id} position={index}>
         <IndexTable.Cell>
@@ -63,11 +91,15 @@ export function BasePricingCard({ company }) {
             {p.name}
           </Text>
         </IndexTable.Cell>
+        <IndexTable.Cell>{pricingLocationsLabel(company, 'base', p.id)}</IndexTable.Cell>
         <IndexTable.Cell>{entry.priority}</IndexTable.Cell>
         <IndexTable.Cell>
           <Badge tone={st.tone}>{st.label}</Badge>
         </IndexTable.Cell>
         <IndexTable.Cell>
+          {locs ? (
+            <LocationOnlyActions company={company} kind="base" entry={entry} />
+          ) : (
           <InlineStack gap="100" align="end" blockAlign="center" wrap={false}>
             <Button
               icon={EditIcon}
@@ -89,6 +121,7 @@ export function BasePricingCard({ company }) {
               onClick={() => dispatch({ type: 'REMOVE_COMPANY_BASE', companyId: company.id, policyId: p.id })}
             />
           </InlineStack>
+          )}
         </IndexTable.Cell>
       </IndexTable.Row>
     );
@@ -183,6 +216,7 @@ export function BasePricingCard({ company }) {
         selectable={false}
         headings={[
           { title: 'Pricing' },
+          { title: 'Location' },
           { title: priorityHeader },
           { title: 'Status' },
           { title: '', alignment: 'end' },

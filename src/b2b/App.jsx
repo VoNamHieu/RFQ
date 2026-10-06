@@ -35,6 +35,8 @@ import { AssignModal } from './components/AssignModal.jsx';
 import { MultiAssignModal } from './components/MultiAssignModal.jsx';
 import { AddCompanyWizard } from './components/AddCompanyWizard.jsx';
 import { versionFlags, activeVersion } from '../shared/versions.js';
+import { OrderLimits } from './screens/OrderLimits.jsx';
+import { Agreements } from './screens/Agreements.jsx';
 
 const flags = versionFlags();
 const withV = (path) => (activeVersion() === 'latest' ? path : `${path}?v=${activeVersion()}`);
@@ -52,6 +54,10 @@ function CurrentView() {
       return <LocationDetail />;
     case 'pricing':
       return <PricingLibrary />;
+    case 'limits':
+      return flags.orderLimits ? <OrderLimits /> : <CompaniesList />;
+    case 'agreements':
+      return flags.agreements ? <Agreements /> : <CompaniesList />;
     case 'registrations':
       return <Registrations />;
     case 'registration':
@@ -108,6 +114,22 @@ export function App() {
             },
             { label: `B2B Company (${state.db.companies.length})`, url: '#/b2b/company', matches: companyActive, onClick: () => dispatch({ type: 'NAVIGATE', view: 'customers' }) },
             { label: `Pricing (${state.db.policies.length})`, url: '#/b2b/pricing', matches: state.view === 'pricing', onClick: () => dispatch({ type: 'NAVIGATE', view: 'pricing' }) },
+            ...(flags.orderLimits
+              ? [{
+                  label: `Order limits (${(state.db.limits || []).length})`,
+                  url: '#/b2b/order-limits',
+                  matches: state.view === 'limits',
+                  onClick: () => dispatch({ type: 'NAVIGATE', view: 'limits', patch: { limitEditor: null } }),
+                }]
+              : []),
+            ...(flags.agreements
+              ? [{
+                  label: `Agreements (${(state.db.agreements || []).filter((a) => a.status !== 'Ended').length})`,
+                  url: '#/b2b/agreements',
+                  matches: state.view === 'agreements',
+                  onClick: () => dispatch({ type: 'NAVIGATE', view: 'agreements', patch: { agreementEditor: null } }),
+                }]
+              : []),
             ...(flags.analytics
               ? [{ label: 'Analytics', url: '#/b2b/analytics', matches: state.view === 'analytics', onClick: () => dispatch({ type: 'NAVIGATE', view: 'analytics' }) }]
               : []),

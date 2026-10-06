@@ -9,7 +9,9 @@ import { ProductPriceTable } from './ProductPriceTable.jsx';
 // what the buyer pays and the layer that decided it; search + sort run here. With
 // `renderWhy`, each row drills into "Why this price" (same modal — Back returns);
 // `toolbar` adds controls next to sort (e.g. the Location picker). Entries that
-// carry a `priority` (the deciding pricing's) get a Priority column.
+// carry a `priority` (the deciding pricing's) get a Priority column. A `final` of
+// null means the buyer can't get the product there (e.g. it's outside their
+// catalog): Buyer pays shows "—" and it sorts last.
 const PREVIEW_SORTS = [
   { label: 'Product A–Z', value: 'title-asc' },
   { label: 'Product Z–A', value: 'title-desc' },
@@ -26,7 +28,7 @@ export function PricePreviewDialog({ title, description, entries, emptyLabel, to
   const [whySku, setWhySku] = useState(null);
   const whyProduct = whySku ? entries.find((e) => e.product.sku === whySku)?.product || null : null;
 
-  const withOff = entries.map((e) => ({ ...e, off: e.shopify > 0 ? Math.round((1 - e.final / e.shopify) * 100) : 0 }));
+  const withOff = entries.map((e) => ({ ...e, off: e.final != null && e.shopify > 0 ? Math.round((1 - e.final / e.shopify) * 100) : 0 }));
   const q = query.trim().toLowerCase();
   const filtered = q
     ? withOff.filter((e) => e.product.title.toLowerCase().includes(q) || e.product.sku.toLowerCase().includes(q))
@@ -36,8 +38,8 @@ export function PricePreviewDialog({ title, description, entries, emptyLabel, to
       case 'title-desc': return b.product.title.localeCompare(a.product.title);
       case 'shopify-asc': return a.shopify - b.shopify;
       case 'shopify-desc': return b.shopify - a.shopify;
-      case 'final-asc': return a.final - b.final;
-      case 'final-desc': return b.final - a.final;
+      case 'final-asc': return (a.final ?? Infinity) - (b.final ?? Infinity);
+      case 'final-desc': return (b.final ?? -Infinity) - (a.final ?? -Infinity);
       case 'off-desc': return b.off - a.off;
       default: return a.product.title.localeCompare(b.product.title);
     }
@@ -52,7 +54,7 @@ export function PricePreviewDialog({ title, description, entries, emptyLabel, to
       <Text as="span" tone="subdued">{money(e.shopify)}</Text>,
       <Badge tone={e.highlight ? 'info' : undefined}>{e.decidedBy}</Badge>,
       ...(showPriority ? [<Text as="span" tone={e.priority == null ? 'subdued' : undefined}>{e.priority == null ? '—' : e.priority}</Text>] : []),
-      <Text as="span" fontWeight="semibold">{money(e.final)}</Text>,
+      e.final == null ? <Text as="span" tone="subdued">—</Text> : <Text as="span" fontWeight="semibold">{money(e.final)}</Text>,
       <Text as="span">{e.off > 0 ? `${e.off}% off` : e.off < 0 ? `${-e.off}% over` : '—'}</Text>,
     ],
     action: renderWhy ? (

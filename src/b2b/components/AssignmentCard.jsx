@@ -64,7 +64,7 @@ function InlineCheckList({ items, selected, onToggle, searchable, placeholder, e
 // a checkbox, avatar, primary contact + email, and location / contact counts. A
 // ticked company with 2+ locations lists them underneath (all ticked) so the
 // pricing can go to only some; ticking every location is the whole company.
-function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompany, onToggleLocation, onClose }) {
+export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompany, onToggleLocation, onClose }) {
   const [q, setQ] = useState('');
   const query = q.trim().toLowerCase();
   const shown = query ? companies.filter((c) => `${c.name} ${c.contact} ${c.email}`.toLowerCase().includes(query)) : companies;
@@ -136,7 +136,52 @@ function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompany, onTo
   );
 }
 
-export function AssignmentCard({ builder, patch, db, isNew }) {
+// Company and location picks for a "Select companies and locations" modal: a
+// company pick covers every location (including ones added later); location
+// picks are `companyId::locationId` keys. Shared by pricing assignment and order
+// limits. `onChange({ companyIds, locationKeys })` gets the new picks.
+export function companyPicks(db, companyIds, locationKeys, onChange) {
+  const companies = (db.companies || []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    contact: c.mainContact || c.contacts?.[0]?.name || '',
+    email: c.contacts?.[0]?.email || '',
+    nLoc: (c.locations || []).length,
+    nContacts: (c.contacts || []).length,
+    locs: (c.locations || []).map((l) => ({ id: l.id, name: l.name })),
+  }));
+  const keyOf = (c, lid) => `${c.id}::${lid}`;
+  // A company with no locations is ticked or not as a whole ('__company').
+  const tickedOf = (c) => {
+    if (!c.locs.length) return companyIds.includes(c.id) ? ['__company'] : [];
+    return companyIds.includes(c.id) ? c.locs.map((l) => l.id) : c.locs.filter((l) => locationKeys.includes(keyOf(c, l.id))).map((l) => l.id);
+  };
+  // Set a company's ticked locations: all → a company pick; some → location picks.
+  const setTicked = (c, ids) => {
+    const all = c.locs.length ? ids.length === c.locs.length : ids.length > 0;
+    const others = locationKeys.filter((k) => !k.startsWith(`${c.id}::`));
+    onChange({
+      companyIds: all ? [...new Set([...companyIds, c.id])] : companyIds.filter((x) => x !== c.id),
+      locationKeys: all || !ids.length ? others : [...others, ...ids.map((lid) => keyOf(c, lid))],
+    });
+  };
+  const toggleCompany = (c) =>
+    setTicked(c, tickedOf(c).length ? [] : c.locs.length ? c.locs.map((l) => l.id) : ['__company']);
+  const toggleLocation = (c, lid, on) => {
+    const cur = tickedOf(c);
+    setTicked(c, on ? [...new Set([...cur, lid])] : cur.filter((x) => x !== lid));
+  };
+  const selectedCompanies = companies.map((c) => ({ ...c, ticked: tickedOf(c) })).filter((c) => c.ticked.length);
+  // Tag text: the company, or the company and its ticked locations.
+  const tagLabel = (c) => {
+    if (!c.locs.length || c.ticked.length === c.locs.length) return c.name;
+    const names = c.locs.filter((l) => c.ticked.includes(l.id)).map((l) => l.name);
+    return `${c.name} · ${names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ')}`;
+  };
+  return { companies, tickedOf, setTicked, toggleCompany, toggleLocation, selectedCompanies, tagLabel };
+}
+
+export function AssignmentCard({ builder, patch, db, isNew, footer = null }) {
   const audience = builder.audienceType === 'd2c' ? 'd2c' : 'b2b';
   const target = builder.customerTarget && builder.customerTarget !== 'none' ? builder.customerTarget : 'all';
   const [companyModal, setCompanyModal] = useState(false);
@@ -153,49 +198,15 @@ export function AssignmentCard({ builder, patch, db, isNew }) {
   const setTarget = (t) =>
     patch({ customerTarget: t, assignmentTargetIds: t === 'specific' || t === 'tags' ? builder.assignmentTargetIds || [] : [] });
 
-  const companies = (db.companies || []).map((c) => ({
-    id: c.id,
-    name: c.name,
-    contact: c.mainContact || c.contacts?.[0]?.name || '',
-    email: c.contacts?.[0]?.email || '',
-    nLoc: (c.locations || []).length,
-    nContacts: (c.contacts || []).length,
-    locs: (c.locations || []).map((l) => ({ id: l.id, name: l.name })),
-  }));
   const customers = (db.customers || []).map((cu) => ({ id: cu.id, title: cu.name, subtitle: cu.email }));
   const tags = (db.tagPricing || []).map((t) => ({ id: t.id, title: t.name }));
 
-  // Company picks (every location) and location picks (`companyId::locationId`).
-  const companyIds = builder.b2bCompanyIds || [];
-  const locKeys = builder.b2bLocationKeys || [];
-  const keyOf = (c, lid) => `${c.id}::${lid}`;
-  // A company with no locations is ticked or not as a whole ('__company').
-  const tickedOf = (c) => {
-    if (!c.locs.length) return companyIds.includes(c.id) ? ['__company'] : [];
-    return companyIds.includes(c.id) ? c.locs.map((l) => l.id) : c.locs.filter((l) => locKeys.includes(keyOf(c, l.id))).map((l) => l.id);
-  };
-  // Set a company's ticked locations: all → a company pick; some → location picks.
-  const setTicked = (c, ids) => {
-    const all = c.locs.length ? ids.length === c.locs.length : ids.length > 0;
-    const others = locKeys.filter((k) => !k.startsWith(`${c.id}::`));
-    patch({
-      b2bCompanyIds: all ? [...new Set([...companyIds, c.id])] : companyIds.filter((x) => x !== c.id),
-      b2bLocationKeys: all || !ids.length ? others : [...others, ...ids.map((lid) => keyOf(c, lid))],
-    });
-  };
-  const toggleCompany = (c) =>
-    setTicked(c, tickedOf(c).length ? [] : c.locs.length ? c.locs.map((l) => l.id) : ['__company']);
-  const toggleLocation = (c, lid, on) => {
-    const cur = tickedOf(c);
-    setTicked(c, on ? [...new Set([...cur, lid])] : cur.filter((x) => x !== lid));
-  };
-  const selectedCompanies = companies.map((c) => ({ ...c, ticked: tickedOf(c) })).filter((c) => c.ticked.length);
-  // Tag text: the company, or the company and its ticked locations.
-  const tagLabel = (c) => {
-    if (!c.locs.length || c.ticked.length === c.locs.length) return c.name;
-    const names = c.locs.filter((l) => c.ticked.includes(l.id)).map((l) => l.name);
-    return `${c.name} · ${names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ')}`;
-  };
+  const { companies, tickedOf, setTicked, toggleCompany, toggleLocation, selectedCompanies, tagLabel } = companyPicks(
+    db,
+    builder.b2bCompanyIds || [],
+    builder.b2bLocationKeys || [],
+    ({ companyIds, locationKeys }) => patch({ b2bCompanyIds: companyIds, b2bLocationKeys: locationKeys }),
+  );
 
   return (
     <Card>
@@ -226,6 +237,7 @@ export function AssignmentCard({ builder, patch, db, isNew }) {
                 ))}
               </InlineStack>
             ) : null}
+            {footer}
           </BlockStack>
         ) : (
           <BlockStack gap="200">

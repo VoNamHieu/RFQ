@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
-import { Page, Tabs, Card, BlockStack, InlineStack, Button, Text, Modal, Banner } from '@shopify/polaris';
+import { Page, Tabs, Card, BlockStack, InlineStack, Button, Text, Modal } from '@shopify/polaris';
 import { useStore, currentCompany } from '../store.jsx';
-import { companyBaseEntries, companyQuantityEntries, hasOwnSlot } from '../pricing.js';
+import { companyBaseEntries, companyQuantityEntries } from '../pricing.js';
 import { BasePricingCard } from '../components/BasePricingCard.jsx';
 import { QuantityPricingCard } from '../components/QuantityPricingCard.jsx';
 import { QuotesTab } from '../components/tabs/QuotesTab.jsx';
 import { OrdersTab } from '../components/tabs/OrdersTab.jsx';
 import { LocationsTab } from '../components/tabs/LocationsTab.jsx';
 import { ContactsTab } from '../components/tabs/ContactsTab.jsx';
+import { AgreementTab } from '../components/tabs/AgreementTab.jsx';
 import { CompanyAnalytics } from '../components/CompanyAnalytics.jsx';
 import { versionFlags } from '../../shared/versions.js';
 
 const TABS = [
   { id: 'pricing', label: 'Pricing' },
+  ...(versionFlags().agreements ? [{ id: 'agreement', label: 'Agreement' }] : []),
   ...(versionFlags().analytics ? [{ id: 'analytics', label: 'Analytics' }] : []),
   { id: 'quotes', label: 'Quotes' },
   { id: 'orders', label: 'Orders' },
@@ -26,7 +28,6 @@ export function CompanyDetail() {
   const company = currentCompany(state);
   if (!company) return null;
 
-  const ownPricingLocations = (company.locations || []).filter((l) => hasOwnSlot(l, 'base') || hasOwnSlot(l, 'quantity'));
   const assignedCount =
     companyBaseEntries(company, state.db.policies).length + companyQuantityEntries(company, state.db.policies).length;
 
@@ -65,20 +66,11 @@ export function CompanyDetail() {
 
         {state.companyTab === 'pricing' && (
           <>
-            {/* Locations on their own pricing don't follow changes or removals made here
-                (pricing added for all locations does reach them). */}
-            {ownPricingLocations.length ? (
-              <Banner
-                tone="info"
-                action={{ content: 'View locations', onAction: () => dispatch({ type: 'SET_COMPANY_TAB', tab: 'locations' }) }}
-              >
-                {`${ownPricingLocations.map((l) => l.name).join(', ')} ${ownPricingLocations.length === 1 ? 'uses its' : 'use their'} own pricing, so changing or removing pricing here doesn’t apply to ${ownPricingLocations.length === 1 ? 'it' : 'them'}.`}
-              </Banner>
-            ) : null}
             <BasePricingCard company={company} />
             <QuantityPricingCard company={company} />
           </>
         )}
+        {state.companyTab === 'agreement' && <AgreementTab company={company} />}
         {state.companyTab === 'quotes' && <QuotesTab company={company} />}
         {state.companyTab === 'orders' && <OrdersTab company={company} />}
         {state.companyTab === 'locations' && <LocationsTab company={company} />}
