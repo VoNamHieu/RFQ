@@ -1,0 +1,60 @@
+/* Integrations / Other Notification / PDF Template / Abandoned quotes — layout
+   details for SimpleSections.jsx. Every class is prefixed with qcfg-simple-. */
+
+/* Integration & notification item: InlineStack align="space-between" blockAlign="center",
+   wrap only on mobile (production useScreen: window width <= 768px). */
+.qcfg-simple-item {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.qcfg-simple-item__main {
+  min-width: 0;
+}
+
+.qcfg-simple-item__action {
+  flex: none;
+}
+
+.qcfg-simple-item--mobile {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 0;
+}
+
+.qcfg-simple-item--mobile .qcfg-simple-item__main {
+  width: 100%;
+}
+
+.qcfg-simple-item--mobile .qcfg-simple-item__action {
+  padding-top: 8px;
+}
+
+/* Featured notification channel: Card padding="300" background="bg-surface-info". */
+.qcfg-simple-featured {
+  border-radius: 12px;
+  background: rgba(234, 244, 255, 1);
+  box-shadow: inset 0 0 0 1px rgba(227, 227, 227, 1);
+  padding: 12px;
+}
+
+/* PDF Template DataTable: cells use the default verticalAlign="top". */
+.qcfg-simple-pdf .qcfg-datatable__row:not(.qcfg-datatable__row--head) {
+  align-items: start;
+}
+
+/* Abandoned quote: "Send reminder after" InlineStack gap 200, wrap={false}, two 200px fields. */
+.qcfg-simple-sendafter {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.qcfg-simple-sendafter > div {
+  width: 200px;
+  flex: none;
+}

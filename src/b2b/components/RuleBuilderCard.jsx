@@ -1,22 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
-import {
-  Card,
-  BlockStack,
-  InlineStack,
-  Box,
-  Text,
-  Badge,
-  Button,
-  Popover,
-  ActionList,
-  Select,
-  TextField,
-  Tag,
-  Icon,
-  Divider,
-} from '@shopify/polaris';
-import { DragHandleIcon, EditIcon, DeleteIcon, PlusIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
+import { MenuButton } from '../../shared/wc.jsx';
 import {
   RULE_FIELDS,
   ruleField,
@@ -37,7 +21,6 @@ export function RuleBuilderCard() {
   const ruleEdit = state.ruleEdit;
   const products = state.db.products;
 
-  const [addMenu, setAddMenu] = useState(false);
   const [dropIndex, setDropIndex] = useState(null);
   const scrollRef = useRef(null);
   const dragIndex = useRef(null);
@@ -125,37 +108,33 @@ export function RuleBuilderCard() {
           boxShadow: dropIndex === i ? 'inset 0 2px 0 0 var(--p-color-bg-fill-emphasis)' : 'none',
         }}
       >
-        <Box padding="200">
-          <InlineStack gap="200" blockAlign="center" wrap={false}>
+        <s-box padding="small-200">
+          <s-grid gridTemplateColumns="auto minmax(0, 1fr) auto auto auto" gap="small-200" alignItems="center">
             <span style={{ cursor: 'grab', display: 'flex' }} aria-label="Drag to reorder">
-              <Icon source={DragHandleIcon} tone="subdued" />
+              <s-icon type="drag-handle" color="subdued" />
             </span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <Text as="span" variant="bodyMd" fontWeight="semibold">
-                {`Rule ${i + 1}`}
-              </Text>
-              <Text as="p" tone="subdued" variant="bodySm">
+            <div style={{ minWidth: 0 }}>
+              <s-paragraph fontWeight="semibold">{`Rule ${i + 1}`}</s-paragraph>
+              <s-paragraph color="subdued" fontSize="small">
                 {`${ruleTypeLabel(rule)}${ruleField(rule) === 'all' ? '' : ` · ${ruleValuesSummary(rule)}`}`}
-              </Text>
+              </s-paragraph>
             </div>
-            <Badge tone={tone}>{disc}</Badge>
-            <Button
-              size="slim"
-              icon={EditIcon}
+            <s-badge tone={tone}>{disc}</s-badge>
+            <s-button
+              icon="edit"
               variant="tertiary"
               accessibilityLabel="Edit rule"
               onClick={() => dispatch({ type: 'SET_RULE_EDIT', index: i })}
             />
-            <Button
-              size="slim"
-              icon={DeleteIcon}
+            <s-button
+              icon="delete"
               tone="critical"
               variant="tertiary"
               accessibilityLabel="Delete rule"
               onClick={() => dispatch({ type: 'DELETE_RULE', index: i })}
             />
-          </InlineStack>
-        </Box>
+          </s-grid>
+        </s-box>
       </div>
     );
   };
@@ -196,151 +175,144 @@ export function RuleBuilderCard() {
           background: 'var(--p-color-bg-surface)',
         }}
       >
-        <Box padding="400">
-          <BlockStack gap="300">
-            <InlineStack align="space-between" blockAlign="center">
-              <InlineStack gap="200" blockAlign="center">
-                <Badge>{ruleTypeLabel(rule)}</Badge>
-                <Text as="span" tone="subdued" variant="bodySm">
+        <s-box padding="base">
+          <s-stack gap="small">
+            <s-grid gridTemplateColumns="1fr auto" gap="small-200" alignItems="center">
+              <s-stack direction="inline" gap="small-200" alignItems="center">
+                <s-badge>{ruleTypeLabel(rule)}</s-badge>
+                <s-text color="subdued" fontSize="small">
                   {`${matchN} product${matchN === 1 ? '' : 's'} match`}
-                </Text>
-              </InlineStack>
-              <Button
-                icon={DeleteIcon}
+                </s-text>
+              </s-stack>
+              <s-button
+                icon="delete"
                 tone="critical"
                 variant="tertiary"
                 accessibilityLabel="Delete rule"
                 onClick={() => dispatch({ type: 'DELETE_RULE', index: i })}
               />
-            </InlineStack>
+            </s-grid>
 
             {field === 'all' ? (
-              <Text as="p" tone="subdued" variant="bodySm">
+              <s-paragraph color="subdued" fontSize="small">
                 Every product in this price list.
-              </Text>
+              </s-paragraph>
             ) : (
-              <BlockStack gap="150">
-                <Text as="span" variant="bodySm" fontWeight="medium">
+              <s-stack gap="small-300">
+                <s-paragraph fontSize="small" fontWeight="medium">
                   {`Apply to these ${ruleTypeLabel(rule).toLowerCase()} values`}
-                </Text>
-                <InlineStack gap="100" wrap>
-                  {values.map((v) => (
-                    <Tag key={v} onRemove={() => setValues(values.filter((x) => x !== v))}>
-                      {v}
-                    </Tag>
-                  ))}
-                </InlineStack>
-                {remaining.length > 0 && (
-                  <Select
-                    labelHidden
-                    label="Add value"
-                    placeholder={values.length ? 'Add another…' : 'Select…'}
-                    options={['', ...remaining].map((o) => ({ label: o || 'Select…', value: o }))}
-                    value=""
-                    onChange={(v) => v && setValues([...values, v])}
-                  />
+                </s-paragraph>
+                {values.length > 0 && (
+                  <s-stack direction="inline" gap="small-400">
+                    {values.map((v) => (
+                      <s-clickable-chip
+                        key={v}
+                        removable
+                        accessibilityLabel={v}
+                        onRemove={() => setValues(values.filter((x) => x !== v))}
+                      >
+                        {v}
+                      </s-clickable-chip>
+                    ))}
+                  </s-stack>
                 )}
-              </BlockStack>
+                {remaining.length > 0 && (
+                  // Keyed by the picked values so the select remounts (back to the
+                  // placeholder) after each pick — its value is always "".
+                  <s-select
+                    key={values.join('|')}
+                    label="Add value"
+                    labelAccessibilityVisibility="exclusive"
+                    placeholder={values.length ? 'Add another…' : 'Select…'}
+                    value=""
+                    onChange={(e) => {
+                      const v = e.currentTarget.value;
+                      // Idempotent: onChange can fire twice for one pick.
+                      if (v && !values.includes(v)) setValues([...values, v]);
+                    }}
+                  >
+                    {remaining.map((o) => (
+                      <s-option key={o} value={o}>
+                        {o}
+                      </s-option>
+                    ))}
+                  </s-select>
+                )}
+              </s-stack>
             )}
 
-            <InlineStack gap="200" blockAlign="end">
-              <div style={{ minWidth: 190 }}>
-                <Select
-                  label="Price"
-                  options={[
-                    { label: 'Decrease by %', value: 'decrease_pct' },
-                    { label: 'Decrease by amount', value: 'decrease_amt' },
-                    { label: 'Fixed price', value: 'set' },
-                  ]}
-                  value={rk}
-                  onChange={setRk}
-                />
-              </div>
-              <div style={{ width: 140 }}>
-                <TextField
-                  label="Value"
-                  labelHidden
-                  type="number"
-                  min={0}
-                  value={String(rule.value ?? '')}
-                  onChange={(v) => dispatch({ type: 'UPDATE_RULE', index: i, patch: { value: Number(v) } })}
-                  suffix={suffix}
-                  autoComplete="off"
-                />
-              </div>
-            </InlineStack>
+            <s-grid gridTemplateColumns="190px 140px" gap="small-200" alignItems="end">
+              <s-select label="Price" value={rk} onChange={(e) => setRk(e.currentTarget.value)}>
+                <s-option value="decrease_pct">Decrease by %</s-option>
+                <s-option value="decrease_amt">Decrease by amount</s-option>
+                <s-option value="set">Fixed price</s-option>
+              </s-select>
+              <s-number-field
+                label="Value"
+                labelAccessibilityVisibility="exclusive"
+                min={0}
+                value={String(rule.value ?? '')}
+                onInput={(e) => dispatch({ type: 'UPDATE_RULE', index: i, patch: { value: Number(e.currentTarget.value) } })}
+                suffix={suffix}
+                autocomplete="off"
+              />
+            </s-grid>
 
-            <InlineStack align="end">
-              <Button variant="primary" size="slim" onClick={() => dispatch({ type: 'SET_RULE_EDIT', index: null })}>
+            <s-stack direction="inline" justifyContent="end">
+              <s-button variant="primary" onClick={() => dispatch({ type: 'SET_RULE_EDIT', index: null })}>
                 Done
-              </Button>
-            </InlineStack>
-          </BlockStack>
-        </Box>
+              </s-button>
+            </s-stack>
+          </s-stack>
+        </s-box>
       </div>
     );
   };
 
   const rowsMarkup = rules.map((rule, i) => (ruleEdit === i ? editorRow(rule, i) : collapsedRow(rule, i)));
 
+  // Popover + ActionList → MenuButton (s-menu renders in the top layer, so it
+  // opens above the full-screen editor overlay without a z-index override).
   const addControl = (
-    <Popover
-      active={addMenu}
-      onClose={() => setAddMenu(false)}
-      preferredAlignment="left"
-      // The editor is a custom full-screen overlay at z-index 517 (PricingEditor),
-      // above Polaris' default overlay z-index (400) — so without this the menu
-      // opens *behind* the editor and looks like the button does nothing. Lift it
-      // over the editor but keep it under the Frame toast (520).
-      zIndexOverride={518}
-      activator={
-        <Button icon={PlusIcon} disclosure onClick={() => setAddMenu((v) => !v)}>
-          Add rule
-        </Button>
-      }
+    <MenuButton
+      icon="plus"
+      items={RULE_FIELDS.map((f) => ({
+        content: f.label,
+        disabled: f.field === 'all' && hasAll,
+        onAction: () => dispatch({ type: 'ADD_RULE', field: f.field }),
+      }))}
     >
-      <ActionList
-        items={RULE_FIELDS.map((f) => ({
-          content: f.label,
-          disabled: f.field === 'all' && hasAll,
-          onAction: () => {
-            setAddMenu(false);
-            dispatch({ type: 'ADD_RULE', field: f.field });
-          },
-        }))}
-      />
-    </Popover>
+      Add rule
+    </MenuButton>
   );
 
   return (
-    <Card>
-      <BlockStack gap="300">
-        <InlineStack align="space-between" blockAlign="center">
-          <InlineStack gap="150" blockAlign="center">
-            <Text as="h3" variant="headingSm">
-              Pricing rules
-            </Text>
-            {rules.length > 0 && <Badge>{String(rules.length)}</Badge>}
-          </InlineStack>
-        </InlineStack>
-        <Text as="p" tone="subdued" variant="bodySm">
+    <s-section>
+      <s-stack gap="small">
+        <s-stack direction="inline" gap="small-300" alignItems="center">
+          <s-heading>Pricing rules</s-heading>
+          {rules.length > 0 && <s-badge>{String(rules.length)}</s-badge>}
+        </s-stack>
+        <s-paragraph color="subdued" fontSize="small">
           Price all products or a set by collection, vendor, tag or type. When several rules match one product, the higher rule wins — drag the handle to reorder.
-        </Text>
+        </s-paragraph>
 
         {rules.length === 0 ? (
-          <Box padding="400" background="bg-surface-secondary" borderRadius="200">
-            <BlockStack gap="200" inlineAlign="center">
-              <Text as="p" fontWeight="semibold">
-                No pricing rules
-              </Text>
-              <Text as="p" tone="subdued" variant="bodySm" alignment="center">
-                Every product keeps its Shopify price. Add an “All products” rule to price the whole catalog, or a narrower rule for a subset.
-              </Text>
+          <s-box padding="base" background="subdued" borderRadius="base">
+            <s-stack gap="small-200" alignItems="center">
+              <s-paragraph fontWeight="semibold">No pricing rules</s-paragraph>
+              {/* s-paragraph ignores text-align (its inner <p> sets start); inline
+                  s-text in a centered block centers. */}
+              <div style={{ textAlign: 'center' }}>
+                <s-text color="subdued" fontSize="small">
+                  Every product keeps its Shopify price. Add an “All products” rule to price the whole catalog, or a narrower rule for a subset.
+                </s-text>
+              </div>
               {addControl}
-            </BlockStack>
-          </Box>
+            </s-stack>
+          </s-box>
         ) : (
-          <BlockStack gap="0">
+          <div>
             <div
               ref={scrollRef}
               style={
@@ -351,10 +323,10 @@ export function RuleBuilderCard() {
             >
               {rowsMarkup}
             </div>
-            <Box paddingBlockStart="200">{addControl}</Box>
-          </BlockStack>
+            <s-box paddingBlockStart="small-200">{addControl}</s-box>
+          </div>
         )}
-      </BlockStack>
-    </Card>
+      </s-stack>
+    </s-section>
   );
 }

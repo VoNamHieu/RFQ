@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, BlockStack, InlineStack, Badge, Text } from '@shopify/polaris';
+import { Modal } from '../../shared/wc.jsx';
 import { useStore, handoffToB2B } from '../store.jsx';
 
 // The god-file "Company created" success modal, shown after creating a new company
@@ -13,26 +13,21 @@ export function CompanyCreatedModal() {
   const locations = cc.locations ?? 1;
   const buyers = cc.buyers ?? 1;
   return (
-    <Modal
-      open
-      size="small"
-      onClose={close}
-      title="Company created"
-      primaryAction={{ content: 'View in B2B app', onAction: () => handoffToB2B(state, cc.quoteId) }}
-      secondaryActions={[{ content: 'Stay in RFQ', onAction: close }]}
-    >
-      <Modal.Section>
-        <BlockStack gap="200">
-          <Text as="h3" variant="headingMd">{`${cc.name} created in B2B app`}</Text>
-          <Text as="p" tone="subdued">
-            The full Shopify company is now available in the QuoteSnap B2B app.
-          </Text>
-          <InlineStack gap="200" blockAlign="center">
-            <Badge>{`${locations} location${locations === 1 ? '' : 's'}`}</Badge>
-            <Badge>{`${buyers} buyer${buyers === 1 ? '' : 's'}`}</Badge>
-          </InlineStack>
-        </BlockStack>
-      </Modal.Section>
+    <Modal size="small" onClose={close} heading="Company created">
+      <s-stack gap="small-200">
+        <s-heading fontSize="large">{`${cc.name} created in B2B app`}</s-heading>
+        <s-paragraph color="subdued">The full Shopify company is now available in the QuoteSnap B2B app.</s-paragraph>
+        <s-stack direction="inline" gap="small-200" alignItems="center">
+          <s-badge>{`${locations} location${locations === 1 ? '' : 's'}`}</s-badge>
+          <s-badge>{`${buyers} buyer${buyers === 1 ? '' : 's'}`}</s-badge>
+        </s-stack>
+      </s-stack>
+      <s-button slot="primary-action" variant="primary" onClick={() => handoffToB2B(state, cc.quoteId)}>
+        View in B2B app
+      </s-button>
+      <s-button slot="secondary-actions" onClick={close}>
+        Stay in RFQ
+      </s-button>
     </Modal>
   );
 }

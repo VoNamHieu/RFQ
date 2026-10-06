@@ -1,0 +1,14 @@
+/* Email notification section (Configuration → Email notification). Classes prefixed qcfg-email-. */
+
+/* Polaris DataTable defaults to verticalAlign="top": the action buttons sit at the top of each row. */
+.qcfg-email-table .qcfg-datatable__row {
+  align-items: start;
+}
+
+/* Polaris AccountConnection: avatar and text 16px apart (InlineStack gap 400), action centred. */
+.qcfg-email-account {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+}

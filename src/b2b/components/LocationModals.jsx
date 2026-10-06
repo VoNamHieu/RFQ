@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Modal, BlockStack, InlineStack, Box, Text, Select, TextField, Checkbox } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
+import { Modal } from '../../shared/wc.jsx';
 
 // Shared location constants + the location-detail modals (assign buyer,
 // edit general, edit shipping). Split out of LocationDetail.jsx.
@@ -18,40 +18,48 @@ export function AssignBuyerModal({ company, location, onClose }) {
   const candidates = (company.contacts || []).filter((c) => c.locations !== location.name);
   const [email, setEmail] = useState(candidates[0]?.email || '');
   const [role, setRole] = useState('Ordering only');
+  const current = candidates.find((x) => x.email === email);
   return (
-    <Modal
-      open
-      onClose={onClose}
-      title={`Assign a buyer to ${location.name}`}
-      primaryAction={{
-        content: 'Assign buyer',
-        disabled: !email,
-        onAction: () => {
+    <Modal onClose={onClose} heading={`Assign a buyer to ${location.name}`}>
+      {candidates.length ? (
+        <s-stack gap="small">
+          <s-select
+            label="Contact"
+            value={email}
+            onChange={(e) => setEmail(e.currentTarget.value)}
+            details={current && current.locations ? `Currently at ${current.locations}` : 'Not assigned to a location yet'}
+          >
+            {candidates.map((c) => (
+              <s-option key={c.email} value={c.email}>
+                {`${c.name} · ${c.email}`}
+              </s-option>
+            ))}
+          </s-select>
+          <s-select label="Role" value={role} onChange={(e) => setRole(e.currentTarget.value)}>
+            {ROLE_OPTIONS.map((r) => (
+              <s-option key={r} value={r}>
+                {r}
+              </s-option>
+            ))}
+          </s-select>
+        </s-stack>
+      ) : (
+        <s-paragraph color="subdued">Every contact is already assigned to this location.</s-paragraph>
+      )}
+      <s-button
+        slot="primary-action"
+        variant="primary"
+        disabled={!email}
+        onClick={() => {
           dispatch({ type: 'ASSIGN_BUYER', companyId: company.id, locationId: location.id, email, role });
           onClose();
-        },
-      }}
-      secondaryActions={[{ content: 'Cancel', onAction: onClose }]}
-    >
-      <Modal.Section>
-        {candidates.length ? (
-          <BlockStack gap="300">
-            <Select
-              label="Contact"
-              options={candidates.map((c) => ({ label: `${c.name} · ${c.email}`, value: c.email }))}
-              value={email}
-              onChange={setEmail}
-              helpText={(() => {
-                const c = candidates.find((x) => x.email === email);
-                return c && c.locations ? `Currently at ${c.locations}` : 'Not assigned to a location yet';
-              })()}
-            />
-            <Select label="Role" options={ROLE_OPTIONS.map((r) => ({ label: r, value: r }))} value={role} onChange={setRole} />
-          </BlockStack>
-        ) : (
-          <Text as="p" tone="subdued">Every contact is already assigned to this location.</Text>
-        )}
-      </Modal.Section>
+        }}
+      >
+        Assign buyer
+      </s-button>
+      <s-button slot="secondary-actions" onClick={onClose}>
+        Cancel
+      </s-button>
     </Modal>
   );
 }
@@ -60,19 +68,28 @@ export function GeneralModal({ location, onClose, onSave }) {
   const [name, setName] = useState(location.name);
   const [externalId, setExternalId] = useState(location.externalId || '');
   return (
-    <Modal
-      open
-      onClose={onClose}
-      title="Edit location"
-      primaryAction={{ content: 'Save', disabled: !name.trim(), onAction: () => onSave({ name: name.trim(), externalId: externalId.trim() }) }}
-      secondaryActions={[{ content: 'Cancel', onAction: onClose }]}
-    >
-      <Modal.Section>
-        <BlockStack gap="300">
-          <TextField label="Name" value={name} onChange={setName} autoComplete="off" />
-          <TextField label="Location ID" value={externalId} onChange={setExternalId} placeholder="External / ERP ID" autoComplete="off" />
-        </BlockStack>
-      </Modal.Section>
+    <Modal onClose={onClose} heading="Edit location">
+      <s-stack gap="small">
+        <s-text-field label="Name" value={name} onInput={(e) => setName(e.currentTarget.value)} autocomplete="off" />
+        <s-text-field
+          label="Location ID"
+          value={externalId}
+          onInput={(e) => setExternalId(e.currentTarget.value)}
+          placeholder="External / ERP ID"
+          autocomplete="off"
+        />
+      </s-stack>
+      <s-button
+        slot="primary-action"
+        variant="primary"
+        disabled={!name.trim()}
+        onClick={() => onSave({ name: name.trim(), externalId: externalId.trim() })}
+      >
+        Save
+      </s-button>
+      <s-button slot="secondary-actions" onClick={onClose}>
+        Cancel
+      </s-button>
     </Modal>
   );
 }
@@ -92,38 +109,44 @@ export function ShippingModal({ location, onClose, onSave }) {
   });
   const [billingSame, setBillingSame] = useState(location.billingSameAsShipping !== false);
   const set = (k) => (v) => setF((p) => ({ ...p, [k]: v }));
+  // Text fields update per keystroke (Polaris React TextField onChange).
+  const field = (k, label) => (
+    <s-text-field label={label} value={f[k]} onInput={(e) => set(k)(e.currentTarget.value)} autocomplete="off" />
+  );
   return (
-    <Modal
-      open
-      onClose={onClose}
-      title="Shipping address"
-      primaryAction={{ content: 'Save', onAction: () => onSave({ shipping: f, billingSameAsShipping: billingSame }) }}
-      secondaryActions={[{ content: 'Cancel', onAction: onClose }]}
-    >
-      <Modal.Section>
-        <BlockStack gap="300">
-          <Select
-            label="Country/region"
-            options={Object.entries(COUNTRY_NAMES).map(([value, label]) => ({ value, label }))}
-            value={f.country}
-            onChange={set('country')}
-          />
-          <InlineStack gap="300" wrap={false}>
-            <Box width="100%"><TextField label="First name" value={f.firstName} onChange={set('firstName')} autoComplete="off" /></Box>
-            <Box width="100%"><TextField label="Last name" value={f.lastName} onChange={set('lastName')} autoComplete="off" /></Box>
-          </InlineStack>
-          <TextField label="Company / attention" value={f.company} onChange={set('company')} autoComplete="off" />
-          <TextField label="Address" value={f.address1} onChange={set('address1')} autoComplete="off" />
-          <TextField label="Apartment, suite, etc." value={f.address2} onChange={set('address2')} autoComplete="off" />
-          <InlineStack gap="300" wrap={false}>
-            <Box width="100%"><TextField label="City" value={f.city} onChange={set('city')} autoComplete="off" /></Box>
-            <Box width="100%"><TextField label="Postal code" value={f.postal} onChange={set('postal')} autoComplete="off" /></Box>
-          </InlineStack>
-          <TextField label="Phone" value={f.phone} onChange={set('phone')} autoComplete="off" />
-          <Checkbox label="Billing address same as shipping" checked={billingSame} onChange={setBillingSame} />
-        </BlockStack>
-      </Modal.Section>
+    <Modal onClose={onClose} heading="Shipping address">
+      <s-stack gap="small">
+        <s-select label="Country/region" value={f.country} onChange={(e) => set('country')(e.currentTarget.value)}>
+          {Object.entries(COUNTRY_NAMES).map(([value, label]) => (
+            <s-option key={value} value={value}>
+              {label}
+            </s-option>
+          ))}
+        </s-select>
+        <s-grid gridTemplateColumns="1fr 1fr" gap="small">
+          {field('firstName', 'First name')}
+          {field('lastName', 'Last name')}
+        </s-grid>
+        {field('company', 'Company / attention')}
+        {field('address1', 'Address')}
+        {field('address2', 'Apartment, suite, etc.')}
+        <s-grid gridTemplateColumns="1fr 1fr" gap="small">
+          {field('city', 'City')}
+          {field('postal', 'Postal code')}
+        </s-grid>
+        {field('phone', 'Phone')}
+        <s-checkbox
+          label="Billing address same as shipping"
+          checked={billingSame}
+          onChange={(e) => setBillingSame(e.currentTarget.checked)}
+        />
+      </s-stack>
+      <s-button slot="primary-action" variant="primary" onClick={() => onSave({ shipping: f, billingSameAsShipping: billingSame })}>
+        Save
+      </s-button>
+      <s-button slot="secondary-actions" onClick={onClose}>
+        Cancel
+      </s-button>
     </Modal>
   );
 }
-

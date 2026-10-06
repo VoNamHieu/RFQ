@@ -1,7 +1,8 @@
 import React from 'react';
-import { Card, BlockStack, InlineStack, Box, Text, Button, TextField, Select, Icon } from '@shopify/polaris';
-import { DeleteIcon, PlusIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
+
+// Fixed column widths for the tier rows (From · To · Type · Value · remove).
+const ROW_COLUMNS = '90px 90px 130px 100px auto';
 
 // Volume (quantity) pricing tiers editor (spec §5.2 / quantityEditor). Each tier
 // is {id, from, to (null = ∞), valueType, value}; higher quantities pay less.
@@ -19,102 +20,86 @@ export function VolumeRangesCard() {
   };
 
   return (
-    <Card>
-      <BlockStack gap="300">
-        <Text as="h3" variant="headingSm">
-          Volume tiers
-        </Text>
-        <Text as="p" tone="subdued" variant="bodySm">
+    <s-section heading="Volume tiers">
+      <s-stack gap="small">
+        <s-paragraph color="subdued" fontSize="small">
           Set a discount that kicks in as the quantity goes up. Leave the last “To” blank for “and above”.
-        </Text>
+        </s-paragraph>
 
-        <BlockStack gap="200">
-          <InlineStack gap="200">
-            <div style={{ width: 90 }}>
-              <Text as="span" tone="subdued" variant="bodySm">
-                From qty
-              </Text>
-            </div>
-            <div style={{ width: 90 }}>
-              <Text as="span" tone="subdued" variant="bodySm">
-                To qty
-              </Text>
-            </div>
-            <div style={{ flex: 1 }}>
-              <Text as="span" tone="subdued" variant="bodySm">
-                Discount
-              </Text>
-            </div>
-          </InlineStack>
+        <s-stack gap="small-200">
+          <s-grid gridTemplateColumns="90px 90px 1fr" gap="small-200">
+            <s-text color="subdued" fontSize="small">
+              From qty
+            </s-text>
+            <s-text color="subdued" fontSize="small">
+              To qty
+            </s-text>
+            <s-text color="subdued" fontSize="small">
+              Discount
+            </s-text>
+          </s-grid>
 
           {ranges.map((r, i) => {
             const suffix = r.valueType === 'percentage' ? '%' : '$';
             return (
-              <InlineStack key={r.id || i} gap="200" blockAlign="end" wrap={false}>
-                <div style={{ width: 90 }}>
-                  <TextField
-                    label="From"
-                    labelHidden
-                    type="number"
-                    min={1}
-                    value={String(r.from ?? '')}
-                    onChange={(v) => patchRange(i, { from: Number(v) })}
-                    autoComplete="off"
-                  />
-                </div>
-                <div style={{ width: 90 }}>
-                  <TextField
-                    label="To"
-                    labelHidden
-                    type="number"
-                    placeholder="∞"
-                    value={r.to == null ? '' : String(r.to)}
-                    onChange={(v) => patchRange(i, { to: v === '' ? null : Number(v) })}
-                    autoComplete="off"
-                  />
-                </div>
-                <div style={{ width: 130 }}>
-                  <Select
-                    label="Type"
-                    labelHidden
-                    options={[
-                      { label: 'Decrease %', value: 'percentage' },
-                      { label: 'Decrease $', value: 'amount' },
-                    ]}
-                    value={r.valueType}
-                    onChange={(v) => patchRange(i, { valueType: v })}
-                  />
-                </div>
-                <div style={{ width: 100 }}>
-                  <TextField
-                    label="Value"
-                    labelHidden
-                    type="number"
-                    min={0}
-                    suffix={suffix}
-                    value={String(r.value ?? '')}
-                    onChange={(v) => patchRange(i, { value: Number(v) })}
-                    autoComplete="off"
-                  />
-                </div>
-                <Button
-                  icon={DeleteIcon}
+              <s-grid key={r.id || i} gridTemplateColumns={ROW_COLUMNS} gap="small-200" alignItems="end">
+                <s-number-field
+                  label="From"
+                  labelAccessibilityVisibility="exclusive"
+                  min={1}
+                  inputMode="numeric"
+                  value={String(r.from ?? '')}
+                  onInput={(e) => patchRange(i, { from: Number(e.currentTarget.value) })}
+                  autocomplete="off"
+                />
+                <s-number-field
+                  label="To"
+                  labelAccessibilityVisibility="exclusive"
+                  inputMode="numeric"
+                  placeholder="∞"
+                  value={r.to == null ? '' : String(r.to)}
+                  onInput={(e) => {
+                    const v = e.currentTarget.value;
+                    patchRange(i, { to: v === '' ? null : Number(v) });
+                  }}
+                  autocomplete="off"
+                />
+                <s-select
+                  label="Type"
+                  labelAccessibilityVisibility="exclusive"
+                  value={r.valueType}
+                  onChange={(e) => patchRange(i, { valueType: e.currentTarget.value })}
+                >
+                  <s-option value="percentage">Decrease %</s-option>
+                  <s-option value="amount">Decrease $</s-option>
+                </s-select>
+                <s-number-field
+                  label="Value"
+                  labelAccessibilityVisibility="exclusive"
+                  min={0}
+                  suffix={suffix}
+                  value={String(r.value ?? '')}
+                  onInput={(e) => patchRange(i, { value: Number(e.currentTarget.value) })}
+                  autocomplete="off"
+                />
+                <s-button
+                  icon="delete"
                   variant="tertiary"
                   tone="critical"
                   accessibilityLabel="Remove tier"
                   onClick={() => removeRange(i)}
                 />
-              </InlineStack>
+              </s-grid>
             );
           })}
-        </BlockStack>
+        </s-stack>
 
-        <Box>
-          <Button icon={PlusIcon} onClick={addRange}>
+        <s-stack direction="inline">
+          <s-button icon="plus" onClick={addRange}>
             Add tier
-          </Button>
-        </Box>
-      </BlockStack>
-    </Card>
+          </s-button>
+        </s-stack>
+      </s-stack>
+    </s-section>
   );
 }

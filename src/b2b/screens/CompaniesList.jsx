@@ -1,24 +1,8 @@
 import React, { useState } from 'react';
-import {
-  Page,
-  Card,
-  IndexTable,
-  IndexFilters,
-  useSetIndexFiltersMode,
-  useIndexResourceState,
-  Badge,
-  Text,
-  Link,
-  Button,
-  Tooltip,
-  InlineStack,
-  Box,
-  Modal,
-  EmptyState,
-} from '@shopify/polaris';
-import { EditIcon, DeleteIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { companyBaseEntries, companyQuantityEntries, companyPricingStatus, companyNeedsPrice } from '../pricing.js';
+import { Modal, IndexFiltersBar, useWcId, wcTone } from '../../shared/wc.jsx';
+import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 
 const FILTER_TABS = [
   { id: 'all', label: 'All' },
@@ -39,9 +23,9 @@ export function CompaniesList() {
   const { state, dispatch } = useStore();
   const policies = state.db.policies;
   const defaults = state.db.defaults;
-  const { mode, setMode } = useSetIndexFiltersMode();
   const [page, setPage] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const tipId = useWcId('company-tip');
 
   // Pricing held by the company and by any of its locations (a location's own
   // pricing counts too), each listed once.
@@ -82,164 +66,155 @@ export function CompaniesList() {
   const current = Math.min(page, pageCount - 1);
   const pageRows = list.slice(current * PAGE_SIZE, current * PAGE_SIZE + PAGE_SIZE);
 
-  const resources = pageRows.map((c) => ({ id: c.id }));
-  const { selectedResources, allResourcesSelected, handleSelectionChange } = useIndexResourceState(resources);
-
   // First-run empty state (no companies at all) — the B2B boundary explainer.
-  // (After all hooks so hook order stays stable.)
   if (state.db.companies.length === 0) {
     return (
-      <Page fullWidth title="B2B Company">
-        <Card>
-          <EmptyState
+      <s-page heading="B2B Company" inlineSize="large">
+        <s-section>
+          <EmptyBlock
             heading="No companies linked yet"
             action={{ content: 'Link your first company', onAction: () => dispatch({ type: 'OPEN_ADD_COMPANY' }) }}
             image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
           >
-            <p>
-              Link a Shopify B2B Company to decide what its buyers pay. Shopify keeps the Company record and takes the
-              orders; this app only decides the price.
-            </p>
-          </EmptyState>
-        </Card>
-      </Page>
+            Link a Shopify B2B Company to decide what its buyers pay. Shopify keeps the Company record and takes the
+            orders; this app only decides the price.
+          </EmptyBlock>
+        </s-section>
+      </s-page>
     );
   }
 
   const filterIndex = Math.max(0, FILTER_TABS.findIndex((t) => t.id === state.listFilter));
-  const tabs = FILTER_TABS.map((t, i) => ({ id: `f-${t.id}`, content: t.label, index: i }));
-
-  const rows = pageRows.map((c, index) => {
-    const status = companyPricingStatus(c, policies, defaults);
-    const assigned = assignedPolicies(c);
-    return (
-      <IndexTable.Row
-        id={c.id}
-        key={c.id}
-        position={index}
-        selected={selectedResources.includes(c.id)}
-        onClick={() => dispatch({ type: 'OPEN_COMPANY', id: c.id })}
-      >
-        <IndexTable.Cell>
-          <Link removeUnderline monochrome={false} onClick={() => dispatch({ type: 'OPEN_COMPANY', id: c.id })}>
-            {c.name}
-          </Link>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
-          <Badge tone={status.tone}>{status.label}</Badge>
-        </IndexTable.Cell>
-        <IndexTable.Cell>{(c.locations || []).length}</IndexTable.Cell>
-        <IndexTable.Cell>
-          <Text as="span" variant="bodySm">
-            {assigned.length
-              ? assigned.slice(0, 2).map((p) => p.name).join(', ') + (assigned.length > 2 ? ` +${assigned.length - 2} more` : '')
-              : '—'}
-          </Text>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
-          <Text as="span" variant="bodySm">
-            {c.mainContact || '—'}
-          </Text>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
-          <InlineStack gap="100" align="end" wrap={false}>
-            <Tooltip content="Edit">
-              <Button icon={EditIcon} variant="tertiary" accessibilityLabel="Edit company" onClick={() => dispatch({ type: 'OPEN_COMPANY', id: c.id })} />
-            </Tooltip>
-            <Tooltip content="Delete">
-              <Button icon={DeleteIcon} variant="tertiary" tone="critical" accessibilityLabel="Delete company" onClick={() => setConfirmDelete(c)} />
-            </Tooltip>
-          </InlineStack>
-        </IndexTable.Cell>
-      </IndexTable.Row>
-    );
-  });
 
   return (
-    <Page
-      fullWidth
-      title="B2B Company"
-      primaryAction={{ content: 'Add company', onAction: () => dispatch({ type: 'OPEN_ADD_COMPANY' }) }}
-    >
-      <Card padding="0">
-        <IndexFilters
-          queryValue={state.companySearch}
-          queryPlaceholder="Searching in all companies"
-          onQueryChange={(v) => dispatch({ type: 'SET_COMPANY_SEARCH', value: v })}
-          onQueryClear={() => dispatch({ type: 'SET_COMPANY_SEARCH', value: '' })}
-          tabs={tabs}
-          selected={filterIndex}
-          onSelect={(i) => {
-            dispatch({ type: 'SET_LIST_FILTER', filter: FILTER_TABS[i].id });
-            setPage(0);
-          }}
-          sortOptions={SORT_OPTIONS}
-          sortSelected={[`${state.companySortField} ${state.companySortDir}`]}
-          onSort={(val) => {
-            const [field, dir] = (val[0] || 'name asc').split(' ');
-            dispatch({ type: 'SET_COMPANY_SORT', field, dir });
-          }}
-          filters={[]}
-          appliedFilters={[]}
-          onClearAll={() => {}}
-          mode={mode}
-          setMode={setMode}
-          cancelAction={{ onAction: () => dispatch({ type: 'SET_COMPANY_SEARCH', value: '' }) }}
-          canCreateNewView={false}
-        />
-        <IndexTable
-          resourceName={{ singular: 'company', plural: 'companies' }}
-          itemCount={pageRows.length}
-          selectedItemsCount={allResourcesSelected ? 'All' : selectedResources.length}
-          onSelectionChange={handleSelectionChange}
-          headings={[
-            { title: 'Company' },
-            { title: 'Pricing status' },
-            { title: 'Locations' },
-            { title: 'Pricing assigned' },
-            { title: 'Main contact' },
-            { title: 'Actions', alignment: 'end' },
-          ]}
-          pagination={{
-            hasNext: current < pageCount - 1,
-            hasPrevious: current > 0,
-            onNext: () => setPage((p) => Math.min(p + 1, pageCount - 1)),
-            onPrevious: () => setPage((p) => Math.max(p - 1, 0)),
-          }}
-          emptyState={
-            <Box padding="400">
-              <Text as="p" alignment="center" tone="subdued">
-                No companies match — try a different search or clear the filter.
-              </Text>
-            </Box>
-          }
+    <s-page heading="B2B Company" inlineSize="large">
+      <s-button slot="primary-action" variant="primary" onClick={() => dispatch({ type: 'OPEN_ADD_COMPANY' })}>
+        Add company
+      </s-button>
+
+      <s-section padding="none">
+        <s-table
+          paginate={pageCount > 1}
+          hasPreviousPage={current > 0}
+          hasNextPage={current < pageCount - 1}
+          onPreviousPage={() => setPage(Math.max(current - 1, 0))}
+          onNextPage={() => setPage(Math.min(current + 1, pageCount - 1))}
         >
-          {rows}
-        </IndexTable>
-      </Card>
+          <IndexFiltersBar
+            slot="filters"
+            query={state.companySearch}
+            queryPlaceholder="Searching in all companies"
+            onQueryChange={(v) => dispatch({ type: 'SET_COMPANY_SEARCH', value: v })}
+            tabs={FILTER_TABS.map((t) => ({ id: `f-${t.id}`, content: t.label }))}
+            selected={filterIndex}
+            onSelect={(i) => {
+              dispatch({ type: 'SET_LIST_FILTER', filter: FILTER_TABS[i].id });
+              setPage(0);
+            }}
+            sortOptions={SORT_OPTIONS}
+            sortSelected={`${state.companySortField} ${state.companySortDir}`}
+            onSort={(val) => {
+              const [field, dir] = (val || 'name asc').split(' ');
+              dispatch({ type: 'SET_COMPANY_SORT', field, dir });
+            }}
+          />
+          <s-table-header-row>
+            <s-table-header listSlot="primary">Company</s-table-header>
+            <s-table-header listSlot="secondary">Pricing status</s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">Locations</s-table-header>
+            <s-table-header listSlot="labeled">Pricing assigned</s-table-header>
+            <s-table-header listSlot="labeled">Main contact</s-table-header>
+            <s-table-header listSlot="inline">Actions</s-table-header>
+          </s-table-header-row>
+          <s-table-body>
+            {pageRows.map((c) => {
+              const status = companyPricingStatus(c, policies, defaults);
+              const assigned = assignedPolicies(c);
+              const linkId = `${tipId}-open-${c.id}`;
+              return (
+                <s-table-row key={c.id} clickDelegate={linkId}>
+                  <s-table-cell>
+                    <s-link id={linkId} onClick={() => dispatch({ type: 'OPEN_COMPANY', id: c.id })}>
+                      {c.name}
+                    </s-link>
+                  </s-table-cell>
+                  <s-table-cell>
+                    <s-badge tone={wcTone(status.tone)}>{status.label}</s-badge>
+                  </s-table-cell>
+                  <s-table-cell>{(c.locations || []).length}</s-table-cell>
+                  <s-table-cell>
+                    <s-text fontSize="small">
+                      {assigned.length
+                        ? assigned.slice(0, 2).map((p) => p.name).join(', ') + (assigned.length > 2 ? ` +${assigned.length - 2} more` : '')
+                        : '—'}
+                    </s-text>
+                  </s-table-cell>
+                  <s-table-cell>
+                    <s-text fontSize="small">{c.mainContact || '—'}</s-text>
+                  </s-table-cell>
+                  <s-table-cell>
+                    <s-stack direction="inline" gap="small-400" justifyContent="end">
+                      <s-button
+                        icon="edit"
+                        variant="tertiary"
+                        accessibilityLabel="Edit company"
+                        interestFor={`${tipId}-edit-${c.id}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          dispatch({ type: 'OPEN_COMPANY', id: c.id });
+                        }}
+                      />
+                      <s-tooltip id={`${tipId}-edit-${c.id}`}>Edit</s-tooltip>
+                      <s-button
+                        icon="delete"
+                        variant="tertiary"
+                        tone="critical"
+                        accessibilityLabel="Delete company"
+                        interestFor={`${tipId}-delete-${c.id}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmDelete(c);
+                        }}
+                      />
+                      <s-tooltip id={`${tipId}-delete-${c.id}`}>Delete</s-tooltip>
+                    </s-stack>
+                  </s-table-cell>
+                </s-table-row>
+              );
+            })}
+          </s-table-body>
+        </s-table>
+        {pageRows.length === 0 ? (
+          <s-box padding="base">
+            <div style={{ textAlign: 'center' }}>
+              <s-text color="subdued">No companies match — try a different search or clear the filter.</s-text>
+            </div>
+          </s-box>
+        ) : null}
+      </s-section>
 
       {confirmDelete && (
-        <Modal
-          open
-          onClose={() => setConfirmDelete(null)}
-          title={`Delete ${confirmDelete.name}?`}
-          primaryAction={{
-            content: 'Delete company',
-            destructive: true,
-            onAction: () => {
+        <Modal onClose={() => setConfirmDelete(null)} heading={`Delete ${confirmDelete.name}?`}>
+          <s-paragraph>
+            This removes {confirmDelete.name} from the B2B app. The Shopify company record is not affected.
+          </s-paragraph>
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            tone="critical"
+            onClick={() => {
               dispatch({ type: 'DELETE_COMPANY', id: confirmDelete.id });
               setConfirmDelete(null);
-            },
-          }}
-          secondaryActions={[{ content: 'Cancel', onAction: () => setConfirmDelete(null) }]}
-        >
-          <Modal.Section>
-            <Text as="p">
-              This removes {confirmDelete.name} from the B2B app. The Shopify company record is not affected.
-            </Text>
-          </Modal.Section>
+            }}
+          >
+            Delete company
+          </s-button>
+          <s-button slot="secondary-actions" onClick={() => setConfirmDelete(null)}>
+            Cancel
+          </s-button>
         </Modal>
       )}
-    </Page>
+    </s-page>
   );
 }
+

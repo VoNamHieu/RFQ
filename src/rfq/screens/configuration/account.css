@@ -1,0 +1,57 @@
+/* Customer Account (Configuration › Customer Account) — classes prefixed qcfg-acct-. */
+
+/* "Learn more about Customer Account" (centered Text below the tabs; no extra margin). */
+.qcfg-acct-learn {
+  text-align: center;
+}
+
+/* Polaris IndexTable default empty state (EmptySearchResult withIllustration). */
+.qcfg-acct-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 40px 16px;
+  text-align: center;
+}
+
+.qcfg-acct-empty img {
+  display: block;
+}
+
+/* Combobox (allowMultiple) popover with a Listbox of checkbox options. */
+.qcfg-acct-combo {
+  position: relative;
+  min-width: 0;
+}
+
+.qcfg-acct-combo__popover {
+  /* native [popover] in the top layer; top/left/width set inline from the field */
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  border: 0;
+  z-index: 520;
+  max-height: 295px;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 6px 0;
+  border-radius: 12px;
+  background: #fff;
+  color: inherit;
+  box-shadow: 0 4px 6px -2px rgba(26, 26, 26, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.qcfg-acct-combo__option {
+  margin: 4px 6px 0;
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+
+.qcfg-acct-combo__option:first-child {
+  margin-top: 0;
+}
+
+.qcfg-acct-combo__option:hover {
+  background: rgba(241, 241, 241, 1);
+}

@@ -32,7 +32,8 @@ const companies = [
       // Hanoi only (p31), so pickers show it as "Hanoi · ABC Construction".
       { id: 'l1', name: 'Hanoi', ordering: 'Buys directly', terms: 'Net 30', lastOrder: '2026-07-15', buyers: 2,
         pricing: { base: [{ id: 'p1', priority: 1 }, { id: 'p30', priority: 5 }, { id: 'p8', priority: 2 }, { id: 'p20', priority: 3 }, { id: 'p21', priority: 4 }, { id: 'p22', priority: 5 }, { id: 'p23', priority: 6 }, { id: 'p24', priority: 7 }, { id: 'p25', priority: 8 }, { id: 'p26', priority: 9 }, { id: 'p27', priority: 10 }, { id: 'p28', priority: 11 }, { id: 'p29', priority: 12 }, { id: 'p31', priority: 1 }], quantity: null } },
-      { id: 'l2', name: 'Bac Ninh site', ordering: 'You approve first', terms: 'Due on receipt', lastOrder: '2026-06-28', buyers: 1 }
+      // `catalog`: the collection its buyers can buy from (none = every product).
+      { id: 'l2', name: 'Bac Ninh site', ordering: 'You approve first', terms: 'Due on receipt', lastOrder: '2026-06-28', buyers: 1, catalog: 'Contractor assortment' }
     ],
     contacts: [
       { name: 'John Nguyen', email: 'john@abcconstruction.com', role: 'Location admin', access: 'Buys directly', locations: 'Hanoi' },
@@ -54,7 +55,7 @@ const companies = [
   {
     id: 'c2', name: 'Vinh Phat Trading', mainContact: 'Bui Quang', source: 'Merchant created',
     pricing: { base: 'p1', quantity: null }, revenue: 86400,
-    locations: [{ id: 'l3', name: 'Da Nang', ordering: 'Buys directly', terms: 'Net 15', lastOrder: '2026-07-11', buyers: 1 }],
+    locations: [{ id: 'l3', name: 'Da Nang', ordering: 'Buys directly', terms: 'Net 15', lastOrder: '2026-07-11', buyers: 1, catalog: 'Distributor assortment' }],
     contacts: [{ name: 'Bui Quang', email: 'quang@vinhphat.vn', role: 'Location admin', access: 'Buys directly', locations: 'Da Nang' }],
     quotes: [], exceptions: [],
     activity: [
@@ -370,14 +371,50 @@ const quotes = [
   }
 ];
 
-export const dbSeed = { defaults, products, companies, tagPricing, customers, policies, attention, requests, health, quotes };
+// Order limits (see limits.js). Vinh Phat's own minimum replaces the store-wide one
+// for its location. The review thresholds held orders #1045 (ABC Hanoi's own, $10,000)
+// and #1048 (store-wide, $20,000) — see `heldBy` in orderSeed.
+const limits = [
+  { id: 'ol1', name: 'Wholesale minimum', kind: 'order', status: 'Active', minValue: 500, maxValue: null, minQty: null, maxQty: null, min: null, max: null, increment: null, threshold: null,
+    scopeType: 'products', collection: '', selectedProducts: [], storeWide: true, companyIds: [], locationKeys: [], message: '' },
+  { id: 'ol2', name: 'Vinh Phat low minimum', kind: 'order', status: 'Active', minValue: 200, maxValue: null, minQty: null, maxQty: null, min: null, max: null, increment: null, threshold: null,
+    scopeType: 'products', collection: '', selectedProducts: [], storeWide: false, companyIds: ['c2'], locationKeys: [], message: '' },
+  { id: 'ol3', name: 'Filter case packs', kind: 'product', status: 'Active', minValue: null, maxValue: null, minQty: null, maxQty: null, min: 12, max: null, increment: 12, threshold: null,
+    scopeType: 'products', collection: '', selectedProducts: ['FIL-XL', 'FIL-STD'], storeWide: false, companyIds: ['c1', 'c2'], locationKeys: [], message: '' },
+  { id: 'ol4', name: 'ABC Hanoi review', kind: 'review', status: 'Active', minValue: null, maxValue: null, minQty: null, maxQty: null, min: null, max: null, increment: null, threshold: 10000,
+    scopeType: 'products', collection: '', selectedProducts: [], storeWide: false, companyIds: [], locationKeys: ['c1::l1'], message: '' },
+  { id: 'ol5', name: 'Large order review', kind: 'review', status: 'Active', minValue: null, maxValue: null, minQty: null, maxQty: null, min: null, max: null, increment: null, threshold: 20000,
+    scopeType: 'products', collection: '', selectedProducts: [], storeWide: true, companyIds: [], locationKeys: [], message: '' },
+];
+
+// Agreements (see agreements.js). ABC's AG-301 is live and its terms are the ones
+// assigned above (p1, p8, p30, p6, ol3) — the rest of ABC's pricing is outside it.
+// Vinh Phat's AG-305 is a draft; Song Hong's AG-274 ended (see its activity).
+const agreements = [
+  { id: 'ag1', number: 'AG-301', name: '2026 annual terms', companyId: 'c1', locationIds: null, status: 'Active', version: 2,
+    terms: { base: ['p1', 'p8', 'p30'], quantity: ['p6'], limits: ['ol3'] },
+    history: [
+      { version: 2, date: '2026-07-12', note: 'Added VLV-40 Contract Price' },
+      { version: 1, date: '2026-01-03', note: 'Activated, from accepted quote Q-0982' },
+    ] },
+  { id: 'ag2', number: 'AG-305', name: '2027 distributor terms', companyId: 'c2', locationIds: null, status: 'Draft', version: 0,
+    terms: { base: ['p1'], quantity: [], limits: ['ol2', 'ol3'] }, history: [] },
+  { id: 'ag3', number: 'AG-274', name: '2025–26 negotiated terms', companyId: 'c4', locationIds: null, status: 'Ended', version: 1,
+    terms: { base: ['p8'], quantity: [], limits: [] },
+    history: [
+      { version: 1, date: '2026-07-01', note: 'Ended' },
+      { version: 1, date: '2025-07-01', note: 'Activated' },
+    ] },
+];
+
+export const dbSeed = { defaults, products, companies, tagPricing, customers, policies, limits, agreements, attention, requests, health, quotes };
 
 export const orderSeed = {
   c1: [
     {
       id: '#1045', location: 'Hanoi', buyer: 'John Nguyen', date: '2026-07-15', amount: 12400, lines: 3, po: 'PO-9821',
       pricing: 'ABC Hanoi Negotiated', pricingSource: 'Location price', source: 'Direct checkout',
-      status: 'Needs review', shopifyStatus: 'Draft order', reason: 'Above the $10,000 review threshold'
+      status: 'Needs review', shopifyStatus: 'Draft order', reason: 'Above the $10,000 review threshold', heldBy: 'ol4'
     },
     {
       id: '#1044', location: 'Hanoi', buyer: 'Le Thu Ha', date: '2026-07-14', amount: 5860, lines: 2, po: 'PO-9814',
@@ -401,6 +438,11 @@ export const orderSeed = {
     }
   ],
   c2: [
+    {
+      id: '#1048', location: 'Da Nang', buyer: 'Bui Quang', date: '2026-08-07', amount: 21500, lines: 8, po: 'PO-4470',
+      pricing: 'Distributor Tier 2', pricingSource: 'Company price', source: 'Direct checkout',
+      status: 'Needs review', shopifyStatus: 'Draft order', reason: 'Above the $20,000 review threshold', heldBy: 'ol5'
+    },
     {
       id: '#1041', location: 'Da Nang', buyer: 'Bui Quang', date: '2026-07-11', amount: 1560, lines: 1, po: 'None',
       pricing: 'Distributor Tier 2', pricingSource: 'Company price', source: 'Direct checkout',

@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useReducer } from 'react';
-import { shopifyCompanyDirectory } from './data/directory.js';
+import { shopifyCompanies } from './data/directory.js';
 import { policyUsageCount, slotIds, hasOwnSlot } from './pricing.js';
 import { newRule, newBaseBuilder, newQuantityBuilder } from './builders.js';
 import { buildInitialState } from './initialState.js';
+import { newLimit, normalizeLimit } from './limits.js';
+import { newAgreement, applyAgreement, unapplyAgreement, agreementChanges } from './agreements.js';
 import { todayISO, registrationDuplicates } from './registrations.js';
 import {
   clone,
@@ -29,6 +31,16 @@ const locKey = (companyId, locationId) => `${companyId}::${locationId}`;
 // Does this location get the pricing — its own list if it has one, else the company's.
 // Read-only (slotIds / hasOwnSlot never normalize in place).
 const locationHolds = (c, l, kind, policyId) => (hasOwnSlot(l, kind) ? slotIds(l, kind) : slotIds(c, kind)).includes(policyId);
+
+// ----- Companies from Shopify -----
+// A Shopify location as it joins the app — it follows the company's pricing until
+// given its own.
+const fromShopifyLocation = (l) => ({
+  id: l.id, name: l.name, terms: l.terms, ordering: l.ordering, buyers: 0, lastOrder: '—',
+  pricing: { base: null, quantity: null },
+});
+// Names for the locations the Prototype card creates in Shopify.
+const NEW_LOCATION_NAMES = ['Hue', 'Nha Trang', 'Vung Tau', 'Bien Hoa', 'Quy Nhon', 'Vinh', 'Thai Nguyen', 'Da Lat', 'Buon Ma Thuot', 'Nam Dinh'];
 
 // Read a saved policy's current assignment back into builder fields, so opening it
 // shows who it serves and re-saving preserves that unless the merchant changes it.
@@ -506,59 +518,108 @@ function reducer(state, action) {
       return { ...state, db, assignMulti: null, toast: 'Pricing assigned' };
     }
     // ----- Add-company wizard -----
-    // Add a Shopify company: pick it, add it — pricing is set afterwards.
+    // Add Shopify companies: pick one or more, add them — pricing is set afterwards.
+    // selected: shopifyCompanyIds — each comes with all its locations not in the app yet.
     case 'OPEN_ADD_COMPANY':
-      return { ...state, addCompany: { shopifyId: null, search: '' } };
+      return { ...state, addCompany: { selected: [], search: '', autoAddLocations: false } };
     case 'ADD_COMPANY_PATCH':
       return { ...state, addCompany: { ...state.addCompany, ...action.patch } };
     case 'CLOSE_ADD_COMPANY':
       return { ...state, addCompany: null };
     case 'ADD_COMPANY_CONFIRM': {
       const ac = state.addCompany;
-      const shp = Object.values(shopifyCompanyDirectory).find((s) => s.id === ac.shopifyId);
-      if (!shp) return { ...state, addCompany: null };
+      const directory = shopifyCompanies(state.shopifyNewLocations);
       const db = clone(state.db);
-      // Only the ticked locations come in, each with the contacts at it (a contact
-      // with no location comes with the company). New locations follow the
-      // company's pricing until given their own.
-      const picked = (shp.locations || []).filter((l) => (ac.locationIds || []).includes(l.id));
-      if (!picked.length) return state;
-      const toLocation = (l) => ({
-        id: l.id, name: l.name, terms: l.terms, ordering: l.ordering, buyers: 0, lastOrder: '—',
-        pricing: { base: null, quantity: null },
+      // Every location not in the app yet comes in, each with the contacts at it (a
+      // contact with no location comes with the company). New locations follow the
+      // company's pricing until given their own. With auto-add ticked, locations
+      // created on the company in Shopify later join it too (SHOPIFY_LOCATION_CREATED);
+      // left unticked, a company that already auto-adds keeps doing so (it's turned
+      // off from its Locations tab).
+      const autoAdd = !!ac.autoAddLocations;
+      const added = []; // { id, isNew, n }
+      // The first company is added on its own (the picker allows one).
+      const ids = db.companies.length === 0 ? (ac.selected || []).slice(0, 1) : ac.selected || [];
+      ids.forEach((shopifyId) => {
+        const shp = directory.find((s) => s.id === shopifyId);
+        if (!shp) return;
+        // Already in the app (added before with some locations): add the rest to it.
+        const existing = db.companies.find((c) => c.shopifyCompanyId === shp.id || c.name === shp.name);
+        const has = (l) => (existing?.locations || []).some((x) => x.id === l.id || x.name === l.name);
+        const picked = (shp.locations || []).filter((l) => !has(l));
+        if (!picked.length) return;
+        const contactsAt = (names, withUnplaced) =>
+          (shp.contacts || [])
+            .filter((c) => names.includes(c.location) || (withUnplaced && !c.location))
+            .map((c) => ({ name: c.name, email: c.email, role: c.role, access: c.access, locations: c.location }));
+        if (existing) {
+          existing.locations = [...(existing.locations || []), ...picked.map(fromShopifyLocation)];
+          existing.autoAddLocations = !!existing.autoAddLocations || autoAdd;
+          const known = new Set((existing.contacts || []).map((c) => c.email));
+          existing.contacts = [...(existing.contacts || []), ...contactsAt(picked.map((l) => l.name), false).filter((c) => !known.has(c.email))];
+          added.push({ id: existing.id, isNew: false, n: picked.length });
+          return;
+        }
+        let seq = db.companies.length + 1;
+        while (db.companies.some((c) => c.id === `c${seq}`)) seq += 1;
+        const id = `c${seq}`;
+        const contacts = contactsAt(picked.map((l) => l.name), true);
+        db.companies.push({
+          id,
+          name: shp.name,
+          mainContact: contacts[0]?.name || '',
+          source: 'Company application',
+          pricing: { base: null, quantity: null },
+          revenue: 0,
+          locations: picked.map(fromShopifyLocation),
+          autoAddLocations: autoAdd,
+          contacts,
+          quotes: [],
+          exceptions: [],
+          activity: [],
+          orders: [],
+          shopifyCompanyId: shp.id,
+        });
+        added.push({ id, isNew: true, n: picked.length });
       });
-      const contactsAt = (names, withUnplaced) =>
-        (shp.contacts || [])
-          .filter((c) => names.includes(c.location) || (withUnplaced && !c.location))
-          .map((c) => ({ name: c.name, email: c.email, role: c.role, access: c.access, locations: c.location }));
-      // Already in the app (added before with some locations): add the rest to it.
-      const existing = db.companies.find((c) => c.shopifyCompanyId === shp.id || c.name === shp.name);
-      if (existing) {
-        existing.locations = [...(existing.locations || []), ...picked.map(toLocation)];
-        const known = new Set((existing.contacts || []).map((c) => c.email));
-        existing.contacts = [...(existing.contacts || []), ...contactsAt(picked.map((l) => l.name), false).filter((c) => !known.has(c.email))];
-        const n = picked.length;
-        return { ...state, db, addCompany: null, view: 'company', selectedCompany: existing.id, companyTab: 'locations', toast: `${n} location${n === 1 ? '' : 's'} added` };
+      if (!added.length) return state;
+      // One company: land on it — a new one on its Pricing tab (the empty states
+      // there offer Add base / quantity pricing), an existing one on Locations.
+      // Several: back to the list.
+      if (added.length === 1) {
+        const [a] = added;
+        const toast = a.isNew ? 'Company added' : `${a.n} location${a.n === 1 ? '' : 's'} added`;
+        return { ...state, db, addCompany: null, view: 'company', selectedCompany: a.id, companyTab: a.isNew ? 'pricing' : 'locations', toast };
       }
-      const id = `c${db.companies.length + 1}`;
-      const contacts = contactsAt(picked.map((l) => l.name), true);
-      db.companies.push({
-        id,
-        name: shp.name,
-        mainContact: contacts[0]?.name || '',
-        source: 'Company application',
-        pricing: { base: null, quantity: null },
-        revenue: 0,
-        locations: picked.map(toLocation),
-        contacts,
-        quotes: [],
-        exceptions: [],
-        activity: [],
-        orders: [],
-        shopifyCompanyId: ac.shopifyId,
-      });
-      // Land on its Pricing tab — the empty states there offer Add base / quantity pricing.
-      return { ...state, db, addCompany: null, view: 'company', selectedCompany: id, companyTab: 'pricing', toast: 'Company added' };
+      const nNew = added.filter((a) => a.isNew).length;
+      const toast = nNew === added.length ? `${nNew} companies added` : `${added.length} companies updated`;
+      return { ...state, db, addCompany: null, view: 'customers', toast };
+    }
+    case 'SET_AUTO_ADD_LOCATIONS': {
+      const db = clone(state.db);
+      const c = db.companies.find((x) => x.id === action.companyId);
+      if (c) c.autoAddLocations = action.on;
+      return { ...state, db, toast: action.on ? 'New Shopify locations will be added' : 'New Shopify locations won\'t be added' };
+    }
+    // Prototype: a location is created on a company in Shopify (the
+    // company_locations/create webhook). It joins the Shopify directory; if the
+    // company is in the app with auto-add on, it joins the company too.
+    case 'SHOPIFY_LOCATION_CREATED': {
+      const shp = shopifyCompanies(state.shopifyNewLocations).find((s) => s.id === action.shopifyId);
+      if (!shp) return state;
+      const created = state.shopifyNewLocations[shp.id] || [];
+      const taken = new Set((shp.locations || []).map((l) => l.name));
+      const name = NEW_LOCATION_NAMES.find((n) => !taken.has(n)) || `Location ${shp.locations.length + 1}`;
+      const loc = { id: `${shp.id}_new${created.length + 1}`, name, terms: 'Net 30', ordering: 'Buys directly' };
+      const shopifyNewLocations = { ...state.shopifyNewLocations, [shp.id]: [...created, loc] };
+      const linked = state.db.companies.find((c) => c.shopifyCompanyId === shp.id || c.name === shp.name);
+      if (!linked) return { ...state, shopifyNewLocations, toast: `${name} created in Shopify` };
+      if (!linked.autoAddLocations) return { ...state, shopifyNewLocations, toast: `${name} created in Shopify — auto-add is off for ${linked.name}` };
+      const db = clone(state.db);
+      const c = db.companies.find((x) => x.id === linked.id);
+      c.locations = [...(c.locations || []), fromShopifyLocation(loc)];
+      c.activity = [{ when: 'Today', what: `${name} added automatically from Shopify` }, ...(c.activity || [])];
+      return { ...state, db, shopifyNewLocations, toast: `${name} added to ${c.name}` };
     }
     case 'SET_LIST_FILTER':
       return { ...state, listFilter: action.filter };
@@ -570,6 +631,12 @@ function reducer(state, action) {
       const db = clone(state.db);
       db.companies = db.companies.filter((c) => c.id !== action.id);
       db.quotes = (db.quotes || []).filter((q) => q.company !== action.id);
+      db.limits = (db.limits || []).map((l) => ({
+        ...l,
+        companyIds: (l.companyIds || []).filter((id) => id !== action.id),
+        locationKeys: (l.locationKeys || []).filter((k) => !k.startsWith(`${action.id}::`)),
+      }));
+      db.agreements = (db.agreements || []).filter((a) => a.companyId !== action.id);
       const goList = state.selectedCompany === action.id;
       return {
         ...state,
@@ -765,6 +832,8 @@ function reducer(state, action) {
         db.customers = [];
         db.tagPricing = [];
         db.quotes = [];
+        db.limits = [];
+        db.agreements = [];
         db.registrations = [];
         db.hasRegistrationForm = false;
         db.registrationFormPublished = false;
@@ -818,6 +887,104 @@ function reducer(state, action) {
       // With a location, it lands in that location's own base list.
       const msg = applyQuotePricingTransfer(db, companyId, lines, transfer) || 'No prices added';
       return { ...state, db, buildQuotes: null, toast: msg };
+    }
+    // ----- Orders held by a review threshold (order limits) -----
+    // Approving completes the held draft order into a real order; declining cancels
+    // it (the buyer is told, and can change the order and submit it again).
+    case 'APPROVE_ORDER':
+    case 'DECLINE_ORDER': {
+      const approve = action.type === 'APPROVE_ORDER';
+      const db = clone(state.db);
+      const c = db.companies.find((x) => x.id === action.companyId);
+      const o = c?.orders?.find((x) => x.id === action.orderId);
+      if (!o) return state;
+      Object.assign(o, approve ? { status: 'Unfulfilled', shopifyStatus: 'Unfulfilled' } : { status: 'Declined', shopifyStatus: 'Cancelled' });
+      c.activity = [{ when: 'Today', what: `Order ${o.id} ${approve ? 'approved' : 'declined'} after review` }, ...(c.activity || [])];
+      return { ...state, db, toast: `Order ${o.id} ${approve ? 'approved' : 'declined'}` };
+    }
+    // ----- Agreements (see agreements.js) -----
+    // The editor is a page in the Agreements view; opened from a company's
+    // Agreement tab it goes back there on save or cancel.
+    case 'OPEN_AGREEMENT_EDITOR': {
+      const found = action.agreementId && (state.db.agreements || []).find((a) => a.id === action.agreementId);
+      const company = state.db.companies.find((c) => c.id === (found?.companyId || action.companyId));
+      if (!company) return state;
+      const draft = found ? clone(found) : newAgreement(state.db, company);
+      return { ...state, view: 'agreements', agreementEditor: { draft, returnTo: action.returnTo || null } };
+    }
+    case 'AGREEMENT_EDITOR_PATCH':
+      return { ...state, agreementEditor: { ...state.agreementEditor, draft: { ...state.agreementEditor.draft, ...action.patch } } };
+    case 'CLOSE_AGREEMENT_EDITOR':
+      return { ...state, ...(state.agreementEditor?.returnTo || {}), agreementEditor: null };
+    // Save the editor's draft (or `action.draft`, e.g. Activate from the Agreement
+    // tab). Activating, or saving an active agreement, applies its terms now: the
+    // previous version's terms come off, the new ones go on, as a new version.
+    case 'SAVE_AGREEMENT': {
+      const db = clone(state.db);
+      const draft = clone(action.draft || state.agreementEditor.draft);
+      draft.name = (draft.name || '').trim();
+      const prev = draft.id ? (db.agreements || []).find((a) => a.id === draft.id) : null;
+      const wasActive = prev?.status === 'Active';
+      const goLive = wasActive || !!action.activate;
+      if (!draft.id) draft.id = `ag${Date.now()}`;
+      if (goLive) {
+        if (wasActive) unapplyAgreement(db, prev);
+        applyAgreement(db, draft);
+        draft.status = 'Active';
+        draft.version = (prev?.version || 0) + 1;
+        const note = wasActive ? agreementChanges(prev, draft, db) : 'Activated';
+        draft.history = [{ version: draft.version, date: todayISO(), note }, ...(prev?.history || [])];
+      }
+      db.agreements = prev ? db.agreements.map((a) => (a.id === draft.id ? draft : a)) : [...(db.agreements || []), draft];
+      const returnTo = action.draft ? {} : state.agreementEditor?.returnTo || {};
+      const toast = wasActive ? `Saved as version ${draft.version}` : goLive ? `${draft.number} activated` : 'Draft saved';
+      return { ...state, db, ...returnTo, agreementEditor: action.draft ? state.agreementEditor : null, toast };
+    }
+    // Ending takes the agreement's terms off the company; it stays as history.
+    case 'END_AGREEMENT': {
+      const db = clone(state.db);
+      const ag = (db.agreements || []).find((a) => a.id === action.id);
+      if (!ag || ag.status !== 'Active') return state;
+      unapplyAgreement(db, ag);
+      ag.status = 'Ended';
+      ag.history = [{ version: ag.version, date: todayISO(), note: 'Ended' }, ...(ag.history || [])];
+      return { ...state, db, toast: `${ag.number} ended` };
+    }
+    case 'DELETE_AGREEMENT':
+      return {
+        ...state,
+        db: { ...state.db, agreements: (state.db.agreements || []).filter((a) => !(a.id === action.id && a.status === 'Draft')) },
+        agreementEditor: state.agreementEditor?.draft.id === action.id ? null : state.agreementEditor,
+        toast: 'Draft deleted',
+      };
+    // ----- Order limits -----
+    // The editor is a page in the Order limits view. Opened from somewhere else (a
+    // location's Order limits card), it goes back there on save or cancel.
+    case 'OPEN_LIMIT_EDITOR': {
+      const draft = action.limit ? clone(action.limit) : { ...newLimit(action.kind), ...(action.preset || {}) };
+      return { ...state, view: 'limits', limitEditor: { draft, returnTo: action.returnTo || null } };
+    }
+    case 'LIMIT_EDITOR_PATCH':
+      return { ...state, limitEditor: { ...state.limitEditor, draft: { ...state.limitEditor.draft, ...action.patch } } };
+    case 'CLOSE_LIMIT_EDITOR':
+      return { ...state, ...(state.limitEditor?.returnTo || {}), limitEditor: null };
+    case 'SAVE_LIMIT': {
+      const limit = normalizeLimit(state.limitEditor.draft);
+      const isNew = !limit.id;
+      if (isNew) limit.id = `ol${Date.now()}`;
+      const limits = state.db.limits || [];
+      const db = { ...state.db, limits: isNew ? [...limits, limit] : limits.map((l) => (l.id === limit.id ? limit : l)) };
+      return { ...state, db, ...(state.limitEditor.returnTo || {}), limitEditor: null, toast: isNew ? 'Order limit created' : 'Order limit saved' };
+    }
+    case 'DELETE_LIMIT': {
+      const db = { ...state.db, limits: (state.db.limits || []).filter((l) => l.id !== action.id) };
+      const editing = state.limitEditor?.draft.id === action.id;
+      return { ...state, db, ...(editing ? { ...(state.limitEditor.returnTo || {}), limitEditor: null } : {}), toast: 'Order limit deleted' };
+    }
+    case 'TOGGLE_LIMIT_STATUS': {
+      const limits = (state.db.limits || []).map((l) => (l.id === action.id ? { ...l, status: l.status === 'Active' ? 'Inactive' : 'Active' } : l));
+      const on = limits.find((l) => l.id === action.id)?.status === 'Active';
+      return { ...state, db: { ...state.db, limits }, toast: on ? 'Order limit turned on' : 'Order limit turned off' };
     }
     case 'TOAST':
       return { ...state, toast: action.message };

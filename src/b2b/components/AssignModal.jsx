@@ -1,37 +1,14 @@
 import React from 'react';
-import { Modal, BlockStack, Box, Text, Button, InlineStack } from '@shopify/polaris';
-import { PlusIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { companyBaseEntries, companyQuantityEntries, locationPricingEntries, scopeTypeLabel } from '../pricing.js';
+import { Modal } from '../../shared/wc.jsx';
 import { PricingCombobox } from './PricingCombobox.jsx';
 import { LocationScopePicker } from './LocationScopePicker.jsx';
 
-const fmtDate = (d) =>
-  d ? new Date(`${d}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-
-// "When" summary, mirroring the god file (e.g. "From Aug 27, 2026 12:00 AM").
-function whenLabel(p) {
-  if (!p.startDate) return 'Always on';
-  let s = `From ${fmtDate(p.startDate)} ${p.startTime || '12:00 AM'}`;
-  if (p.endDate) s += ` until ${fmtDate(p.endDate)} ${p.endTime || '12:00 AM'}`;
-  return s;
-}
-
-function SummaryRow({ label, value }) {
-  return (
-    <InlineStack align="space-between" blockAlign="center" gap="400" wrap={false}>
-      <Text as="span" tone="subdued" variant="bodySm">{label}</Text>
-      <Text as="span" variant="bodyMd">{value}</Text>
-    </InlineStack>
-  );
-}
-
 // Assign existing pricing(s) to a company, or swap one for another (spec §2.8),
-// laid out like the god file's "Assign price list" modal: a Combobox dropdown whose
-// options carry checkboxes (Combobox manages the floating overlay so it positions
-// correctly inside the Modal), the picks shown as removable tags, OR create a new
-// one, then a "What they will get" summary. Add is MULTI-select (base and quantity
-// alike); swap is single.
+// laid out like the god file's "Assign price list" modal: a picker whose options
+// carry checkboxes, the picks shown as removable tags, OR create a new one. Add is
+// MULTI-select (base and quantity alike); swap is single.
 export function AssignModal() {
   const { state, dispatch } = useStore();
   const a = state.assign;
@@ -64,7 +41,6 @@ export function AssignModal() {
 
   const swapped = isSwap ? state.db.policies.find((p) => p.id === a.swapId) : null;
   const selectedIds = a.selectedIds || [];
-  const selectedPolicies = candidates.filter((p) => selectedIds.includes(p.id));
 
   const optionLabel = (p) => `${p.name} · Priority ${p.priority ?? '—'} · ${scopeTypeLabel(p)}`;
 
@@ -85,74 +61,65 @@ export function AssignModal() {
 
   return (
     <Modal
-      open
       onClose={() => dispatch({ type: 'CLOSE_ASSIGN' })}
-      title={isSwap ? `Change ${swapped?.name || kindName}` : `Assign ${kindName}: ${location?.name || company?.name || ''}`}
-      primaryAction={{
-        content: isSwap ? 'Change' : 'Assign',
-        onAction: () => dispatch({ type: 'ASSIGN_CONFIRM' }),
-        disabled: selectedIds.length === 0 || (someLocations && pickedLocIds.length === 0),
-      }}
-      secondaryActions={[{ content: 'Cancel', onAction: () => dispatch({ type: 'CLOSE_ASSIGN' }) }]}
+      heading={isSwap ? `Change ${swapped?.name || kindName}` : `Assign ${kindName}: ${location?.name || company?.name || ''}`}
     >
-      <Modal.Section>
-        <BlockStack gap="400">
-          <BlockStack gap="150">
-            <Text as="h3" variant="headingSm">
-              {isSwap ? `Replace with an existing ${kindName}` : `Use an existing ${kindName}`}
-            </Text>
-            {candidates.length === 0 ? (
-              <Text as="p" tone="subdued">{`No other ${kindName} available — create a new one below.`}</Text>
-            ) : (
-              <>
-                <PricingCombobox
-                  label={`Use an existing ${kindName}`}
-                  placeholder={`Select ${kindName}`}
-                  candidates={candidates}
-                  selectedIds={selectedIds}
-                  onChange={(ids) => dispatch({ type: 'ASSIGN_SET', ids })}
-                  single={single}
-                  optionLabel={optionLabel}
-                  emptyText={`No matching ${kindName}`}
-                />
-                {!single && (
-                  <Text as="p" tone="subdued" variant="bodySm">Pick one or more — the lowest priority applies first.</Text>
-                )}
-              </>
-            )}
-          </BlockStack>
-
-          {pickLocations ? (
-            <LocationScopePicker
-              company={company}
-              locationIds={someLocations ? pickedLocIds : null}
-              onChange={(ids) => dispatch({ type: 'ASSIGN_PATCH', patch: { applyTo: ids ? 'some' : 'all', locationIds: ids || [] } })}
-            />
-          ) : null}
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ flex: 1, height: 1, background: 'var(--p-color-border)' }} />
-            <Text as="span" tone="subdued" variant="bodySm">OR</Text>
-            <div style={{ flex: 1, height: 1, background: 'var(--p-color-border)' }} />
-          </div>
-
-          <Button icon={PlusIcon} fullWidth onClick={createNew}>{`Create a new ${kindName}`}</Button>
-
-          {/* Preview only makes sense for a single pick; hide it once multiple are chosen. */}
-          {selectedPolicies.length === 1 && (
-            <Box background="bg-surface-secondary" borderRadius="200" padding="300">
-              <BlockStack gap="300">
-                <Text as="h3" variant="headingSm">What they will get</Text>
-                <BlockStack gap="100">
-                  <SummaryRow label="Products" value={scopeTypeLabel(selectedPolicies[0])} />
-                  {!isQuantity && <SummaryRow label="Priority" value={String(selectedPolicies[0].priority ?? '—')} />}
-                  <SummaryRow label="When" value={whenLabel(selectedPolicies[0])} />
-                </BlockStack>
-              </BlockStack>
-            </Box>
+      <s-stack gap="base">
+        <s-stack gap="small-300">
+          <s-heading>{isSwap ? `Replace with an existing ${kindName}` : `Use an existing ${kindName}`}</s-heading>
+          {candidates.length === 0 ? (
+            <s-paragraph color="subdued">{`No other ${kindName} available — create a new one below.`}</s-paragraph>
+          ) : (
+            <>
+              <PricingCombobox
+                label={`Use an existing ${kindName}`}
+                placeholder={`Select ${kindName}`}
+                candidates={candidates}
+                selectedIds={selectedIds}
+                onChange={(ids) => dispatch({ type: 'ASSIGN_SET', ids })}
+                single={single}
+                optionLabel={optionLabel}
+                emptyText={`No matching ${kindName}`}
+              />
+              {!single && (
+                <s-paragraph color="subdued" fontSize="small">
+                  Pick one or more — the lowest priority applies first.
+                </s-paragraph>
+              )}
+            </>
           )}
-        </BlockStack>
-      </Modal.Section>
+        </s-stack>
+
+        {pickLocations ? (
+          <LocationScopePicker
+            company={company}
+            locationIds={someLocations ? pickedLocIds : null}
+            onChange={(ids) => dispatch({ type: 'ASSIGN_PATCH', patch: { applyTo: ids ? 'some' : 'all', locationIds: ids || [] } })}
+          />
+        ) : null}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, height: 1, background: 'var(--p-color-border)' }} />
+          <s-text color="subdued" fontSize="small">
+            OR
+          </s-text>
+          <div style={{ flex: 1, height: 1, background: 'var(--p-color-border)' }} />
+        </div>
+
+        <s-button icon="plus" inlineSize="fill" onClick={createNew}>{`Create a new ${kindName}`}</s-button>
+      </s-stack>
+
+      <s-button
+        slot="primary-action"
+        variant="primary"
+        disabled={selectedIds.length === 0 || (someLocations && pickedLocIds.length === 0)}
+        onClick={() => dispatch({ type: 'ASSIGN_CONFIRM' })}
+      >
+        {isSwap ? 'Change' : 'Assign'}
+      </s-button>
+      <s-button slot="secondary-actions" onClick={() => dispatch({ type: 'CLOSE_ASSIGN' })}>
+        Cancel
+      </s-button>
     </Modal>
   );
 }

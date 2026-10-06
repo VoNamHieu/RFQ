@@ -1,6 +1,4 @@
 import React from 'react';
-import { TextField, Select, Text, InlineStack, Box, Icon } from '@shopify/polaris';
-import { SearchIcon, ImageIcon } from '@shopify/polaris-icons';
 
 // Read-only product price table styled like the Shopify resource picker (see
 // ProductPickerModal / VariantPicker): a search + sort row, a grey column-header
@@ -51,77 +49,94 @@ export function ProductPriceTable({
 
   return (
     <>
-      <InlineStack gap="200" blockAlign="center" wrap={false}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <TextField
+          <s-search-field
             label="Search products"
-            labelHidden
+            labelAccessibilityVisibility="exclusive"
             value={search}
-            onChange={onSearch}
-            prefix={<Icon source={SearchIcon} tone="subdued" />}
             placeholder={searchPlaceholder}
-            autoComplete="off"
-            clearButton
-            onClearButtonClick={() => onSearch('')}
+            autocomplete="off"
+            onInput={(e) => onSearch(e.currentTarget.value)}
           />
         </div>
         {toolbar}
         {sortOptions ? (
           <div style={{ width: 210, flex: '0 0 auto' }}>
-            <Select label="Sort by" labelHidden options={sortOptions} value={sort} onChange={onSort} />
+            <s-select label="Sort by" labelAccessibilityVisibility="exclusive" value={sort} onChange={(e) => onSort(e.currentTarget.value)}>
+              {sortOptions.map((o) => (
+                <s-option key={o.value} value={o.value}>
+                  {o.label}
+                </s-option>
+              ))}
+            </s-select>
           </div>
         ) : null}
-      </InlineStack>
+      </div>
 
-      <Box borderWidth="025" borderColor="border" borderRadius="200">
+      <s-box border="base" borderRadius="base" overflow="hidden">
         {/* Column header */}
-        <Box background="bg-surface-secondary" borderBlockEndWidth="025" borderColor="border" paddingBlock="150" paddingInline="300">
+        <s-box background="subdued" paddingBlock="small-300" paddingInline="small">
           <div style={grid}>
             <div style={cellStyle('start')}>
-              <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium">Product</Text>
+              <s-text fontSize="small" color="subdued" fontWeight="medium">
+                Product
+              </s-text>
             </div>
             {columns.map((c, i) => (
               <div key={i} style={cellStyle(c.align)}>
-                <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium">{c.title}</Text>
+                <s-text fontSize="small" color="subdued" fontWeight="medium">
+                  {c.title}
+                </s-text>
               </div>
             ))}
             {hasAction ? <span /> : null}
           </div>
-        </Box>
+        </s-box>
+        <s-divider />
 
         {/* Scrollable body */}
         <div style={{ maxHeight, overflowY: 'auto', overflowX: 'hidden' }}>
           {rows.length === 0 ? (
-            <Box padding="400">
-              <Text as="p" alignment="center" tone="subdued">{emptyLabel}</Text>
-            </Box>
+            <s-box padding="base">
+              <div style={{ textAlign: 'center' }}>
+                <s-text color="subdued">{emptyLabel}</s-text>
+              </div>
+            </s-box>
           ) : (
             rows.map((r, i) => (
-              <Box key={r.key} paddingBlock="200" paddingInline="300" borderBlockStartWidth={i === 0 ? '0' : '025'} borderColor="border">
-                <div style={grid}>
-                  <InlineStack gap="200" blockAlign="center" wrap={false}>
-                    <span style={THUMB}>
-                      <Icon source={ImageIcon} tone="subdued" />
-                    </span>
-                    <div style={{ minWidth: 0 }}>
-                      <Text as="span" variant="bodyMd" fontWeight="medium" truncate>{r.title}</Text>
-                      {r.subtitle ? (
-                        <Text as="p" tone="subdued" variant="bodySm" truncate>{r.subtitle}</Text>
-                      ) : null}
+              <React.Fragment key={r.key}>
+                {i > 0 ? <s-divider /> : null}
+                <s-box paddingBlock="small-200" paddingInline="small">
+                  <div style={grid}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                      <span style={THUMB}>
+                        <s-icon type="image" color="subdued" />
+                      </span>
+                      <div style={{ minWidth: 0 }}>
+                        <s-paragraph fontWeight="medium" lineClamp={1}>
+                          {r.title}
+                        </s-paragraph>
+                        {r.subtitle ? (
+                          <s-paragraph color="subdued" fontSize="small" lineClamp={1}>
+                            {r.subtitle}
+                          </s-paragraph>
+                        ) : null}
+                      </div>
                     </div>
-                  </InlineStack>
-                  {columns.map((c, ci) => (
-                    <div key={ci} style={cellStyle(c.align)}>
-                      {r.cells[ci]}
-                    </div>
-                  ))}
-                  {hasAction ? <div style={cellStyle('end')}>{r.action}</div> : null}
-                </div>
-              </Box>
+                    {columns.map((c, ci) => (
+                      <div key={ci} style={cellStyle(c.align)}>
+                        {r.cells[ci]}
+                      </div>
+                    ))}
+                    {hasAction ? <div style={cellStyle('end')}>{r.action}</div> : null}
+                  </div>
+                </s-box>
+              </React.Fragment>
             ))
           )}
         </div>
-      </Box>
+      </s-box>
     </>
   );
 }

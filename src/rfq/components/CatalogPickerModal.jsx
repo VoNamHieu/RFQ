@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, Text, InlineStack, BlockStack, Box, Button, Banner } from '@shopify/polaris';
-import { ChevronRightIcon } from '@shopify/polaris-icons';
+import { Modal } from '../../shared/wc.jsx';
 import { RFQ_CATALOG, RFQ_SHOPIFY_CATALOGS } from '../data/catalog.js';
 import { ProductPickerModal } from './ProductPickerModal.jsx';
 
@@ -24,6 +23,15 @@ const catalogProducts = (catalog) => {
 const catalogProductCount = (catalog) =>
   RFQ_CATALOG.filter((p) => (p.variants || []).some((v) => catalog.prices[v.id] != null)).length;
 
+// Banner actions (Polaris React Banner action / secondaryAction) as slot buttons.
+function BannerActions({ actions }) {
+  return actions.filter(Boolean).map((a) => (
+    <s-button key={a.content} slot="secondary-actions" onClick={a.onAction}>
+      {a.content}
+    </s-button>
+  ));
+}
+
 export function CatalogPickerModal({ customer, onClose, onAdd, onQuote, onPickFromStore, onCreateCatalog }) {
   const catalogs = (customer && RFQ_SHOPIFY_CATALOGS[customer.companyKey]) || [];
   const [catalogId, setCatalogId] = useState(catalogs.length === 1 ? catalogs[0].id : null);
@@ -35,15 +43,17 @@ export function CatalogPickerModal({ customer, onClose, onAdd, onQuote, onPickFr
   // without a Shopify catalog yet), with a CTA to the whole-store picker.
   if (catalogs.length === 0) {
     return (
-      <Modal open onClose={onClose} title="Add product from catalog" secondaryActions={[{ content: 'Close', onAction: onClose }]}>
-        <Modal.Section>
-          <Banner tone="info" title={`${customer?.company || 'This company'} has no Shopify catalog yet`} action={storeAction} secondaryAction={catalogAction}>
-            <Text as="p">
-              No Shopify B2B catalog has been assigned to this company yet. Add products from your store to create this
-              quote, or set up a catalog for this company in <Text as="span" fontWeight="semibold">Shopify → Markets → Catalogs</Text>.
-            </Text>
-          </Banner>
-        </Modal.Section>
+      <Modal onClose={onClose} heading="Add product from catalog">
+        <s-banner tone="info" heading={`${customer?.company || 'This company'} has no Shopify catalog yet`}>
+          <s-paragraph>
+            No Shopify B2B catalog has been assigned to this company yet. Add products from your store to create this
+            quote, or set up a catalog for this company in <s-text fontWeight="semibold">Shopify → Markets → Catalogs</s-text>.
+          </s-paragraph>
+          <BannerActions actions={[storeAction, catalogAction]} />
+        </s-banner>
+        <s-button slot="secondary-actions" onClick={onClose}>
+          Close
+        </s-button>
       </Modal>
     );
   }
@@ -53,25 +63,26 @@ export function CatalogPickerModal({ customer, onClose, onAdd, onQuote, onPickFr
   // Step 1: choose which catalog (only when there are 2+ and none picked).
   if (!activeCatalog) {
     return (
-      <Modal open onClose={onClose} title="Add product from catalog" secondaryActions={[{ content: 'Cancel', onAction: onClose }]}>
-        <Modal.Section>
-          <BlockStack gap="300">
-            <Text as="p" tone="subdued" variant="bodySm">
-              {`${customer.company} has ${catalogs.length} Shopify catalogs. Choose one, then pick products.`}
-            </Text>
-            {catalogs.map((c) => (
-              <Box key={c.id} padding="300" borderWidth="025" borderColor="border" borderRadius="200">
-                <InlineStack align="space-between" blockAlign="center">
-                  <BlockStack gap="050">
-                    <Text as="span" variant="bodyMd" fontWeight="medium">{c.name}</Text>
-                    <Text as="span" tone="subdued" variant="bodySm">{`${catalogProductCount(c)} products`}</Text>
-                  </BlockStack>
-                  <Button icon={ChevronRightIcon} variant="tertiary" accessibilityLabel={`Select ${c.name}`} onClick={() => setCatalogId(c.id)} />
-                </InlineStack>
-              </Box>
-            ))}
-          </BlockStack>
-        </Modal.Section>
+      <Modal onClose={onClose} heading="Add product from catalog">
+        <s-stack gap="small">
+          <s-paragraph color="subdued" fontSize="small">
+            {`${customer.company} has ${catalogs.length} Shopify catalogs. Choose one, then pick products.`}
+          </s-paragraph>
+          {catalogs.map((c) => (
+            <s-box key={c.id} padding="small" border="base" borderRadius="base">
+              <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
+                <s-stack gap="small-500">
+                  <s-text fontWeight="medium">{c.name}</s-text>
+                  <s-text color="subdued" fontSize="small">{`${catalogProductCount(c)} products`}</s-text>
+                </s-stack>
+                <s-button icon="chevron-right" variant="tertiary" accessibilityLabel={`Select ${c.name}`} onClick={() => setCatalogId(c.id)} />
+              </s-grid>
+            </s-box>
+          ))}
+        </s-stack>
+        <s-button slot="secondary-actions" onClick={onClose}>
+          Cancel
+        </s-button>
       </Modal>
     );
   }
@@ -83,15 +94,17 @@ export function CatalogPickerModal({ customer, onClose, onAdd, onQuote, onPickFr
   // Chosen catalog has no products published → empty-state warning + CTA.
   if (products.length === 0) {
     return (
-      <Modal open onClose={onClose} title={`Add from ${activeCatalog.name}`} secondaryActions={[backToCatalogs]}>
-        <Modal.Section>
-          <Banner tone="info" title={`${activeCatalog.name} has no products yet`} action={storeAction} secondaryAction={catalogAction}>
-            <Text as="p">
-              This catalog doesn’t have any products published yet. Add products from your store to create this quote,
-              or add them to this catalog in <Text as="span" fontWeight="semibold">Shopify → Markets → Catalogs</Text>.
-            </Text>
-          </Banner>
-        </Modal.Section>
+      <Modal onClose={onClose} heading={`Add from ${activeCatalog.name}`}>
+        <s-banner tone="info" heading={`${activeCatalog.name} has no products yet`}>
+          <s-paragraph>
+            This catalog doesn’t have any products published yet. Add products from your store to create this quote,
+            or add them to this catalog in <s-text fontWeight="semibold">Shopify → Markets → Catalogs</s-text>.
+          </s-paragraph>
+          <BannerActions actions={[storeAction, catalogAction]} />
+        </s-banner>
+        <s-button slot="secondary-actions" onClick={backToCatalogs.onAction}>
+          {backToCatalogs.content}
+        </s-button>
       </Modal>
     );
   }

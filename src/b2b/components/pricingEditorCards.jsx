@@ -1,9 +1,9 @@
-import React, { useState, useMemo } from 'react';
-import { Card, BlockStack, InlineGrid, InlineStack, TextField, Text, Box, Button, Select, ChoiceList, Badge, Icon, Checkbox, Tooltip } from '@shopify/polaris';
-import { SearchIcon, ImageIcon, ChevronDownIcon, ChevronRightIcon, InfoIcon } from '@shopify/polaris-icons';
+import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { useWcId } from '../../shared/wc.jsx';
 import { COLLECTIONS } from '../data/constants.js';
 import { money } from '../format.js';
-import { productVariants, applyAdjustment } from '../pricing.js';
+import { productVariants, applyAdjustment, locationCatalog } from '../pricing.js';
 import { VariantPicker } from './VariantPicker.jsx';
 
 // Timezone options mirror the B2B god file's Active dates card.
@@ -14,6 +14,10 @@ const TIMEZONES = [
   '(GMT+10:00) AEST - Sydney',
 ];
 
+// Two fields side by side once the card is wide enough (Polaris React
+// InlineGrid columns={{ xs: 1, sm: 2 }}).
+const TWO_UP = '@container (inline-size > 400px) 1fr 1fr, 1fr';
+
 // Cards used by the pricing editor: status/dates, product scope, quantity discount
 // basis, and per-variant price overrides. Split out of PricingEditor for readability.
 // Active dates: timezone + start date/time, with an optional end date (god-file parity).
@@ -21,113 +25,126 @@ export function ActiveDatesCard({ builder, patch }) {
   // Seed policies carry an endDate without an explicit flag — treat that as "has end".
   const hasEnd = builder.hasEndDate ?? !!builder.endDate;
   return (
-    <Card>
-      <BlockStack gap="300">
-        <Text as="h3" variant="headingSm">Active dates</Text>
-        <Select
-          label="Timezone"
-          options={TIMEZONES.map((tz) => ({ label: tz, value: tz }))}
-          value={builder.timezone || TIMEZONES[0]}
-          onChange={(v) => patch({ timezone: v })}
-        />
-        <InlineGrid columns={{ xs: 1, sm: 2 }} gap="300">
-          <TextField label="Start date" type="date" value={builder.startDate || ''} onChange={(v) => patch({ startDate: v })} autoComplete="off" />
-          <TextField label="Start time" value={builder.startTime || '12:00 AM'} onChange={(v) => patch({ startTime: v })} autoComplete="off" />
-        </InlineGrid>
-        <Checkbox
+    <s-section heading="Active dates">
+      <s-stack gap="small">
+        <s-select label="Timezone" value={builder.timezone || TIMEZONES[0]} onChange={(e) => patch({ timezone: e.currentTarget.value })}>
+          {TIMEZONES.map((tz) => (
+            <s-option key={tz} value={tz}>
+              {tz}
+            </s-option>
+          ))}
+        </s-select>
+        <s-query-container>
+          <s-grid gridTemplateColumns={TWO_UP} gap="small">
+            {/* Date fields commit on change (typing emits partial dates on input). */}
+            <s-date-field label="Start date" value={builder.startDate || ''} onChange={(e) => patch({ startDate: e.currentTarget.value })} />
+            <s-text-field
+              label="Start time"
+              value={builder.startTime || '12:00 AM'}
+              onInput={(e) => patch({ startTime: e.currentTarget.value })}
+              autocomplete="off"
+            />
+          </s-grid>
+        </s-query-container>
+        <s-checkbox
           label="Set end date"
           checked={hasEnd}
-          onChange={(v) => patch(v ? { hasEndDate: true } : { hasEndDate: false, endDate: '', endTime: '' })}
+          onChange={(e) => {
+            const v = e.currentTarget.checked;
+            patch(v ? { hasEndDate: true } : { hasEndDate: false, endDate: '', endTime: '' });
+          }}
         />
         {hasEnd && (
-          <InlineGrid columns={{ xs: 1, sm: 2 }} gap="300">
-            <TextField label="End date" type="date" value={builder.endDate || ''} onChange={(v) => patch({ endDate: v })} autoComplete="off" />
-            <TextField label="End time" value={builder.endTime || '12:00 AM'} onChange={(v) => patch({ endTime: v })} autoComplete="off" />
-          </InlineGrid>
+          <s-query-container>
+            <s-grid gridTemplateColumns={TWO_UP} gap="small">
+              <s-date-field label="End date" value={builder.endDate || ''} onChange={(e) => patch({ endDate: e.currentTarget.value })} />
+              <s-text-field
+                label="End time"
+                value={builder.endTime || '12:00 AM'}
+                onInput={(e) => patch({ endTime: e.currentTarget.value })}
+                autocomplete="off"
+              />
+            </s-grid>
+          </s-query-container>
         )}
-      </BlockStack>
-    </Card>
+      </s-stack>
+    </s-section>
   );
 }
 
 // Which products this pricing covers (all / a collection / specific products).
 export function ProductScopeCard({ builder, patch, products }) {
+  const name = useWcId('scope-products');
   const st = builder.scopeType || 'all';
+  const selected = builder.selectedProducts || [];
   return (
-    <Card>
-      <BlockStack gap="300">
-        <Text as="h3" variant="headingSm">Products</Text>
-        <Select
-          label="Applies to"
-          options={[
-            { label: 'All products', value: 'all' },
-            { label: 'A collection', value: 'collection' },
-            { label: 'Specific products', value: 'products' },
-          ]}
-          value={st}
-          onChange={(v) => patch({ scopeType: v })}
-        />
+    <s-section heading="Products">
+      <s-stack gap="small">
+        <s-select label="Applies to" value={st} onChange={(e) => patch({ scopeType: e.currentTarget.value })}>
+          <s-option value="all">All products</s-option>
+          <s-option value="collection">A collection</s-option>
+          <s-option value="products">Specific products</s-option>
+        </s-select>
         {st === 'collection' && (
-          <Select
+          <s-select
             label="Collection"
-            options={Object.keys(COLLECTIONS).map((c) => ({ label: c, value: c }))}
             value={builder.collection && COLLECTIONS[builder.collection] ? builder.collection : Object.keys(COLLECTIONS)[0]}
-            onChange={(v) => patch({ collection: v })}
-          />
+            onChange={(e) => patch({ collection: e.currentTarget.value })}
+          >
+            {Object.keys(COLLECTIONS).map((c) => (
+              <s-option key={c} value={c}>
+                {c}
+              </s-option>
+            ))}
+          </s-select>
         )}
         {st === 'products' && (
-          <ChoiceList
-            allowMultiple
-            title="Products"
-            titleHidden
-            choices={products.map((p) => ({ label: `${p.title} · ${money(p.list)}`, value: p.sku }))}
-            selected={builder.selectedProducts || []}
-            onChange={(v) => patch({ selectedProducts: v })}
-          />
+          <s-choice-list
+            multiple
+            label="Products"
+            labelAccessibilityVisibility="exclusive"
+            name={name}
+            onChange={(e) => patch({ selectedProducts: [...(e.currentTarget.values || [])] })}
+          >
+            {products.map((p) => (
+              <s-choice key={p.sku} value={p.sku} selected={selected.includes(p.sku)}>
+                {`${p.title} · ${money(p.list)}`}
+              </s-choice>
+            ))}
+          </s-choice-list>
         )}
-      </BlockStack>
-    </Card>
+      </s-stack>
+    </s-section>
   );
 }
 
 // Quantity discount basis: off the raw Shopify price, or off the base price.
 export function VolumeBasisCard({ builder, patch }) {
+  const tipId = useWcId('basis-tip');
   return (
-    <Card>
-      <BlockStack gap="200">
-        <InlineStack gap="100" blockAlign="center" wrap={false}>
-          <Text as="h3" variant="headingSm">Discount basis</Text>
-          <Tooltip
-            preferredPosition="above"
-            width="wide"
-            content={
-              <BlockStack gap="150">
-                <Text as="span" variant="bodySm">Choose the price your volume discount applies to.</Text>
-                <BlockStack gap="025">
-                  <Text as="span" variant="bodySm" fontWeight="semibold">Shopify price</Text>
-                  <Text as="span" variant="bodySm" tone="subdued">The product's original store price.</Text>
-                </BlockStack>
-                <BlockStack gap="025">
-                  <Text as="span" variant="bodySm" fontWeight="semibold">Base price</Text>
-                  <Text as="span" variant="bodySm" tone="subdued">The price set by the base pricing of the buyer's company or location. Falls back to the Shopify price if none is set.</Text>
-                </BlockStack>
-              </BlockStack>
-            }
-          >
-            <span style={{ display: 'inline-flex', cursor: 'help' }}><Icon source={InfoIcon} tone="subdued" /></span>
-          </Tooltip>
-        </InlineStack>
-        <Select
-          label="Take the volume discount off"
-          options={[
-            { label: 'The Shopify price', value: 'shopify' },
-            { label: 'The base price', value: 'base' },
-          ]}
-          value={builder.volumeBasis || 'shopify'}
-          onChange={(v) => patch({ volumeBasis: v })}
-        />
-      </BlockStack>
-    </Card>
+    <s-section>
+      <s-stack gap="small-200">
+        <s-stack direction="inline" gap="small-400" alignItems="center">
+          <s-heading>Discount basis</s-heading>
+          <span style={{ display: 'inline-flex', cursor: 'help' }}>
+            <s-icon type="info" color="subdued" interestFor={tipId} />
+          </span>
+          <s-tooltip id={tipId}>
+            <s-paragraph fontSize="small">Choose the price your volume discount applies to.</s-paragraph>
+            <s-paragraph fontSize="small" fontWeight="semibold">Shopify price</s-paragraph>
+            <s-paragraph fontSize="small" color="subdued">The product's original store price.</s-paragraph>
+            <s-paragraph fontSize="small" fontWeight="semibold">Base price</s-paragraph>
+            <s-paragraph fontSize="small" color="subdued">
+              The price set by the base pricing of the buyer's company or location. Falls back to the Shopify price if none is set.
+            </s-paragraph>
+          </s-tooltip>
+        </s-stack>
+        <s-select label="Take the volume discount off" value={builder.volumeBasis || 'shopify'} onChange={(e) => patch({ volumeBasis: e.currentTarget.value })}>
+          <s-option value="shopify">The Shopify price</s-option>
+          <s-option value="base">The base price</s-option>
+        </s-select>
+      </s-stack>
+    </s-section>
   );
 }
 
@@ -153,14 +170,68 @@ const overrideOptPatch = (val) => {
 };
 const isPctOverride = (o) => o?.rule !== 'set' && o?.valueType === 'percentage';
 const ROW_GRID = { display: 'grid', gridTemplateColumns: 'auto minmax(140px, 1fr) 148px 92px 92px', gap: 12, alignItems: 'center' };
+// Expanded: two more columns after Product — Original price and Price source.
+const WIDE_GRID = { ...ROW_GRID, gridTemplateColumns: 'auto minmax(200px, 1fr) 112px 112px 148px 92px 104px' };
 const THUMB = { width: 32, height: 32, borderRadius: 6, background: 'var(--p-color-bg-surface-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' };
 const CARET = { all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', flex: '0 0 auto', width: 20 };
+const END = { textAlign: 'end' };
+// Row separators inside the overrides table (top border on every row but the first).
+const rowBorder = (first) => (first ? 'none' : 'base none none none');
 
-export function ProductOverridesCard({ builder, patch, products }) {
+// The Options select + Amount field for one override (or a product's bulk edit).
+function OverrideOptions({ value, options, onChange }) {
+  return (
+    <s-select label="Options" labelAccessibilityVisibility="exclusive" value={value} onChange={(e) => onChange(e.currentTarget.value)}>
+      {options.map((o) => (
+        <s-option key={o.value} value={o.value} disabled={!!o.disabled}>
+          {o.label}
+        </s-option>
+      ))}
+    </s-select>
+  );
+}
+function OverrideAmount({ pct, value, placeholder = '', onChange }) {
+  // Keyed by unit so switching % ↔ $ remounts with the right prefix / suffix / max.
+  return pct ? (
+    <s-number-field
+      key="pct"
+      label="Amount"
+      labelAccessibilityVisibility="exclusive"
+      min={0}
+      max={100}
+      suffix="%"
+      value={value}
+      placeholder={placeholder}
+      onInput={(e) => onChange(e.currentTarget.value)}
+      autocomplete="off"
+    />
+  ) : (
+    <s-number-field
+      key="amt"
+      label="Amount"
+      labelAccessibilityVisibility="exclusive"
+      min={0}
+      prefix="$"
+      value={value}
+      placeholder={placeholder}
+      onInput={(e) => onChange(e.currentTarget.value)}
+      autocomplete="off"
+    />
+  );
+}
+
+// `locations`: [{ company, location }] the pricing reaches — expanded, the overrides
+// can be viewed at one of them (see the View picker below).
+export function ProductOverridesCard({ builder, patch, products, locations = [] }) {
   const overrides = builder.variantAdjustments || {};
+  const tipId = useWcId('overrides');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selected, setSelected] = useState(() => new Set());
   const [expanded, setExpanded] = useState(() => new Set());
+  // Full-screen mode: `snapshot` is the overrides when it opened (Close puts them back).
+  const [full, setFull] = useState(false);
+  const [snapshot, setSnapshot] = useState(null);
+  const [viewKey, setViewKey] = useState('all');
 
   // variantId → { product, variant }, for prefilling prices from the picker.
   const variantIndex = useMemo(() => {
@@ -187,19 +258,20 @@ export function ProductOverridesCard({ builder, patch, products }) {
     vids.forEach((vid) => { next[vid] = { rule: 'set', valueType: 'amount', value: 0, ...(next[vid] || {}), ...patchObj }; });
     patch({ variantAdjustments: next });
   };
-  const toggleAll = () => setSelected(allSel ? new Set() : new Set(allIds));
-  const toggleRow = (id) =>
+  // Selection setters are idempotent (checkbox onChange can fire twice): each sets
+  // the rows to the checkbox's checked state rather than toggling them.
+  const setAll = (on) => setSelected(on ? new Set(allIds) : new Set());
+  const setRow = (id, on) =>
     setSelected((s) => {
       const n = new Set(s);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
+      if (on) n.add(id);
+      else n.delete(id);
       return n;
     });
-  const toggleGroup = (vids) =>
+  const setGroup = (vids, on) =>
     setSelected((s) => {
       const n = new Set(s);
-      const all = vids.every((id) => n.has(id));
-      vids.forEach((id) => (all ? n.delete(id) : n.add(id)));
+      vids.forEach((id) => (on ? n.add(id) : n.delete(id)));
       return n;
     });
   const toggleExpand = (sku) =>
@@ -225,70 +297,98 @@ export function ProductOverridesCard({ builder, patch, products }) {
     patch({ variantAdjustments: next });
     setPickerOpen(false);
   };
-  // The Options select + Amount input + resolved "Buyer pays" price for one variant.
-  const rowCell = (vid) => {
+  // The price an override starts from: the catalog's price at the location being
+  // viewed when its price list sets one, else the Shopify price.
+  const originOf = (vid, view) => {
+    const catalogPrice = view?.prices?.[vid];
+    if (catalogPrice != null) return { price: catalogPrice, source: 'Catalog' };
+    return { price: variantIndex[vid]?.variant?.list ?? variantIndex[vid]?.product?.list ?? 0, source: 'Shopify' };
+  };
+  // Original price + Price source cells (expanded view); a product outside the
+  // viewed location's catalog has neither there.
+  const originCells = (price, source, inCatalog) =>
+    inCatalog ? (
+      <>
+        <div style={END}><s-text>{price}</s-text></div>
+        <div><s-badge tone={source === 'Catalog' ? 'info' : undefined}>{source}</s-badge></div>
+      </>
+    ) : (
+      <>
+        <div style={END}><s-text color="subdued">—</s-text></div>
+        <div><s-text color="subdued">—</s-text></div>
+      </>
+    );
+  // The Options select + Amount input + resolved "Buyer pays" price for one variant
+  // (wide: Original price and Price source first).
+  const rowCell = (vid, inCatalog = true, view = null, wide = false) => {
     const o = overrides[vid];
-    const listPrice = variantIndex[vid]?.variant?.list ?? variantIndex[vid]?.product?.list ?? 0;
-    const final = applyAdjustment(o.rule || 'set', o.valueType || 'amount', o.value, listPrice);
+    const origin = originOf(vid, view);
+    const final = applyAdjustment(o.rule || 'set', o.valueType || 'amount', o.value, origin.price);
     return (
       <>
-        <Select label="Options" labelHidden options={OVERRIDE_RULES} value={overrideOptValue(o)} onChange={(v) => setField(vid, overrideOptPatch(v))} />
-        <TextField label="Amount" labelHidden type="number" min={0} {...(isPctOverride(o) ? { suffix: '%', max: 100 } : { prefix: '$' })} value={String(o.value ?? '')} onChange={(v) => setField(vid, { value: Number(v) || 0 })} autoComplete="off" />
-        <Text as="span" variant="bodyMd" alignment="end" fontWeight="medium">{money(final)}</Text>
+        {wide && originCells(money(origin.price), origin.source, inCatalog)}
+        <OverrideOptions value={overrideOptValue(o)} options={OVERRIDE_RULES} onChange={(v) => setField(vid, overrideOptPatch(v))} />
+        <OverrideAmount pct={isPctOverride(o)} value={String(o.value ?? '')} onChange={(v) => setField(vid, { value: Number(v) || 0 })} />
+        <div style={END}>
+          {inCatalog ? <s-text fontWeight="medium">{money(final)}</s-text> : <s-text color="subdued">—</s-text>}
+        </div>
       </>
     );
   };
 
-  return (
-    <Card>
-      <BlockStack gap="300">
-        <InlineStack gap="200" blockAlign="center">
-          <Text as="h3" variant="headingSm">Product price overrides</Text>
-          {allIds.length > 0 ? <Badge>{`${allIds.length} variant${allIds.length === 1 ? '' : 's'}`}</Badge> : null}
-        </InlineStack>
-        <Text as="p" tone="subdued" variant="bodySm">Give specific product variants their own price. Overrides win over rules and the default.</Text>
-
-        {/* Looks like a search field but is a button — clicking opens the picker
-            modal (Shopify resource-picker pattern) rather than typing inline. */}
-        <button
-          type="button"
-          onClick={() => setPickerOpen(true)}
-          aria-label="Add products"
-          style={{ all: 'unset', display: 'block', width: '100%', cursor: 'pointer', boxSizing: 'border-box' }}
-        >
-          <Box borderColor="border" borderWidth="025" borderRadius="200" background="bg-surface" paddingBlock="150" paddingInline="300">
-            <InlineStack gap="150" blockAlign="center" wrap={false}>
-              <span style={{ display: 'flex', flex: '0 0 auto' }}>
-                <Icon source={SearchIcon} tone="subdued" />
-              </span>
-              <Text as="span" tone="subdued">Add products</Text>
-            </InlineStack>
-          </Box>
-        </button>
-
+  const searchButton = (
+    // Looks like a search field but is a button — clicking opens the picker
+    // modal (Shopify resource-picker pattern) rather than typing inline.
+    <s-clickable
+      onClick={() => setPickerOpen(true)}
+      accessibilityLabel="Add products"
+      border="base"
+      borderRadius="base"
+      background="base"
+      paddingBlock="small-300"
+      paddingInline="small"
+    >
+      <s-stack direction="inline" gap="small-300" alignItems="center">
+        <s-icon type="search" color="subdued" />
+        <s-text color="subdued">Add products</s-text>
+      </s-stack>
+    </s-clickable>
+  );
+  const table = (view, wide = false) => {
+    const notIn = (product) => !!view && !view.skus.includes(product.sku);
+    const grid = wide ? WIDE_GRID : ROW_GRID;
+    return (
+      <>
         {groups.length > 0 && (
-          <Box borderWidth="025" borderColor="border" borderRadius="200" overflowX="hidden">
+          <s-box border="base" borderRadius="base" overflow="hidden">
             <div style={{ overflowX: 'auto' }}>
             {selCount > 0 ? (
-              <Box background="bg-surface-secondary" borderBlockEndWidth="025" borderColor="border" paddingBlock="200" paddingInline="300">
-                <InlineStack align="space-between" blockAlign="center">
-                  <InlineStack gap="300" blockAlign="center">
-                    <Checkbox label="" labelHidden checked={allSel ? true : 'indeterminate'} onChange={toggleAll} />
-                    <Text as="span" variant="bodySm" fontWeight="medium">{`${selCount} selected`}</Text>
-                  </InlineStack>
-                  <Button variant="tertiary" tone="critical" onClick={removeSelected}>Remove</Button>
-                </InlineStack>
-              </Box>
+              <s-box background="subdued" border="base" borderWidth="none none base none" paddingBlock="small-200" paddingInline="small">
+                <s-grid gridTemplateColumns="1fr auto" alignItems="center">
+                  <s-stack direction="inline" gap="small" alignItems="center">
+                    <s-checkbox
+                      accessibilityLabel="Select all overrides"
+                      checked={allSel}
+                      indeterminate={!allSel}
+                      onChange={(e) => setAll(e.currentTarget.checked)}
+                    />
+                    <s-text fontSize="small" fontWeight="medium">{`${selCount} selected`}</s-text>
+                  </s-stack>
+                  <s-button variant="tertiary" tone="critical" onClick={removeSelected}>Remove</s-button>
+                </s-grid>
+              </s-box>
             ) : (
-              <Box background="bg-surface-secondary" borderBlockEndWidth="025" borderColor="border" paddingBlock="150" paddingInline="300">
-                <div style={ROW_GRID}>
-                  <Checkbox label="" labelHidden checked={false} onChange={toggleAll} />
-                  <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium">Product</Text>
-                  <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium">Options</Text>
-                  <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium">Amount</Text>
-                  <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium" alignment="end">Buyer pays</Text>
+              <s-box background="subdued" border="base" borderWidth="none none base none" paddingBlock="small-300" paddingInline="small">
+                <div style={grid}>
+                  <s-checkbox accessibilityLabel="Select all overrides" checked={false} onChange={(e) => setAll(e.currentTarget.checked)} />
+                  <s-text fontSize="small" color="subdued" fontWeight="medium">Product</s-text>
+                  {wide && <div style={END}><s-text fontSize="small" color="subdued" fontWeight="medium">Original price</s-text></div>}
+                  {wide && <s-text fontSize="small" color="subdued" fontWeight="medium">Price source</s-text>}
+                  <s-text fontSize="small" color="subdued" fontWeight="medium">Options</s-text>
+                  <s-text fontSize="small" color="subdued" fontWeight="medium">Amount</s-text>
+                  <div style={END}><s-text fontSize="small" color="subdued" fontWeight="medium">Buyer pays</s-text></div>
                 </div>
-              </Box>
+              </s-box>
             )}
             {groups.map((g, gi) => {
               const vids = g.variants.map((v) => v.id);
@@ -296,25 +396,29 @@ export function ProductOverridesCard({ builder, patch, products }) {
               const isExp = expanded.has(g.product.sku);
               const pAll = vids.every((id) => selected.has(id));
               const pSome = vids.some((id) => selected.has(id));
-              const topBorder = gi === 0 ? '0' : '025';
               // Single priced variant → one inline row (no expand needed).
               if (!collapsible) {
                 const v = g.variants[0];
                 return (
-                  <Box key={g.product.sku} paddingBlock="200" paddingInline="300" borderBlockStartWidth={topBorder} borderColor="border">
-                    <div style={ROW_GRID}>
-                      <Checkbox label="" labelHidden checked={selected.has(v.id)} onChange={() => toggleRow(v.id)} />
-                      <InlineStack gap="200" blockAlign="center" wrap={false}>
+                  <s-box key={g.product.sku} paddingBlock="small-200" paddingInline="small" border="base" borderWidth={rowBorder(gi === 0)}>
+                    <div style={grid}>
+                      <s-checkbox
+                        accessibilityLabel={`Select ${g.product.title}`}
+                        checked={selected.has(v.id)}
+                        onChange={(e) => setRow(v.id, e.currentTarget.checked)}
+                      />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                         <span style={{ width: 20, flex: '0 0 auto' }} />
-                        <span style={THUMB}><Icon source={ImageIcon} tone="subdued" /></span>
+                        <span style={THUMB}><s-icon type="image" color="subdued" /></span>
                         <div style={{ minWidth: 0 }}>
-                          <Text as="span" variant="bodyMd" truncate>{g.product.title}</Text>
-                          <Text as="p" tone="subdued" variant="bodySm" truncate>{v.title || v.id}</Text>
+                          <s-paragraph lineClamp={1}>{g.product.title}</s-paragraph>
+                          <s-paragraph color="subdued" fontSize="small" lineClamp={1}>{v.title || v.id}</s-paragraph>
+                          {notIn(g.product) ? <s-badge tone="caution">Not in catalog</s-badge> : null}
                         </div>
-                      </InlineStack>
-                      {rowCell(v.id)}
+                      </div>
+                      {rowCell(v.id, !notIn(g.product), view, wide)}
                     </div>
-                  </Box>
+                  </s-box>
                 );
               }
               // Multiple priced variants → collapsible product row + variant sub-rows.
@@ -331,58 +435,218 @@ export function ProductOverridesCard({ builder, patch, products }) {
               // when the variants' overrides differ, so it always reads as a price.
               const finals = g.variants.map((v) => {
                 const o = overrides[v.id];
-                return applyAdjustment(o.rule || 'set', o.valueType || 'amount', o.value, v.list ?? g.product.list);
+                return applyAdjustment(o.rule || 'set', o.valueType || 'amount', o.value, originOf(v.id, view).price);
               });
               const payLo = Math.min(...finals);
               const payHi = Math.max(...finals);
               const bulkPays = payLo === payHi ? money(payLo) : `${money(payLo)}–${money(payHi)}`;
+              // The product row's Original price (a range when variants differ) and source.
+              const origins = g.variants.map((v) => originOf(v.id, view));
+              const oLo = Math.min(...origins.map((x) => x.price));
+              const oHi = Math.max(...origins.map((x) => x.price));
+              const oSources = [...new Set(origins.map((x) => x.source))];
               return (
-                <Box key={g.product.sku} borderBlockStartWidth={topBorder} borderColor="border">
-                  <Box paddingBlock="200" paddingInline="300">
-                    <div style={ROW_GRID}>
-                      <Checkbox label="" labelHidden checked={pAll ? true : pSome ? 'indeterminate' : false} onChange={() => toggleGroup(vids)} />
-                      <button type="button" onClick={() => toggleExpand(g.product.sku)} style={{ all: 'unset', cursor: 'pointer', display: 'block', minWidth: 0 }}>
-                        <InlineStack gap="200" blockAlign="center" wrap={false}>
-                          <span style={CARET}><Icon source={isExp ? ChevronDownIcon : ChevronRightIcon} tone="subdued" /></span>
-                          <span style={THUMB}><Icon source={ImageIcon} tone="subdued" /></span>
+                <s-box key={g.product.sku} border="base" borderWidth={rowBorder(gi === 0)}>
+                  <s-box paddingBlock="small-200" paddingInline="small">
+                    <div style={grid}>
+                      <s-checkbox
+                        accessibilityLabel={`Select all variants of ${g.product.title}`}
+                        checked={pAll}
+                        indeterminate={!pAll && pSome}
+                        onChange={(e) => setGroup(vids, e.currentTarget.checked)}
+                      />
+                      <button
+                        type="button"
+                        aria-expanded={isExp}
+                        onClick={() => toggleExpand(g.product.sku)}
+                        style={{ all: 'unset', cursor: 'pointer', display: 'block', minWidth: 0 }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                          <span style={CARET}><s-icon type={isExp ? 'chevron-down' : 'chevron-right'} color="subdued" /></span>
+                          <span style={THUMB}><s-icon type="image" color="subdued" /></span>
                           <div style={{ minWidth: 0 }}>
-                            <Text as="span" variant="bodyMd" truncate>{g.product.title}</Text>
-                            <Text as="p" tone="subdued" variant="bodySm">{`${g.variants.length} variants`}</Text>
+                            <s-paragraph lineClamp={1}>{g.product.title}</s-paragraph>
+                            <s-paragraph color="subdued" fontSize="small">{`${g.variants.length} variants`}</s-paragraph>
+                            {notIn(g.product) ? <s-badge tone="caution">Not in catalog</s-badge> : null}
                           </div>
-                        </InlineStack>
+                        </div>
                       </button>
-                      <Select label="Options" labelHidden options={groupOpts} value={sameRule ? optVals[0] : 'mixed'} onChange={(v) => { if (v !== 'mixed') setGroupField(vids, overrideOptPatch(v)); }} />
-                      <TextField label="Amount" labelHidden type="number" min={0} {...(groupPct ? { suffix: '%', max: 100 } : { prefix: '$' })} value={sameVal ? String(vals[0] ?? '') : ''} placeholder={sameVal ? undefined : 'Mixed'} onChange={(v) => setGroupField(vids, { value: Number(v) || 0 })} autoComplete="off" />
-                      <Text as="span" variant="bodyMd" alignment="end" fontWeight="medium">{bulkPays}</Text>
+                      {wide && originCells(oLo === oHi ? money(oLo) : `${money(oLo)}–${money(oHi)}`, oSources.length === 1 ? oSources[0] : 'Mixed', !notIn(g.product))}
+                      <OverrideOptions
+                        value={sameRule ? optVals[0] : 'mixed'}
+                        options={groupOpts}
+                        onChange={(v) => { if (v !== 'mixed') setGroupField(vids, overrideOptPatch(v)); }}
+                      />
+                      <OverrideAmount
+                        pct={groupPct}
+                        value={sameVal ? String(vals[0] ?? '') : ''}
+                        placeholder={sameVal ? '' : 'Mixed'}
+                        onChange={(v) => setGroupField(vids, { value: Number(v) || 0 })}
+                      />
+                      <div style={END}>
+                        {notIn(g.product) ? <s-text color="subdued">—</s-text> : <s-text fontWeight="medium">{bulkPays}</s-text>}
+                      </div>
                     </div>
-                  </Box>
+                  </s-box>
                   {isExp && g.variants.map((v) => (
-                    <Box key={v.id} paddingBlock="200" paddingInline="300" borderBlockStartWidth="025" borderColor="border" background="bg-surface-secondary">
-                      <div style={ROW_GRID}>
+                    <s-box key={v.id} paddingBlock="small-200" paddingInline="small" border="base" borderWidth="base none none none" background="subdued">
+                      <div style={grid}>
                         {/* Variant checkbox indented one level (under the thumbnail);
                             name aligned under the product title with its SKU on a
                             second line — Shopify variant-row pattern. */}
                         <span style={{ paddingInlineStart: 40, display: 'flex', alignItems: 'center' }}>
-                          <Checkbox label="" labelHidden checked={selected.has(v.id)} onChange={() => toggleRow(v.id)} />
+                          <s-checkbox
+                            accessibilityLabel={`Select ${v.title || v.id}`}
+                            checked={selected.has(v.id)}
+                            onChange={(e) => setRow(v.id, e.currentTarget.checked)}
+                          />
                         </span>
-                        <InlineStack gap="200" blockAlign="center" wrap={false}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                           <span style={{ width: 20, flex: '0 0 auto' }} />
                           <div style={{ minWidth: 0 }}>
-                            <Text as="span" variant="bodyMd" truncate>{v.title || v.id}</Text>
-                            {v.id && v.id !== v.title ? <Text as="p" tone="subdued" variant="bodySm" truncate>{v.id}</Text> : null}
+                            <s-paragraph lineClamp={1}>{v.title || v.id}</s-paragraph>
+                            {v.id && v.id !== v.title ? <s-paragraph color="subdued" fontSize="small" lineClamp={1}>{v.id}</s-paragraph> : null}
                           </div>
-                        </InlineStack>
-                        {rowCell(v.id)}
+                        </div>
+                        {rowCell(v.id, !notIn(g.product), view, wide)}
                       </div>
-                    </Box>
+                    </s-box>
                   ))}
-                </Box>
+                </s-box>
               );
             })}
             </div>
-          </Box>
+          </s-box>
         )}
-      </BlockStack>
+      </>
+    );
+  };
+
+  // Expanded: the same editor full screen (Shopify's maximize pattern), plus a View
+  // picker to check the overrides at one location — a product outside its catalog
+  // doesn't get its override there. Done keeps the edits; Close puts them back.
+  const openFull = () => { setSnapshot(overrides); setViewKey('all'); setFull(true); };
+  const closeFull = (keep) => {
+    if (!keep) patch({ variantAdjustments: snapshot || {} });
+    setFull(false);
+  };
+  // Escape closes the expanded view only (not the pricing editor underneath).
+  useEffect(() => {
+    if (!full || pickerOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      e.stopImmediatePropagation();
+      closeFull(false);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  });
+  const keyOf = (t) => `${t.company.id}::${t.location.id}`;
+  const target = locations.find((t) => keyOf(t) === viewKey) || null;
+  const view = target ? { ...target, ...locationCatalog(target.location, products) } : null;
+  const severalCompanies = new Set(locations.map((t) => t.company.id)).size > 1;
+  const outside = view ? groups.filter((g) => !view.skus.includes(g.product.sku)).length : 0;
+  const countBadge = allIds.length > 0 ? <s-badge>{`${allIds.length} variant${allIds.length === 1 ? '' : 's'}`}</s-badge> : null;
+
+  return (
+    <s-section>
+      <s-stack gap="small">
+        <s-grid gridTemplateColumns="1fr auto" gap="small-200" alignItems="center">
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            <s-heading>Product price overrides</s-heading>
+            {countBadge}
+          </s-stack>
+          <div>
+            <s-button
+              icon="maximize"
+              variant="tertiary"
+              accessibilityLabel="Expand product price overrides"
+              interestFor={`${tipId}-expand`}
+              onClick={openFull}
+            />
+            <s-tooltip id={`${tipId}-expand`}>Expand</s-tooltip>
+          </div>
+        </s-grid>
+        <s-paragraph color="subdued" fontSize="small">Give specific product variants their own price. Overrides win over rules and the default.</s-paragraph>
+        {searchButton}
+        {table(null)}
+      </s-stack>
+
+      {/* Portalled to <body>: inside the editor page it would sit under the admin
+          frame's top bar, nav and the editor's aside. Modals (the product picker)
+          still open on top of it. */}
+      {full && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Product price overrides"
+          style={{ position: 'fixed', inset: 0, zIndex: 517, display: 'flex', flexDirection: 'column', background: 'var(--p-color-bg-surface, #fff)' }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '10px 20px',
+              background: 'var(--p-color-bg-surface-secondary, #f7f7f7)',
+              borderBottom: '1px solid var(--p-color-border, #e3e3e3)',
+              flex: '0 0 auto',
+            }}
+          >
+            <s-stack direction="inline" gap="small-200" alignItems="center">
+              <s-heading fontSize="large">Product price overrides</s-heading>
+              {countBadge}
+            </s-stack>
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <s-button onClick={() => closeFull(false)}>Close</s-button>
+              <s-button variant="primary" onClick={() => closeFull(true)}>Done</s-button>
+              <s-button variant="tertiary" icon="x" accessibilityLabel="Close" onClick={() => closeFull(false)} />
+            </div>
+          </div>
+          <div style={{ flex: '1 1 auto', overflowY: 'auto', padding: 16 }}>
+            <s-stack gap="small">
+              <div style={{ display: 'flex', gap: 12, alignItems: 'end' }}>
+                <div style={{ flex: '1 1 auto', minWidth: 0 }}>{searchButton}</div>
+                {locations.length > 0 && (
+                  <div style={{ width: 320, flex: '0 0 auto' }}>
+                    <s-select label="View" value={target ? viewKey : 'all'} onChange={(e) => setViewKey(e.currentTarget.value)}>
+                      <s-option value="all">All locations</s-option>
+                      {locations.map((t) => (
+                        <s-option key={keyOf(t)} value={keyOf(t)}>
+                          {severalCompanies ? `${t.location.name} · ${t.company.name}` : t.location.name}
+                        </s-option>
+                      ))}
+                    </s-select>
+                  </div>
+                )}
+              </div>
+              {view && (
+                <s-banner tone="info">
+                  <s-paragraph>
+                    {`${view.location.name}${severalCompanies ? ` (${view.company.name})` : ''} uses the ${view.name} catalog. `}
+                    {outside
+                      ? `${outside} of the products with an override ${outside === 1 ? 'isn’t' : 'aren’t'} in it, so ${outside === 1 ? 'it doesn’t' : 'they don’t'} get the override price there.`
+                      : 'Every product with an override is in it.'}
+                  </s-paragraph>
+                </s-banner>
+              )}
+              {groups.length ? (
+                table(view, true)
+              ) : (
+                <s-box background="subdued" borderRadius="base">
+                  <div style={{ padding: '128px 16px' }}>
+                    <s-stack gap="small-400" alignItems="center">
+                      <s-paragraph fontWeight="semibold">No products to display</s-paragraph>
+                      <s-paragraph color="subdued">Add products to set an override price</s-paragraph>
+                    </s-stack>
+                  </div>
+                </s-box>
+              )}
+            </s-stack>
+          </div>
+        </div>,
+        document.body,
+      )}
 
       {pickerOpen && (
         <VariantPicker
@@ -392,6 +656,6 @@ export function ProductOverridesCard({ builder, patch, products }) {
           onAdd={commit}
         />
       )}
-    </Card>
+    </s-section>
   );
 }

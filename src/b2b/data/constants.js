@@ -8,6 +8,13 @@ export const COLLECTIONS = {
   'Project assortment': ['SEA-30', 'HOS-12']
 };
 
+// Fixed prices a catalog's price list sets, by variant id (a product's default
+// variant id is its SKU). Variants it doesn't price keep their Shopify price.
+export const CATALOG_PRICES = {
+  'Contractor assortment': { 'FIL-XL': 89, 'SEA-30': 7.2 },
+  'Distributor assortment': { 'HOS-12': 132, 'HOS-12-18M': 189 },
+};
+
 export const PAYMENT_TERM_OPTIONS = ['No payment terms', 'Due immediately', 'Due on receipt', 'Net 7', 'Net 15', 'Net 30', 'Net 45', 'Net 60', 'Net 90'];
 
 // App sub-nav config. In the source, `icon` values are literal glyph characters

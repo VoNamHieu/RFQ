@@ -1,29 +1,11 @@
 import React from 'react';
-import {
-  Modal,
-  BlockStack,
-  InlineStack,
-  Box,
-  Text,
-  Select,
-  TextField,
-  IndexTable,
-  Divider,
-  Link,
-  Icon,
-  Badge,
-  Button,
-  Banner,
-  Popover,
-  ActionList,
-} from '@shopify/polaris';
-import { SearchIcon, LocationIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { quoteToBasePricing } from '../dbHelpers.js';
 import { companyBaseEntries, resolvedPriceFor, hasOwnSlot, slotIds } from '../pricing.js';
 import { money } from '../format.js';
 import { activeVersion } from '../../shared/versions.js';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
+import { Modal, MenuButton, Tip } from '../../shared/wc.jsx';
 import emptyStateArt from '../assets/empty-state.png';
 
 // The RFQ app lives at the site root; its default view is the quotes submission
@@ -92,7 +74,6 @@ export function BuildFromQuotes() {
   const [selected, setSelected] = React.useState(() => new Set());
   const [query, setQuery] = React.useState('');
   const [sort, setSort] = React.useState('title-asc');
-  const [sourceOpen, setSourceOpen] = React.useState(false);
   React.useEffect(() => {
     setSelected(new Set((state.buildQuotes?.rows || []).map((r) => r.sku)));
     setQuery('');
@@ -202,19 +183,21 @@ export function BuildFromQuotes() {
   const allShownSelected = shown.length > 0 && selectedShown === shown.length;
   const canSave = bq.rows.some((r) => selected.has(r.sku) && Number(r.proposed) > 0);
 
-  const onSelectionChange = (selectionType, isSelecting, selection) => {
+  // Leading checkbox column (Polaris React's IndexTable selection): the header box
+  // ticks / clears every shown row, a row's box sets that row. Both set the state
+  // from the box's checked value, so a repeated change event is harmless.
+  const setShownSelected = (on) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      const apply = (sku) => (isSelecting ? next.add(sku) : next.delete(sku));
-      if (selectionType === 'single') {
-        apply(selection);
-      } else if (selectionType === 'range' && Array.isArray(selection)) {
-        const [s, e] = selection;
-        for (let k = s; k <= e; k += 1) if (shown[k]) apply(shown[k].sku);
-      } else {
-        // 'page' | 'all'
-        shown.forEach((r) => apply(r.sku));
-      }
+      shown.forEach((r) => (on ? next.add(r.sku) : next.delete(r.sku)));
+      return next;
+    });
+  };
+  const setRowSelected = (sku, on) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(sku);
+      else next.delete(sku);
       return next;
     });
   };
@@ -243,7 +226,7 @@ export function BuildFromQuotes() {
 
   // Estimated cost ≈ 60% of the quoted price (no real cost on the product);
   // margin tracks the editable base price, matching the Save-to-B2B modal.
-  const rowMarkup = shown.map((r, i) => {
+  const rowMarkup = shown.map((r) => {
     const product = productOf(r.sku);
     const shopify = product?.list;
     const current = product ? resolvedPriceFor(company, product, state.db.policies, undefined, sourceLoc) : null;
@@ -252,210 +235,206 @@ export function BuildFromQuotes() {
     const margin = proposed ? Math.round(((proposed - cost) / proposed) * 100) : 0;
     const belowCost = proposed > 0 && proposed < cost;
     return (
-      <IndexTable.Row id={r.sku} key={r.sku} position={i} selected={selected.has(r.sku)}>
-        <IndexTable.Cell>
-          <BlockStack gap="050">
-            <Text as="span" variant="bodyMd" fontWeight="medium">{skuTitle(r.sku)}</Text>
-            <Text as="span" tone="subdued" variant="bodySm">{r.sku}</Text>
-          </BlockStack>
-        </IndexTable.Cell>
-        <IndexTable.Cell>{shopify != null ? money(shopify) : '—'}</IndexTable.Cell>
-        <IndexTable.Cell><Text as="span" fontWeight="semibold">{money(r.quoted)}</Text></IndexTable.Cell>
-        <IndexTable.Cell>
-          <Text as="span" tone={current == null ? 'subdued' : undefined}>{current != null ? money(current) : '—'}</Text>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
+      <s-table-row key={r.sku}>
+        <s-table-cell>
+          <s-checkbox
+            accessibilityLabel={`Select ${skuTitle(r.sku)}`}
+            checked={selected.has(r.sku)}
+            onChange={(e) => setRowSelected(r.sku, e.currentTarget.checked)}
+          />
+        </s-table-cell>
+        <s-table-cell>
+          <s-stack gap="small-500">
+            <s-text fontWeight="medium">{skuTitle(r.sku)}</s-text>
+            <s-text color="subdued" fontSize="small">{r.sku}</s-text>
+          </s-stack>
+        </s-table-cell>
+        <s-table-cell>{shopify != null ? money(shopify) : '—'}</s-table-cell>
+        <s-table-cell><s-text fontWeight="semibold">{money(r.quoted)}</s-text></s-table-cell>
+        <s-table-cell>
+          <s-text color={current == null ? 'subdued' : undefined}>{current != null ? money(current) : '—'}</s-text>
+        </s-table-cell>
+        <s-table-cell>
           <div style={{ width: 110 }}>
-            <TextField
+            <s-number-field
               label="Price to save"
-              labelHidden
-              type="number"
+              labelAccessibilityVisibility="exclusive"
               min={0}
               prefix="$"
               value={String(r.proposed ?? '')}
-              onChange={(v) => patchRow(r.sku, { proposed: Number(v) })}
-              autoComplete="off"
+              onInput={(e) => patchRow(r.sku, { proposed: Number(e.currentTarget.value) })}
+              autocomplete="off"
             />
           </div>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
-          <Text as="span" tone={belowCost ? 'critical' : undefined}>{`${margin}%${belowCost ? ' · below cost' : ''}`}</Text>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
-          <Link
+        </s-table-cell>
+        <s-table-cell>
+          <s-text tone={belowCost ? 'critical' : undefined}>{`${margin}%${belowCost ? ' · below cost' : ''}`}</s-text>
+        </s-table-cell>
+        <s-table-cell>
+          <s-link
             onClick={() => {
               // Close this modal and open the source quote in the B2B app.
               dispatch({ type: 'CLOSE_BUILD_QUOTES' });
               dispatch({ type: 'OPEN_QUOTE', id: r.from });
             }}
-          >{`from #${r.from}${!bq.source && locations.length > 1 && r.location ? ` · ${r.location}` : ''}`}</Link>
-        </IndexTable.Cell>
-      </IndexTable.Row>
+          >{`from #${r.from}${!bq.source && locations.length > 1 && r.location ? ` · ${r.location}` : ''}`}</s-link>
+        </s-table-cell>
+      </s-table-row>
     );
   });
 
+  // "Quotes from" menu: every location with its closed-quote count (the button
+  // shows the current one).
+  const sourceItems = [
+    { content: `All locations (${closedQuotesOf(company, state.db, null).length})`, onAction: () => setSource('') },
+    ...locations.map((l) => ({
+      content: `${l.name} (${closedQuotesOf(company, state.db, l.name).length})`,
+      onAction: () => setSource(l.name),
+    })),
+  ];
+
   return (
-    <Modal
-      open
-      onClose={() => dispatch({ type: 'CLOSE_BUILD_QUOTES' })}
-      title={
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          Build pricing from closed quotes
-          {SHOW_DEV_TOOLS ? (
-            <DevToggle on={!rfqInstalled} onToggle={() => dispatch({ type: 'SET_RFQ_INSTALLED', installed: !rfqInstalled })} />
-          ) : null}
-        </span>
-      }
-      size="large"
-      primaryAction={{
-        content: bq.dest === '__new__' ? 'Create base pricing' : 'Add prices',
-        onAction: onSave,
-        disabled: !canSave,
-      }}
-      secondaryActions={[{ content: 'Cancel', onAction: () => dispatch({ type: 'CLOSE_BUILD_QUOTES' }) }]}
-    >
-      <Modal.Section>
-        <BlockStack gap="300">
-          {/* "Quotes from" — a small filter pill (secondary slim button, icon + chevron,
-              like the Analytics date pickers); the menu lists every location with its
-              closed-quote count. */}
-          {pickSource && rfqInstalled ? (
-            <BlockStack gap="100">
-              <Text as="span" variant="bodyMd">Quotes from</Text>
-              <InlineStack>
-                <Popover
-                  active={sourceOpen}
-                  onClose={() => setSourceOpen(false)}
-                  activator={
-                    <Button size="slim" icon={LocationIcon} disclosure onClick={() => setSourceOpen((v) => !v)}>
-                      {`${bq.source || 'All locations'} (${closedQuotesOf(company, state.db, bq.source).length})`}
-                    </Button>
-                  }
-                >
-                  <ActionList
-                    actionRole="menuitemradio"
-                    items={[
-                      { content: `All locations (${closedQuotesOf(company, state.db, null).length})`, active: !bq.source, onAction: () => { setSourceOpen(false); setSource(''); } },
-                      ...locations.map((l) => ({
-                        content: `${l.name} (${closedQuotesOf(company, state.db, l.name).length})`,
-                        active: bq.source === l.name,
-                        onAction: () => { setSourceOpen(false); setSource(l.name); },
-                      })),
-                    ]}
-                  />
-                </Popover>
-              </InlineStack>
-            </BlockStack>
-          ) : null}
+    <Modal onClose={() => dispatch({ type: 'CLOSE_BUILD_QUOTES' })} heading="Build pricing from closed quotes" size="large">
+      <s-stack gap="small">
+        {/* The dev toggle sat next to the title; s-modal's heading is text only. */}
+        {SHOW_DEV_TOOLS ? (
+          <DevToggle on={!rfqInstalled} onToggle={() => dispatch({ type: 'SET_RFQ_INSTALLED', installed: !rfqInstalled })} />
+        ) : null}
 
-          {!isEmpty && (
-            <Text as="p" tone="subdued" variant="bodySm">
-              {bq.quoteId
-                ? `Prices from quote #${bq.quoteId}${bq.source ? ` (${bq.source})` : ''}. Tick the ones to include, edit the price, then add them to a base pricing.`
-                : `Prices come from each product’s most recently closed quote${bq.source ? ` at ${bq.source}` : ''}. Tick the ones to include, edit the price, then add them to a base pricing.`}
-            </Text>
-          )}
+        {/* "Quotes from" — a small filter pill (secondary button, icon + chevron,
+            like the Analytics date pickers); the menu lists every location with its
+            closed-quote count. */}
+        {pickSource && rfqInstalled ? (
+          <s-stack gap="small-400">
+            <s-text>Quotes from</s-text>
+            <s-stack direction="inline">
+              <MenuButton icon="location" items={sourceItems}>
+                {`${bq.source || 'All locations'} (${closedQuotesOf(company, state.db, bq.source).length})`}
+              </MenuButton>
+            </s-stack>
+          </s-stack>
+        ) : null}
 
-          {!isEmpty && (
-            <InlineStack gap="200" blockAlign="center" wrap={false}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <TextField
-                  label="Search products"
-                  labelHidden
-                  value={query}
-                  onChange={setQuery}
-                  prefix={<Icon source={SearchIcon} tone="subdued" />}
-                  placeholder="Search by product or SKU"
-                  autoComplete="off"
-                  clearButton
-                  onClearButtonClick={() => setQuery('')}
-                />
-              </div>
-              <div style={{ width: 200, flex: '0 0 auto' }}>
-                <Select label="Sort by" labelHidden options={SORT_OPTIONS} value={sort} onChange={setSort} />
-              </div>
-            </InlineStack>
-          )}
+        {!isEmpty && (
+          <s-paragraph color="subdued" fontSize="small">
+            {bq.quoteId
+              ? `Prices from quote #${bq.quoteId}${bq.source ? ` (${bq.source})` : ''}. Tick the ones to include, edit the price, then add them to a base pricing.`
+              : `Prices come from each product’s most recently closed quote${bq.source ? ` at ${bq.source}` : ''}. Tick the ones to include, edit the price, then add them to a base pricing.`}
+          </s-paragraph>
+        )}
 
-          <Box borderWidth="025" borderColor="border" borderRadius="200" overflowX="hidden">
-            <div style={{ maxHeight: 320, overflowY: 'auto' }}>
-              <IndexTable
-                resourceName={{ singular: 'product', plural: 'products' }}
-                itemCount={shown.length}
-                selectable={!isEmpty}
-                selectedItemsCount={allShownSelected ? 'All' : selectedShown}
-                onSelectionChange={onSelectionChange}
-                emptyState={
-                  rfqInstalled ? (
-                    <EmptyBlock
-                      image={emptyStateArt}
-                      imageAlt=""
-                      heading="No products to add"
-                      action={{ content: 'Open RFQ app', onAction: () => { window.location.href = rfqSubmissionsUrl(); } }}
-                    >
-                      No products from closed quotes are available for this company. Check your quote statuses in the RFQ app.
-                    </EmptyBlock>
-                  ) : (
-                    <EmptyBlock
-                      image={emptyStateArt}
-                      imageAlt=""
-                      heading="Install O:Request a Quote"
-                      action={{ content: 'Install app', onAction: () => window.open(RFQ_APP_STORE_URL, '_blank', 'noopener') }}
-                    >
-                      Closed quotes come from the O:Request a Quote app. Install it to collect quote requests and turn agreed prices into B2B pricing.
-                    </EmptyBlock>
-                  )
-                }
-                headings={[
-                  { title: 'Product' },
-                  { title: 'Shopify' },
-                  { title: 'Quoted' },
-                  {
-                    title: 'Current',
-                    tooltipContent: `The price ${sourceLoc ? sourceLoc.name : 'this company'} pays now, from its current B2B pricing. “—” means no B2B price is set yet.`,
-                  },
-                  {
-                    title: 'Price to save',
-                    tooltipContent: 'Saved as this product’s base price in the selected pricing. Defaults to the quoted price — edit if needed.',
-                  },
-                  { title: 'Margin' },
-                  { title: 'Source' },
-                ]}
+        {!isEmpty && (
+          <s-grid gridTemplateColumns="minmax(0, 1fr) 200px" gap="small-200" alignItems="center">
+            <s-search-field
+              label="Search products"
+              labelAccessibilityVisibility="exclusive"
+              value={query}
+              onInput={(e) => setQuery(e.currentTarget.value)}
+              placeholder="Search by product or SKU"
+              autocomplete="off"
+            />
+            <s-select label="Sort by" labelAccessibilityVisibility="exclusive" value={sort} onChange={(e) => setSort(e.currentTarget.value)}>
+              {SORT_OPTIONS.map((o) => (
+                <s-option key={o.value} value={o.value}>{o.label}</s-option>
+              ))}
+            </s-select>
+          </s-grid>
+        )}
+
+        <s-box border="base" borderRadius="base" overflow="hidden">
+          {/* No rows to show (none from closed quotes, the RFQ app missing, or a search
+              that matches nothing): the table's empty state. */}
+          {shown.length === 0 ? (
+            rfqInstalled ? (
+              <EmptyBlock
+                image={emptyStateArt}
+                imageAlt=""
+                heading="No products to add"
+                action={{ content: 'Open RFQ app', onAction: () => { window.location.href = rfqSubmissionsUrl(); } }}
               >
-                {rowMarkup}
-              </IndexTable>
+                No products from closed quotes are available for this company. Check your quote statuses in the RFQ app.
+              </EmptyBlock>
+            ) : (
+              <EmptyBlock
+                image={emptyStateArt}
+                imageAlt=""
+                heading="Install O:Request a Quote"
+                action={{ content: 'Install app', onAction: () => window.open(RFQ_APP_STORE_URL, '_blank', 'noopener') }}
+              >
+                Closed quotes come from the O:Request a Quote app. Install it to collect quote requests and turn agreed prices into B2B pricing.
+              </EmptyBlock>
+            )
+          ) : (
+            <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+              <s-table>
+                <s-table-header-row>
+                  <s-table-header listSlot="inline">
+                    <s-checkbox
+                      accessibilityLabel="Select all shown products"
+                      checked={allShownSelected}
+                      indeterminate={selectedShown > 0 && !allShownSelected}
+                      onChange={(e) => setShownSelected(e.currentTarget.checked)}
+                    />
+                  </s-table-header>
+                  <s-table-header listSlot="primary">
+                    {selectedShown ? `${selectedShown} selected` : 'Product'}
+                  </s-table-header>
+                  <s-table-header listSlot="labeled" format="currency">Shopify</s-table-header>
+                  <s-table-header listSlot="labeled" format="currency">Quoted</s-table-header>
+                  <s-table-header listSlot="labeled" format="currency">
+                    <Tip content={`The price ${sourceLoc ? sourceLoc.name : 'this company'} pays now, from its current B2B pricing. “—” means no B2B price is set yet.`}>
+                      Current
+                    </Tip>
+                  </s-table-header>
+                  <s-table-header listSlot="labeled">
+                    <Tip content="Saved as this product’s base price in the selected pricing. Defaults to the quoted price — edit if needed.">
+                      Price to save
+                    </Tip>
+                  </s-table-header>
+                  <s-table-header listSlot="labeled" format="numeric">Margin</s-table-header>
+                  <s-table-header listSlot="labeled">Source</s-table-header>
+                </s-table-header-row>
+                <s-table-body>{rowMarkup}</s-table-body>
+              </s-table>
             </div>
-          </Box>
-
-          {!isEmpty && selectedCount === 0 && (
-            <Text as="p" tone="critical" variant="bodySm">
-              Select at least one product to build pricing.
-            </Text>
           )}
+        </s-box>
 
+        {!isEmpty && selectedCount === 0 && (
+          <s-paragraph tone="critical" fontSize="small">
+            Select at least one product to build pricing.
+          </s-paragraph>
+        )}
 
-
-          {/* Where the prices go: an existing pricing (updated wherever it's assigned)
-              or a new one — its locations are picked in the pricing editor. */}
-          {!isEmpty && (
-            <>
-              <Divider />
-              <Select
-                label="Add to"
-                options={destOptions}
-                value={bq.dest}
-                onChange={(v) => patchBq({ dest: v })}
-                helpText={!otherCompanies.length ? destHint : undefined}
-              />
-              {otherCompanies.length ? (
-                <Banner tone="warning">
-                  {`“${destPolicy.name}” is also assigned to ${otherCompanies.length} other compan${otherCompanies.length === 1 ? 'y' : 'ies'}, so they’ll get these quote prices too. To use them only for ${company.name} or its location, pick a pricing assigned only to it, or create a new one.`}
-                </Banner>
-              ) : null}
-            </>
-          )}
-        </BlockStack>
-      </Modal.Section>
+        {/* Where the prices go: an existing pricing (updated wherever it's assigned)
+            or a new one — its locations are picked in the pricing editor. */}
+        {!isEmpty && (
+          <>
+            <s-divider />
+            <s-select
+              label="Add to"
+              value={bq.dest}
+              onChange={(e) => patchBq({ dest: e.currentTarget.value })}
+              details={!otherCompanies.length ? destHint : undefined}
+            >
+              {destOptions.map((o) => (
+                <s-option key={o.value} value={o.value}>{o.label}</s-option>
+              ))}
+            </s-select>
+            {otherCompanies.length ? (
+              <s-banner tone="warning">
+                {`“${destPolicy.name}” is also assigned to ${otherCompanies.length} other compan${otherCompanies.length === 1 ? 'y' : 'ies'}, so they’ll get these quote prices too. To use them only for ${company.name} or its location, pick a pricing assigned only to it, or create a new one.`}
+              </s-banner>
+            ) : null}
+          </>
+        )}
+      </s-stack>
+      <s-button slot="primary-action" variant="primary" disabled={!canSave} onClick={onSave}>
+        {bq.dest === '__new__' ? 'Create base pricing' : 'Add prices'}
+      </s-button>
+      <s-button slot="secondary-actions" onClick={() => dispatch({ type: 'CLOSE_BUILD_QUOTES' })}>
+        Cancel
+      </s-button>
     </Modal>
   );
 }
@@ -465,11 +444,11 @@ export function BuildFromQuotes() {
 // company without any.
 function DevToggle({ on, onToggle }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 'normal' }}>
-      <Badge tone="info">Dev</Badge>
-      <Button size="micro" pressed={on} onClick={onToggle}>
+    <s-stack direction="inline" gap="small-300" alignItems="center">
+      <s-badge tone="info">Dev</s-badge>
+      <s-press-button pressed={on} onClick={onToggle}>
         {on ? 'Show installed' : 'Preview not installed'}
-      </Button>
-    </span>
+      </s-press-button>
+    </s-stack>
   );
 }

@@ -7,7 +7,7 @@ import { normalizeDb, injectRfqCompany, applyQuotePricingTransfer } from './dbHe
 
 export function makeBaseState() {
   return {
-    view: 'home', // home | customers | company | pricing | analytics | settings | quote | location | registrations | registration | form
+    view: 'home', // home | customers | company | pricing | limits | agreements | analytics | settings | quote | location | registrations | registration | form
     selectedCompany: 'c1',
     // Registrations (storefront form submissions)
     selectedRegistration: null,
@@ -41,7 +41,10 @@ export function makeBaseState() {
     priceBoard: null, // { companyId, search } — resolved-prices preview
     assign: null, // { companyId, mode:'add'|'swap', swapId, selectedId } — assign/swap base
     assignMulti: null, // { policyId } — assign one policy to many companies/customers/tags/global
-    addCompany: null, // { shopifyId, search } — add-company picker
+    limitEditor: null, // { draft, returnTo } — the order-limit editor (see limits.js)
+    agreementEditor: null, // { draft, returnTo } — the agreement editor (see agreements.js)
+    addCompany: null, // { selected: shopifyCompanyIds, search, autoAddLocations } — add-company picker
+    shopifyNewLocations: {}, // { [shopifyCompanyId]: [location] } — created in Shopify this session (Settings → Prototype)
     emptyMode: false, // "show the app with no data" (fresh-install simulation)
     emptyBackup: null,
     // The seeded registrations came in through the form, so it already exists. It starts
@@ -96,6 +99,8 @@ function viewFromHash(hash) {
     '#/b2b': 'home',
     '#/b2b/registrations': 'registrations',
     '#/b2b/pricing': 'pricing',
+    '#/b2b/order-limits': 'limits',
+    '#/b2b/agreements': 'agreements',
     '#/b2b/company': 'customers',
     '#/b2b/analytics': 'analytics',
     '#/b2b/settings': 'settings',

@@ -1,34 +1,59 @@
 import React from 'react';
-import {
-  Card,
-  IndexTable,
-  Badge,
-  Button,
-  ButtonGroup,
-  TextField,
-  Select,
-  Pagination,
-  Text,
-  InlineStack,
-  BlockStack,
-  Box,
-  Tooltip,
-  Icon,
-} from '@shopify/polaris';
-import { EditIcon, ExchangeIcon, XCircleIcon, PlusIcon, SearchIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
-import { companyBaseEntries, policyStatus } from '../pricing.js';
+import { companyBaseEntries, locationOnlyEntries, pricingLocationsLabel, policyStatus } from '../pricing.js';
 import { openBuildFromQuotes } from './BuildFromQuotes.jsx';
 import { versionFlags } from '../../shared/versions.js';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
+import { Tip, wcTone } from '../../shared/wc.jsx';
 import basePricingArt from '../assets/base-pricing-empty.webp';
 
 const PAGE_SIZES = [5, 10, 20, 100];
 
+// Edit / Remove for pricing only some locations get: editing opens it for those
+// locations, removing takes it off those locations only.
+export function LocationOnlyActions({ company, kind, entry }) {
+  const { dispatch } = useStore();
+  const locs = entry.locations;
+  const one = locs.length === 1 ? locs[0] : null;
+  return (
+    <s-stack direction="inline" gap="small-400" justifyContent="end" alignItems="center">
+      <s-button
+        icon="edit"
+        variant="tertiary"
+        accessibilityLabel="Edit pricing"
+        onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: entry.policy, context: { mode: 'edit', companyId: company.id, ...(one ? { locationId: one.id } : {}) } })}
+      />
+      <s-button
+        icon="x-circle"
+        variant="tertiary"
+        tone="critical"
+        accessibilityLabel={`Remove from ${locs.map((l) => l.name).join(', ')}`}
+        onClick={() => locs.forEach((l) => dispatch({ type: 'REMOVE_LOCATION_PRICING', companyId: company.id, locationId: l.id, kind, policyId: entry.policy.id }))}
+      />
+    </s-stack>
+  );
+}
+
+// Card header: title on the left, a one-line subdued description on the right.
+function CardHeader({ title, description }) {
+  return (
+    <s-box padding="small" paddingBlockEnd="small-200">
+      <s-stack direction="inline" justifyContent="space-between" alignItems="center" gap="small-200">
+        <s-heading>{title}</s-heading>
+        <s-text color="subdued" fontSize="small">
+          {description}
+        </s-text>
+      </s-stack>
+    </s-box>
+  );
+}
+
 export function BasePricingCard({ company }) {
   const { state, dispatch } = useStore();
   const policies = state.db.policies;
-  const entries = companyBaseEntries(company, policies);
+  // The company's own list plus pricing only some locations get (labelled with them),
+  // in priority order — the stable sort keeps the company's own tie-breaks.
+  const entries = [...companyBaseEntries(company, policies), ...locationOnlyEntries(company, policies, 'base')].sort((a, b) => a.priority - b.priority);
 
   // v1: single base pricing per company (no priority list / pagination).
   if (!versionFlags().multiBase) return <SingleBaseCard company={company} />;
@@ -48,179 +73,183 @@ export function BasePricingCard({ company }) {
   const buildFromQuotes = () => openBuildFromQuotes(dispatch, company, state.db);
 
   const priorityHeader = (
-    <Tooltip content="Lower number applies first.">
+    <Tip content="Lower number applies first.">
       <span style={{ borderBottom: '1px dotted var(--p-color-border)', cursor: 'help' }}>Priority</span>
-    </Tooltip>
+    </Tip>
   );
 
-  const rows = pageEntries.map((entry, index) => {
+  const rows = pageEntries.map((entry) => {
     const p = entry.policy;
     const st = policyStatus(p);
+    const locs = entry.locations;
     return (
-      <IndexTable.Row id={p.id} key={p.id} position={index}>
-        <IndexTable.Cell>
-          <Text as="span" variant="bodyMd" fontWeight="medium">
-            {p.name}
-          </Text>
-        </IndexTable.Cell>
-        <IndexTable.Cell>{entry.priority}</IndexTable.Cell>
-        <IndexTable.Cell>
-          <Badge tone={st.tone}>{st.label}</Badge>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
-          <InlineStack gap="100" align="end" blockAlign="center" wrap={false}>
-            <Button
-              icon={EditIcon}
-              variant="tertiary"
-              accessibilityLabel="Edit pricing"
-              onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: p, context: { mode: 'edit', companyId: company.id } })}
-            />
-            <Button
-              icon={ExchangeIcon}
-              variant="tertiary"
-              accessibilityLabel="Change to another base pricing"
-              onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'swap', swapId: p.id })}
-            />
-            <Button
-              icon={XCircleIcon}
-              variant="tertiary"
-              tone="critical"
-              accessibilityLabel="Remove this base pricing"
-              onClick={() => dispatch({ type: 'REMOVE_COMPANY_BASE', companyId: company.id, policyId: p.id })}
-            />
-          </InlineStack>
-        </IndexTable.Cell>
-      </IndexTable.Row>
+      <s-table-row key={p.id}>
+        <s-table-cell>
+          <s-text fontWeight="medium">{p.name}</s-text>
+        </s-table-cell>
+        <s-table-cell>{pricingLocationsLabel(company, 'base', p.id)}</s-table-cell>
+        <s-table-cell>{entry.priority}</s-table-cell>
+        <s-table-cell>
+          <s-badge tone={wcTone(st.tone)}>{st.label}</s-badge>
+        </s-table-cell>
+        <s-table-cell>
+          {locs ? (
+            <LocationOnlyActions company={company} kind="base" entry={entry} />
+          ) : (
+            <s-stack direction="inline" gap="small-400" justifyContent="end" alignItems="center">
+              <s-button
+                icon="edit"
+                variant="tertiary"
+                accessibilityLabel="Edit pricing"
+                onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: p, context: { mode: 'edit', companyId: company.id } })}
+              />
+              <s-button
+                icon="exchange"
+                variant="tertiary"
+                accessibilityLabel="Change to another base pricing"
+                onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'swap', swapId: p.id })}
+              />
+              <s-button
+                icon="x-circle"
+                variant="tertiary"
+                tone="critical"
+                accessibilityLabel="Remove this base pricing"
+                onClick={() => dispatch({ type: 'REMOVE_COMPANY_BASE', companyId: company.id, policyId: p.id })}
+              />
+            </s-stack>
+          )}
+        </s-table-cell>
+      </s-table-row>
     );
   });
 
   const footerButtons = (
-    <Box padding="300">
-      <ButtonGroup>
-        <Button icon={PlusIcon} onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'add' })}>
+    <s-box padding="small">
+      <s-stack direction="inline" gap="small-200">
+        <s-button icon="plus" onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'add' })}>
           Add base pricing
-        </Button>
-        {crossSync && <Button onClick={buildFromQuotes}>Build pricing from closed quotes</Button>}
-        <Button variant="tertiary" onClick={() => dispatch({ type: 'OPEN_PRICE_BOARD', companyId: company.id })}>
+        </s-button>
+        {crossSync && <s-button onClick={buildFromQuotes}>Build pricing from closed quotes</s-button>}
+        <s-button variant="tertiary" onClick={() => dispatch({ type: 'OPEN_PRICE_BOARD', companyId: company.id })}>
           Preview prices
-        </Button>
-      </ButtonGroup>
-    </Box>
+        </s-button>
+      </s-stack>
+    </s-box>
   );
 
   if (entries.length === 0) {
     return (
-      <Card>
-        <BlockStack gap="200">
-          <Text as="h2" variant="headingSm">
-            Base pricing
-          </Text>
-          <EmptyBlock
-            image={basePricingArt}
-            imageAlt="A price list with a dollar amount on each line, next to boxes and a price tag"
-            heading="No base pricing yet"
-            action={{ content: 'Add base pricing', onAction: () => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'add' }) }}
-            secondaryAction={crossSync ? { content: 'Build pricing from closed quotes', onAction: buildFromQuotes } : undefined}
-          >
-            Assign a base pricing so buyers get a B2B price. You can add more than one — the lowest priority applies first.
-          </EmptyBlock>
-        </BlockStack>
-      </Card>
+      <s-section heading="Base pricing">
+        <EmptyBlock
+          image={basePricingArt}
+          imageAlt="A price list with a dollar amount on each line, next to boxes and a price tag"
+          heading="No base pricing yet"
+          action={{ content: 'Add base pricing', onAction: () => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'add' }) }}
+          secondaryAction={crossSync ? { content: 'Build pricing from closed quotes', onAction: buildFromQuotes } : undefined}
+        >
+          Assign a base pricing so buyers get a B2B price. You can add more than one — the lowest priority applies first.
+        </EmptyBlock>
+      </s-section>
     );
   }
 
   return (
-    <Card padding="0">
-      <Box padding="300" paddingBlockEnd="200">
-        <InlineStack align="space-between" blockAlign="center">
-          <Text as="h2" variant="headingSm">
-            Base pricing
-          </Text>
-          <Text as="span" tone="subdued" variant="bodySm">
-            The standard B2B price for this company
-          </Text>
-        </InlineStack>
-      </Box>
+    <s-section padding="none">
+      <CardHeader title="Base pricing" description="The standard B2B price for this company" />
 
       {showTools && (
-        <Box paddingInline="300" paddingBlockEnd="200">
-          <InlineStack gap="300" align="space-between" blockAlign="center" wrap>
-            <div style={{ flex: 1, minWidth: 200 }}>
-              <TextField
-                labelHidden
-                label="Search base pricing"
-                placeholder="Search base pricing"
-                value={state.basePricingSearch}
-                onChange={(v) => dispatch({ type: 'BASE_SEARCH', value: v })}
-                prefix={<Icon source={SearchIcon} tone="subdued" />}
-                autoComplete="off"
-                clearButton
-                onClearButtonClick={() => dispatch({ type: 'BASE_SEARCH', value: '' })}
-              />
-            </div>
-            <InlineStack gap="150" blockAlign="center" wrap={false}>
-              <Text as="span" tone="subdued" variant="bodySm">
+        <s-box paddingInline="small" paddingBlockEnd="small-200">
+          <s-grid gridTemplateColumns="minmax(200px, 1fr) auto" gap="small" alignItems="center">
+            <s-search-field
+              label="Search base pricing"
+              labelAccessibilityVisibility="exclusive"
+              placeholder="Search base pricing"
+              value={state.basePricingSearch || ''}
+              autocomplete="off"
+              onInput={(e) => dispatch({ type: 'BASE_SEARCH', value: e.currentTarget.value })}
+            />
+            <s-stack direction="inline" gap="small-300" alignItems="center">
+              <s-text color="subdued" fontSize="small">
                 Show
-              </Text>
-              <Select
-                labelHidden
-                label="Per page"
-                options={PAGE_SIZES.map((n) => ({ label: String(n), value: String(n) }))}
-                value={String(size)}
-                onChange={(v) => dispatch({ type: 'BASE_PAGE_SIZE', size: Number(v) })}
-              />
-              <Text as="span" tone="subdued" variant="bodySm">
+              </s-text>
+              <div style={{ width: 76 }}>
+                <s-select
+                  label="Per page"
+                  labelAccessibilityVisibility="exclusive"
+                  value={String(size)}
+                  onChange={(e) => dispatch({ type: 'BASE_PAGE_SIZE', size: Number(e.currentTarget.value) })}
+                >
+                  {PAGE_SIZES.map((n) => (
+                    <s-option key={n} value={String(n)}>
+                      {String(n)}
+                    </s-option>
+                  ))}
+                </s-select>
+              </div>
+              <s-text color="subdued" fontSize="small">
                 per page
-              </Text>
-            </InlineStack>
-          </InlineStack>
-        </Box>
+              </s-text>
+            </s-stack>
+          </s-grid>
+        </s-box>
       )}
 
-      <IndexTable
-        resourceName={{ singular: 'base pricing', plural: 'base pricings' }}
-        itemCount={filtered.length}
-        selectable={false}
-        headings={[
-          { title: 'Pricing' },
-          { title: priorityHeader },
-          { title: 'Status' },
-          { title: '', alignment: 'end' },
-        ]}
-        emptyState={
-          <Box padding="400">
-            <Text as="p" alignment="center" tone="subdued">
-              {`No base pricing matches “${state.basePricingSearch}”.`}
-            </Text>
-          </Box>
-        }
-      >
-        {rows}
-      </IndexTable>
+      <s-table>
+        <s-table-header-row>
+          <s-table-header listSlot="primary">Pricing</s-table-header>
+          <s-table-header listSlot="labeled">Location</s-table-header>
+          <s-table-header listSlot="labeled">{priorityHeader}</s-table-header>
+          <s-table-header listSlot="secondary">Status</s-table-header>
+          <s-table-header listSlot="inline">
+            <s-text accessibilityVisibility="exclusive">Actions</s-text>
+          </s-table-header>
+        </s-table-header-row>
+        <s-table-body>{rows}</s-table-body>
+      </s-table>
+      {filtered.length === 0 ? (
+        <s-box padding="base">
+          <div style={{ textAlign: 'center' }}>
+            <s-text color="subdued">{`No base pricing matches “${state.basePricingSearch}”.`}</s-text>
+          </div>
+        </s-box>
+      ) : null}
 
       {showTools && filtered.length > size && (
-        <Box padding="300" borderBlockStartWidth="025" borderColor="border">
-          <InlineStack align="space-between" blockAlign="center">
-            <Text as="span" tone="subdued" variant="bodySm">
-              {`${start + 1}–${start + pageEntries.length} of ${filtered.length}`}
-            </Text>
-            <InlineStack gap="200" blockAlign="center">
-              <Text as="span" tone="subdued" variant="bodySm">
-                {`Page ${page} of ${pageCount}`}
-              </Text>
-              <Pagination
-                hasPrevious={page > 1}
-                onPrevious={() => dispatch({ type: 'BASE_PAGE', page: page - 1 })}
-                hasNext={page < pageCount}
-                onNext={() => dispatch({ type: 'BASE_PAGE', page: page + 1 })}
-              />
-            </InlineStack>
-          </InlineStack>
-        </Box>
+        <>
+          <s-divider />
+          <s-box padding="small">
+            <s-stack direction="inline" justifyContent="space-between" alignItems="center">
+              <s-text color="subdued" fontSize="small">
+                {`${start + 1}–${start + pageEntries.length} of ${filtered.length}`}
+              </s-text>
+              <s-stack direction="inline" gap="small-200" alignItems="center">
+                <s-text color="subdued" fontSize="small">
+                  {`Page ${page} of ${pageCount}`}
+                </s-text>
+                <s-button-group gap="none" accessibilityLabel="Pagination">
+                  <s-button
+                    slot="secondary-actions"
+                    icon="chevron-left"
+                    accessibilityLabel="Previous"
+                    disabled={page <= 1}
+                    onClick={() => dispatch({ type: 'BASE_PAGE', page: Math.max(page - 1, 1) })}
+                  />
+                  <s-button
+                    slot="secondary-actions"
+                    icon="chevron-right"
+                    accessibilityLabel="Next"
+                    disabled={page >= pageCount}
+                    onClick={() => dispatch({ type: 'BASE_PAGE', page: Math.min(page + 1, pageCount) })}
+                  />
+                </s-button-group>
+              </s-stack>
+            </s-stack>
+          </s-box>
+        </>
       )}
 
       {footerButtons}
-    </Card>
+    </s-section>
   );
 }
 
@@ -231,61 +260,49 @@ function SingleBaseCard({ company }) {
   const primary = entries[0];
   const st = primary ? policyStatus(primary.policy) : null;
   return (
-    <Card padding="0">
-      <Box padding="300" paddingBlockEnd="200">
-        <InlineStack align="space-between" blockAlign="center">
-          <Text as="h2" variant="headingSm">
-            Base pricing
-          </Text>
-          <Text as="span" tone="subdued" variant="bodySm">
-            The standard B2B price for this company
-          </Text>
-        </InlineStack>
-      </Box>
-      <IndexTable
-        resourceName={{ singular: 'base pricing', plural: 'base pricings' }}
-        itemCount={1}
-        selectable={false}
-        headings={[{ title: 'Pricing' }, { title: 'Products' }, { title: 'Status' }, { title: '', alignment: 'end' }]}
-      >
-        <IndexTable.Row id="base" position={0}>
-          <IndexTable.Cell>
-            {primary ? (
-              <Text as="span" variant="bodyMd" fontWeight="medium">
-                {primary.policy.name}
-              </Text>
-            ) : (
-              <Badge tone="attention">Not set</Badge>
-            )}
-          </IndexTable.Cell>
-          <IndexTable.Cell>
-            <Text as="span" tone="subdued">
-              All products
-            </Text>
-          </IndexTable.Cell>
-          <IndexTable.Cell>
-            {primary ? <Badge tone={st.tone}>{st.label}</Badge> : <Text as="span" tone="subdued">-</Text>}
-          </IndexTable.Cell>
-          <IndexTable.Cell>
-            <InlineStack gap="100" align="end" wrap={false}>
-              {primary ? (
-                <>
-                  <Button icon={EditIcon} variant="tertiary" accessibilityLabel="Edit pricing" onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: primary.policy, context: { mode: 'edit', companyId: company.id } })} />
-                  <Button icon={ExchangeIcon} variant="tertiary" accessibilityLabel="Change base pricing" onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'swap', swapId: primary.policy.id })} />
-                  <Button icon={XCircleIcon} variant="tertiary" tone="critical" accessibilityLabel="Remove" onClick={() => dispatch({ type: 'REMOVE_COMPANY_BASE', companyId: company.id, policyId: primary.policy.id })} />
-                </>
-              ) : (
-                <Button icon={PlusIcon} variant="tertiary" accessibilityLabel="Set base pricing" onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'add' })} />
-              )}
-            </InlineStack>
-          </IndexTable.Cell>
-        </IndexTable.Row>
-      </IndexTable>
-      <Box padding="300">
-        <Button variant="tertiary" onClick={() => dispatch({ type: 'OPEN_PRICE_BOARD', companyId: company.id })}>
+    <s-section padding="none">
+      <CardHeader title="Base pricing" description="The standard B2B price for this company" />
+      <s-table>
+        <s-table-header-row>
+          <s-table-header listSlot="primary">Pricing</s-table-header>
+          <s-table-header listSlot="labeled">Products</s-table-header>
+          <s-table-header listSlot="secondary">Status</s-table-header>
+          <s-table-header listSlot="inline">
+            <s-text accessibilityVisibility="exclusive">Actions</s-text>
+          </s-table-header>
+        </s-table-header-row>
+        <s-table-body>
+          <s-table-row>
+            <s-table-cell>
+              {primary ? <s-text fontWeight="medium">{primary.policy.name}</s-text> : <s-badge tone="caution">Not set</s-badge>}
+            </s-table-cell>
+            <s-table-cell>
+              <s-text color="subdued">All products</s-text>
+            </s-table-cell>
+            <s-table-cell>
+              {primary ? <s-badge tone={wcTone(st.tone)}>{st.label}</s-badge> : <s-text color="subdued">-</s-text>}
+            </s-table-cell>
+            <s-table-cell>
+              <s-stack direction="inline" gap="small-400" justifyContent="end" alignItems="center">
+                {primary ? (
+                  <>
+                    <s-button icon="edit" variant="tertiary" accessibilityLabel="Edit pricing" onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: primary.policy, context: { mode: 'edit', companyId: company.id } })} />
+                    <s-button icon="exchange" variant="tertiary" accessibilityLabel="Change base pricing" onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'swap', swapId: primary.policy.id })} />
+                    <s-button icon="x-circle" variant="tertiary" tone="critical" accessibilityLabel="Remove" onClick={() => dispatch({ type: 'REMOVE_COMPANY_BASE', companyId: company.id, policyId: primary.policy.id })} />
+                  </>
+                ) : (
+                  <s-button icon="plus" variant="tertiary" accessibilityLabel="Set base pricing" onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'add' })} />
+                )}
+              </s-stack>
+            </s-table-cell>
+          </s-table-row>
+        </s-table-body>
+      </s-table>
+      <s-box padding="small">
+        <s-button variant="tertiary" onClick={() => dispatch({ type: 'OPEN_PRICE_BOARD', companyId: company.id })}>
           Preview prices
-        </Button>
-      </Box>
-    </Card>
+        </s-button>
+      </s-box>
+    </s-section>
   );
 }

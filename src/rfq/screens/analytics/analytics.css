@@ -1,0 +1,351 @@
+/* Quote analytics (RFQ) — app-owned visuals the Polaris web components don't cover:
+   charts, the report chat bar, the date-range option list, ranking rows and figures.
+   Every class is prefixed `qan-`. */
+
+.qan-root {
+  --qan-text: #303030;
+  --qan-text-subdued: #616161;
+  --qan-border: #e3e3e3;
+  --qan-border-secondary: #ebebeb;
+  --qan-critical: #8e0b21;
+  --qan-success: #014b40;
+  --qan-caution: #4f4700;
+  --qan-magic: #6b36c9;
+  --qan-icon-magic: #8051ff;
+  --qan-icon-secondary: #8a8a8a;
+  --qan-link: #005bd3;
+}
+
+/* ---------- Metric titles with a dotted underline (Tooltip hasUnderline:
+   border-bottom 2px dotted --p-color-border) ---------- */
+.qan-underline {
+  border-bottom: 2px dotted var(--qan-border);
+  padding-bottom: 1px;
+  cursor: default;
+}
+
+.qan-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* ---------- Big figures (headingLg / headingXl with tones) ---------- */
+.qan-figure {
+  font-size: 20px;
+  line-height: 24px;
+  font-weight: 650;
+  color: var(--qan-text);
+  letter-spacing: -0.2px;
+}
+.qan-figure--xl {
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 700;
+}
+.qan-figure--critical { color: var(--qan-critical); }
+.qan-figure--success { color: var(--qan-success); }
+.qan-figure--caution { color: var(--qan-caution); }
+
+/* KPI value (Text variant="body" bold, critical/success tone) inside a monochromePlain
+   Button: the button keeps the surrounding text colour and is always underlined. */
+.qan-kpi-link {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--qan-text);
+  text-decoration: underline;
+}
+.qan-kpi-link__value { font-weight: 700; color: var(--qan-critical); }
+.qan-kpi-link__value--success { color: var(--qan-success); }
+
+/* ---------- Report chat bar ---------- */
+.qan-chat {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.qan-chat__logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  display: block;
+}
+.qan-chat__input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--qan-text);
+  padding: 6px 4px;
+}
+.qan-chat__input::placeholder { color: #8a8a8a; }
+.qan-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.qan-suggestion {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 16px;
+  border: 1px solid #e0d9f5;
+  background-color: #f8f7ff;
+  color: var(--qan-magic);
+  font: inherit;
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 20px;
+  box-shadow: 0 2px 3px -1px rgba(31, 33, 36, 0.12);
+  cursor: pointer;
+  text-align: left;
+}
+.qan-suggestion svg { width: 16px; height: 16px; fill: var(--qan-icon-magic); flex-shrink: 0; }
+
+/* ---------- Date range picker popover ---------- */
+.qan-drp {
+  display: grid;
+  grid-template-columns: 212px max-content;
+}
+.qan-drp__options {
+  padding: 6px;
+  max-height: 334px;
+  overflow: auto;
+}
+.qan-drp__option {
+  display: block;
+  width: 100%;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  padding: 6px;
+  margin: 0;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--qan-text);
+  text-align: left;
+  cursor: pointer;
+}
+.qan-drp__option:hover { background: #f1f1f1; }
+.qan-drp__option[aria-selected='true'] {
+  background: #ebebeb;
+  font-weight: 650;
+}
+.qan-drp__select { display: none; padding: 20px 20px 4px; }
+.qan-drp__main { padding: 20px; max-width: 560px; }
+.qan-drp__fields {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) auto minmax(0, 220px);
+  align-items: center;
+  gap: 8px;
+}
+/* Popover.Section: 8px 12px 6px, no divider above it. */
+.qan-drp__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px 6px;
+}
+@media (max-width: 1007px) {
+  .qan-drp { grid-template-columns: 1fr; }
+  .qan-drp__options { display: none; }
+  .qan-drp__select { display: block; }
+  .qan-drp__main { max-width: 340px; }
+}
+
+/* ---------- Charts ---------- */
+.qan-chart {
+  position: relative;
+  width: 100%;
+  min-height: 270px;
+}
+.qan-chart svg { display: block; overflow: visible; }
+.qan-grid { stroke: #ebebeb; stroke-width: 1; shape-rendering: crispEdges; }
+.qan-crosshair { stroke: #b5b5b5; stroke-width: 1; shape-rendering: crispEdges; }
+.qan-axis-label {
+  fill: var(--qan-text-subdued);
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.qan-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 16px;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--qan-text-subdued);
+}
+.qan-legend__item { display: inline-flex; align-items: center; gap: 6px; }
+.qan-legend-key { display: inline-block; flex-shrink: 0; }
+.qan-legend-key--line { width: 12px; height: 2px; border-radius: 1px; }
+.qan-legend-key--bar { width: 8px; height: 8px; border-radius: 2px; }
+.qan-chart-tooltip {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--qan-text);
+}
+.qan-chart-tooltip__title { font-weight: 650; margin-bottom: 6px; }
+.qan-chart-tooltip__row { display: flex; align-items: center; gap: 6px; }
+.qan-chart-tooltip__name { color: var(--qan-text-subdued); flex: 1; min-width: 0; }
+.qan-chart-tooltip__value { font-weight: 650; font-variant-numeric: tabular-nums; }
+
+/* ---------- Ranking lists (ResourceList inside a fixed 230px scroll area). The list
+   sits inside the padded Card, so items keep their own 12px/16px padding on top. ---------- */
+.qan-ranking {
+  height: 230px;
+  overflow-y: auto;
+}
+.qan-ranking__empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.qan-list { list-style: none; margin: 0; padding: 0; }
+.qan-list__item + .qan-list__item { border-top: 1px solid var(--qan-border); }
+/* ResourceItem: 12px padding, 12px between media and content, hover fill. */
+.qan-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 12px;
+  width: 100%;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+}
+.qan-row { cursor: pointer; }
+.qan-row:hover { background: #f1f1f1; }
+.qan-row:active { background: #f3f3f3; }
+.qan-row__title {
+  font-weight: 650;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--qan-text);
+  overflow-wrap: anywhere;
+}
+.qan-row__meta { font-size: 13px; line-height: 20px; color: var(--qan-text); }
+.qan-row__meta--subdued { color: var(--qan-text-subdued); }
+.qan-thumb {
+  width: 60px;
+  height: 60px;
+  border: 1px solid var(--qan-border);
+  border-radius: 8px;
+  background: #fff;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.qan-thumb--small { width: 40px; height: 40px; }
+.qan-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.qan-thumb svg { width: 20px; height: 20px; fill: var(--qan-icon-secondary); }
+/* Product link title (Link removeUnderline > bold Text) */
+.qan-product-link {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--qan-link);
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
+}
+.qan-product-link:hover { text-decoration: underline; }
+.qan-avatar {
+  display: block;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: #b5b5b5;
+  color: #fff;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.qan-avatar svg { display: block; width: 100%; height: 100%; }
+.qan-avatar--xl { width: 40px; height: 40px; }
+.qan-avatar--lg { width: 32px; height: 32px; }
+
+/* ---------- Pagination (segmented prev / label / next) ---------- */
+.qan-pager { display: inline-flex; align-items: center; gap: 2px; }
+.qan-pager__label { padding: 0 12px; }
+.qan-pager-row { display: flex; justify-content: center; }
+
+
+/* ---------- Report name cell (TruncatedText 360px) ---------- */
+.qan-report-name {
+  width: 360px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Manage report: EmptyState / EmptySearchResult ---------- */
+.qan-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 0 64px;
+}
+.qan-empty__image { display: block; max-width: 100%; }
+.qan-empty__details {
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.qan-empty__text { padding-bottom: 16px; text-align: center; }
+.qan-empty__heading { padding-bottom: 6px; display: flex; justify-content: center; }
+.qan-empty-search {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  text-align: center;
+}
+.qan-empty-search img { display: block; }
+/* Row click delegate (an empty s-link) kept out of the cell's layout. */
+.qan-delegate {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* DataTable cells don't wrap (white-space: nowrap). */
+.qan-nowrap { white-space: nowrap; }

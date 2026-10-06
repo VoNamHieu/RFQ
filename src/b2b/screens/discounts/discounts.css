@@ -1,0 +1,73 @@
+/* Discount list (production: assets/styles/_discountRow.scss + DiscountRow inline styles). */
+
+/* Name column: one line, cut at 220px; the full name is in the tooltip. */
+.discounts-name {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Code column: the copy button stays in the DOM but only shows on hover / keyboard focus. */
+.discounts-code-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.discounts-code-copy {
+  display: inline-flex;
+  opacity: 0;
+  transition: opacity 0.1s ease-in-out;
+}
+
+.discounts-code-cell:hover .discounts-code-copy,
+.discounts-code-cell:focus-within .discounts-code-copy {
+  opacity: 1;
+}
+
+/* Touch devices have no hover — always show the button. */
+@media (hover: none) {
+  .discounts-code-copy {
+    opacity: 1;
+  }
+}
+
+/* Row action icons: bare 20px icons, 4px apart, no button chrome. */
+.discounts-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* Spinner shown in place of the toggle while it switches — same 20px box as an icon. */
+.discounts-action-spinner {
+  display: inline-block;
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+
+.discounts-date-filter {
+  width: 288px;
+  max-width: calc(100vw - 64px);
+}
+
+.discounts-action-locked {
+  display: inline-flex;
+  cursor: default;
+}
+
+/* "Created date" filter pill: label followed by the disclosure chevron. */
+.discounts-pill-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* IndexTable cells don't wrap; a narrow table scrolls sideways instead. */
+.discounts-nowrap {
+  white-space: nowrap;
+}

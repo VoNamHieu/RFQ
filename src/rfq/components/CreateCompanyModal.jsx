@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Modal, BlockStack, InlineStack, InlineGrid, Box, Text, Badge, Button, Checkbox, RadioButton, Select, TextField, Collapsible, Icon, Tooltip } from '@shopify/polaris';
-import { ChevronDownIcon, ChevronUpIcon } from '@shopify/polaris-icons';
+import { Modal, Tip } from '../../shared/wc.jsx';
 import { useStore } from '../store.jsx';
 
 const COUNTRIES = [
@@ -28,30 +27,55 @@ const formatAddress = (a = {}) => {
   return [name, a.company, a.address1, a.address2, cityLine, COUNTRY_LABEL[a.country] || a.country].filter(Boolean);
 };
 
-function AddressFields({ value, onChange }) {
-  const set = (k) => (v) => onChange({ ...value, [k]: v });
+const options = (list) =>
+  list.map((o) => (
+    <s-option key={o.value} value={o.value}>
+      {o.label}
+    </s-option>
+  ));
+
+// Two fields side by side when there's room (Polaris React InlineGrid columns={{ xs: 1, sm: 2 }}).
+function TwoUp({ children }) {
   return (
-    <BlockStack gap="300">
-      <Select label="Country/region" options={COUNTRIES} value={value.country || 'VN'} onChange={set('country')} />
-      <InlineGrid columns={{ xs: 1, sm: 2 }} gap="300">
-        <TextField label="First name" value={value.firstName || ''} onChange={set('firstName')} autoComplete="off" />
-        <TextField label="Last name" value={value.lastName || ''} onChange={set('lastName')} autoComplete="off" />
-      </InlineGrid>
-      <TextField label="Company / attention" value={value.company || ''} onChange={set('company')} autoComplete="off" />
-      <TextField label="Address" value={value.address1 || ''} onChange={set('address1')} autoComplete="off" />
-      <TextField label="Apartment, suite, etc." value={value.address2 || ''} onChange={set('address2')} autoComplete="off" />
-      <InlineGrid columns={{ xs: 1, sm: 2 }} gap="300">
-        <TextField label="City" value={value.city || ''} onChange={set('city')} autoComplete="off" />
-        <TextField label="Postal code" value={value.postal || ''} onChange={set('postal')} autoComplete="off" />
-      </InlineGrid>
-      <TextField
-        label="Phone"
-        value={value.phone || ''}
-        onChange={set('phone')}
-        connectedLeft={<Select label="Phone country" labelHidden options={FLAG_OPTIONS} value={value.phoneCountry || value.country || 'VN'} onChange={set('phoneCountry')} />}
-        autoComplete="off"
-      />
-    </BlockStack>
+    <s-query-container>
+      <s-grid gridTemplateColumns="@container (inline-size > 400px) 1fr 1fr, 1fr" gap="small">
+        {children}
+      </s-grid>
+    </s-query-container>
+  );
+}
+
+function AddressFields({ value, onChange }) {
+  const set = (k) => (e) => onChange({ ...value, [k]: e.currentTarget.value });
+  return (
+    <s-stack gap="small">
+      <s-select label="Country/region" value={value.country || 'VN'} onChange={set('country')}>
+        {options(COUNTRIES)}
+      </s-select>
+      <TwoUp>
+        <s-text-field label="First name" value={value.firstName || ''} onInput={set('firstName')} autocomplete="off" />
+        <s-text-field label="Last name" value={value.lastName || ''} onInput={set('lastName')} autocomplete="off" />
+      </TwoUp>
+      <s-text-field label="Company / attention" value={value.company || ''} onInput={set('company')} autocomplete="off" />
+      <s-text-field label="Address" value={value.address1 || ''} onInput={set('address1')} autocomplete="off" />
+      <s-text-field label="Apartment, suite, etc." value={value.address2 || ''} onInput={set('address2')} autocomplete="off" />
+      <TwoUp>
+        <s-text-field label="City" value={value.city || ''} onInput={set('city')} autocomplete="off" />
+        <s-text-field label="Postal code" value={value.postal || ''} onInput={set('postal')} autocomplete="off" />
+      </TwoUp>
+      {/* Phone with the country flag select connected on the left. */}
+      <s-grid gridTemplateColumns="88px minmax(0, 1fr)" gap="small-200" alignItems="end">
+        <s-select
+          label="Phone country"
+          labelAccessibilityVisibility="exclusive"
+          value={value.phoneCountry || value.country || 'VN'}
+          onChange={set('phoneCountry')}
+        >
+          {options(FLAG_OPTIONS)}
+        </s-select>
+        <s-text-field label="Phone" value={value.phone || ''} onInput={set('phone')} autocomplete="off" />
+      </s-grid>
+    </s-stack>
   );
 }
 
@@ -70,45 +94,43 @@ function AddressPreviewPanel({ title, optional, note, value, onChange, addMode }
     setEditing(false);
   };
   return (
-    <Box borderColor="border" borderWidth="025" borderRadius="200" padding="300">
-      <BlockStack gap="200">
-        <InlineStack align="space-between" blockAlign="center">
-          <InlineStack gap="150" blockAlign="center" wrap={false}>
-            <Text as="span" variant="headingSm">{title}</Text>
-            {optional ? <Badge size="small">Optional</Badge> : null}
-          </InlineStack>
-          <InlineStack gap="200" blockAlign="center">
+    <s-box border="base" borderRadius="base" padding="small">
+      <s-stack gap="small-200">
+        <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
+          <s-stack direction="inline" gap="small-300" alignItems="center">
+            <s-heading>{title}</s-heading>
+            {optional ? <s-badge>Optional</s-badge> : null}
+          </s-stack>
+          <s-stack direction="inline" gap="small-200" alignItems="center">
             {editing ? (
               <>
-                <Button variant="plain" onClick={discard}>Discard</Button>
-                <Button variant="plain" onClick={() => setEditing(false)}>Done</Button>
+                <s-link onClick={discard}>Discard</s-link>
+                <s-link onClick={() => setEditing(false)}>Done</s-link>
               </>
             ) : has ? (
               <>
-                <Button variant="plain" tone="critical" onClick={() => onChange(emptyAddr(value.country))}>Clear</Button>
-                <Button variant="plain" onClick={startEdit}>Edit</Button>
+                <s-link tone="critical" onClick={() => onChange(emptyAddr(value.country))}>Clear</s-link>
+                <s-link onClick={startEdit}>Edit</s-link>
               </>
             ) : (
-              <Button variant="plain" onClick={startEdit}>{addMode ? 'Add' : 'Edit'}</Button>
+              <s-link onClick={startEdit}>{addMode ? 'Add' : 'Edit'}</s-link>
             )}
-          </InlineStack>
-        </InlineStack>
+          </s-stack>
+        </s-grid>
         {editing ? (
           <AddressFields value={value} onChange={onChange} />
         ) : (
-          <BlockStack gap="050">
+          <s-stack gap="small-500">
             {has ? (
-              formatAddress(value).map((line, i) => (
-                <Text as="span" key={i} variant="bodyMd">{line}</Text>
-              ))
+              formatAddress(value).map((line, i) => <s-text key={i}>{line}</s-text>)
             ) : (
-              <Text as="span" tone="subdued" variant="bodyMd">{addMode ? 'No billing address provided.' : 'No shipping address provided.'}</Text>
+              <s-text color="subdued">{addMode ? 'No billing address provided.' : 'No shipping address provided.'}</s-text>
             )}
-            {note && has ? <Text as="span" tone="subdued" variant="bodySm">{note}</Text> : null}
-          </BlockStack>
+            {note && has ? <s-text color="subdued" fontSize="small">{note}</s-text> : null}
+          </s-stack>
         )}
-      </BlockStack>
-    </Box>
+      </s-stack>
+    </s-box>
   );
 }
 
@@ -117,27 +139,33 @@ function AddressPreviewPanel({ title, optional, note, value, onChange, addMode }
 function Disclosure({ title, note, children }) {
   const [open, setOpen] = useState(false);
   return (
-    <Box borderColor="border" borderWidth="025" borderRadius="200">
-      <button type="button" onClick={() => setOpen((v) => !v)} style={{ all: 'unset', display: 'block', width: '100%', cursor: 'pointer', boxSizing: 'border-box' }}>
-        <Box padding="300">
-          <InlineStack align="space-between" blockAlign="center" wrap={false}>
-            <BlockStack gap="050">
-              <Text as="span" variant="headingSm">{title}</Text>
-              {note ? <Text as="span" tone="subdued" variant="bodySm">{note}</Text> : null}
-            </BlockStack>
-            <InlineStack gap="050" blockAlign="center" wrap={false}>
-              <Text as="span" tone="subdued" variant="bodySm">{open ? 'Hide' : 'Edit'}</Text>
-              <Icon source={open ? ChevronUpIcon : ChevronDownIcon} tone="subdued" />
-            </InlineStack>
-          </InlineStack>
-        </Box>
+    <s-box border="base" borderRadius="base">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls="ordering-payment-tax"
+        onClick={() => setOpen((v) => !v)}
+        style={{ all: 'unset', display: 'block', width: '100%', cursor: 'pointer', boxSizing: 'border-box', padding: 12 }}
+      >
+        <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
+          <s-stack gap="small-500">
+            <s-heading>{title}</s-heading>
+            {note ? <s-text color="subdued" fontSize="small">{note}</s-text> : null}
+          </s-stack>
+          <s-stack direction="inline" gap="small-500" alignItems="center">
+            <s-text color="subdued" fontSize="small">{open ? 'Hide' : 'Edit'}</s-text>
+            <s-icon type={open ? 'chevron-up' : 'chevron-down'} color="subdued" />
+          </s-stack>
+        </s-grid>
       </button>
-      <Collapsible id="ordering-payment-tax" open={open}>
-        <Box padding="300" paddingBlockStart="0">
-          {children}
-        </Box>
-      </Collapsible>
-    </Box>
+      {open ? (
+        <div id="ordering-payment-tax">
+          <s-box padding="small" paddingBlockStart="none">
+            {children}
+          </s-box>
+        </div>
+      ) : null}
+    </s-box>
   );
 }
 
@@ -147,41 +175,36 @@ export function CreateCompanyModal() {
   const cc = state.createCompany;
   if (!cc) return null;
   const patch = (p) => dispatch({ type: 'CREATE_COMPANY_PATCH', patch: p });
+  const close = () => dispatch({ type: 'CLOSE_CREATE_COMPANY' });
 
   return (
-    <Modal
-      open
-      onClose={() => dispatch({ type: 'CLOSE_CREATE_COMPANY' })}
-      title="Create a company in B2B"
-      primaryAction={{ content: 'Create company', onAction: () => dispatch({ type: 'CREATE_COMPANY_CONFIRM' }), disabled: !cc.name.trim() }}
-      secondaryActions={[{ content: 'Back to RFQ', onAction: () => dispatch({ type: 'CLOSE_CREATE_COMPANY' }) }]}
-    >
-      <Modal.Section>
-        <BlockStack gap="200">
-          <Text as="h3" variant="headingSm">Company details</Text>
-          <BlockStack gap="300">
-            <TextField label="Company name" value={cc.name} onChange={(v) => patch({ name: v })} autoComplete="off" />
-            <TextField label="Company ID" placeholder="Optional" value={cc.externalId} onChange={(v) => patch({ externalId: v })} autoComplete="off" />
-          </BlockStack>
-        </BlockStack>
-      </Modal.Section>
+    <Modal onClose={close} heading="Create a company in B2B">
+      <s-stack gap="base">
+        <s-stack gap="small-200">
+          <s-heading>Company details</s-heading>
+          <s-stack gap="small">
+            <s-text-field label="Company name" value={cc.name} onInput={(e) => patch({ name: e.currentTarget.value })} autocomplete="off" />
+            <s-text-field label="Company ID" placeholder="Optional" value={cc.externalId} onInput={(e) => patch({ externalId: e.currentTarget.value })} autocomplete="off" />
+          </s-stack>
+        </s-stack>
 
-      <Modal.Section>
-        <BlockStack gap="300">
+        <s-divider />
+
+        <s-stack gap="small">
           {/* Header row (real layout) with a subtle demo toggle on the right —
               god file: "Demo: simulate an RFQ with no shipping address". */}
-          <InlineStack align="space-between" blockAlign="center">
-            <Text as="h3" variant="headingSm">Company location</Text>
-            <InlineStack gap="150" blockAlign="center" wrap={false}>
-              <Tooltip content="Demo: simulate an RFQ that arrived without a shipping address.">
-                <Badge tone="info" size="small">Demo</Badge>
-              </Tooltip>
-              <Checkbox label="No shipping address" checked={!!cc.noShipping} onChange={(v) => patch({ noShipping: v })} />
-            </InlineStack>
-          </InlineStack>
+          <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
+            <s-heading>Company location</s-heading>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Tip content="Demo: simulate an RFQ that arrived without a shipping address.">
+                <s-badge tone="info">Demo</s-badge>
+              </Tip>
+              <s-checkbox label="No shipping address" checked={!!cc.noShipping} onChange={(e) => patch({ noShipping: e.currentTarget.checked })} />
+            </div>
+          </s-grid>
 
           {cc.noShipping ? (
-            <Text as="p" tone="subdued" variant="bodySm">This company location has no shipping address yet. You can add one later in the B2B app.</Text>
+            <s-paragraph color="subdued" fontSize="small">This company location has no shipping address yet. You can add one later in the B2B app.</s-paragraph>
           ) : (
             <AddressPreviewPanel
               title="Shipping address"
@@ -192,61 +215,97 @@ export function CreateCompanyModal() {
             />
           )}
 
-          <Checkbox label="Billing address same as shipping address" checked={cc.billingSame !== false} onChange={(v) => patch({ billingSame: v })} />
+          <s-checkbox
+            label="Billing address same as shipping address"
+            checked={cc.billingSame !== false}
+            onChange={(e) => patch({ billingSame: e.currentTarget.checked })}
+          />
           {cc.billingSame === false && (
             <AddressPreviewPanel title="Billing address" addMode value={cc.bill || emptyAddr()} onChange={(v) => patch({ bill: v })} />
           )}
 
-          <TextField
+          <s-text-field
             label="Location ID"
             placeholder="ERP / external ID"
-            helpText="Add an existing external ID or create a unique ID."
+            details="Add an existing external ID or create a unique ID."
             value={cc.locationId}
-            onChange={(v) => patch({ locationId: v })}
-            autoComplete="off"
+            onInput={(e) => patch({ locationId: e.currentTarget.value })}
+            autocomplete="off"
           />
 
           {/* Non-essential — collapsed by default, like the god file. */}
           <Disclosure title="Ordering, payment & tax" note="Payment terms, tax exemptions, currency and more.">
-            <BlockStack gap="300">
-              <Checkbox label="Allow buyers to use a one-time shipping address at checkout" checked={!!cc.editableShipping} onChange={(v) => patch({ editableShipping: v })} />
-              <BlockStack gap="150">
-                <Text as="span" variant="bodyMd" fontWeight="medium">Order submission</Text>
-                <RadioButton label="Automatically submit orders" helpText="Orders without shipping addresses are submitted as draft orders." checked={!cc.checkoutToDraft} id="checkout-direct" name="checkout" onChange={() => patch({ checkoutToDraft: false })} />
-                <RadioButton label="Submit all orders as drafts for review" checked={!!cc.checkoutToDraft} id="checkout-draft" name="checkout" onChange={() => patch({ checkoutToDraft: true })} />
-              </BlockStack>
-              <BlockStack gap="300">
-                <Select label="Payment terms" options={PAYMENT_TERMS.map((t) => ({ label: t, value: t }))} value={cc.paymentTerms} onChange={(v) => patch({ paymentTerms: v })} />
-                <TextField label="Tax registration ID" placeholder="Tax / VAT ID" value={cc.taxRegistrationId} onChange={(v) => patch({ taxRegistrationId: v })} autoComplete="off" />
-              </BlockStack>
-              <Select label="Tax settings" options={TAX_SETTINGS} value={cc.taxSettings} onChange={(v) => patch({ taxSettings: v })} />
-            </BlockStack>
+            <s-stack gap="small">
+              <s-checkbox
+                label="Allow buyers to use a one-time shipping address at checkout"
+                checked={!!cc.editableShipping}
+                onChange={(e) => patch({ editableShipping: e.currentTarget.checked })}
+              />
+              <s-choice-list
+                label="Order submission"
+                name="checkout"
+                onChange={(e) => patch({ checkoutToDraft: e.currentTarget.values?.[0] === 'draft' })}
+              >
+                <s-choice value="direct" selected={!cc.checkoutToDraft}>
+                  Automatically submit orders
+                  <s-text slot="details">Orders without shipping addresses are submitted as draft orders.</s-text>
+                </s-choice>
+                <s-choice value="draft" selected={!!cc.checkoutToDraft}>
+                  Submit all orders as drafts for review
+                </s-choice>
+              </s-choice-list>
+              <s-stack gap="small">
+                <s-select label="Payment terms" value={cc.paymentTerms} onChange={(e) => patch({ paymentTerms: e.currentTarget.value })}>
+                  {options(PAYMENT_TERMS.map((t) => ({ label: t, value: t })))}
+                </s-select>
+                <s-text-field
+                  label="Tax registration ID"
+                  placeholder="Tax / VAT ID"
+                  value={cc.taxRegistrationId}
+                  onInput={(e) => patch({ taxRegistrationId: e.currentTarget.value })}
+                  autocomplete="off"
+                />
+              </s-stack>
+              <s-select label="Tax settings" value={cc.taxSettings} onChange={(e) => patch({ taxSettings: e.currentTarget.value })}>
+                {options(TAX_SETTINGS)}
+              </s-select>
+            </s-stack>
           </Disclosure>
-        </BlockStack>
-      </Modal.Section>
+        </s-stack>
 
-      <Modal.Section>
-        <BlockStack gap="300">
-          <InlineStack gap="150" blockAlign="center">
-            <Text as="h3" variant="headingSm">Initial company contact</Text>
-            <Badge size="small">Existing Shopify customer</Badge>
-          </InlineStack>
-          <BlockStack gap="300">
-            <TextField label="Name" value={cc.contactName || ''} disabled autoComplete="off" />
-            <TextField label="Email" value={cc.contactEmail || ''} disabled autoComplete="off" />
-          </BlockStack>
-          <Checkbox label="Set this requester as the company’s main contact" checked={cc.setMainContact !== false} onChange={(v) => patch({ setMainContact: v })} />
-        </BlockStack>
-      </Modal.Section>
+        <s-divider />
 
-      <Modal.Section>
-        <Checkbox
+        <s-stack gap="small">
+          <s-stack direction="inline" gap="small-300" alignItems="center">
+            <s-heading>Initial company contact</s-heading>
+            <s-badge>Existing Shopify customer</s-badge>
+          </s-stack>
+          <s-stack gap="small">
+            <s-text-field label="Name" value={cc.contactName || ''} disabled autocomplete="off" />
+            <s-text-field label="Email" value={cc.contactEmail || ''} disabled autocomplete="off" />
+          </s-stack>
+          <s-checkbox
+            label="Set this requester as the company’s main contact"
+            checked={cc.setMainContact !== false}
+            onChange={(e) => patch({ setMainContact: e.currentTarget.checked })}
+          />
+        </s-stack>
+
+        <s-divider />
+
+        <s-checkbox
           label="Also sync past quotes"
-          helpText="Add this customer’s past quotes to the B2B company and its quote history."
+          details="Add this customer’s past quotes to the B2B company and its quote history."
           checked={cc.syncPast !== false}
-          onChange={(v) => patch({ syncPast: v })}
+          onChange={(e) => patch({ syncPast: e.currentTarget.checked })}
         />
-      </Modal.Section>
+      </s-stack>
+      <s-button slot="primary-action" variant="primary" disabled={!cc.name.trim()} onClick={() => dispatch({ type: 'CREATE_COMPANY_CONFIRM' })}>
+        Create company
+      </s-button>
+      <s-button slot="secondary-actions" onClick={close}>
+        Back to RFQ
+      </s-button>
     </Modal>
   );
 }

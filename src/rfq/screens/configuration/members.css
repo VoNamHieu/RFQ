@@ -1,0 +1,106 @@
+/* Members and Permission — production SalespersonBfs/ListSalespersonBfs.jsx ResourceList rows
+   and ModalAddConditions grids. Every class is prefixed with qcfg-members-. */
+
+/* ResourceList (verticalAlignment="center") inside a padded Card */
+.qcfg-members-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.qcfg-members-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.qcfg-members-item + .qcfg-members-item {
+  border-top: 1px solid var(--p-color-border-secondary);
+}
+
+.qcfg-members-item:hover {
+  background: var(--p-color-bg-surface-hover, rgba(247, 247, 247, 1));
+}
+
+/* InlineStack blockAlign="center" align="space-between" (wraps) */
+.qcfg-members-item__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 0;
+}
+
+.qcfg-members-item__name {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.qcfg-members-item__status {
+  width: 74px;
+}
+
+.qcfg-members-item__permission {
+  width: 125px;
+}
+
+.qcfg-members-item__actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Production SCREEN_XS: the name box gets paddingBlockEnd 200 on phones */
+@media (max-width: 489.98px) {
+  .qcfg-members-item__name {
+    padding-bottom: 8px;
+  }
+}
+
+/* ConditionTypeQuote InlineGrid gap="300"
+   columns {xs:1, sm:2, md:3, lg:3, xl:3} / with state {xs:1, sm:2, md:2, lg:4, xl:4} */
+.qcfg-members-quote-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+@media (min-width: 490px) {
+  .qcfg-members-quote-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 768px) {
+  .qcfg-members-quote-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .qcfg-members-quote-grid--state {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1040px) {
+  .qcfg-members-quote-grid--state {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Assign-to Combobox: Grid.Cell lg 4/12 (xs 2/6) → one third of the row */
+.qcfg-members-assign {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.qcfg-members-assign > .qcfg-combo {
+  min-width: 0;
+}

@@ -1,11 +1,9 @@
-import React, { useState } from 'react';
-import { Combobox, Listbox, Icon, Checkbox, Text, InlineStack, Tag } from '@shopify/polaris';
-import { ChevronDownIcon } from '@shopify/polaris-icons';
+import React, { useEffect, useRef, useState } from 'react';
 
 // The pricing picker shared by the company section's "Add base pricing" flow
-// (AssignModal) and the Add-company wizard: a Combobox whose options carry
-// checkboxes (Combobox owns the floating overlay so it positions correctly inside
-// a Modal), with the picks shown as removable Tags below. Multi-select unless
+// (AssignModal) and the Add-company wizard: a search field that opens a list of
+// options with checkboxes below it (Polaris web components have no combobox),
+// with the picks shown as removable chips under it. Multi-select unless
 // `single`. Presentational — the caller owns `selectedIds` and gets `onChange`.
 export function PricingCombobox({
   label,
@@ -18,65 +16,104 @@ export function PricingCombobox({
   emptyText = 'No matches',
 }) {
   const [inputValue, setInputValue] = useState('');
+  // The option list shows while the field is in use (like the Combobox popover):
+  // opened by focusing or typing, closed by Escape or a click outside.
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
   const q = inputValue.trim().toLowerCase();
   const filtered = q ? candidates.filter((p) => p.name.toLowerCase().includes(q)) : candidates;
   const selectedPolicies = candidates.filter((p) => selectedIds.includes(p.id));
 
-  const handleSelect = (id) => {
-    const on = selectedIds.includes(id);
-    const next = single ? (on ? [] : [id]) : on ? selectedIds.filter((x) => x !== id) : [...selectedIds, id];
+  useEffect(() => {
+    if (!open) return undefined;
+    const inside = (e) => !!wrapRef.current && e.composedPath().includes(wrapRef.current);
+    const onPointer = (e) => {
+      if (!inside(e)) setOpen(false);
+    };
+    // Escape from the field closes the list only. Caught in the capture phase at
+    // the document: s-modal (and the editor overlay) would otherwise close too.
+    const onKey = (e) => {
+      if (e.key !== 'Escape' || !inside(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointer, true);
+    document.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer, true);
+      document.removeEventListener('keydown', onKey, true);
+    };
+  }, [open]);
+
+  // Idempotent: sets the option on/off from its checkbox (onChange can fire twice).
+  const handleSelect = (id, on) => {
+    const has = selectedIds.includes(id);
+    if (on === has) return;
+    const next = single ? (on ? [id] : []) : on ? [...selectedIds, id] : selectedIds.filter((x) => x !== id);
     onChange(next);
-    if (single) setInputValue('');
+    if (single) {
+      setInputValue('');
+      setOpen(false);
+    }
   };
 
   return (
     <>
-      <Combobox
-        allowMultiple={!single}
-        activator={
-          <Combobox.TextField
-            autoComplete="off"
+      <div ref={wrapRef}>
+        <s-stack gap="small-300">
+          <s-search-field
             label={label}
-            labelHidden
-            value={inputValue}
-            suffix={<Icon source={ChevronDownIcon} tone="subdued" />}
+            labelAccessibilityVisibility="exclusive"
             placeholder={placeholder}
-            onChange={setInputValue}
+            autocomplete="off"
+            value={inputValue}
+            onFocus={() => setOpen(true)}
+            onInput={(e) => {
+              setInputValue(e.currentTarget.value);
+              setOpen(true);
+            }}
           />
-        }
-      >
-        {filtered.length > 0 ? (
-          <Listbox onSelect={handleSelect}>
-            {filtered.map((p) => {
-              const on = selectedIds.includes(p.id);
-              return (
-                <Listbox.Option key={p.id} value={p.id} selected={on} accessibilityLabel={p.name}>
-                  <InlineStack gap="200" blockAlign="center" wrap={false}>
-                    <span style={{ pointerEvents: 'none', display: 'inline-flex' }}>
-                      <Checkbox label="" labelHidden checked={on} onChange={() => {}} />
-                    </span>
-                    <Text as="span" variant="bodyMd">{optionLabel(p)}</Text>
-                  </InlineStack>
-                </Listbox.Option>
-              );
-            })}
-          </Listbox>
-        ) : (
-          <Listbox>
-            <Listbox.Option value="__none" accessibilityLabel="No matches" disabled>
-              {emptyText}
-            </Listbox.Option>
-          </Listbox>
-        )}
-      </Combobox>
+          {open && (
+            <s-box border="base" borderRadius="base" background="base" overflow="hidden">
+              <div role="group" aria-label={label} style={{ maxHeight: 280, overflowY: 'auto' }}>
+                {filtered.length > 0 ? (
+                  filtered.map((p) => {
+                    const on = selectedIds.includes(p.id);
+                    return (
+                      <s-box key={p.id} paddingInline="small" paddingBlock="small-300">
+                        <s-checkbox
+                          label={optionLabel(p)}
+                          accessibilityLabel={p.name}
+                          checked={on}
+                          onChange={(e) => handleSelect(p.id, e.currentTarget.checked)}
+                        />
+                      </s-box>
+                    );
+                  })
+                ) : (
+                  <s-box paddingInline="small" paddingBlock="small-200">
+                    <s-paragraph color="subdued">{emptyText}</s-paragraph>
+                  </s-box>
+                )}
+              </div>
+            </s-box>
+          )}
+        </s-stack>
+      </div>
       {selectedPolicies.length > 0 && (
-        <InlineStack gap="150">
+        <s-stack direction="inline" gap="small-300">
           {selectedPolicies.map((p) => (
-            <Tag key={p.id} onRemove={() => onChange(selectedIds.filter((id) => id !== p.id))}>
+            <s-clickable-chip
+              key={p.id}
+              removable
+              accessibilityLabel={p.name}
+              onRemove={() => onChange(selectedIds.filter((id) => id !== p.id))}
+            >
               {p.name}
-            </Tag>
+            </s-clickable-chip>
           ))}
-        </InlineStack>
+        </s-stack>
       )}
     </>
   );

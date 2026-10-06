@@ -232,7 +232,7 @@ export function handoffCompanyToB2B(state, companyKey, customer = null, { openPr
 function reducer(state, action) {
   switch (action.type) {
     case 'NAVIGATE':
-      return { ...state, view: action.view };
+      return { ...state, view: action.view, ...(action.patch || {}) };
     case 'OPEN_QUOTE':
       return { ...state, view: 'quoteDetail', currentQuoteId: action.id };
     case 'SET_TAB':

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, FormLayout, TextField, Checkbox, Select } from '@shopify/polaris';
+import { Modal } from '../../shared/wc.jsx';
 
 // Shopify draft-order "Add custom item" dialog, ported for the manual-quote flow:
 // a free-form line that isn't in the catalog — item name + price + quantity, an
@@ -46,41 +46,45 @@ export function CustomItemModal({ open, onClose, onAdd }) {
   };
 
   return (
-    <Modal
-      open={open}
-      onClose={close}
-      title="Add custom item"
-      primaryAction={{ content: 'Add item', onAction: add, disabled: !canAdd }}
-      secondaryActions={[{ content: 'Cancel', onAction: close }]}
-    >
-      <Modal.Section>
-        <FormLayout>
-          <TextField
-            label="Item name"
-            value={name}
-            onChange={setName}
-            placeholder="e.g. Custom fabrication"
-            autoComplete="off"
-          />
-          <FormLayout.Group>
-            <TextField label="Price" type="number" min={0} prefix="$" value={price} onChange={setPrice} autoComplete="off" />
-            <TextField label="Quantity" type="number" min={1} value={qty} onChange={setQty} autoComplete="off" />
-          </FormLayout.Group>
-          <Checkbox
-            label="Item is physical"
-            checked={physical}
-            onChange={setPhysical}
-            helpText="Physical items may need shipping and a weight."
-          />
-          {physical ? (
-            <FormLayout.Group>
-              <TextField label="Weight" type="number" min={0} value={weight} onChange={setWeight} autoComplete="off" />
-              <Select label="Unit" options={WEIGHT_UNITS.map((u) => ({ label: u, value: u }))} value={weightUnit} onChange={setWeightUnit} />
-            </FormLayout.Group>
-          ) : null}
-          <Checkbox label="Charge tax on this item" checked={taxable} onChange={setTaxable} />
-        </FormLayout>
-      </Modal.Section>
+    <Modal open={!!open} onClose={close} heading="Add custom item">
+      <s-stack gap="base">
+        <s-text-field
+          label="Item name"
+          value={name}
+          onInput={(e) => setName(e.currentTarget.value)}
+          placeholder="e.g. Custom fabrication"
+          autocomplete="off"
+        />
+        <s-grid gridTemplateColumns="repeat(2, minmax(0, 1fr))" gap="base">
+          <s-number-field label="Price" min={0} prefix="$" value={price} onInput={(e) => setPrice(e.currentTarget.value)} autocomplete="off" />
+          <s-number-field label="Quantity" min={1} inputMode="numeric" value={qty} onInput={(e) => setQty(e.currentTarget.value)} autocomplete="off" />
+        </s-grid>
+        <s-checkbox
+          label="Item is physical"
+          checked={physical}
+          onChange={(e) => setPhysical(e.currentTarget.checked)}
+          details="Physical items may need shipping and a weight."
+        />
+        {physical ? (
+          <s-grid gridTemplateColumns="repeat(2, minmax(0, 1fr))" gap="base">
+            <s-number-field label="Weight" min={0} value={weight} onInput={(e) => setWeight(e.currentTarget.value)} autocomplete="off" />
+            <s-select label="Unit" value={weightUnit} onChange={(e) => setWeightUnit(e.currentTarget.value)}>
+              {WEIGHT_UNITS.map((u) => (
+                <s-option key={u} value={u}>
+                  {u}
+                </s-option>
+              ))}
+            </s-select>
+          </s-grid>
+        ) : null}
+        <s-checkbox label="Charge tax on this item" checked={taxable} onChange={(e) => setTaxable(e.currentTarget.checked)} />
+      </s-stack>
+      <s-button slot="primary-action" variant="primary" disabled={!canAdd} onClick={add}>
+        Add item
+      </s-button>
+      <s-button slot="secondary-actions" onClick={close}>
+        Cancel
+      </s-button>
     </Modal>
   );
 }

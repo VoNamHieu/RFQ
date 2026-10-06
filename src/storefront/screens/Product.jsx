@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../store.jsx';
-import { productBySku, b2bPriceFor } from '../data/products.js';
+import { productBySku, b2bPriceFor, productRuleForSession } from '../data/products.js';
 import { Price } from '../components/Price.jsx';
 import { QuoteIcon, InfoIcon } from '../components/icons.jsx';
 
@@ -12,7 +12,12 @@ export function Product() {
   const { state, dispatch } = useStore();
   const product = productBySku(state.currentSku);
   const [variantId, setVariantId] = useState(product?.variants[0]?.id);
-  const [qty, setQty] = useState(1);
+  // A B2B buyer's quantity rule (order limits): start at its minimum, step by its pack size.
+  const rule = product ? productRuleForSession(product.sku, state.session) : null;
+  const step = rule?.increment || 1;
+  const startQty = Math.max(rule?.min || 1, step);
+  const [qty, setQty] = useState(startQty);
+  useEffect(() => { setQty(startQty); }, [startQty]);
 
   if (!product) {
     return (
@@ -24,10 +29,20 @@ export function Product() {
 
   const variant = product.variants.find((v) => v.id === variantId) || product.variants[0];
   const hasB2B = b2bPriceFor(product.sku, state.session) != null;
-  const inStock = (variant?.stock ?? 0) > 0;
+  const inStock = !!variant?.available;
+
+  const qtyProblem = !rule
+    ? null
+    : rule.min != null && qty < rule.min
+      ? `Order at least ${rule.min}.`
+      : rule.max != null && qty > rule.max
+        ? `Order at most ${rule.max}.`
+        : qty % step
+          ? `Sold in packs of ${step}.`
+          : null;
 
   const addToCart = () => {
-    if (!inStock) return;
+    if (!inStock || qtyProblem) return;
     dispatch({ type: 'ADD_TO_CART', line: { sku: product.sku, variantId: variant.id, qty } });
   };
 
@@ -44,7 +59,7 @@ export function Product() {
         <div className="product__info">
           <div className="product__vendor">{product.vendor}</div>
           <h1>{product.title}</h1>
-          <p className="muted" style={{ marginTop: 0 }}>{product.tagline}</p>
+          {product.tagline && <p className="muted" style={{ marginTop: 0 }}>{product.tagline}</p>}
 
           <div className="product__price"><Price sku={product.sku} list={product.list} size="lg" /></div>
 
@@ -76,7 +91,7 @@ export function Product() {
                   <button
                     key={v.id}
                     className={`variant-pill${v.id === variant.id ? ' is-active' : ''}`}
-                    disabled={v.stock === 0}
+                    disabled={!v.available}
                     onClick={() => setVariantId(v.id)}
                   >
                     {v.title}
@@ -89,25 +104,31 @@ export function Product() {
           {/* Quantity */}
           <span className="field-label">Quantity</span>
           <div className="qty">
-            <button onClick={() => setQty((q) => Math.max(1, q - 1))}>−</button>
+            <button onClick={() => setQty((q) => Math.max(step, q - step))}>−</button>
             <input value={qty} onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))} />
-            <button onClick={() => setQty((q) => q + 1)}>+</button>
+            <button onClick={() => setQty((q) => q + step)}>+</button>
           </div>
+          {rule && (
+            <p className={`qty-note${qtyProblem ? ' qty-note--error' : ''}`}>
+              {qtyProblem || [step > 1 ? `Sold in packs of ${step}` : null, rule.min ? `Minimum ${rule.min}` : null, rule.max ? `Maximum ${rule.max}` : null].filter(Boolean).join(' · ')}
+            </p>
+          )}
 
           {/* Buy buttons + RFQ touchpoint */}
           <div className="buy-stack">
-            <button className="button button--full" disabled={!inStock} onClick={addToCart}>
+            <button className="button button--full" disabled={!inStock || !!qtyProblem} onClick={addToCart}>
               {inStock ? 'Add to cart' : 'Out of stock'}
             </button>
             <button className="button button--b2b button--full" onClick={() => dispatch({ type: 'OPEN_QUOTE', sku: product.sku })}>
               <QuoteIcon style={{ width: '1.9rem', height: '1.9rem' }} /> Request a quote
             </button>
             <span className="muted" style={{ fontSize: '1.3rem' }}>
-              {inStock ? `${variant.stock} in stock` : 'Backorder available on request'}
+              {inStock ? 'In stock' : 'Backorder available on request'}
             </span>
           </div>
 
-          <div className="product__desc"><p>{product.description}</p></div>
+          {/* Merchant-authored description HTML from the store, as the theme renders it */}
+          {product.descriptionHtml && <div className="product__desc" dangerouslySetInnerHTML={{ __html: product.descriptionHtml }} />}
         </div>
       </div>
     </section>

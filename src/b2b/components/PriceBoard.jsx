@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Select } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
 import { resolveDetail, hasOwnSlot } from '../pricing.js';
 import { PriceWhyContent } from './PricePreviewModal.jsx';
@@ -44,13 +43,19 @@ export function PriceBoard() {
       toolbar={
         pickLocation ? (
           <div style={{ width: 220, flex: '0 0 auto' }}>
-            <Select
+            <s-select
               label="Location"
-              labelInline
-              options={locations.map((l) => ({ label: l.name, value: l.id }))}
+              labelAccessibilityVisibility="exclusive"
+              icon="location"
               value={location?.id || ''}
-              onChange={setLocationId}
-            />
+              onChange={(e) => setLocationId(e.currentTarget.value)}
+            >
+              {locations.map((l) => (
+                <s-option key={l.id} value={l.id}>
+                  {l.name}
+                </s-option>
+              ))}
+            </s-select>
           </div>
         ) : null
       }

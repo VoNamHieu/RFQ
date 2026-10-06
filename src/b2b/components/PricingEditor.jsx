@@ -1,28 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Modal,
-  Page,
-  BlockStack,
-  InlineGrid,
-  InlineStack,
-  TextField,
-  Card,
-  Text,
-  Box,
-  Badge,
-  Button,
-  Select,
-  ChoiceList,
-  RadioButton,
-  Banner,
-  Divider,
-  Tabs,
-  Checkbox,
-  Tooltip,
-  Icon,
-} from '@shopify/polaris';
-import { XIcon, InfoIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
+import { Modal, Tabs, useWcId, PageHeader } from '../../shared/wc.jsx';
 import { RuleBuilderCard } from './RuleBuilderCard.jsx';
 import { VolumeRangesCard } from './VolumeRangesCard.jsx';
 import { DefaultPriceCard } from './DefaultPriceCard.jsx';
@@ -33,7 +11,13 @@ import { money } from '../format.js';
 import { ActiveDatesCard, ProductScopeCard, VolumeBasisCard, ProductOverridesCard } from './pricingEditorCards.jsx';
 import { PricePreviewDialog } from './PricePreviewDialog.jsx';
 import { AssignmentCard } from './AssignmentCard.jsx';
-import { policyUsageCount, policyUsageDetail, companyBaseEntries, companyQuantityEntries, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, ruleValuesSummary } from '../pricing.js';
+import { policyUsageCount, policyUsageDetail, companyBaseEntries, companyQuantityEntries, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, ruleValuesSummary, locationCatalog } from '../pricing.js';
+
+// Main column + aside side by side once the editor is wide enough (Polaris React
+// InlineGrid columns={{ xs: '1fr', md: '2fr 1fr' }}); two fields side by side
+// in a card ({ xs: 1, sm: 2 }).
+const MAIN_ASIDE = '@container (inline-size > 700px) 2fr 1fr, 1fr';
+const TWO_UP = '@container (inline-size > 400px) 1fr 1fr, 1fr';
 
 // Pricing editor (spec §2.6). Open whenever state.builder is set. Rendered as an
 // in-frame page when opened from the Pricing screen (asPage), and as a full-screen
@@ -45,7 +29,10 @@ export function PricingEditor({ asPage = false }) {
   const [sideConfirm, setSideConfirm] = useState(false);
   // Save dialog for a shared pricing: a separate copy for here, unless ticked to apply to all.
   const [applyAll, setApplyAll] = useState(false);
+  // Preview by location, from the several-locations note under "Who this pricing serves".
+  const [catalogPreview, setCatalogPreview] = useState(false);
   const builder = state.builder;
+  const tipId = useWcId('pricing-editor');
   // Overlay mode only: lock body scroll and close on Escape while open.
   useEffect(() => {
     if (!builder || asPage) return undefined;
@@ -127,6 +114,26 @@ export function PricingEditor({ asPage = false }) {
   const scopeLocationIds = showCompanyLocations ? state.editorContext?.locationIds ?? null : null;
   const noLocationPicked = Array.isArray(scopeLocationIds) && scopeLocationIds.length === 0;
 
+  // Every location this pricing reaches: the picks in "Who this pricing serves"
+  // (library), or the company / location it was opened from. Overrides can be
+  // viewed by these locations.
+  const reach = builder.audienceType === 'd2c'
+    ? []
+    : showAssignment
+      ? state.db.companies.flatMap((c) =>
+          (c.locations || [])
+            .filter((l) => (builder.b2bCompanyIds || []).includes(c.id) || (builder.b2bLocationKeys || []).includes(`${c.id}::${l.id}`))
+            .map((l) => ({ company: c, location: l })))
+      : scopeLoc
+        ? [{ company: scopeCompany, location: scopeLoc }]
+        : scopeCompany
+          ? (scopeCompany.locations || []).filter((l) => !scopeLocationIds || scopeLocationIds.includes(l.id)).map((l) => ({ company: scopeCompany, location: l }))
+          : [];
+  // Picked in "Who this pricing serves" and more than one: catalogs can differ, so
+  // a note says how that plays out and offers a by-location preview.
+  const targets = !isQuantity && (showAssignment || showCompanyLocations) ? reach : [];
+  const catalogNote = targets.length > 1 ? <MultiCatalogNote onPreview={() => setCatalogPreview(true)} /> : null;
+
   // Switched Company-based B2B ↔ D2C Wholesale on a pricing that's assigned on its
   // saved side: saving clears that side, so confirm first ("Change who this pricing serves?").
   const savedPolicy = !isNew ? state.db.policies.find((p) => p.id === builder.id) || null : null;
@@ -157,11 +164,11 @@ export function PricingEditor({ asPage = false }) {
 
   const editorTitle = isNew ? `Create ${isQuantity ? 'quantity' : 'base'} pricing` : `Edit pricing: ${builder.name}`;
   const editorBody = (
-    <BlockStack gap="400">
+    <s-stack gap="base">
           {sharedElsewhere && (
-            <Banner tone="info">
+            <s-banner tone="info">
               {`This pricing is also assigned to ${sharedWith}. Saving will offer to fork a copy for ${scopeName} or apply to all.`}
-            </Banner>
+            </s-banner>
           )}
 
           {/* Two tabs, like the god file: Settings (the pricing config) and
@@ -177,58 +184,66 @@ export function PricingEditor({ asPage = false }) {
 
           {/* Full-page two-column layout (god-file builder-shell): the config in
               the main column, and Rule status / resolution / summary in the aside. */}
-          <InlineGrid columns={{ xs: '1fr', md: '2fr 1fr' }} gap="400" alignItems="start">
-            <BlockStack gap="400">
+          <s-query-container>
+          <s-grid gridTemplateColumns={MAIN_ASIDE} gap="base" alignItems="start">
+            <s-stack gap="base">
               {pricingTab === 'settings' ? (
                 <>
                   {isNew && (
                     // The type is fixed by how the editor was opened (base vs quantity)
                     // — no in-place switch, which is confusing mid-create. Just describe it.
-                    <Card>
-                      <BlockStack gap="100">
-                        <Text as="h3" variant="headingSm">{isQuantity ? 'Quantity pricing' : 'Base pricing'}</Text>
-                        <Text as="p" tone="subdued" variant="bodySm">
+                    <s-section>
+                      <s-stack gap="small-400">
+                        <s-heading>{isQuantity ? 'Quantity pricing' : 'Base pricing'}</s-heading>
+                        <s-paragraph color="subdued" fontSize="small">
                           {isQuantity
                             ? 'Volume discounts that kick in above a quantity threshold, on selected products.'
                             : 'A price that covers the whole catalog, with optional rules and per-product overrides.'}
-                        </Text>
-                      </BlockStack>
-                    </Card>
+                        </s-paragraph>
+                      </s-stack>
+                    </s-section>
                   )}
 
-                  <Card>
-                    <BlockStack gap="300">
-                      <InlineStack gap="100" blockAlign="center">
-                        <Text as="h3" variant="headingSm">Pricing details</Text>
-                        <Tooltip content="Priority orders pricing within a company or location. Company/Location and customer/tag precedence isn’t replaced by it.">
-                          <span style={{ display: 'inline-flex' }}>
-                            <Icon source={InfoIcon} tone="subdued" accessibilityLabel="About pricing details" />
-                          </span>
-                        </Tooltip>
-                      </InlineStack>
-                      <TextField
+                  <s-section>
+                    <s-stack gap="small">
+                      <s-stack direction="inline" gap="small-400" alignItems="center">
+                        <s-heading>Pricing details</s-heading>
+                        <s-icon type="info" color="subdued" interestFor={`${tipId}-details`} />
+                        <s-tooltip id={`${tipId}-details`}>
+                          Priority orders pricing within a company or location. Company/Location and customer/tag precedence isn’t replaced by it.
+                        </s-tooltip>
+                      </s-stack>
+                      <s-text-field
                         label="Name"
-                        requiredIndicator
+                        required
                         value={builder.name}
-                        onChange={(v) => patch({ name: v })}
+                        onInput={(e) => patch({ name: e.currentTarget.value })}
                         maxLength={255}
-                        showCharacterCount
-                        autoComplete="off"
+                        autocomplete="off"
                       />
-                      <TextField
+                      <s-number-field
                         label="Priority (0-99)"
-                        type="number"
                         min={0}
                         max={99}
+                        inputMode="numeric"
                         value={String(builder.priority ?? '')}
-                        onChange={(v) => patch({ priority: Number(v) })}
-                        helpText="Lower number applies first."
-                        autoComplete="off"
+                        onInput={(e) => patch({ priority: Number(e.currentTarget.value) })}
+                        details="Lower number applies first."
+                        autocomplete="off"
                       />
-                    </BlockStack>
-                  </Card>
+                    </s-stack>
+                  </s-section>
 
-                  {showAssignment && <AssignmentCard builder={builder} patch={patch} db={state.db} isNew={isNew} />}
+                  {showAssignment && <AssignmentCard builder={builder} patch={patch} db={state.db} isNew={isNew} footer={catalogNote} />}
+                  {/* Who it serves comes before how it prices, in both flows. */}
+                  {showCompanyLocations && (
+                    <CompanyLocationsCard
+                      company={scopeCompany}
+                      locationIds={scopeLocationIds}
+                      onChange={(ids) => dispatch({ type: 'EDITOR_CONTEXT_PATCH', patch: { locationIds: ids } })}
+                      footer={catalogNote}
+                    />
+                  )}
 
                   {isQuantity ? (
                     <>
@@ -245,16 +260,8 @@ export function PricingEditor({ asPage = false }) {
                       {!versionFlags().multiBase && <ProductScopeCard builder={builder} patch={patch} products={state.db.products} />}
                       {!versionFlags().multiBase && <DefaultPriceCard />}
                       <RuleBuilderCard />
-                      <ProductOverridesCard builder={builder} patch={patch} products={state.db.products} />
+                      <ProductOverridesCard builder={builder} patch={patch} products={state.db.products} locations={reach} />
                     </>
-                  )}
-
-                  {showCompanyLocations && (
-                    <CompanyLocationsCard
-                      company={scopeCompany}
-                      locationIds={scopeLocationIds}
-                      onChange={(ids) => dispatch({ type: 'EDITOR_CONTEXT_PATCH', patch: { locationIds: ids } })}
-                    />
                   )}
 
                   {/* Scheduling last, matching the god-file editor order. */}
@@ -263,104 +270,107 @@ export function PricingEditor({ asPage = false }) {
               ) : (
                 <AppearanceTab builder={builder} patch={patch} kindWord={kindWord} product={state.db.products[0]} />
               )}
-            </BlockStack>
+            </s-stack>
 
             {/* Aside (god-file builder-side): status, resolution, summary. */}
-            <BlockStack gap="400">
+            <s-stack gap="base">
               <RuleStatusCard builder={builder} patch={patch} />
               {pricingTab === 'settings' && !isQuantity && <ResolutionCard builder={builder} products={state.db.products} />}
               <SummaryCard builder={builder} isQuantity={isQuantity} />
-            </BlockStack>
-          </InlineGrid>
-    </BlockStack>
+            </s-stack>
+          </s-grid>
+          </s-query-container>
+    </s-stack>
   );
 
   return (
     <>
       {sideConfirm && (
-        <Modal
-          open
-          onClose={() => setSideConfirm(false)}
-          title="Change who this pricing serves?"
-          primaryAction={{
-            content: 'Save changes',
-            onAction: () => {
+        <Modal onClose={() => setSideConfirm(false)} heading="Change who this pricing serves?">
+          {savedSide === 'b2b' ? (
+            <s-paragraph>
+              {'This pricing is set up for '}
+              <s-text fontWeight="semibold">Company-based B2B</s-text>
+              {companiesAssigned
+                ? `, with ${companiesAssigned} compan${companiesAssigned === 1 ? 'y' : 'ies'} assigned. Switching to `
+                : ', as the default for all companies. Switching to '}
+              <s-text fontWeight="semibold">D2C Wholesale</s-text>
+              {` clears that assignment. ${companiesAssigned === 1 ? 'That company falls' : 'Those companies fall'} back to your Shopify prices until another pricing is assigned.`}
+            </s-paragraph>
+          ) : (
+            <s-paragraph>
+              {'This pricing is set up for '}
+              <s-text fontWeight="semibold">D2C Wholesale</s-text>
+              {', with the customers and customer tags it targets. Switching to '}
+              <s-text fontWeight="semibold">Company-based B2B</s-text>
+              {' clears that selection. Only the companies you picked receive it.'}
+            </s-paragraph>
+          )}
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            onClick={() => {
               setSideConfirm(false);
               dispatch({ type: 'SAVE_EDITOR' });
-            },
-          }}
-          secondaryActions={[{ content: 'Cancel', onAction: () => setSideConfirm(false) }]}
-        >
-          <Modal.Section>
-            {savedSide === 'b2b' ? (
-              <Text as="p">
-                {'This pricing is set up for '}
-                <Text as="span" fontWeight="semibold">Company-based B2B</Text>
-                {companiesAssigned
-                  ? `, with ${companiesAssigned} compan${companiesAssigned === 1 ? 'y' : 'ies'} assigned. Switching to `
-                  : ', as the default for all companies. Switching to '}
-                <Text as="span" fontWeight="semibold">D2C Wholesale</Text>
-                {` clears that assignment. ${companiesAssigned === 1 ? 'That company falls' : 'Those companies fall'} back to your Shopify prices until another pricing is assigned.`}
-              </Text>
-            ) : (
-              <Text as="p">
-                {'This pricing is set up for '}
-                <Text as="span" fontWeight="semibold">D2C Wholesale</Text>
-                {', with the customers and customer tags it targets. Switching to '}
-                <Text as="span" fontWeight="semibold">Company-based B2B</Text>
-                {' clears that selection. Only the companies you picked receive it.'}
-              </Text>
-            )}
-          </Modal.Section>
+            }}
+          >
+            Save changes
+          </s-button>
+          <s-button slot="secondary-actions" onClick={() => setSideConfirm(false)}>
+            Cancel
+          </s-button>
         </Modal>
       )}
       {forkConfirm && (
-        <Modal
-          open
-          onClose={() => setForkConfirm(false)}
-          title={`Save changes to ${builder.name}`}
-          primaryAction={{
-            content: 'Save',
-            onAction: () => {
+        <Modal onClose={() => setForkConfirm(false)} heading={`Save changes to ${builder.name}`}>
+          <s-stack gap="small">
+            <s-paragraph>
+              {`${builder.name} is shared with ${sharedWith}. Save as a separate pricing for `}
+              <s-text fontWeight="semibold">{scopeName}</s-text>
+              {` — the others keep ${builder.name}.`}
+            </s-paragraph>
+            <s-box padding="small" border="base" borderRadius="base">
+              <s-checkbox
+                label={allNoun ? `Apply to all ${sharedCount + 1} ${allNoun} instead` : `Apply everywhere it’s used instead (${sharedCount + 1})`}
+                details={
+                  allNoun
+                    ? `Overwrites this pricing for every ${allNoun === 'companies' ? 'company' : allNoun === 'locations' ? 'location' : 'company and location'} using it.`
+                    : 'Overwrites this pricing everywhere it’s used.'
+                }
+                checked={applyAll}
+                onChange={(e) => setApplyAll(e.currentTarget.checked)}
+              />
+            </s-box>
+          </s-stack>
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            onClick={() => {
               setForkConfirm(false);
               // Unticked: a separate copy for here (the default path forks).
               dispatch({ type: 'SAVE_EDITOR', applyToAll: applyAll });
-            },
-          }}
-          secondaryActions={[{ content: 'Cancel', onAction: () => setForkConfirm(false) }]}
-        >
-          <Modal.Section>
-            <BlockStack gap="300">
-              <Text as="p">
-                {`${builder.name} is shared with ${sharedWith}. Save as a separate pricing for `}
-                <Text as="span" fontWeight="semibold">{scopeName}</Text>
-                {` — the others keep ${builder.name}.`}
-              </Text>
-              <Box padding="300" borderWidth="025" borderColor="border" borderRadius="200">
-                <Checkbox
-                  label={allNoun ? `Apply to all ${sharedCount + 1} ${allNoun} instead` : `Apply everywhere it’s used instead (${sharedCount + 1})`}
-                  helpText={
-                    allNoun
-                      ? `Overwrites this pricing for every ${allNoun === 'companies' ? 'company' : allNoun === 'locations' ? 'location' : 'company and location'} using it.`
-                      : 'Overwrites this pricing everywhere it’s used.'
-                  }
-                  checked={applyAll}
-                  onChange={setApplyAll}
-                />
-              </Box>
-            </BlockStack>
-          </Modal.Section>
+            }}
+          >
+            Save
+          </s-button>
+          <s-button slot="secondary-actions" onClick={() => setForkConfirm(false)}>
+            Cancel
+          </s-button>
         </Modal>
       )}
+      {catalogPreview && targets.length > 1 && (
+        <CatalogPricePreview builder={builder} products={state.db.products} targets={targets} onClose={() => setCatalogPreview(false)} />
+      )}
       {asPage ? (
-        <Page
-          title={editorTitle}
-          backAction={{ content: 'Back', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }}
-          primaryAction={{ content: isNew ? 'Create pricing' : 'Save', onAction: onSave, disabled: noLocationPicked }}
-          secondaryActions={[{ content: 'Cancel', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }]}
-        >
-          {editorBody}
-        </Page>
+        <>
+          <PageHeader
+            heading={editorTitle}
+            backAction={{ content: 'Back', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }}
+            primaryAction={{ content: isNew ? 'Create pricing' : 'Save', onAction: onSave, disabled: noLocationPicked }}
+            secondaryActions={[{ content: 'Cancel', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }]}
+          />
+          <s-page>{editorBody}</s-page>
+        </>
       ) : (
         <div
           role="dialog"
@@ -379,11 +389,11 @@ export function PricingEditor({ asPage = false }) {
               flex: '0 0 auto',
             }}
           >
-            <Text as="h2" variant="headingMd">{editorTitle}</Text>
+            <s-heading fontSize="large">{editorTitle}</s-heading>
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Button onClick={() => dispatch({ type: 'CLOSE_EDITOR' })}>Cancel</Button>
-              <Button variant="primary" onClick={onSave} disabled={noLocationPicked}>{isNew ? 'Create pricing' : 'Save'}</Button>
-              <Button variant="tertiary" icon={XIcon} accessibilityLabel="Close" onClick={() => dispatch({ type: 'CLOSE_EDITOR' })} />
+              <s-button onClick={() => dispatch({ type: 'CLOSE_EDITOR' })}>Cancel</s-button>
+              <s-button variant="primary" onClick={onSave} disabled={noLocationPicked}>{isNew ? 'Create pricing' : 'Save'}</s-button>
+              <s-button variant="tertiary" icon="x" accessibilityLabel="Close" onClick={() => dispatch({ type: 'CLOSE_EDITOR' })} />
             </div>
           </div>
           <div style={{ flex: '1 1 auto', overflowY: 'auto' }}>
@@ -401,17 +411,17 @@ export function PricingEditor({ asPage = false }) {
 function RuleStatusCard({ builder, patch }) {
   const on = (builder.status || 'Active') !== 'Inactive';
   return (
-    <Card>
-      <InlineStack align="space-between" blockAlign="center" gap="200" wrap={false}>
-        <InlineStack gap="200" blockAlign="center">
-          <Text as="h3" variant="headingSm">Rule status</Text>
-          <Badge tone={on ? 'success' : undefined}>{on ? 'Active' : 'Inactive'}</Badge>
-        </InlineStack>
-        <Button size="slim" onClick={() => patch({ status: on ? 'Inactive' : 'Active' })}>
+    <s-section>
+      <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
+        <s-stack direction="inline" gap="small-200" alignItems="center">
+          <s-heading>Rule status</s-heading>
+          <s-badge tone={on ? 'success' : undefined}>{on ? 'Active' : 'Inactive'}</s-badge>
+        </s-stack>
+        <s-button onClick={() => patch({ status: on ? 'Inactive' : 'Active' })}>
           {on ? 'Turn off' : 'Turn on'}
-        </Button>
-      </InlineStack>
-    </Card>
+        </s-button>
+      </s-grid>
+    </s-section>
   );
 }
 
@@ -448,41 +458,41 @@ function ResolutionCard({ builder, products }) {
   const HILITE = { background: 'var(--p-color-bg-surface-secondary, #f6f6f7)', margin: '0 -8px', padding: '6px 8px', borderRadius: 8 };
   const Row = ({ label, value, active, dim, strong }) => (
     <div style={active ? HILITE : undefined}>
-      <InlineStack align="space-between" blockAlign="center" gap="200" wrap={false}>
-        <Text as="span" variant="bodySm" tone={!active && dim ? 'subdued' : undefined} fontWeight={active ? 'medium' : undefined}>
+      <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
+        <s-text fontSize="small" color={!active && dim ? 'subdued' : undefined} fontWeight={active ? 'medium' : undefined}>
           {label}
-        </Text>
-        <Text as="span" variant="bodyMd" tone={active || strong ? undefined : 'subdued'} fontWeight={active || strong ? 'semibold' : undefined}>
+        </s-text>
+        <s-text color={active || strong ? undefined : 'subdued'} fontWeight={active || strong ? 'semibold' : undefined}>
           {value}
-        </Text>
-      </InlineStack>
+        </s-text>
+      </s-grid>
     </div>
   );
 
   return (
-    <Card>
-      <BlockStack gap="200">
-        <InlineStack align="space-between" blockAlign="center" gap="200" wrap={false}>
-          <Text as="h3" variant="headingSm">How the price resolves</Text>
-          <Button variant="plain" onClick={() => setPreviewOpen(true)}>Preview all prices</Button>
-        </InlineStack>
-        <InlineStack gap="150" blockAlign="center" wrap={false}>
-          <Text as="span" tone="subdued" variant="bodySm">{product.title}</Text>
+    <s-section>
+      <s-stack gap="small-200">
+        <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
+          <s-heading>How the price resolves</s-heading>
+          <s-link onClick={() => setPreviewOpen(true)}>Preview all prices</s-link>
+        </s-grid>
+        <s-stack direction="inline" gap="small-300" alignItems="center">
+          <s-text color="subdued" fontSize="small">{product.title}</s-text>
           <span style={{ fontFamily: 'var(--p-font-family-mono, monospace)', fontSize: 12, color: 'var(--p-color-text-subdued, #6d7175)' }}>
             {product.sku}
           </span>
-        </InlineStack>
-        <BlockStack gap="150">
+        </s-stack>
+        <s-stack gap="small-300">
           <Row label="Shopify price" value={money(bd.shopify)} />
           <Row label="Default" value={money(bd.defaultPrice)} active={tier === 'default'} dim={tier !== 'default'} />
           {bd.rule ? <Row label={ruleLabel} value={money(bd.rule.price)} active={tier === 'rule'} dim={tier === 'override'} /> : null}
           {bd.override != null ? <Row label="Product override" value={money(bd.override)} active={tier === 'override'} /> : null}
-          <Divider />
+          <s-divider />
           <Row label="Buyer pays" value={money(bd.final)} strong />
-        </BlockStack>
-      </BlockStack>
+        </s-stack>
+      </s-stack>
       {previewOpen && <BuilderPricePreview builder={builder} products={products} onClose={() => setPreviewOpen(false)} />}
-    </Card>
+    </s-section>
   );
 }
 
@@ -512,24 +522,84 @@ function BuilderPricePreview({ builder, products, onClose }) {
   );
 }
 
+// Shown under "Who this pricing serves" when a base pricing reaches several
+// locations: each can have its own catalog, and the pricing only reaches the
+// products in it. Preview checks one location at a time.
+function MultiCatalogNote({ onPreview }) {
+  return (
+    <s-banner tone="info">
+      <s-paragraph>
+        Multiple locations can have different catalogs. This base pricing is applied per catalog, so selected products that aren’t in a location’s catalog won’t get the price you set up.
+      </s-paragraph>
+      <s-button slot="secondary-actions" onClick={onPreview}>
+        Preview by location
+      </s-button>
+    </s-banner>
+  );
+}
+
+// What this base pricing (unsaved edits included) gives at one of the locations
+// it reaches, picked from the toolbar. Products outside that location's catalog
+// don't get it — they show "—".
+function CatalogPricePreview({ builder, products, targets, onClose }) {
+  const keyOf = (t) => `${t.company.id}::${t.location.id}`;
+  const [key, setKey] = useState(keyOf(targets[0]));
+  const target = targets.find((t) => keyOf(t) === key) || targets[0];
+  const catalog = locationCatalog(target.location, products);
+  const severalCompanies = new Set(targets.map((t) => t.company.id)).size > 1;
+  const entries = products
+    .map((p) => ({ p, bd: policyPriceBreakdown(builder, p) }))
+    .filter(({ bd }) => bd?.inScope)
+    .map(({ p, bd }) =>
+      catalog.skus.includes(p.sku)
+        ? { product: p, shopify: bd.shopify, final: bd.final, decidedBy: 'This pricing' }
+        : { product: p, shopify: bd.shopify, final: null, decidedBy: 'Not in catalog', highlight: true });
+  const outside = entries.filter((e) => e.final == null).length;
+  return (
+    <PricePreviewDialog
+      title={`Preview prices · ${builder.name || 'This pricing'}`}
+      description={`${target.location.name}${severalCompanies ? ` (${target.company.name})` : ''} uses the ${catalog.name} catalog. ${
+        outside
+          ? `${outside} of the products this pricing covers ${outside === 1 ? 'isn’t' : 'aren’t'} in it, so ${outside === 1 ? 'it doesn’t' : 'they don’t'} get this price there.`
+          : 'Every product this pricing covers is in it.'
+      }`}
+      entries={entries}
+      emptyLabel="This pricing covers no products yet."
+      toolbar={
+        <div style={{ width: 340, flex: '0 0 auto' }}>
+          <s-select label="Location" value={key} onChange={(e) => setKey(e.currentTarget.value)}>
+            {targets.map((t) => (
+              <s-option key={keyOf(t)} value={keyOf(t)}>
+                {severalCompanies ? `${t.location.name} · ${t.company.name}` : t.location.name}
+              </s-option>
+            ))}
+          </s-select>
+        </div>
+      }
+      onClose={onClose}
+    />
+  );
+}
+
 // Settings summary (god-file asideSummary): an at-a-glance recap.
 // "Who this pricing serves" when creating from a company page: which of the
 // company's locations get it (see LocationScopePicker).
-function CompanyLocationsCard({ company, locationIds, onChange }) {
+function CompanyLocationsCard({ company, locationIds, onChange, footer = null }) {
   return (
-    <Card>
-      <BlockStack gap="300">
-        <BlockStack gap="100">
-          <Text as="h3" variant="headingSm">Who this pricing serves</Text>
-          <Text as="p" tone="subdued" variant="bodySm">
+    <s-section>
+      <s-stack gap="small">
+        <s-stack gap="small-400">
+          <s-heading>Who this pricing serves</s-heading>
+          <s-paragraph color="subdued" fontSize="small">
             {'Choose which of '}
-            <Text as="span" variant="bodySm" fontWeight="semibold">{company.name}</Text>
+            <s-text fontSize="small" fontWeight="semibold">{company.name}</s-text>
             {'’s locations get this pricing.'}
-          </Text>
-        </BlockStack>
+          </s-paragraph>
+        </s-stack>
         <LocationScopePicker company={company} locationIds={locationIds} onChange={onChange} titleHidden />
-      </BlockStack>
-    </Card>
+        {footer}
+      </s-stack>
+    </s-section>
   );
 }
 
@@ -541,23 +611,18 @@ function SummaryCard({ builder, isQuantity }) {
     ['Status', builder.status || 'Active'],
   ];
   return (
-    <Card>
-      <BlockStack gap="200">
-        <Text as="h3" variant="headingSm">Settings summary</Text>
-        <BlockStack gap="150">
-          {items.map(([k, v]) => (
-            <InlineStack key={k} align="space-between" blockAlign="center">
-              <Text as="span" tone="subdued" variant="bodySm">
-                {k}
-              </Text>
-              <Text as="span" variant="bodyMd" fontWeight="medium">
-                {v}
-              </Text>
-            </InlineStack>
-          ))}
-        </BlockStack>
-      </BlockStack>
-    </Card>
+    <s-section heading="Settings summary">
+      <s-stack gap="small-300">
+        {items.map(([k, v]) => (
+          <s-stack key={k} direction="inline" gap="small-200" justifyContent="space-between" alignItems="center">
+            <s-text color="subdued" fontSize="small">
+              {k}
+            </s-text>
+            <s-text fontWeight="medium">{v}</s-text>
+          </s-stack>
+        ))}
+      </s-stack>
+    </s-section>
   );
 }
 
@@ -569,41 +634,44 @@ function AppearanceTab({ builder, patch, kindWord, product }) {
   const now = Math.round(list * 0.75 * 100) / 100;
   const badge = builder.appearanceLabel || 'Special price';
   return (
-    <Card>
-      <BlockStack gap="300">
-        <Text as="h3" variant="headingSm">Appearance</Text>
-        <Text as="p" tone="subdued" variant="bodySm">
+    <s-section heading="Appearance">
+      <s-stack gap="small">
+        <s-paragraph color="subdued" fontSize="small">
           {`How this ${kindWord} is presented on the storefront. It does not change price calculation or assignment.`}
-        </Text>
-        <InlineGrid columns={{ xs: 1, sm: 2 }} gap="300">
-          <TextField label="Display title" value={builder.appearanceTitle ?? ''} onChange={(v) => patch({ appearanceTitle: v })} autoComplete="off" />
-          <TextField label="Price badge" value={builder.appearanceLabel ?? ''} onChange={(v) => patch({ appearanceLabel: v })} autoComplete="off" />
-        </InlineGrid>
-        <Box borderWidth="025" borderColor="border" borderRadius="200" padding="300">
-          <InlineStack gap="300" blockAlign="center" wrap={false}>
-            <Box background="bg-surface-secondary" borderRadius="200" minHeight="48px" width="48px">
+        </s-paragraph>
+        <s-query-container>
+          <s-grid gridTemplateColumns={TWO_UP} gap="small">
+            <s-text-field label="Display title" value={builder.appearanceTitle ?? ''} onInput={(e) => patch({ appearanceTitle: e.currentTarget.value })} autocomplete="off" />
+            <s-text-field label="Price badge" value={builder.appearanceLabel ?? ''} onInput={(e) => patch({ appearanceLabel: e.currentTarget.value })} autocomplete="off" />
+          </s-grid>
+        </s-query-container>
+        <s-box border="base" borderRadius="base" padding="small">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <s-box background="subdued" borderRadius="base" minBlockSize="48px" inlineSize="48px">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 48 }}>
-                <Text as="span" tone="subdued">▣</Text>
+                <s-text color="subdued">▣</s-text>
               </div>
-            </Box>
+            </s-box>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <BlockStack gap="100">
-                <Text as="span" variant="bodyMd" fontWeight="medium">{product?.title || 'Cotton T-Shirt'}</Text>
-                <Box>
-                  <Badge tone="info">{badge}</Badge>
-                </Box>
-              </BlockStack>
+              <s-stack gap="small-400">
+                <s-text fontWeight="medium">{product?.title || 'Cotton T-Shirt'}</s-text>
+                <div>
+                  <s-badge tone="info">{badge}</s-badge>
+                </div>
+              </s-stack>
             </div>
             <div style={{ textAlign: 'right' }}>
               <div>
-                <Text as="span" tone="subdued" variant="bodySm" textDecorationLine="line-through">{money(list)}</Text>
+                <s-text color="subdued" fontSize="small">
+                  <s>{money(list)}</s>
+                </s-text>
               </div>
-              <Text as="span" variant="headingMd">{money(now)}</Text>
+              <s-text fontSize="large" fontWeight="semibold">{money(now)}</s-text>
             </div>
-          </InlineStack>
-        </Box>
-      </BlockStack>
-    </Card>
+          </div>
+        </s-box>
+      </s-stack>
+    </s-section>
   );
 }
 
