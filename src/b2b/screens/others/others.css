@@ -1,0 +1,378 @@
+/* Others page (src/b2b/screens/others). Class names are prefixed `oth-`. */
+
+/* OthersSidebar: <Box position="sticky" insetBlockStart="400">. The admin top
+   bar is fixed over the scrolling document, so stick below it. */
+.oth-sidebar {
+  position: sticky;
+  top: calc(var(--wc-topbar-h, 56px) + 16px);
+}
+
+/* ── Email template editor (features/Email/components/AutoResponseEmailEditor) ── */
+
+/* "Dynamic value" popover trigger: a bare text button in #08f, underlined on hover. */
+.oth-dynamic-trigger {
+  background: none;
+  border: none;
+  color: #08f;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 550;
+  padding: 0;
+  text-decoration: none;
+}
+
+.oth-dynamic-trigger:hover {
+  text-decoration: underline;
+}
+
+/* Popover.Pane width cap so long "value: description" rows wrap like ActionList. */
+.oth-dynamic-pane {
+  max-width: 400px;
+}
+
+.oth-action-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Quill "snow" look for the Email body editor (react-quill in the app) ── */
+.oth-ql {
+  max-width: 100%;
+  width: 100%;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+.oth-ql-toolbar {
+  position: relative;
+  z-index: 2;
+  box-sizing: border-box;
+  border: 1px solid #ccc;
+  padding: 8px;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+.oth-ql-toolbar::after {
+  clear: both;
+  content: '';
+  display: table;
+}
+
+.oth-ql-formats {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 15px;
+}
+
+.oth-ql-formats::after {
+  clear: both;
+  content: '';
+  display: table;
+}
+
+.oth-ql-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: inline-block;
+  float: left;
+  height: 24px;
+  padding: 3px 5px;
+  width: 28px;
+}
+
+.oth-ql svg {
+  float: left;
+  height: 100%;
+}
+
+.oth-ql-stroke {
+  fill: none;
+  stroke: #444;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.oth-ql-thin {
+  stroke-width: 1;
+}
+
+.oth-ql-fill {
+  fill: #444;
+}
+
+.oth-ql-checker {
+  stroke: none;
+}
+
+.oth-ql-button:hover .oth-ql-stroke,
+.oth-ql-active .oth-ql-stroke,
+.oth-ql-picker-label:hover .oth-ql-stroke,
+.oth-ql-expanded .oth-ql-picker-label .oth-ql-stroke,
+.oth-ql-picker-item:hover .oth-ql-stroke,
+.oth-ql-selected .oth-ql-stroke {
+  stroke: #06c;
+}
+
+.oth-ql-button:hover .oth-ql-fill,
+.oth-ql-active .oth-ql-fill,
+.oth-ql-picker-label:hover .oth-ql-fill,
+.oth-ql-expanded .oth-ql-picker-label .oth-ql-fill {
+  fill: #06c;
+}
+
+.oth-ql-picker {
+  color: #444;
+  display: inline-block;
+  float: left;
+  font-size: 14px;
+  font-weight: 500;
+  height: 24px;
+  position: relative;
+  vertical-align: middle;
+}
+
+.oth-ql-picker-label {
+  background: none;
+  border: 1px solid transparent;
+  color: inherit;
+  cursor: pointer;
+  display: inline-block;
+  font: inherit;
+  height: 100%;
+  padding-left: 8px;
+  padding-right: 2px;
+  position: relative;
+  text-align: left;
+  width: 100%;
+}
+
+.oth-ql-picker-label:hover,
+.oth-ql-expanded .oth-ql-picker-label {
+  color: #06c;
+}
+
+.oth-ql-expanded .oth-ql-picker-label {
+  border-color: #ccc;
+  color: #ccc;
+}
+
+.oth-ql-picker-label svg {
+  position: absolute;
+  margin-top: -9px;
+  right: 0;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+}
+
+.oth-ql-header {
+  width: 98px;
+}
+
+.oth-ql-picker-text {
+  line-height: 22px;
+}
+
+.oth-ql-icon-picker,
+.oth-ql-color-picker {
+  width: 28px;
+}
+
+.oth-ql-icon-picker .oth-ql-picker-label,
+.oth-ql-color-picker .oth-ql-picker-label {
+  padding: 2px 4px;
+}
+
+.oth-ql-icon-picker .oth-ql-picker-label svg,
+.oth-ql-color-picker .oth-ql-picker-label svg {
+  position: static;
+  margin: 0;
+  right: auto;
+}
+
+.oth-ql-picker-options {
+  background-color: #fff;
+  border: 1px solid #ccc;
+  box-shadow: rgba(0, 0, 0, 0.2) 0 2px 8px;
+  display: block;
+  margin-top: -1px;
+  min-width: 100%;
+  padding: 4px 8px;
+  position: absolute;
+  top: 100%;
+  white-space: nowrap;
+  z-index: 10;
+}
+
+.oth-ql-picker-item {
+  background: none;
+  border: none;
+  color: #444;
+  cursor: pointer;
+  display: block;
+  font: inherit;
+  padding: 5px 0;
+  text-align: left;
+  width: 100%;
+}
+
+.oth-ql-picker-item:hover,
+.oth-ql-selected {
+  color: #06c;
+}
+
+.oth-ql-picker-item--h1 {
+  font-size: 2em;
+}
+
+.oth-ql-picker-item--h2 {
+  font-size: 1.5em;
+}
+
+.oth-ql-picker-item--h3 {
+  font-size: 1.17em;
+}
+
+.oth-ql-icon-picker .oth-ql-picker-options {
+  padding: 4px 0;
+}
+
+.oth-ql-icon-item {
+  height: 24px;
+  padding: 2px 4px;
+  width: 28px;
+}
+
+.oth-ql-color-picker .oth-ql-picker-options {
+  padding: 3px 5px;
+  width: 152px;
+  white-space: normal;
+}
+
+.oth-ql-swatch {
+  background: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  float: left;
+  height: 16px;
+  margin: 2px;
+  padding: 0;
+  width: 16px;
+}
+
+.oth-ql-swatch:hover {
+  border-color: #000;
+}
+
+.oth-ql-swatch span {
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.oth-ql-container {
+  border: 1px solid #ccc;
+  border-top: 0;
+  box-sizing: border-box;
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  margin: 0;
+  position: relative;
+}
+
+.oth-ql-editor {
+  box-sizing: border-box;
+  line-height: 1.5;
+  max-height: clamp(320px, calc(100vh - 350px), 560px);
+  max-width: 100%;
+  min-height: 0;
+  outline: none;
+  overflow-wrap: anywhere;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px 15px;
+  tab-size: 4;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #000;
+}
+
+.oth-ql-editor > * {
+  cursor: text;
+}
+
+.oth-ql-editor p,
+.oth-ql-editor h1,
+.oth-ql-editor h2,
+.oth-ql-editor h3,
+.oth-ql-editor ol,
+.oth-ql-editor ul {
+  margin: 0;
+  padding: 0;
+}
+
+.oth-ql-editor ol,
+.oth-ql-editor ul {
+  padding-left: 1.5em;
+}
+
+.oth-ql-editor h1 {
+  font-size: 2em;
+}
+
+.oth-ql-editor h2 {
+  font-size: 1.5em;
+}
+
+.oth-ql-editor h3 {
+  font-size: 1.17em;
+}
+
+.oth-ql-editor a {
+  color: #06c;
+  text-decoration: underline;
+}
+
+.oth-ql-tooltip {
+  background-color: #fff;
+  border: 1px solid #ccc;
+  box-shadow: 0 0 5px #ddd;
+  color: #444;
+  left: 15px;
+  padding: 5px 12px;
+  position: absolute;
+  top: 10px;
+  white-space: nowrap;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.oth-ql-tooltip input {
+  border: 1px solid #ccc;
+  font-size: 13px;
+  height: 26px;
+  margin: 0;
+  padding: 3px 5px;
+  width: 170px;
+}
+
+.oth-ql-tooltip-action {
+  background: none;
+  border: none;
+  border-left: 1px solid #ccc;
+  color: #06c;
+  cursor: pointer;
+  font: inherit;
+  padding: 0 0 0 8px;
+}
+
+/* Right column of the editor grid may shrink below the editor's content width. */
+.oth-editor-content {
+  min-width: 0;
+}

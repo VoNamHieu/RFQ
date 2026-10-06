@@ -1,0 +1,607 @@
+/* Quote settings (production: pages/CollectQuotePage.jsx + components/CollectQuote/*,
+   styles from assets/styles/_quoteSettings.scss, _custom.scss, _selectProduct.scss).
+   Every class is prefixed `qset-` so nothing collides with other screens. */
+
+/* Page-level tab strip: one row, scrolls sideways on narrow screens
+   (production _responsive.scss .quote_setting_page .Polaris-Tabs__Wrapper). */
+.qset-tabs .wc-tabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 0;
+  scrollbar-width: none;
+}
+.qset-tabs .wc-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+/* Preview column: Polaris <Sticky disableWhenStacked>. */
+.qset-aside {
+  position: sticky;
+  top: calc(var(--wc-topbar-h, 56px) + 16px);
+  align-self: start;
+}
+@media (max-width: 1040px) {
+  .qset-aside {
+    position: static;
+  }
+}
+
+/* ── Store mode switch (plain disclosure button + OptionList) ───────────── */
+/* Polaris Button variant="plain" with icon + disclosure: link-blue bodyMd text at
+   regular weight, underlined on hover. */
+.qset-mode-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #005bd3;
+  font: inherit;
+  font-weight: 450;
+  cursor: pointer;
+}
+.qset-mode-trigger:hover {
+  color: #004299;
+  text-decoration: underline;
+}
+.qset-mode-trigger svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+  flex: none;
+}
+
+/* Polaris secondary Button with `disclosure` (same look as s-button). */
+.qset-disclosure {
+  display: inline-flex;
+}
+.qset-disclosure-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  box-sizing: border-box;
+  min-height: 28px;
+  padding: 4px 6px 4px 12px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: rgb(181, 181, 181) 0 -1px 0 0 inset, rgba(0, 0, 0, 0.1) 0 0 0 1px inset, #fff 0 0.5px 0 1.5px inset;
+  color: #303030;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.qset-disclosure-btn:hover {
+  background: #fafafa;
+}
+.qset-disclosure-btn svg {
+  width: 20px;
+  height: 20px;
+  fill: #4a4a4a;
+  flex: none;
+}
+.qset-disclosure-btn--disabled {
+  background: #f1f1f1;
+  box-shadow: none;
+  color: #b5b5b5;
+  cursor: default;
+}
+.qset-disclosure-btn--disabled svg {
+  fill: #b5b5b5;
+}
+.qset-optionlist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 200px;
+  padding: 6px;
+}
+.qset-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: #303030;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.qset-option svg {
+  width: 20px;
+  height: 20px;
+  fill: #4a4a4a;
+  flex: none;
+}
+.qset-option:hover:not(:disabled) {
+  background: #f1f1f1;
+}
+.qset-option[aria-selected='true'] {
+  background: #ebebeb;
+  font-weight: 650;
+}
+.qset-option:disabled {
+  color: #b5b5b5;
+  cursor: default;
+}
+.qset-option:disabled svg {
+  fill: #b5b5b5;
+}
+.qset-option__suffix {
+  margin-inline-start: auto;
+}
+
+/* ── Color picker input (core/ColorPickerInput.jsx) ─────────────────────── */
+.qset-swatch-wrap {
+  width: 40px;
+  height: 40px;
+  flex: none;
+}
+/* A flat 40px circle filled with the color (an alpha color shows the card through). */
+.qset-swatch {
+  display: block;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid #c2c2c2;
+  box-sizing: border-box;
+}
+.qset-swatch--disabled {
+  opacity: 0.5;
+}
+
+/* Button style fields (Polaris Grid, columnSpan xs/sm 6, md/lg 3): 1 per row below md,
+   2 at md (iframe >= 768px), 4 from lg (iframe >= 1040px). The app iframe is the
+   viewport minus the 240px side nav here. */
+.qset-style-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+@media (min-width: 1008px) {
+  .qset-style-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1280px) {
+  .qset-style-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Segmented button groups (Polaris ButtonGroup fullWidth variant="segmented"). */
+.qset-segmented {
+  display: block;
+}
+
+/* ── Product rules ─────────────────────────────────────────────────────── */
+.qset-selected-list {
+  max-height: 384px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.qset-selected-list::-webkit-scrollbar {
+  display: none;
+}
+/* Polaris ResourceItem: 12px padding, 12px between media and content. */
+.qset-resource-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-top: 1px solid #ebebeb;
+}
+.qset-resource-row:first-child {
+  border-top: 0;
+}
+.qset-resource-row__title {
+  cursor: pointer;
+}
+
+.qset-and-row {
+  position: relative;
+  margin-top: 8px;
+}
+.qset-and-row--next {
+  margin-top: 24px;
+}
+.qset-and-label {
+  position: absolute;
+  top: -21px;
+  left: 0;
+  z-index: 1;
+  font-size: 13px;
+  color: #303030;
+}
+/* Breakpoints: production uses the app iframe's width (md = 769px); in this
+   simulated admin the iframe is the viewport minus the 240px side nav. */
+.qset-or-divider {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  /* ms-0 me-4 mt-4 mb-n2, md: ms-20 me-24 mt-0 mb-0 */
+  margin: 16px 16px -8px 0;
+}
+@media (min-width: 1009px) {
+  .qset-or-divider {
+    margin: 0 96px 0 80px;
+  }
+}
+/* Delete-condition button column (mx-2, md: mx-5). */
+.qset-cond-delete {
+  margin: 0 8px;
+}
+@media (min-width: 1009px) {
+  .qset-cond-delete {
+    margin: 0 20px;
+  }
+}
+.qset-or-divider::before {
+  content: '';
+  position: absolute;
+  inset: calc(50% - 1px) 0 auto 0;
+  border-bottom: 1px solid #e3e3e3;
+}
+.qset-or-divider span {
+  position: relative;
+  z-index: 1;
+  display: inline-block;
+  width: 40px;
+  height: 40px;
+  line-height: 38px;
+  border: 1px solid #e3e3e3;
+  border-radius: 50%;
+  background: #fff;
+  text-align: center;
+  font-size: 13px;
+}
+
+/* Inline dropdown lists (Combobox / Listbox replacements). */
+.qset-combo {
+  position: relative;
+}
+.qset-combo__list {
+  max-height: 260px;
+  overflow-y: auto;
+  margin-top: 4px;
+  padding: 6px;
+  border: 1px solid #e3e3e3;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+.qset-combo__list--floating {
+  position: absolute;
+  inset: 100% 0 auto 0;
+  z-index: 20;
+}
+.qset-combo__empty {
+  padding: 8px;
+  color: #616161;
+}
+
+/* ── Text & translation suggestion (_quoteSettings.scss .suggestion-box) ── */
+.qset-suggestion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 10px -16px -16px;
+  padding: 10px;
+  background: #f4f1ff;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+  color: #7100d7;
+}
+.qset-suggestion:hover {
+  background: #f7f7f7;
+}
+.qset-suggestion svg {
+  width: 20px;
+  height: 20px;
+  fill: #7100d7;
+  flex: none;
+}
+.qset-suggestion__link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: #7100d7;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.qset-suggestion__link:hover {
+  text-decoration: underline;
+}
+.qset-suggestion__close {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+}
+.qset-suggestion__close:hover {
+  background: rgba(113, 0, 215, 0.08);
+}
+
+/* ── Range slider (Polaris RangeSlider with output) ────────────────────── */
+.qset-range {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.qset-range__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 32px;
+}
+.qset-range input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  accent-color: #303030;
+}
+.qset-range__output {
+  min-width: 36px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: #303030;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 550;
+  text-align: center;
+}
+.qset-range--disabled {
+  opacity: 0.5;
+}
+
+/* Quote cart icon drop zone (Polaris DropZone 50×50). */
+.qset-icon-drop {
+  display: grid;
+  place-items: center;
+  width: 50px;
+  height: 50px;
+  border: 1px dashed #8a8a8a;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+.qset-icon-drop:hover {
+  background: #f7f7f7;
+}
+.qset-icon-drop--over {
+  border-color: #005bd3;
+  background: #f2f7fe;
+}
+.qset-icon-drop--disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+/* Polaris Thumbnail size="small" (40px) showing the icon at its own size. */
+.qset-icon-drop span {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  box-sizing: border-box;
+  border: 1px solid #e3e3e3;
+  border-radius: 8px;
+  background: #fff;
+}
+.qset-icon-drop img {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* ── Previews ──────────────────────────────────────────────────────────── */
+/* Product page mock. Production marks it up with bootstrap-style "row" /
+   "col-md-4 col-xl-5" classes that the app's CSS does not define, so the image
+   (centred, "text-center") and the product details simply stack. */
+.qset-product__media {
+  text-align: center;
+}
+.qset-product__media img {
+  vertical-align: middle;
+}
+.qset-product__media--fit img {
+  max-width: 75%;
+  height: auto;
+}
+.qset-mt-3 {
+  margin-top: 12px;
+}
+.qset-mt-5 {
+  margin-top: 20px;
+}
+.qset-mb-3 {
+  margin-bottom: 12px;
+}
+.qset-qty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 120px;
+  padding: 4px;
+  border: 1px solid #aeb4b9;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+.qset-qty svg {
+  width: 20px;
+  height: 20px;
+  fill: #303030;
+}
+.qset-rfq-btn {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  animation: qset-fade 0.2s ease-in-out;
+  overflow-wrap: anywhere;
+}
+.qset-rfq-btn--empty {
+  padding-block: 16px !important;
+}
+@keyframes qset-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.qset-login-link {
+  color: #005bd3;
+  text-decoration: underline;
+}
+
+/* Storefront mock behind the quote cart / history widgets. */
+.qset-store {
+  position: relative;
+  height: 500px;
+  margin-top: 16px;
+  overflow: hidden;
+  background-position: top right;
+  background-repeat: repeat-x;
+}
+.qset-widget-btn {
+  position: absolute;
+  padding: 6px 16px;
+  box-sizing: border-box;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: all 0.3s ease-in-out, transform 0s;
+}
+.qset-widget-icon {
+  position: absolute;
+  top: 48px;
+  cursor: pointer;
+}
+.qset-widget-icon img {
+  display: block;
+}
+
+/* .checkout-page-preview__rfq-button — the class replaces Polaris Box's own
+   class, so the Box radius / inline padding do not apply. */
+.qset-checkout-btn {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  background: #eedb4d;
+  text-align: center;
+}
+.qset-checkout-img {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+/* Cross-sell banner (CollectQuote/BannerBooknaticCrossSell.jsx). */
+.qset-crosssell {
+  position: relative;
+}
+.qset-crosssell__image {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.qset-crosssell__image img {
+  display: block;
+  width: 100%;
+  border-radius: 12px;
+}
+.qset-crosssell__close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+.qset-img-fill {
+  display: block;
+  width: 100%;
+}
+
+/* Plain bullet list inside banners / cards. */
+.qset-bullets {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.qset-option--action {
+  color: #005bd3;
+}
+
+/* Custom position field with its "Select position" label action. */
+.qset-label-action {
+  position: relative;
+  margin-bottom: 12px;
+}
+.qset-label-action__link {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+/* Resource picker rows (App Bridge product / collection picker). */
+.qset-picker {
+  max-height: 360px;
+  overflow-y: auto;
+  border-top: 1px solid #ebebeb;
+}
+.qset-picker__group {
+  border-bottom: 1px solid #ebebeb;
+}
+.qset-picker__row {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 4px;
+}
+.qset-picker__row--variant {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding-left: 52px;
+}
+
+/* Pareto bundles promo card (Integrate/NotInstallApp.jsx). */
+.qset-promo {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.qset-promo__body {
+  max-width: 63%;
+}
+.qset-promo__list {
+  margin: 2px 0 12px;
+}
+.qset-promo__aside {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 0 1 37%;
+  min-width: 0;
+}
+.qset-promo__img {
+  width: calc(100% - 40px);
+  max-width: 220px;
+  height: auto;
+}

@@ -1,0 +1,754 @@
+/* RFQ "View more" screens — Pricing plan (more-pp-*) and What's New (more-wn-*).
+   Ported from the production app's assets/styles/_pricingPlan.scss and _whatsNew.scss.
+
+   Breakpoints: production runs in the admin iframe, so its media queries / Polaris
+   breakpoints measure the iframe — here the frame's main column, i.e. the viewport minus
+   the 240px nav (the nav hides at <= 768px). Mapping used below:
+     iframe >= 1040 (Polaris lg)  -> viewport >= 1280px
+     iframe >= 992  (scss)        -> viewport >= 1232px
+     iframe <= 991  (scss)        -> viewport <= 1231px
+     iframe <  768  (Polaris md)  -> viewport <= 1007px */
+
+.more-pp,
+.more-wn {
+  --more-brand-yellow: #f8d846; /* production $primary-color */
+  --more-card-shadow: 0 1px 0 0 rgba(26, 26, 26, 0.07), inset 0 1px 0 0 rgba(204, 204, 204, 0.5),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.17), inset -1px 0 0 0 rgba(0, 0, 0, 0.13), inset 1px 0 0 0 rgba(0, 0, 0, 0.13);
+  color: var(--p-color-text, #303030);
+}
+
+/* ── Pricing plan ─────────────────────────────────────────────────────────── */
+.more-pp {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.more-pp-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 16px;
+  text-align: center;
+}
+
+/* Segmented Monthly / Yearly toggle (Polaris ButtonGroup variant="segmented") */
+.more-pp-cycle {
+  display: flex;
+  justify-content: center;
+}
+
+.more-pp-cycle__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-sizing: content-box;
+  width: 140px;
+  min-height: 28px;
+  padding: 4px 16px;
+  margin: 0;
+  font: inherit;
+  /* Polaris Button text: 12px/16px from md up, 13px/20px below; the label is Text semibold */
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 650;
+  color: var(--p-color-text, #303030);
+  background: #fff;
+  border: 0;
+  box-shadow: 0 -1px 0 0 #b5b5b5 inset, 0 0 0 1px rgba(0, 0, 0, 0.1) inset, 0 0.5px 0 1.5px #fff inset;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+@media (max-width: 1007px) {
+  .more-pp-cycle__btn {
+    font-size: 13px;
+    line-height: 20px;
+  }
+}
+
+.more-pp-cycle__btn:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.more-pp-cycle__btn:last-child {
+  border-radius: 0 8px 8px 0;
+  margin-left: -1px;
+}
+
+.more-pp-cycle__btn:hover {
+  background: #fafafa; /* bg-fill-hover */
+}
+
+.more-pp-cycle__btn:active {
+  background: #f7f7f7; /* bg-fill-active */
+}
+
+/* Polaris secondary Button pressed: bg-fill-selected + the active inset shadow */
+.more-pp-cycle__btn[aria-pressed='true'],
+.more-pp-cycle__btn[aria-pressed='true']:hover {
+  position: relative;
+  z-index: 1;
+  background: #cccccc;
+  box-shadow: -1px 0 1px 0 rgba(26, 26, 26, 0.122) inset, 1px 0 1px 0 rgba(26, 26, 26, 0.122) inset,
+    0 2px 1px 0 rgba(26, 26, 26, 0.2) inset;
+}
+
+.more-pp-cycle__btn:focus-visible {
+  outline: 2px solid var(--p-color-border-emphasis, #005bd3);
+  outline-offset: 1px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Cards (Polaris Card look; the B2B plan and the recommended plan get the yellow frame) */
+.more-pp-card {
+  position: relative;
+  box-sizing: border-box;
+  background: var(--p-color-bg-surface, #fff);
+  border-radius: 12px;
+  box-shadow: var(--more-card-shadow);
+  padding: 16px;
+}
+
+/* Production restyles the Card's ShadowBevel ::before overlay: a 2px yellow border drawn over
+   the card edge (content does not move) plus a 1px yellow ring outside on top/left/right. */
+.more-pp-card--highlight {
+  box-shadow: 0 1px 0 0 rgba(26, 26, 26, 0.07);
+}
+
+.more-pp-card--highlight::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  border: 2px solid var(--more-brand-yellow);
+  border-radius: inherit;
+  box-shadow: 1px 0 0 0 var(--more-brand-yellow), -1px 0 0 0 var(--more-brand-yellow), 0 -1px 0 0 var(--more-brand-yellow);
+  pointer-events: none;
+}
+
+.more-pp-b2b {
+  margin-top: 16px;
+}
+
+/* .plan-card-b2b-content. Its .plan-card-b2b-pricing / -features rules never reach production
+   (the classes sit on a BlockStack and a Box, which don't render className), so both columns
+   are default flex items whose widths come from their content. */
+.more-pp-b2b__content {
+  display: flex;
+  gap: 3rem;
+}
+
+/* BlockStack gap 200 */
+.more-pp-b2b__pricing {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Box paddingBlock 400, paddingInlineStart { xs: 0, md: 600 } */
+.more-pp-b2b__features {
+  padding: 16px 0 16px 24px;
+}
+
+/* Grid cells span 6: one column below lg, two from lg */
+.more-pp-b2b__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  padding-top: 20px;
+}
+
+@media (min-width: 1280px) {
+  .more-pp-b2b__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1007px) {
+  .more-pp-b2b__content {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .more-pp-b2b__features {
+    padding-left: 0;
+  }
+}
+
+/* Price: Polaris heading3xl with a bodySm "/mo" */
+.more-pp-price {
+  font-size: 36px;
+  line-height: 48px;
+  font-weight: 700;
+  letter-spacing: -0.54px;
+  color: var(--p-color-text, #303030);
+}
+
+.more-pp-price__per {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 450;
+  letter-spacing: 0;
+}
+
+.more-pp-discount {
+  font-size: 13px;
+}
+
+.more-pp-subdued {
+  color: #616161; /* text-secondary */
+}
+
+.more-pp-strike {
+  text-decoration: line-through;
+  color: #007aff;
+}
+
+.more-pp-start {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 700;
+}
+
+.more-pp-feature {
+  display: flex;
+  align-items: flex-start;
+}
+
+.more-pp-feature__icon,
+.more-pp-start s-icon {
+  flex: 0 0 auto;
+}
+
+.more-pp-feature__text {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.more-pp-feature__text s-badge {
+  display: inline-block;
+  vertical-align: top;
+}
+
+.more-pp-feature__logo {
+  width: 18px;
+  height: 18px;
+  vertical-align: text-bottom;
+  margin-right: 6px;
+}
+
+.more-pp-feature__logo--salesforce {
+  border-radius: 3px;
+}
+
+.more-pp-other {
+  padding-top: 32px;
+  text-align: center;
+}
+
+.more-pp-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  padding-top: 16px;
+}
+
+/* Grid cells span 6 of 6 below lg (stacked), 4 of 12 from lg (three across) */
+@media (min-width: 1280px) {
+  .more-pp-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* .plan-card-content min-height 600px, auto at <= 768px */
+.more-pp-plan__content {
+  min-height: 600px;
+}
+
+@media (max-width: 1007px) {
+  .more-pp-plan__content {
+    min-height: auto;
+  }
+}
+
+.more-pp-recommend {
+  position: absolute;
+  top: -0.6rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  background: var(--more-brand-yellow);
+  padding: 0.25rem 2rem;
+  font-size: 1rem;
+  line-height: 1.25;
+  font-weight: 700;
+  border-radius: 0.35rem;
+  white-space: nowrap;
+}
+
+.more-pp-toggle {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0;
+}
+
+.more-pp-toggle__caret {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
+/* Compare features table (detail.jsx) */
+.more-pp-detail {
+  border: 1px solid #cccccc;
+  background: #fff;
+  border-radius: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.more-pp-detail__scroll {
+  width: 100%;
+  border-radius: 12px;
+}
+
+.more-pp-detail table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+
+.more-pp-detail thead th {
+  background: #fff;
+  white-space: normal;
+}
+
+@media (min-width: 1232px) {
+  .more-pp-detail thead th {
+    position: sticky;
+    /* production sticks to the top of the embedded app; here, below the admin top bar */
+    top: var(--wc-topbar-h, 0px);
+    z-index: 10;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  }
+
+  .more-pp-detail__section-row {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+.more-pp-detail__first {
+  text-align: left;
+  padding: 16px 24px;
+  font-size: 20px;
+  line-height: 24px;
+  color: #1a1a1a;
+  border-bottom: 1px solid #e5e5e5;
+  border-top-left-radius: 12px;
+  width: 24%;
+  min-width: 200px;
+}
+
+.more-pp-detail thead th.more-pp-detail__first {
+  font-weight: 600;
+}
+
+.more-pp-detail__plan {
+  padding: 16px 16px 18px;
+  border-bottom: 1px solid #e5e5e5;
+  border-left: 1px solid #e5e5e5;
+  vertical-align: top;
+  text-align: center;
+}
+
+.more-pp-detail__plan:last-child {
+  border-top-right-radius: 12px;
+}
+
+.more-pp-detail__plan-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  height: 100%;
+}
+
+.more-pp-detail__plan-title {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.more-pp-detail__plan-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.more-pp-detail__recommend {
+  background-color: #ffd700;
+  color: #000;
+  padding: 0 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.more-pp-detail__price-block {
+  text-align: center;
+}
+
+/* Polaris heading2xl (the .detail-plan-price line-height rule sits on a Text and never applies) */
+.more-pp-detail__price {
+  font-size: 30px;
+  line-height: 40px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--p-color-text, #303030);
+}
+
+.more-pp-detail__discount {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+}
+
+/* Box paddingBlockStart 200 (its .detail-plan-cta margin and the billing Text's margin never apply) */
+.more-pp-detail__cta {
+  padding-top: 8px;
+}
+
+.more-pp-detail__section-row {
+  background-color: #f7f7f7;
+}
+
+/* tr:first-of-type → the first section header also gets a top rule under the header row */
+.more-pp-detail tbody tr:first-of-type .more-pp-detail__section-cell {
+  border-top: 1px solid #e5e5e5;
+}
+
+.more-pp-detail__section-cell {
+  padding: 0;
+}
+
+.more-pp-detail__section-toggle {
+  width: 100%;
+  padding: 16px 24px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: none;
+  background: none;
+  border-bottom: 1px solid #e5e5e5;
+  text-align: left;
+}
+
+.more-pp-detail tbody tr.more-pp-detail__section-row:last-child .more-pp-detail__section-toggle {
+  border-bottom: none;
+}
+
+.more-pp-detail__section-title {
+  font-size: 13px;
+  color: #616161;
+}
+
+.more-pp-detail__section-icon {
+  display: inline-flex;
+  transition: transform 0.3s;
+  transform: rotate(180deg);
+}
+
+.more-pp-detail__section-icon.is-expanded {
+  transform: rotate(0deg);
+}
+
+.more-pp-detail__feature-name {
+  padding: 16px 24px;
+  font-size: 13px;
+  color: #616161;
+  white-space: normal;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.more-pp-detail__feature-value {
+  padding: 16px 24px;
+  text-align: center;
+  font-size: 13px;
+  color: #666;
+  border-left: 1px solid #e5e5e5;
+  border-bottom: 1px solid #e5e5e5;
+  white-space: normal;
+}
+
+.more-pp-detail__feature-icon {
+  font-size: 18px;
+}
+
+/* iframe <= 991px: the table scrolls sideways with fixed-width plan columns */
+@media (max-width: 1231px) {
+  .more-pp-detail__scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: #c4c4c4 transparent;
+  }
+
+  .more-pp-detail table {
+    width: max-content;
+    min-width: 900px;
+  }
+
+  .more-pp-detail thead th {
+    white-space: nowrap;
+  }
+
+  .more-pp-detail .more-pp-detail__first,
+  .more-pp-detail .more-pp-detail__feature-name {
+    width: auto;
+    min-width: auto;
+  }
+
+  .more-pp-detail__plan,
+  .more-pp-detail__feature-value {
+    width: 220px;
+    min-width: 220px;
+  }
+}
+
+/* Downgrade confirm modal */
+.more-pp-downgrade {
+  margin-bottom: 10px;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.more-pp-downgrade__warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 7px;
+  margin-bottom: 10px;
+  width: fit-content;
+}
+
+.more-pp-downgrade__warning-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* The production list Box gets an unknown paddingStart prop and a className Box drops, so
+   neither the indent nor the 320px scroll area applies: the whole modal body scrolls. */
+
+.more-pp-downgrade__actions {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.more-pp-downgrade__buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media screen and (max-width: 576px) {
+  .more-pp-downgrade__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .more-pp-downgrade__buttons {
+    justify-content: flex-end;
+  }
+}
+
+/* ── What's New ───────────────────────────────────────────────────────────── */
+/* Page subtitle: production renders it in the page header, 2px under the title */
+.more-wn-subtitle {
+  margin-top: -12px;
+  margin-bottom: 16px;
+  line-height: 16px;
+}
+
+/* Polaris Tabs: 8px wrapper padding + 4px list padding, bodySm medium labels in text-brand,
+   the selected tab on bg-fill-transparent-selected */
+.more-wn-tabs .wc-tabs {
+  padding: 8px 12px;
+}
+
+.more-wn-tabs .wc-tab {
+  min-height: 28px;
+  padding: 6px 12px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 550;
+  color: #4a4a4a;
+}
+
+.more-wn-tabs .wc-tab:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #4a4a4a;
+}
+
+.more-wn-tabs .wc-tab[aria-selected='true'] {
+  background: rgba(0, 0, 0, 0.08);
+  color: #303030;
+  font-weight: 550;
+}
+
+@media (max-width: 1007px) {
+  .more-wn-tabs .wc-tab {
+    font-size: 14px;
+    line-height: 20px;
+  }
+}
+
+.more-wn-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.more-wn-item {
+  display: flex;
+  gap: 12px;
+}
+
+.more-wn-item:not(:last-child) {
+  padding-bottom: 12px;
+}
+
+.more-wn-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.more-wn-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #e3e3e3;
+  box-shadow: 0 1px 0 0 rgba(26, 26, 26, 0.07);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.more-wn-marker img {
+  width: 19px;
+  height: 19px;
+  object-fit: contain;
+}
+
+/* Newest entry: Polaris border-brand + bg-surface-brand-selected ring */
+.more-wn-marker--latest {
+  border-color: #e3e3e3;
+  box-shadow: 0 0 0 3px #f1f1f1;
+}
+
+.more-wn-line {
+  flex: 1;
+  width: 2px;
+  margin-top: 6px;
+  border-radius: 2px;
+  background: linear-gradient(to bottom, #e3e3e3, transparent);
+}
+
+.more-wn-card {
+  flex: 1;
+  min-width: 0;
+  background: #fff;
+  border: 1px solid #e3e3e3;
+  border-radius: 12px;
+  padding: 12px 14px;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.more-wn-item:hover .more-wn-card {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px -2px rgba(26, 26, 26, 0.2);
+  border-color: #cccccc;
+}
+
+.more-wn-item:hover .more-wn-marker {
+  transform: scale(1.06);
+  box-shadow: 0 3px 1px -1px rgba(26, 26, 26, 0.07);
+}
+
+.more-wn-date {
+  display: inline-block;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10.5px;
+  line-height: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #616161;
+}
+
+.more-wn-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Polaris plain Button: link colour (icon included), 13px regular, underline on hover only */
+.more-wn-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 450;
+}
+
+.more-wn-help__icon {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+
+.more-wn-empty {
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .more-wn-card,
+  .more-wn-marker {
+    transition: none;
+  }
+
+  .more-wn-item:hover .more-wn-card,
+  .more-wn-item:hover .more-wn-marker {
+    transform: none;
+  }
+}

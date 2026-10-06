@@ -23,6 +23,9 @@ import { AddCompanyWizard } from './components/AddCompanyWizard.jsx';
 import { versionFlags, activeVersion } from '../shared/versions.js';
 import { OrderLimits } from './screens/OrderLimits.jsx';
 import { Agreements } from './screens/Agreements.jsx';
+import { ManualOrders } from './screens/manualOrders/ManualOrders.jsx';
+import { Discounts } from './screens/discounts/Discounts.jsx';
+import { Others } from './screens/others/Others.jsx';
 
 const flags = versionFlags();
 const withV = (path) => (activeVersion() === 'latest' ? path : `${path}?v=${activeVersion()}`);
@@ -54,6 +57,12 @@ function CurrentView() {
       return flags.analytics ? <Analytics /> : <CompaniesList />;
     case 'settings':
       return <Settings />;
+    case 'manualOrders':
+      return <ManualOrders />;
+    case 'discounts':
+      return <Discounts />;
+    case 'others':
+      return <Others />;
     case 'customers':
     default:
       return <CompaniesList />;
@@ -119,9 +128,9 @@ export function App() {
             ...(flags.analytics
               ? [{ label: 'Analytics', url: '#/b2b/analytics', matches: state.view === 'analytics', onClick: () => dispatch({ type: 'NAVIGATE', view: 'analytics' }) }]
               : []),
-            { label: 'Manual Order', url: '#/b2b/manual-order', matches: false, onClick: () => {} },
-            { label: 'Discount', url: '#/b2b/discount', matches: false, onClick: () => {} },
-            { label: 'Others', url: '#/b2b/others', matches: false, onClick: () => {} },
+            { label: 'Manual Order', url: '#/b2b/manual-order', matches: state.view === 'manualOrders', onClick: () => dispatch({ type: 'NAVIGATE', view: 'manualOrders' }) },
+            { label: 'Discount', url: '#/b2b/discount', matches: state.view === 'discounts', onClick: () => dispatch({ type: 'NAVIGATE', view: 'discounts' }) },
+            { label: 'Others', url: '#/b2b/others', matches: state.view === 'others', onClick: () => dispatch({ type: 'NAVIGATE', view: 'others' }) },
           ],
         },
       ],

@@ -1,0 +1,44 @@
+/* Cost management (Configuration → Cost management). Classes prefixed qcfg-cost-. */
+
+/* Polaris IndexTable cells never wrap; the table scrolls sideways instead. */
+.qcfg-cost-nowrap {
+  white-space: nowrap;
+}
+
+/* Shipping → custom rules row: Polaris Grid, lg = 11/11/2 of 24 columns (gap 400); below lg
+   every cell spans the whole row. Polaris breakpoints are viewport (iframe) widths: lg starts at
+   1040px of app frame, i.e. ~1280px of browser with the 240px admin sidebar beside it. */
+.qcfg-cost-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qcfg-cost-rule {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: end;
+}
+
+@media (min-width: 1280px) {
+  .qcfg-cost-rule {
+    grid-template-columns: minmax(0, 11fr) minmax(0, 11fr) minmax(64px, 2fr);
+  }
+}
+
+/* Preview → Shopify shipping methods: <Divider borderColor="border-focus" /> */
+.qcfg-cost-divider-focus {
+  height: 1px;
+  background: rgba(0, 91, 211, 1);
+}
+
+/* Tax → "Display the price before tax…" help text, aligned with the checkbox label. */
+.qcfg-cost-nested-help {
+  padding-inline-start: 24px;
+}
+
+/* IndexFilters bar, rendered above the s-table (or above the empty search result). */
+.qcfg-cost-filters {
+  padding: 8px 8px 0;
+}

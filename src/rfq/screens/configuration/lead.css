@@ -1,0 +1,34 @@
+/* Lead scoring list (production components/Settings/LeadScoring.jsx). Prefix qcfg-lead-. */
+
+/* Row actions: bare 20px icons in an InlineStack gap 100 (wrap={false}). */
+.qcfg-lead-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.qcfg-lead-spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  overflow: hidden;
+}
+
+.qcfg-lead-spinner > s-spinner {
+  transform: scale(0.8);
+}
+
+/* EmptySearchResult illustration. */
+.qcfg-lead-empty-art {
+  display: block;
+  width: 60px;
+  height: 60px;
+}
+
+/* Filter bar above the table: same inset as s-table's `filters` slot. */
+.qcfg-lead-filters {
+  padding: 8px 8px 8px;
+}

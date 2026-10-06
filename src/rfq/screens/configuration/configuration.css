@@ -1,0 +1,311 @@
+/* Configuration (RFQ "Others" / Cost management) — custom visuals that Polaris web
+   components don't cover. Every class is prefixed with qcfg-. */
+
+/* ---------- Left settings menu (Listbox with TextOptions) ---------- */
+.qcfg-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+}
+
+.qcfg-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--p-color-text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.qcfg-menu__item:hover {
+  background: rgba(247, 247, 247, 1);
+}
+
+.qcfg-menu__item[aria-current='true'] {
+  background: rgba(235, 235, 235, 1);
+}
+
+.qcfg-menu__item:focus-visible {
+  outline: 2px solid #005bd3;
+  outline-offset: 1px;
+}
+
+.qcfg-menu__icon {
+  display: inline-flex;
+  flex: none;
+  margin-inline-end: 4px;
+}
+
+.qcfg-menu__badge {
+  margin-inline-start: 8px;
+  display: inline-flex;
+}
+
+/* ---------- DataTable (Name / Action) ---------- */
+.qcfg-datatable {
+  display: flex;
+  flex-direction: column;
+}
+
+.qcfg-datatable__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid var(--p-color-border-secondary);
+}
+
+.qcfg-datatable__row--head {
+  border-top: 0;
+  padding-top: 4px;
+  font-weight: 650;
+  border-bottom: 1px solid var(--p-color-border);
+}
+
+.qcfg-datatable__row--head + .qcfg-datatable__row {
+  border-top: 0;
+}
+
+.qcfg-datatable__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.qcfg-datatable__end {
+  justify-self: end;
+  text-align: end;
+}
+
+/* ---------- Email provider picker (ActionList) ---------- */
+.qcfg-actionlist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.qcfg-actionlist__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--p-color-text);
+  font: inherit;
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.qcfg-actionlist__item:hover {
+  background: rgba(247, 247, 247, 1);
+}
+
+.qcfg-actionlist__item[aria-checked='true'] {
+  background: rgba(241, 241, 241, 1);
+  font-weight: 550;
+}
+
+.qcfg-actionlist__item img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.qcfg-actionlist__label {
+  flex: 1;
+}
+
+/* ---------- Name format drag chips ---------- */
+.qcfg-dropzone {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border: 1px dashed var(--p-color-border);
+  border-radius: 8px;
+  background: var(--p-color-bg-surface-secondary);
+}
+
+.qcfg-dragitem {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--p-color-border);
+  border-radius: 8px;
+  background: var(--p-color-bg-surface);
+  user-select: none;
+}
+
+.qcfg-dragitem--dragging {
+  opacity: 0.5;
+}
+
+.qcfg-dragitem--over {
+  border-color: var(--p-color-border-emphasis);
+  box-shadow: 0 0 0 1px var(--p-color-border-emphasis);
+}
+
+.qcfg-draghandle {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: grab;
+  border-radius: 4px;
+}
+
+.qcfg-draghandle:focus-visible {
+  outline: 2px solid #005bd3;
+}
+
+/* ---------- Custom CSS editor (Monaco in production) ---------- */
+.qcfg-css-editor {
+  border-radius: 0.75rem;
+  background: #fff;
+  box-shadow: 0 0.125rem 0.25rem rgba(31, 33, 36, 0.1), 0 0.0625rem 0.375rem rgba(31, 33, 36, 0.05);
+  overflow: hidden;
+}
+
+.qcfg-css-editor textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  height: 300px;
+  padding: 12px 16px;
+  border: 0;
+  resize: vertical;
+  outline: none;
+  font-family: Menlo, Monaco, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 18px;
+  color: #1f2124;
+  background: #fff;
+  tab-size: 2;
+}
+
+/* ---------- Shipping method choice (preview) ---------- */
+.qcfg-shipmethod {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.75rem 1rem;
+  border: 1px solid transparent;
+  background: transparent;
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+}
+
+.qcfg-shipmethod--selected {
+  border-color: rgba(0, 91, 211, 1);
+  background: rgba(234, 244, 255, 1);
+}
+
+.qcfg-shipmethod:first-child {
+  border-radius: 0.75rem 0.75rem 0 0;
+}
+
+.qcfg-shipmethod:last-child {
+  border-radius: 0 0 0.75rem 0.75rem;
+}
+
+.qcfg-radio-dot {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--p-color-input-border);
+  box-sizing: border-box;
+  flex: none;
+  margin-top: 2px;
+}
+
+.qcfg-radio-dot--on {
+  border: 5px solid #303030;
+}
+
+/* ---------- Combobox list (search + options) ---------- */
+.qcfg-combo {
+  position: relative;
+}
+
+.qcfg-combo__list {
+  margin-top: 4px;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--p-color-border);
+  border-radius: 8px;
+  background: #fff;
+  padding: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.qcfg-combo__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.qcfg-combo__option:hover {
+  background: rgba(247, 247, 247, 1);
+}
+
+.qcfg-combo__option[aria-selected='true'] {
+  background: rgba(241, 241, 241, 1);
+  font-weight: 550;
+}
+
+/* ---------- Collapsible translation sections ---------- */
+.qcfg-collapse-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-block: 8px;
+}
+
+.qcfg-truncate {
+  display: block;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Table row actions (never wrap) ---------- */
+.qcfg-row-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
