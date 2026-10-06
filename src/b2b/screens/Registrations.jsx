@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import {
-  Page, Card, IndexTable, IndexFilters, useSetIndexFiltersMode, useIndexResourceState, Badge, Text, BlockStack, InlineStack, Box, Button, Modal, List,
-} from '@shopify/polaris';
 import { useStore } from '../store.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
+import { Modal, IndexFiltersBar, useWcId, wcTone } from '../../shared/wc.jsx';
 import registrationArt from '../assets/registration-empty.webp';
 import noRequestArt from '../assets/no-request.webp';
 import { REG_STATUS, fullName, fmtDate, registrationDuplicates } from '../registrations.js';
@@ -47,7 +45,7 @@ const SORT_BY = {
 
 export function Registrations() {
   const { state, dispatch } = useStore();
-  const { mode, setMode } = useSetIndexFiltersMode();
+  const rowId = useWcId('registration');
   const [confirm, setConfirm] = useState(null); // { kind: 'approve' | 'decline' | 'delete', ids }
   const [devNoForm, setDevNoForm] = useState(false); // dev-only: preview the empty state before any form exists
   const all = devNoForm ? [] : state.db.registrations || [];
@@ -69,7 +67,7 @@ export function Registrations() {
 
   const filter = FILTERS.some((f) => f.id === state.registrationFilter) ? state.registrationFilter : 'pending';
   const count = (id) => (id === 'all' ? all.length : all.filter((r) => r.status === id).length);
-  const tabs = FILTERS.map((f, i) => ({ id: `r-${f.id}`, content: `${f.label} (${count(f.id)})`, index: i }));
+  const tabs = FILTERS.map((f) => ({ id: `r-${f.id}`, content: `${f.label} (${count(f.id)})` }));
 
   const [sortField, sortDir] = (state.registrationSort || 'submitted desc').split(' ');
   const q = (state.registrationSearch || '').trim().toLowerCase();
@@ -79,16 +77,17 @@ export function Registrations() {
     .sort(SORT_BY[sortField] || SORT_BY.submitted);
   if (sortDir === 'desc') rows.reverse();
 
-  const { selectedResources, allResourcesSelected, handleSelectionChange, clearSelection } =
-    useIndexResourceState(rows.map((r) => ({ id: r.id })));
+  // Row selection (the leading checkbox column) — ids of the selected registrations.
+  const [selectedIds, setSelectedIds] = useState([]);
+  const clearSelection = () => setSelectedIds([]);
   // A new tab / search shows different rows — don't carry a selection across.
   useEffect(() => { clearSelection(); }, [filter, q]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (all.length === 0) {
     return (
-      <Page fullWidth title="Registrations">
+      <s-page heading="Registrations" inlineSize="large">
         {devTools}
-        <Card>
+        <s-section>
           {hasForm ? (
             <EmptyBlock heading="No registrations yet" action={formAction} image={registrationArt}>
               When buyers apply for B2B access through your registration form, their applications show up here for you to review.
@@ -98,13 +97,14 @@ export function Registrations() {
               Create a registration form to start collecting B2B customer applications.
             </EmptyBlock>
           )}
-        </Card>
-      </Page>
+        </s-section>
+      </s-page>
     );
   }
 
   // Bulk actions: approve / decline apply to the pending rows in the selection.
-  const selected = rows.filter((r) => selectedResources.includes(r.id));
+  const selected = rows.filter((r) => selectedIds.includes(r.id));
+  const allSelected = rows.length > 0 && selected.length === rows.length;
   const pendingIds = selected.filter((r) => r.status === 'pending').map((r) => r.id);
   const ask = (kind, ids) => setConfirm({ kind, ids });
   const promotedBulkActions = pendingIds.length
@@ -114,6 +114,10 @@ export function Registrations() {
     ]
     : [];
   const bulkActions = [{ content: 'Delete registrations', destructive: true, onAction: () => ask('delete', selected.map((r) => r.id)) }];
+  // Checkbox handlers always SET from the checkbox's state (change can fire twice).
+  const selectAll = (on) => setSelectedIds(on ? rows.map((r) => r.id) : []);
+  const selectRow = (id, on) =>
+    setSelectedIds((ids) => (on ? (ids.includes(id) ? ids : [...ids, id]) : ids.filter((x) => x !== id)));
 
   const runConfirm = () => {
     const type = { approve: 'APPROVE_REGISTRATIONS', decline: 'DECLINE_REGISTRATIONS', delete: 'DELETE_REGISTRATIONS' }[confirm.kind];
@@ -123,104 +127,134 @@ export function Registrations() {
   };
 
   return (
-    <Page
-      fullWidth
-      title="Registrations"
-      subtitle="Buyers who applied for B2B access through your registration form"
-      secondaryActions={[{ content: 'Edit form', onAction: editForm }]}
-    >
+    <s-page heading="Registrations" inlineSize="large">
+      <s-button slot="secondary-actions" onClick={editForm}>
+        Edit form
+      </s-button>
+      <s-box paddingBlockEnd="small">
+        <s-paragraph color="subdued">Buyers who applied for B2B access through your registration form</s-paragraph>
+      </s-box>
       {devTools}
-      <Card padding="0">
-        <IndexFilters
-          queryValue={state.registrationSearch}
-          queryPlaceholder="Search by name, email, company or tax ID"
-          onQueryChange={(v) => dispatch({ type: 'SET_REGISTRATION_SEARCH', value: v })}
-          onQueryClear={() => dispatch({ type: 'SET_REGISTRATION_SEARCH', value: '' })}
-          tabs={tabs}
-          selected={FILTERS.findIndex((f) => f.id === filter)}
-          onSelect={(i) => dispatch({ type: 'SET_REGISTRATION_FILTER', filter: FILTERS[i].id })}
-          sortOptions={SORT_OPTIONS}
-          sortSelected={[`${sortField} ${sortDir}`]}
-          onSort={(val) => dispatch({ type: 'SET_REGISTRATION_SORT', value: val[0] || 'submitted desc' })}
-          filters={[]}
-          appliedFilters={[]}
-          onClearAll={() => {}}
-          mode={mode}
-          setMode={setMode}
-          cancelAction={{ onAction: () => dispatch({ type: 'SET_REGISTRATION_SEARCH', value: '' }) }}
-          canCreateNewView={false}
-        />
-        <IndexTable
-          resourceName={{ singular: 'registration', plural: 'registrations' }}
-          itemCount={rows.length}
-          selectedItemsCount={allResourcesSelected ? 'All' : selectedResources.length}
-          onSelectionChange={handleSelectionChange}
-          promotedBulkActions={promotedBulkActions}
-          bulkActions={bulkActions}
-          headings={[
-            { title: 'Applicant' },
-            { title: 'Company' },
-            { title: 'Country' },
-            { title: 'Submitted from' },
-            { title: 'Submitted' },
-            { title: 'Company match' },
-            { title: 'Status' },
-          ]}
-          emptyState={
-            q ? (
-              <EmptyBlock image={noRequestArt} imageAlt="" heading="No registrations match your search" />
-            ) : (
-              <EmptyBlock heading={hasForm ? EMPTY_TAB[filter] : 'No registration forms yet'} action={formAction}>
-                {hasForm ? 'Applications from your registration form show up here.' : 'Create a registration form to start collecting B2B customer applications.'}
-              </EmptyBlock>
-            )
-          }
-        >
-          {rows.map((r, i) => {
-            const status = REG_STATUS[r.status];
-            const linked = r.companyId && companies.find((c) => c.id === r.companyId);
-            return (
-              <IndexTable.Row id={r.id} key={r.id} position={i} selected={selectedResources.includes(r.id)} onClick={() => open(r.id)}>
-                <IndexTable.Cell>
-                  <BlockStack gap="050">
-                    <Text as="span" variant="bodyMd" fontWeight="semibold">{fullName(r)}</Text>
-                    <Text as="span" variant="bodySm" tone="subdued">{r.email}</Text>
-                  </BlockStack>
-                </IndexTable.Cell>
-                <IndexTable.Cell>
-                  {/* Pending matches: an existing contact (same or other company) or a same-name company — the merchant decides.
-                      Info tone — it's something the app found, not an error, and yellow would blur
-                      into the Pending review status badge on the same row. */}
-                  <InlineStack gap="150" blockAlign="center" wrap={false}>
-                    <Text as="span">{r.company}</Text>
-                    {dupOf(r)?.kind === 'company' ? <Badge tone="info">Duplicate</Badge> : null}
-                    {dupOf(r)?.kind === 'contact' || dupOf(r)?.kind === 'same' ? <Badge tone="info">Existing contact</Badge> : null}
-                  </InlineStack>
-                </IndexTable.Cell>
-                <IndexTable.Cell>{r.country || '—'}</IndexTable.Cell>
-                <IndexTable.Cell><Text as="span" variant="bodySm">{r.source}</Text></IndexTable.Cell>
-                <IndexTable.Cell><Text as="span" variant="bodySm">{fmtDate(r.submittedAt)}</Text></IndexTable.Cell>
-                <IndexTable.Cell>
-                  {linked ? (
-                    <Text as="span" variant="bodySm">{linked.name}</Text>
-                  ) : (
-                    <Text as="span" variant="bodySm" tone="subdued">
-                      {r.status !== 'pending'
-                        ? '—'
-                        : dupOf(r)?.kind === 'company'
-                          ? `Matches ${dupOf(r).company.name}`
-                          : dupOf(r)?.kind === 'contact' || dupOf(r)?.kind === 'same'
-                            ? `Contact at ${dupOf(r).contactOf.name}`
-                            : 'New company'}
-                    </Text>
-                  )}
-                </IndexTable.Cell>
-                <IndexTable.Cell><Badge tone={status.tone}>{status.label}</Badge></IndexTable.Cell>
-              </IndexTable.Row>
-            );
-          })}
-        </IndexTable>
-      </Card>
+      <s-section padding="none">
+        <s-table>
+          <IndexFiltersBar
+            slot="filters"
+            query={state.registrationSearch}
+            queryPlaceholder="Search by name, email, company or tax ID"
+            onQueryChange={(v) => dispatch({ type: 'SET_REGISTRATION_SEARCH', value: v })}
+            tabs={tabs}
+            selected={FILTERS.findIndex((f) => f.id === filter)}
+            onSelect={(i) => dispatch({ type: 'SET_REGISTRATION_FILTER', filter: FILTERS[i].id })}
+            sortOptions={SORT_OPTIONS}
+            sortSelected={`${sortField} ${sortDir}`}
+            onSort={(val) => dispatch({ type: 'SET_REGISTRATION_SORT', value: val || 'submitted desc' })}
+          >
+            {selected.length > 0 ? (
+              <s-stack direction="inline" gap="small-200" alignItems="center">
+                <s-text fontWeight="semibold">{`${selected.length} selected`}</s-text>
+                {promotedBulkActions.map((a) => (
+                  <s-button key={a.content} onClick={a.onAction}>
+                    {a.content}
+                  </s-button>
+                ))}
+                {bulkActions.map((a) => (
+                  <s-button key={a.content} tone={a.destructive ? 'critical' : undefined} onClick={a.onAction}>
+                    {a.content}
+                  </s-button>
+                ))}
+              </s-stack>
+            ) : null}
+          </IndexFiltersBar>
+          <s-table-header-row>
+            <s-table-header listSlot="inline">
+              <s-checkbox
+                accessibilityLabel={allSelected ? 'Deselect all registrations' : 'Select all registrations'}
+                checked={allSelected}
+                indeterminate={selected.length > 0 && !allSelected}
+                disabled={rows.length === 0}
+                onChange={(e) => selectAll(e.currentTarget.checked)}
+              />
+            </s-table-header>
+            <s-table-header listSlot="primary">Applicant</s-table-header>
+            <s-table-header listSlot="labeled">Company</s-table-header>
+            <s-table-header listSlot="labeled">Country</s-table-header>
+            <s-table-header listSlot="labeled">Submitted from</s-table-header>
+            <s-table-header listSlot="labeled">Submitted</s-table-header>
+            <s-table-header listSlot="labeled">Company match</s-table-header>
+            <s-table-header listSlot="secondary">Status</s-table-header>
+          </s-table-header-row>
+          <s-table-body>
+            {rows.map((r) => {
+              const status = REG_STATUS[r.status];
+              const linked = r.companyId && companies.find((c) => c.id === r.companyId);
+              const linkId = `${rowId}-${r.id}`;
+              return (
+                <s-table-row key={r.id} clickDelegate={linkId}>
+                  <s-table-cell>
+                    <s-checkbox
+                      accessibilityLabel={`Select ${fullName(r)}`}
+                      checked={selectedIds.includes(r.id)}
+                      onChange={(e) => selectRow(r.id, e.currentTarget.checked)}
+                    />
+                  </s-table-cell>
+                  <s-table-cell>
+                    <s-stack gap="small-500">
+                      <s-link id={linkId} onClick={() => open(r.id)}>
+                        {fullName(r)}
+                      </s-link>
+                      <s-text fontSize="small" color="subdued">{r.email}</s-text>
+                    </s-stack>
+                  </s-table-cell>
+                  <s-table-cell>
+                    {/* Pending matches: an existing contact (same or other company) or a same-name company — the merchant decides.
+                        Info tone — it's something the app found, not an error, and yellow would blur
+                        into the Pending review status badge on the same row. */}
+                    <s-stack direction="inline" gap="small-300" alignItems="center">
+                      <s-text>{r.company}</s-text>
+                      {dupOf(r)?.kind === 'company' ? <s-badge tone="info">Duplicate</s-badge> : null}
+                      {dupOf(r)?.kind === 'contact' || dupOf(r)?.kind === 'same' ? <s-badge tone="info">Existing contact</s-badge> : null}
+                    </s-stack>
+                  </s-table-cell>
+                  <s-table-cell>{r.country || '—'}</s-table-cell>
+                  <s-table-cell>
+                    <s-text fontSize="small">{r.source}</s-text>
+                  </s-table-cell>
+                  <s-table-cell>
+                    <s-text fontSize="small">{fmtDate(r.submittedAt)}</s-text>
+                  </s-table-cell>
+                  <s-table-cell>
+                    {linked ? (
+                      <s-text fontSize="small">{linked.name}</s-text>
+                    ) : (
+                      <s-text fontSize="small" color="subdued">
+                        {r.status !== 'pending'
+                          ? '—'
+                          : dupOf(r)?.kind === 'company'
+                            ? `Matches ${dupOf(r).company.name}`
+                            : dupOf(r)?.kind === 'contact' || dupOf(r)?.kind === 'same'
+                              ? `Contact at ${dupOf(r).contactOf.name}`
+                              : 'New company'}
+                      </s-text>
+                    )}
+                  </s-table-cell>
+                  <s-table-cell>
+                    <s-badge tone={wcTone(status.tone)}>{status.label}</s-badge>
+                  </s-table-cell>
+                </s-table-row>
+              );
+            })}
+          </s-table-body>
+        </s-table>
+        {rows.length === 0 ? (
+          q ? (
+            <EmptyBlock image={noRequestArt} imageAlt="" heading="No registrations match your search" />
+          ) : (
+            <EmptyBlock heading={hasForm ? EMPTY_TAB[filter] : 'No registration forms yet'} action={formAction}>
+              {hasForm ? 'Applications from your registration form show up here.' : 'Create a registration form to start collecting B2B customer applications.'}
+            </EmptyBlock>
+          )
+        ) : null}
+      </s-section>
 
       {confirm && (
         <ConfirmBulk
@@ -231,7 +265,7 @@ export function Registrations() {
           onClose={() => setConfirm(null)}
         />
       )}
-    </Page>
+    </s-page>
   );
 }
 
@@ -259,23 +293,23 @@ function ConfirmBulk({ kind, regs, duplicates = 0, onConfirm, onClose }) {
     },
   }[kind];
   return (
-    <Modal
-      open
-      onClose={onClose}
-      title={copy.title}
-      primaryAction={{ content: copy.action, destructive: kind !== 'approve', onAction: onConfirm }}
-      secondaryActions={[{ content: 'Cancel', onAction: onClose }]}
-    >
-      <Modal.Section>
-        <BlockStack gap="300">
-          <Text as="p">{copy.body}</Text>
-          <List type="bullet">
-            {regs.map((r) => (
-              <List.Item key={r.id}>{fullName(r)} · {r.company}</List.Item>
-            ))}
-          </List>
-        </BlockStack>
-      </Modal.Section>
+    <Modal onClose={onClose} heading={copy.title}>
+      <s-stack gap="small">
+        <s-paragraph>{copy.body}</s-paragraph>
+        <s-unordered-list>
+          {regs.map((r) => (
+            <s-list-item key={r.id}>
+              {fullName(r)} · {r.company}
+            </s-list-item>
+          ))}
+        </s-unordered-list>
+      </s-stack>
+      <s-button slot="primary-action" variant="primary" tone={kind !== 'approve' ? 'critical' : undefined} onClick={onConfirm}>
+        {copy.action}
+      </s-button>
+      <s-button slot="secondary-actions" onClick={onClose}>
+        Cancel
+      </s-button>
     </Modal>
   );
 }
@@ -285,22 +319,22 @@ function ConfirmBulk({ kind, regs, duplicates = 0, onConfirm, onClose }) {
 // no requests" case needs no toggle — delete the registrations to see it.
 function DevTools({ disabled, on, onToggle }) {
   return (
-    <Box paddingBlockEnd="400">
-      <Box background="bg-surface-secondary" borderColor="border" borderWidth="025" borderRadius="200" padding="200">
-        <InlineStack gap="200" blockAlign="center" wrap>
-          <Badge tone="info">Dev</Badge>
-          <Text as="span" variant="bodySm" tone="subdued">
+    <s-box paddingBlockEnd="base">
+      <s-box background="subdued" border="base" borderRadius="base" padding="small-200">
+        <s-stack direction="inline" gap="small-200" alignItems="center">
+          <s-badge tone="info">Dev</s-badge>
+          <s-text fontSize="small" color="subdued">
             {disabled
               ? 'No registration form exists, so the empty state already offers Create form.'
               : on
               ? 'Previewing the empty state with no registration form — it offers Create form.'
               : 'Preview the empty state before a registration form exists.'}
-          </Text>
-          <Button size="slim" pressed={on} disabled={disabled} onClick={onToggle}>
+          </s-text>
+          <s-press-button pressed={on} disabled={disabled} onClick={onToggle}>
             {on ? 'Show data' : 'Preview no form'}
-          </Button>
-        </InlineStack>
-      </Box>
-    </Box>
+          </s-press-button>
+        </s-stack>
+      </s-box>
+    </s-box>
   );
 }

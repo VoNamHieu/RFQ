@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Page, Card, IndexTable, IndexFilters, useSetIndexFiltersMode, Badge, Text, Box, Modal, Select, BlockStack } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
 import { currentAgreement, agreementScopeLabel, agreementTermCount } from '../agreements.js';
 import { AgreementEditor } from '../components/AgreementEditor.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
+import { Modal, IndexFiltersBar, useWcId, wcTone } from '../../shared/wc.jsx';
 
 const STATUS_TABS = [
   { id: 'all', label: 'All' },
@@ -21,7 +21,7 @@ export function Agreements() {
   const [search, setSearch] = useState('');
   const [picking, setPicking] = useState(false);
   const [companyId, setCompanyId] = useState('');
-  const { mode, setMode } = useSetIndexFiltersMode();
+  const rowId = useWcId('agreement');
 
   if (state.agreementEditor) return <AgreementEditor />;
 
@@ -30,99 +30,119 @@ export function Agreements() {
   // One current agreement per company: only companies without one can get a new one.
   const free = state.db.companies.filter((c) => !currentAgreement(state.db, c.id));
   const create = { content: 'Create agreement', onAction: () => { setCompanyId(free[0]?.id || ''); setPicking(true); }, disabled: !free.length };
+  const createButton = (
+    <s-button slot="primary-action" variant="primary" disabled={create.disabled} onClick={create.onAction}>
+      {create.content}
+    </s-button>
+  );
 
   const q = search.trim().toLowerCase();
   const rows = all
     .filter((a) => (status === 'all' || a.status === status)
       && (!q || `${a.number} ${a.name} ${companyOf(a.companyId)?.name || ''}`.toLowerCase().includes(q)))
     .sort((a, b) => (a.status === 'Ended') - (b.status === 'Ended') || String(a.number).localeCompare(String(b.number)))
-    .map((a, index) => {
+    .map((a) => {
       const company = companyOf(a.companyId);
+      const linkId = `${rowId}-${a.id}`;
       return (
-        <IndexTable.Row id={a.id} key={a.id} position={index} onClick={() => dispatch({ type: 'OPEN_COMPANY', id: a.companyId, tab: 'agreement' })}>
-          <IndexTable.Cell>
-            <BlockStack gap="050">
-              <Text as="span" variant="bodyMd" fontWeight="semibold">{a.number}</Text>
-              <Text as="span" tone="subdued" variant="bodySm">{a.name || 'Untitled agreement'}</Text>
-            </BlockStack>
-          </IndexTable.Cell>
-          <IndexTable.Cell>{company?.name || '—'}</IndexTable.Cell>
-          <IndexTable.Cell>{company ? agreementScopeLabel(company, a) : '—'}</IndexTable.Cell>
-          <IndexTable.Cell>{agreementTermCount(a)}</IndexTable.Cell>
-          <IndexTable.Cell>{a.version ? `v${a.version}` : '—'}</IndexTable.Cell>
-          <IndexTable.Cell><Badge tone={STATUS_TONE[a.status]}>{a.status}</Badge></IndexTable.Cell>
-        </IndexTable.Row>
+        <s-table-row key={a.id} clickDelegate={linkId}>
+          <s-table-cell>
+            <s-stack gap="small-500">
+              <s-link id={linkId} onClick={() => dispatch({ type: 'OPEN_COMPANY', id: a.companyId, tab: 'agreement' })}>
+                {a.number}
+              </s-link>
+              <s-text color="subdued" fontSize="small">{a.name || 'Untitled agreement'}</s-text>
+            </s-stack>
+          </s-table-cell>
+          <s-table-cell>{company?.name || '—'}</s-table-cell>
+          <s-table-cell>{company ? agreementScopeLabel(company, a) : '—'}</s-table-cell>
+          <s-table-cell>{agreementTermCount(a)}</s-table-cell>
+          <s-table-cell>{a.version ? `v${a.version}` : '—'}</s-table-cell>
+          <s-table-cell>
+            <s-badge tone={wcTone(STATUS_TONE[a.status])}>{a.status}</s-badge>
+          </s-table-cell>
+        </s-table-row>
       );
     });
 
   const picker = picking && (
-    <Modal
-      open
-      onClose={() => setPicking(false)}
-      title="Create agreement"
-      primaryAction={{
-        content: 'Continue',
-        disabled: !companyId,
-        onAction: () => { setPicking(false); dispatch({ type: 'OPEN_AGREEMENT_EDITOR', companyId }); },
-      }}
-      secondaryActions={[{ content: 'Cancel', onAction: () => setPicking(false) }]}
-    >
-      <Modal.Section>
-        <Select
-          label="Company"
-          options={free.map((c) => ({ label: c.name, value: c.id }))}
-          value={companyId}
-          onChange={setCompanyId}
-          helpText="A company has one current agreement. Companies that already have one aren’t listed."
-        />
-      </Modal.Section>
+    <Modal onClose={() => setPicking(false)} heading="Create agreement">
+      <s-select
+        label="Company"
+        value={companyId}
+        onChange={(e) => setCompanyId(e.currentTarget.value)}
+        details="A company has one current agreement. Companies that already have one aren’t listed."
+      >
+        {free.map((c) => (
+          <s-option key={c.id} value={c.id}>
+            {c.name}
+          </s-option>
+        ))}
+      </s-select>
+      <s-button
+        slot="primary-action"
+        variant="primary"
+        disabled={!companyId}
+        onClick={() => { setPicking(false); dispatch({ type: 'OPEN_AGREEMENT_EDITOR', companyId }); }}
+      >
+        Continue
+      </s-button>
+      <s-button slot="secondary-actions" onClick={() => setPicking(false)}>
+        Cancel
+      </s-button>
     </Modal>
   );
 
   if (!all.length) {
     return (
-      <Page title="Agreements" primaryAction={create}>
-        <Card>
-          <EmptyBlock heading="Put each company’s terms in one agreement" action={create}>
+      <s-page heading="Agreements">
+        {createButton}
+        <s-section>
+          <EmptyBlock heading="Put each company’s terms in one agreement" action={create.disabled ? undefined : create}>
             An agreement holds a company’s pricing and order limits. Activating it applies them together, and every change is kept as a version.
           </EmptyBlock>
-        </Card>
+        </s-section>
         {picker}
-      </Page>
+      </s-page>
     );
   }
 
   return (
-    <Page title="Agreements" subtitle="Each company’s pricing and order limits, applied together." primaryAction={create}>
-      <Card padding="0">
-        <IndexFilters
-          queryValue={search}
-          queryPlaceholder="Search by agreement or company"
-          onQueryChange={setSearch}
-          onQueryClear={() => setSearch('')}
-          tabs={STATUS_TABS.map((t, i) => ({ id: `ag-${t.id}`, content: t.label, index: i }))}
-          selected={Math.max(0, STATUS_TABS.findIndex((t) => t.id === status))}
-          onSelect={(i) => setStatus(STATUS_TABS[i].id)}
-          filters={[]}
-          appliedFilters={[]}
-          onClearAll={() => {}}
-          hideFilters
-          mode={mode}
-          setMode={setMode}
-          cancelAction={{ onAction: () => setSearch('') }}
-          canCreateNewView={false}
-        />
-        <IndexTable
-          resourceName={{ singular: 'agreement', plural: 'agreements' }}
-          itemCount={rows.length}
-          selectable={false}
-          emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No agreements match these filters.</Text></Box>}
-          headings={[{ title: 'Agreement' }, { title: 'Company' }, { title: 'Applies to' }, { title: 'Terms' }, { title: 'Version' }, { title: 'Status' }]}
-        >
-          {rows}
-        </IndexTable>
-      </Card>
+    <s-page heading="Agreements">
+      {createButton}
+      <s-stack gap="base">
+        <s-paragraph color="subdued">Each company’s pricing and order limits, applied together.</s-paragraph>
+        <s-section padding="none">
+          <s-table>
+            <IndexFiltersBar
+              slot="filters"
+              query={search}
+              queryPlaceholder="Search by agreement or company"
+              onQueryChange={setSearch}
+              tabs={STATUS_TABS.map((t) => ({ id: `ag-${t.id}`, content: t.label }))}
+              selected={Math.max(0, STATUS_TABS.findIndex((t) => t.id === status))}
+              onSelect={(i) => setStatus(STATUS_TABS[i].id)}
+            />
+            <s-table-header-row>
+              <s-table-header listSlot="primary">Agreement</s-table-header>
+              <s-table-header listSlot="labeled">Company</s-table-header>
+              <s-table-header listSlot="labeled">Applies to</s-table-header>
+              <s-table-header listSlot="labeled">Terms</s-table-header>
+              <s-table-header listSlot="labeled">Version</s-table-header>
+              <s-table-header listSlot="secondary">Status</s-table-header>
+            </s-table-header-row>
+            <s-table-body>{rows}</s-table-body>
+          </s-table>
+          {rows.length === 0 ? (
+            <s-box padding="base">
+              <div style={{ textAlign: 'center' }}>
+                <s-text color="subdued">No agreements match these filters.</s-text>
+              </div>
+            </s-box>
+          ) : null}
+        </s-section>
+      </s-stack>
       {picker}
-    </Page>
+    </s-page>
   );
 }

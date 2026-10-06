@@ -1,33 +1,4 @@
 import React, { useState } from 'react';
-import {
-  Page,
-  Card,
-  Layout,
-  Text,
-  BlockStack,
-  InlineStack,
-  Divider,
-  Box,
-  Button,
-  ButtonGroup,
-  TextField,
-  Icon,
-  Link,
-  Collapsible,
-  Popover,
-  ActionList,
-} from '@shopify/polaris';
-import {
-  MenuHorizontalIcon,
-  DeleteIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
-  PersonIcon,
-  ProductIcon,
-  PlusCircleIcon,
-  PlusIcon,
-  MagicIcon,
-} from '@shopify/polaris-icons';
 import { useStore, handoffToB2B, handoffCompanyToB2B, managedCompanyKeyForEmail } from '../store.jsx';
 import { money, money2 } from '../utils.js';
 import { shopifyCompanyDirectory } from '../data/companies.js';
@@ -39,6 +10,7 @@ import { ProductPickerModal } from '../components/ProductPickerModal.jsx';
 import { SaveToB2B } from '../components/SaveToB2B.jsx';
 import { B2BRelationshipCard, SyncFlowModals, CreateCompanyModal, CompanyCreatedModal } from '../components/B2BRelationship.jsx';
 import { versionFlags, activeVersion } from '../../shared/versions.js';
+import { useWcId, PageHeader } from '../../shared/wc.jsx';
 
 // Whole-store products, normalized for the shared ProductPickerModal (list price).
 // Mirrors CreateQuote's STORE_PRODUCTS so the "Add product" picker is identical.
@@ -63,13 +35,50 @@ function quoteCompanyKey(quote) {
 // Small placeholder product thumbnail (no external image — CSP-safe).
 function Thumb() {
   return (
-    <Box background="bg-surface-secondary" borderRadius="200" borderWidth="025" borderColor="border" width="40px" minHeight="40px">
+    <s-box background="subdued" borderRadius="base" border="base" inlineSize="40px" minBlockSize="40px">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 40 }}>
-        <Icon source={ProductIcon} tone="subdued" />
+        <s-icon type="product" color="subdued" />
       </div>
-    </Box>
+    </s-box>
   );
 }
+
+// "More actions" source menu (Polaris React Popover + ActionList with help text):
+// each entry is a two-line clickable row that also closes the popover.
+function MoreSourcesMenu({ items }) {
+  const id = useWcId('more-sources');
+  return (
+    <>
+      <s-button commandFor={id}>More actions</s-button>
+      <s-popover id={id}>
+        <s-box padding="small-300">
+          <s-stack gap="none">
+            {items.map((it) => (
+              <s-clickable
+                key={it.content}
+                commandFor={id}
+                command="--hide"
+                disabled={it.disabled}
+                paddingInline="small-200"
+                paddingBlock="small-300"
+                borderRadius="base"
+                onClick={it.onAction}
+              >
+                <s-paragraph>{it.content}</s-paragraph>
+                <s-paragraph color="subdued" fontSize="small">
+                  {it.helpText}
+                </s-paragraph>
+              </s-clickable>
+            ))}
+          </s-stack>
+        </s-box>
+      </s-popover>
+    </>
+  );
+}
+
+// Product / Quantity / Quoted Price / Total / remove — shared by the header and rows.
+const LINE_COLUMNS = 'minmax(0, 44fr) minmax(0, 16fr) minmax(0, 20fr) minmax(0, 12fr) 32px';
 
 // Left column: the editable Products card (spec §5.4 renderQuote).
 function ProductsCard({ quote, lines, setLines, dispatch, showSavePrices, onSavePrices }) {
@@ -82,7 +91,6 @@ function ProductsCard({ quote, lines, setLines, dispatch, showSavePrices, onSave
   // ---- Add-product options ported from Create quote (states copied as-is) ----
   const [picker, setPicker] = useState(null); // {mode:'priced'|'catalog', templateId, picks:{}, search}
   const [catalogPicker, setCatalogPicker] = useState(false); // Shopify B2B catalog picker
-  const [addMenu, setAddMenu] = useState(false); // "More actions" source menu
   const [storePicker, setStorePicker] = useState(false); // whole-store (Shopify) picker
   const [customItemOpen, setCustomItemOpen] = useState(false); // "Add custom item" dialog
 
@@ -135,127 +143,100 @@ function ProductsCard({ quote, lines, setLines, dispatch, showSavePrices, onSave
 
   return (
     <>
-    <Card>
-      <BlockStack gap="200">
-        <InlineStack align="space-between" blockAlign="center">
-          <Text as="h2" variant="headingSm">Products</Text>
-          <Button icon={MenuHorizontalIcon} variant="tertiary" accessibilityLabel="Product actions" onClick={() => dispatch({ type: 'TOAST', message: 'Product actions' })} />
-        </InlineStack>
+    <s-section>
+      <s-stack gap="small-200">
+        <s-grid gridTemplateColumns="1fr auto" gap="small-200" alignItems="center">
+          <s-heading>Products</s-heading>
+          <s-button icon="menu-horizontal" variant="tertiary" accessibilityLabel="Product actions" onClick={() => dispatch({ type: 'TOAST', message: 'Product actions' })} />
+        </s-grid>
 
-        <InlineStack align="end">
-          <ButtonGroup>
-            <Button
-              icon={PlusIcon}
-              disabled={!customer}
-              onClick={() => setPicker({ mode: 'priced', templateId: null, picks: {}, search: '' })}
-            >
-              Add B2B price
-            </Button>
-            {/* Add product = the whole Shopify store (list price), a direct button. */}
-            <Button onClick={() => setStorePicker(true)}>Add product</Button>
-            {/* Secondary sources grouped under "More actions". */}
-            <Popover
-              active={addMenu}
-              onClose={() => setAddMenu(false)}
-              preferredAlignment="left"
-              activator={
-                <Button disclosure onClick={() => setAddMenu((v) => !v)}>
-                  More actions
-                </Button>
-              }
-            >
-              <ActionList
-                items={[
-                  {
-                    content: 'Add product from catalog',
-                    helpText: 'The company’s Shopify catalog',
-                    disabled: !customer,
-                    onAction: () => {
-                      setAddMenu(false);
-                      setCatalogPicker(true);
-                    },
-                  },
-                  {
-                    content: 'Add custom item',
-                    helpText: 'A free-form line with your own price',
-                    onAction: () => {
-                      setAddMenu(false);
-                      setCustomItemOpen(true);
-                    },
-                  },
-                ]}
-              />
-            </Popover>
-          </ButtonGroup>
-        </InlineStack>
+        <s-stack direction="inline" gap="small-200" justifyContent="end">
+          <s-button
+            icon="plus"
+            disabled={!customer}
+            onClick={() => setPicker({ mode: 'priced', templateId: null, picks: {}, search: '' })}
+          >
+            Add B2B price
+          </s-button>
+          {/* Add product = the whole Shopify store (list price), a direct button. */}
+          <s-button onClick={() => setStorePicker(true)}>Add product</s-button>
+          {/* Secondary sources grouped under "More actions". */}
+          <MoreSourcesMenu
+            items={[
+              {
+                content: 'Add product from catalog',
+                helpText: 'The company’s Shopify catalog',
+                disabled: !customer,
+                onAction: () => setCatalogPicker(true),
+              },
+              {
+                content: 'Add custom item',
+                helpText: 'A free-form line with your own price',
+                onAction: () => setCustomItemOpen(true),
+              },
+            ]}
+          />
+        </s-stack>
 
-        <InlineStack gap="300" blockAlign="center">
-          <Box width="44%"><Text as="span" tone="subdued" variant="bodySm">Product</Text></Box>
-          <Box width="16%"><Text as="span" tone="subdued" variant="bodySm">Quantity</Text></Box>
-          <Box width="20%"><Text as="span" tone="subdued" variant="bodySm">Quoted Price</Text></Box>
-          <Box width="12%"><Text as="span" tone="subdued" variant="bodySm">Total</Text></Box>
-        </InlineStack>
-        <Divider />
+        <s-grid gridTemplateColumns={LINE_COLUMNS} gap="small" alignItems="center">
+          <s-text color="subdued" fontSize="small">Product</s-text>
+          <s-text color="subdued" fontSize="small">Quantity</s-text>
+          <s-text color="subdued" fontSize="small">Quoted Price</s-text>
+          <s-text color="subdued" fontSize="small">Total</s-text>
+        </s-grid>
+        <s-divider />
 
-        <BlockStack gap="0">
+        <s-stack gap="none">
           {lines.map((l, i) => {
             const price = Number(l.price) || 0;
             const qty = Number(l.qty ?? l.quantity ?? 1) || 0;
             return (
-              <Box key={i} paddingBlock="150" borderBlockEndWidth="025" borderColor="border">
-                <InlineStack gap="300" blockAlign="start" wrap={false}>
-                  <Box width="44%">
-                    <InlineStack gap="200" blockAlign="start" wrap={false}>
-                      <Thumb />
-                      <BlockStack gap="050">
-                        <Text as="span" variant="bodyMd" fontWeight="medium">{l.title || 'Custom item'}</Text>
-                        {l.sku ? <Text as="span" tone="subdued" variant="bodySm">{l.sku}</Text> : null}
-                        <InlineStack gap="150" blockAlign="center">
-                          <Text as="span" variant="bodyMd" tone="magic">{money(price)}</Text>
-                          {l.compareAt && Number(l.compareAt) !== price ? (
-                            <Text as="span" tone="subdued" variant="bodySm" textDecorationLine="line-through">{money(l.compareAt)}</Text>
-                          ) : null}
-                        </InlineStack>
-                        {l.sku ? (
-                          <InlineStack gap="050" blockAlign="center">
-                            <Text as="span" tone="subdued" variant="bodySm">{`SKU: ${l.sku}`}</Text>
-                            <Button variant="tertiary" disclosure={skuOpen.has(i) ? 'up' : 'down'} accessibilityLabel="Variant details" onClick={() => toggleSku(i)} />
-                          </InlineStack>
+              <div key={i} style={{ paddingBlock: 6, borderBlockEnd: '1px solid var(--p-color-border)' }}>
+                <s-grid gridTemplateColumns={LINE_COLUMNS} gap="small" alignItems="start">
+                  <s-grid gridTemplateColumns="auto minmax(0, 1fr)" gap="small-200" alignItems="start">
+                    <Thumb />
+                    <s-stack gap="small-500">
+                      <s-text fontWeight="medium">{l.title || 'Custom item'}</s-text>
+                      {l.sku ? <s-text color="subdued" fontSize="small">{l.sku}</s-text> : null}
+                      <s-stack direction="inline" gap="small-300" alignItems="center">
+                        <s-text tone="info">{money(price)}</s-text>
+                        {l.compareAt && Number(l.compareAt) !== price ? (
+                          <s-text color="subdued" fontSize="small"><s>{money(l.compareAt)}</s></s-text>
                         ) : null}
-                        <Collapsible id={`sku-${i}`} open={skuOpen.has(i)}>
-                          <Text as="span" tone="subdued" variant="bodySm">Variant details for {l.sku}.</Text>
-                        </Collapsible>
-                        <Box>
-                          <Button variant="plain" icon={PlusCircleIcon} onClick={() => dispatch({ type: 'TOAST', message: 'Add property' })}>
-                            Add property
-                          </Button>
-                        </Box>
-                      </BlockStack>
-                    </InlineStack>
-                  </Box>
-                  <Box width="16%">
-                    <TextField label="Quantity" labelHidden type="number" min={1} value={String(qty)} onChange={(v) => setLine(i, { qty: Math.max(1, Number(v) || 1) })} autoComplete="off" />
-                  </Box>
-                  <Box width="20%">
-                    <TextField label="Quoted price" labelHidden type="number" min={0} prefix="$" value={String(price)} onChange={(v) => setLine(i, { price: Number(v) || 0 })} autoComplete="off" />
-                  </Box>
-                  <Box width="12%"><Text as="span" variant="bodyMd">{money(price * qty)}</Text></Box>
-                  <Button icon={DeleteIcon} variant="tertiary" accessibilityLabel="Remove line" onClick={() => removeLine(i)} />
-                </InlineStack>
-              </Box>
+                      </s-stack>
+                      {l.sku ? (
+                        <s-stack direction="inline" gap="small-500" alignItems="center">
+                          <s-text color="subdued" fontSize="small">{`SKU: ${l.sku}`}</s-text>
+                          <s-button variant="tertiary" icon={skuOpen.has(i) ? 'chevron-up' : 'chevron-down'} accessibilityLabel="Variant details" onClick={() => toggleSku(i)} />
+                        </s-stack>
+                      ) : null}
+                      {skuOpen.has(i) ? (
+                        <s-text color="subdued" fontSize="small">Variant details for {l.sku}.</s-text>
+                      ) : null}
+                      <div>
+                        <s-button variant="tertiary" icon="plus-circle" onClick={() => dispatch({ type: 'TOAST', message: 'Add property' })}>
+                          Add property
+                        </s-button>
+                      </div>
+                    </s-stack>
+                  </s-grid>
+                  <s-number-field label="Quantity" labelAccessibilityVisibility="exclusive" inputMode="numeric" min={1} value={String(qty)} onInput={(e) => setLine(i, { qty: Math.max(1, Number(e.currentTarget.value) || 1) })} autocomplete="off" />
+                  <s-number-field label="Quoted price" labelAccessibilityVisibility="exclusive" min={0} prefix="$" value={String(price)} onInput={(e) => setLine(i, { price: Number(e.currentTarget.value) || 0 })} autocomplete="off" />
+                  <s-text>{money(price * qty)}</s-text>
+                  <s-button icon="delete" variant="tertiary" accessibilityLabel="Remove line" onClick={() => removeLine(i)} />
+                </s-grid>
+              </div>
             );
           })}
-        </BlockStack>
+        </s-stack>
 
         {showSavePrices && (
-          <Box paddingBlockStart="200">
-            <InlineStack align="end">
-              <Button onClick={onSavePrices}>Save prices to B2B</Button>
-            </InlineStack>
-          </Box>
+          <s-stack direction="inline" justifyContent="end" paddingBlockStart="small-200">
+            <s-button onClick={onSavePrices}>Save prices to B2B</s-button>
+          </s-stack>
         )}
-      </BlockStack>
-    </Card>
+      </s-stack>
+    </s-section>
 
     {picker && (
       <PickerModal
@@ -316,42 +297,43 @@ function ProductsCard({ quote, lines, setLines, dispatch, showSavePrices, onSave
 // Left column: Payment information with the add-discount/shipping/tax/deposit rows.
 function PaymentCard({ subtotal, dispatch, onSendProposal }) {
   const AddRow = ({ label, value }) => (
-    <InlineStack align="space-between" blockAlign="center">
-      <Link onClick={() => dispatch({ type: 'TOAST', message: 'Demo only' })}>{label}</Link>
-      <InlineStack gap="600" blockAlign="center">
-        <Text as="span" tone="subdued" variant="bodySm">--</Text>
-        <Box minWidth="72px">
-          <Text as="span" alignment="end">{value}</Text>
-        </Box>
-      </InlineStack>
-    </InlineStack>
+    <s-grid gridTemplateColumns="1fr auto" gap="small-200" alignItems="center">
+      <div>
+        <s-link onClick={() => dispatch({ type: 'TOAST', message: 'Demo only' })}>{label}</s-link>
+      </div>
+      <s-stack direction="inline" gap="large-200" alignItems="center">
+        <s-text color="subdued" fontSize="small">--</s-text>
+        <div style={{ minWidth: 72, textAlign: 'end' }}>
+          <s-text>{value}</s-text>
+        </div>
+      </s-stack>
+    </s-grid>
   );
   return (
-    <Card>
-      <BlockStack gap="200">
-        <Text as="h2" variant="headingSm">Payment Information</Text>
-        <Box borderColor="border" borderWidth="025" borderRadius="200" padding="300">
-          <BlockStack gap="200">
-            <InlineStack align="space-between">
-              <Text as="span" fontWeight="semibold">Subtotal</Text>
-              <Text as="span" fontWeight="semibold">{money2(subtotal)}</Text>
-            </InlineStack>
+    <s-section heading="Payment Information">
+      <s-stack gap="small-200">
+        <s-box border="base" borderRadius="base" padding="small">
+          <s-stack gap="small-200">
+            <s-grid gridTemplateColumns="1fr auto" gap="small-200">
+              <s-text fontWeight="semibold">Subtotal</s-text>
+              <s-text fontWeight="semibold">{money2(subtotal)}</s-text>
+            </s-grid>
             <AddRow label="Add discount" value={`-${money2(0)}`} />
             <AddRow label="Add shipping" value={money2(0)} />
             <AddRow label="Add tax" value={money2(0)} />
             <AddRow label="Add deposit" value={money2(0)} />
-            <Divider />
-            <InlineStack align="space-between">
-              <Text as="span" variant="bodyMd" fontWeight="semibold">Total</Text>
-              <Text as="span" variant="bodyMd" fontWeight="semibold">{money2(subtotal)}</Text>
-            </InlineStack>
-          </BlockStack>
-        </Box>
-        <InlineStack align="end">
-          <Button onClick={onSendProposal}>Send Proposal Email</Button>
-        </InlineStack>
-      </BlockStack>
-    </Card>
+            <s-divider />
+            <s-grid gridTemplateColumns="1fr auto" gap="small-200">
+              <s-text fontWeight="semibold">Total</s-text>
+              <s-text fontWeight="semibold">{money2(subtotal)}</s-text>
+            </s-grid>
+          </s-stack>
+        </s-box>
+        <s-stack direction="inline" justifyContent="end">
+          <s-button onClick={onSendProposal}>Send Proposal Email</s-button>
+        </s-stack>
+      </s-stack>
+    </s-section>
   );
 }
 
@@ -370,100 +352,92 @@ function CustomerCard({ quote }) {
   const shipLines = String(customer.shipping || 'Not provided').split('\n');
 
   return (
-    <Card>
-      <BlockStack gap="200">
-        <InlineStack align="space-between" blockAlign="center">
-          <Text as="h2" variant="headingSm">{isCompanyView ? 'Company' : 'Customer'}</Text>
-          <Button icon={MenuHorizontalIcon} variant="tertiary" accessibilityLabel="Customer actions" />
-        </InlineStack>
+    <s-section>
+      <s-stack gap="small-200">
+        <s-grid gridTemplateColumns="1fr auto" gap="small-200" alignItems="center">
+          <s-heading>{isCompanyView ? 'Company' : 'Customer'}</s-heading>
+          <s-button icon="menu-horizontal" variant="tertiary" accessibilityLabel="Customer actions" />
+        </s-grid>
 
-        <TextField label="Email address" value={customer.email || ''} disabled autoComplete="off" />
+        <s-text-field label="Email address" value={customer.email || ''} disabled autocomplete="off" />
 
-        <Box borderColor="border" borderWidth="025" borderRadius="200">
-          <Box padding="300">
-            <button
-              type="button"
-              onClick={() => setOpen((v) => !v)}
-              style={{ all: 'unset', cursor: 'pointer', width: '100%' }}
-            >
-              <InlineStack align="space-between" blockAlign="center">
-                <Text as="span" variant="headingSm">{isCompanyView ? 'Company Information' : 'Customer Information'}</Text>
-                <Icon source={open ? ChevronUpIcon : ChevronDownIcon} tone="subdued" />
-              </InlineStack>
-            </button>
-          </Box>
-          <Collapsible id="customer-info" open={open}>
-            <Box padding="300" paddingBlockStart="0">
-              <BlockStack gap="300">
+        <s-box border="base" borderRadius="base">
+          <s-clickable padding="small" borderRadius="base" onClick={() => setOpen((v) => !v)}>
+            <s-grid gridTemplateColumns="1fr auto" gap="small-200" alignItems="center">
+              <s-text fontWeight="semibold">{isCompanyView ? 'Company Information' : 'Customer Information'}</s-text>
+              <s-icon type={open ? 'chevron-up' : 'chevron-down'} color="subdued" />
+            </s-grid>
+          </s-clickable>
+          {open ? (
+            <s-box padding="small" paddingBlockStart="none">
+              <s-stack gap="small">
                 {isCompanyView ? (
                   <>
-                    <BlockStack gap="050">
-                      <Text as="span" variant="bodyMd" fontWeight="medium">{company.name}</Text>
+                    <s-stack gap="small-500">
+                      <s-text fontWeight="medium">{company.name}</s-text>
                       {company.shopifyId ? (
-                        <Text as="span" tone="subdued" variant="bodySm">{`Shopify company ${company.shopifyId}`}</Text>
+                        <s-text color="subdued" fontSize="small">{`Shopify company ${company.shopifyId}`}</s-text>
                       ) : null}
-                    </BlockStack>
-                    <BlockStack gap="050">
-                      <Text as="span" tone="subdued" variant="bodySm">Contact person</Text>
-                      <Text as="span" variant="bodyMd">{customer.name}</Text>
-                      <Text as="span" tone="subdued" variant="bodySm">{customer.email}</Text>
-                    </BlockStack>
+                    </s-stack>
+                    <s-stack gap="small-500">
+                      <s-text color="subdued" fontSize="small">Contact person</s-text>
+                      <s-text>{customer.name}</s-text>
+                      <s-text color="subdued" fontSize="small">{customer.email}</s-text>
+                    </s-stack>
                   </>
                 ) : (
                   <>
-                    <BlockStack gap="050">
-                      <Text as="span" variant="bodyMd" fontWeight="medium">{customer.name}</Text>
-                      <Text as="span" tone="subdued" variant="bodySm">{customer.email}</Text>
-                    </BlockStack>
+                    <s-stack gap="small-500">
+                      <s-text fontWeight="medium">{customer.name}</s-text>
+                      <s-text color="subdued" fontSize="small">{customer.email}</s-text>
+                    </s-stack>
                     {company ? (
-                      <BlockStack gap="050">
-                        <Text as="span" tone="subdued" variant="bodySm">Company</Text>
-                        <Text as="span" variant="bodyMd">{company.name}</Text>
-                      </BlockStack>
+                      <s-stack gap="small-500">
+                        <s-text color="subdued" fontSize="small">Company</s-text>
+                        <s-text>{company.name}</s-text>
+                      </s-stack>
                     ) : null}
                   </>
                 )}
-                <BlockStack gap="050">
-                  <Text as="span" tone="subdued" variant="bodySm">Shipping address</Text>
-                  <BlockStack gap="0">
-                    <Text as="span" variant="bodyMd">{customer.name}</Text>
+                <s-stack gap="small-500">
+                  <s-text color="subdued" fontSize="small">Shipping address</s-text>
+                  <s-stack gap="none">
+                    <s-text>{customer.name}</s-text>
                     {shipLines.map((line, i) => (
-                      <Text as="span" key={i} variant="bodyMd">{line}</Text>
+                      <s-text key={i}>{line}</s-text>
                     ))}
-                  </BlockStack>
-                </BlockStack>
-              </BlockStack>
-            </Box>
-          </Collapsible>
-        </Box>
+                  </s-stack>
+                </s-stack>
+              </s-stack>
+            </s-box>
+          ) : null}
+        </s-box>
 
-        <BlockStack gap="100">
-          <Text as="span" tone="subdued" variant="bodySm">Message</Text>
-          <TextField label="Message" labelHidden multiline={3} value={customer.message || ''} readOnly autoComplete="off" />
-        </BlockStack>
-      </BlockStack>
-    </Card>
+        <s-stack gap="small-400">
+          <s-text color="subdued" fontSize="small">Message</s-text>
+          <s-text-area label="Message" labelAccessibilityVisibility="exclusive" rows={3} value={customer.message || ''} readOnly autocomplete="off" />
+        </s-stack>
+      </s-stack>
+    </s-section>
   );
 }
 
 function AiCard({ dispatch }) {
   return (
-    <Card>
-      <BlockStack gap="200">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ display: 'flex', flex: '0 0 auto' }}>
-            <Icon source={MagicIcon} tone="magic" />
-          </span>
-          <Text as="h2" variant="headingSm">AI quote analysis</Text>
-        </div>
-        <Text as="p" tone="subdued" variant="bodySm">
+    <s-section>
+      <s-stack gap="small-200">
+        <s-stack direction="inline" gap="small-300" alignItems="center">
+          <s-icon type="magic" tone="info" />
+          <s-heading>AI quote analysis</s-heading>
+        </s-stack>
+        <s-paragraph color="subdued" fontSize="small">
           Analyze this quote with AI: customer history, margin and the safest price to offer.
-        </Text>
-        <Button fullWidth icon={MagicIcon} onClick={() => dispatch({ type: 'TOAST', message: 'Analyzing quote…' })}>
+        </s-paragraph>
+        <s-button inlineSize="fill" icon="magic" onClick={() => dispatch({ type: 'TOAST', message: 'Analyzing quote…' })}>
           Analyze quote
-        </Button>
-      </BlockStack>
-    </Card>
+        </s-button>
+      </s-stack>
+    </s-section>
   );
 }
 
@@ -485,45 +459,40 @@ export function QuoteDetail() {
 
   return (
     <>
-      <Page
+      <PageHeader
         backAction={{ content: 'Submission list', onAction: () => dispatch({ type: 'NAVIGATE', view: 'submissionList' }) }}
-        title={`Quote No.${quote.number}`}
+        heading={`Quote No.${quote.number}`}
         subtitle={quote.received || undefined}
         primaryAction={{ content: 'Create draft order' }}
         secondaryActions={[
-          { content: '', icon: PersonIcon, accessibilityLabel: 'Assign', onAction: () => {} },
+          { content: '', icon: 'person', accessibilityLabel: 'Assign', onAction: () => {} },
           { content: 'Duplicate' },
-          { content: 'More actions', disclosure: true },
+          { content: 'More actions' },
         ]}
-      >
-        <Layout>
-          <Layout.Section>
-            <BlockStack gap="300">
-              <ProductsCard
-                quote={quote}
-                lines={lines}
-                setLines={setLines}
-                dispatch={dispatch}
-                showSavePrices={isDealClosed}
-                onSavePrices={() => setSaveOpen(true)}
-              />
-              <PaymentCard
-                subtotal={subtotal}
-                dispatch={dispatch}
-                onSendProposal={() => dispatch({ type: 'TOAST', message: 'Proposal email sent' })}
-              />
-            </BlockStack>
-          </Layout.Section>
+      />
+      <s-page>
+        <s-stack gap="small">
+          <ProductsCard
+            quote={quote}
+            lines={lines}
+            setLines={setLines}
+            dispatch={dispatch}
+            showSavePrices={isDealClosed}
+            onSavePrices={() => setSaveOpen(true)}
+          />
+          <PaymentCard
+            subtotal={subtotal}
+            dispatch={dispatch}
+            onSendProposal={() => dispatch({ type: 'TOAST', message: 'Proposal email sent' })}
+          />
+        </s-stack>
 
-          <Layout.Section variant="oneThird">
-            <BlockStack gap="300">
-              <CustomerCard quote={quote} />
-              <B2BRelationshipCard quote={quote} />
-              <AiCard dispatch={dispatch} />
-            </BlockStack>
-          </Layout.Section>
-        </Layout>
-      </Page>
+        <s-stack slot="aside" gap="small">
+          <CustomerCard quote={quote} />
+          <B2BRelationshipCard quote={quote} />
+          <AiCard dispatch={dispatch} />
+        </s-stack>
+      </s-page>
       {saveOpen && (
         <SaveToB2B
           quote={quote}

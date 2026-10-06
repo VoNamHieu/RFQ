@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Button, ButtonGroup, Modal, Text } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
 import { money } from '../format.js';
+import { Modal } from '../../shared/wc.jsx';
 
 // Orders a review threshold (order limits) held back: status 'Needs review',
 // `heldBy` = the limit. The buyer couldn't check out, so the order waits as a
@@ -38,30 +38,31 @@ export function HeldOrderActions({ companyId, order }) {
   return (
     // Keep clicks off the row underneath (rows can open the order's location).
     <div onClick={(e) => e.stopPropagation()}>
-      <ButtonGroup>
-        <Button size="slim" onClick={() => setConfirm(true)}>Decline</Button>
-        <Button size="slim" variant="primary" onClick={() => dispatch({ type: 'APPROVE_ORDER', companyId, orderId: order.id })}>Approve</Button>
-      </ButtonGroup>
+      <s-stack direction="inline" gap="small-200">
+        <s-button onClick={() => setConfirm(true)}>Decline</s-button>
+        <s-button variant="primary" onClick={() => dispatch({ type: 'APPROVE_ORDER', companyId, orderId: order.id })}>
+          Approve
+        </s-button>
+      </s-stack>
       {confirm && (
-        <Modal
-          open
-          onClose={() => setConfirm(false)}
-          title={`Decline order ${order.id}?`}
-          primaryAction={{
-            content: 'Decline order',
-            destructive: true,
-            onAction: () => {
+        <Modal onClose={() => setConfirm(false)} heading={`Decline order ${order.id}?`}>
+          <s-paragraph>
+            {`The draft order for ${money(order.amount)} is cancelled and ${order.buyer || 'the buyer'} is told it wasn’t approved. They can change the order and submit it again.`}
+          </s-paragraph>
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            tone="critical"
+            onClick={() => {
               setConfirm(false);
               dispatch({ type: 'DECLINE_ORDER', companyId, orderId: order.id });
-            },
-          }}
-          secondaryActions={[{ content: 'Cancel', onAction: () => setConfirm(false) }]}
-        >
-          <Modal.Section>
-            <Text as="p">
-              {`The draft order for ${money(order.amount)} is cancelled and ${order.buyer || 'the buyer'} is told it wasn’t approved. They can change the order and submit it again.`}
-            </Text>
-          </Modal.Section>
+            }}
+          >
+            Decline order
+          </s-button>
+          <s-button slot="secondary-actions" onClick={() => setConfirm(false)}>
+            Cancel
+          </s-button>
         </Modal>
       )}
     </div>

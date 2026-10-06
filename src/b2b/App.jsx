@@ -1,20 +1,6 @@
 import React from 'react';
-import { Toast } from '@shopify/polaris';
-import {
-  HomeIcon,
-  OrderIcon,
-  ProductIcon,
-  PersonIcon,
-  DiscountIcon,
-  ChartVerticalIcon,
-  StoreIcon,
-  PriceListIcon,
-  MenuHorizontalIcon,
-  SettingsIcon,
-  ClipboardIcon,
-  ViewIcon,
-} from '@shopify/polaris-icons';
 import { AdminFrame } from '../shared/AdminFrame.jsx';
+import { Toast } from '../shared/wc.jsx';
 import { useStore } from './store.jsx';
 import { Home } from './screens/Home.jsx';
 import { CompaniesList } from './screens/CompaniesList.jsx';
@@ -86,22 +72,22 @@ export function App() {
   const sections = [
     {
       items: [
-        { label: 'Home', icon: HomeIcon, onClick: () => {} },
-        { label: 'Orders', icon: OrderIcon, badge: '16', onClick: () => {} },
-        { label: 'Products', icon: ProductIcon, onClick: () => {} },
-        { label: 'Customers', icon: PersonIcon, onClick: () => {} },
-        { label: 'Discounts', icon: DiscountIcon, onClick: () => {} },
-        { label: 'Analytics', icon: ChartVerticalIcon, onClick: () => {} },
+        { label: 'Home', icon: 'home', onClick: () => {} },
+        { label: 'Orders', icon: 'order', badge: '16', onClick: () => {} },
+        { label: 'Products', icon: 'product', onClick: () => {} },
+        { label: 'Customers', icon: 'person', onClick: () => {} },
+        { label: 'Discounts', icon: 'discount', onClick: () => {} },
+        { label: 'Analytics', icon: 'chart-vertical', onClick: () => {} },
       ],
     },
     {
       title: 'Apps',
       items: [
-        { label: 'Storefront', icon: ViewIcon, url: '#/storefront', onClick: () => { window.location.href = '/storefront'; } },
-        { label: 'O:Request a Quote', icon: ClipboardIcon, url: '#/rfq-app', onClick: () => { window.location.href = withV('/'); } },
+        { label: 'Storefront', icon: 'view', url: '#/storefront', onClick: () => { window.location.href = '/storefront'; } },
+        { label: 'O:Request a Quote', icon: 'clipboard', url: '#/rfq-app', onClick: () => { window.location.href = withV('/'); } },
         {
           label: 'Wholesale B2B Solution',
-          icon: StoreIcon,
+          icon: 'store',
           url: '#/b2b',
           onClick: () => dispatch({ type: 'NAVIGATE', view: 'home' }),
           subNavigationItems: [
@@ -142,13 +128,13 @@ export function App() {
     },
     {
       items: [
-        { label: 'Settings', icon: SettingsIcon, url: '#/b2b/settings', matches: state.view === 'settings', onClick: () => dispatch({ type: 'NAVIGATE', view: 'settings' }) },
+        { label: 'Settings', icon: 'settings', url: '#/b2b/settings', matches: state.view === 'settings', onClick: () => dispatch({ type: 'NAVIGATE', view: 'settings' }) },
       ],
     },
   ];
 
   return (
-    <AdminFrame app="b2b" location="#/b2b/company" sections={sections} searchPlaceholder="Search customers, prices and issues">
+    <AdminFrame app="b2b" sections={sections} searchPlaceholder="Search customers, prices and issues">
       {/* Opened from the Pricing screen, the editor is an in-frame page that
           replaces the current view; opened from a button on any other screen it
           stays a full-screen overlay on top of that screen. */}

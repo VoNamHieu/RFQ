@@ -1,6 +1,12 @@
 import React from 'react';
-import { Card, BlockStack, InlineStack, Text, Select, TextField } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
+
+const ADJUSTMENTS = [
+  { label: 'Decrease by %', value: 'decrease_pct' },
+  { label: 'Decrease by amount', value: 'decrease_amt' },
+  { label: 'Fixed price', value: 'set' },
+  { label: 'Keep Shopify price', value: 'keep' },
+];
 
 // v1 base editor: a "Default price" applied to the whole catalog, before rules
 // and product overrides. Maps to the policy's profile-level pricingRule/value.
@@ -31,43 +37,31 @@ export function DefaultPriceCard() {
   const suffix = kind === 'decrease_pct' ? '%' : '$';
 
   return (
-    <Card>
-      <BlockStack gap="300">
-        <Text as="h3" variant="headingSm">
-          Default price
-        </Text>
-        <Text as="p" tone="subdued" variant="bodySm">
+    <s-section heading="Default price">
+      <s-stack gap="small">
+        <s-paragraph color="subdued" fontSize="small">
           Applies to every product, before pricing rules and product overrides.
-        </Text>
-        <InlineStack gap="200" blockAlign="end">
-          <div style={{ minWidth: 210 }}>
-            <Select
-              label="Adjustment"
-              options={[
-                { label: 'Decrease by %', value: 'decrease_pct' },
-                { label: 'Decrease by amount', value: 'decrease_amt' },
-                { label: 'Fixed price', value: 'set' },
-                { label: 'Keep Shopify price', value: 'keep' },
-              ]}
-              value={kind}
-              onChange={setKind}
-            />
-          </div>
+        </s-paragraph>
+        <s-grid gridTemplateColumns={kind !== 'keep' ? '210px 140px' : '210px'} gap="small-200" alignItems="end">
+          <s-select label="Adjustment" value={kind} onChange={(e) => setKind(e.currentTarget.value)}>
+            {ADJUSTMENTS.map((o) => (
+              <s-option key={o.value} value={o.value}>
+                {o.label}
+              </s-option>
+            ))}
+          </s-select>
           {kind !== 'keep' && (
-            <div style={{ width: 140 }}>
-              <TextField
-                label="Value"
-                type="number"
-                min={0}
-                suffix={suffix}
-                value={String(b.value ?? '')}
-                onChange={(v) => patch({ value: Number(v) })}
-                autoComplete="off"
-              />
-            </div>
+            <s-number-field
+              label="Value"
+              min={0}
+              suffix={suffix}
+              value={String(b.value ?? '')}
+              autocomplete="off"
+              onInput={(e) => patch({ value: Number(e.currentTarget.value) })}
+            />
           )}
-        </InlineStack>
-      </BlockStack>
-    </Card>
+        </s-grid>
+      </s-stack>
+    </s-section>
   );
 }

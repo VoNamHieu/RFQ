@@ -1,27 +1,4 @@
 import React, { useState } from 'react';
-import {
-  Page,
-  Card,
-  Layout,
-  Text,
-  BlockStack,
-  InlineStack,
-  Badge,
-  Box,
-  Divider,
-  IndexTable,
-  Select,
-  Button,
-  ButtonGroup,
-  Checkbox,
-  TextField,
-  Modal,
-  Popover,
-  ActionList,
-  Tooltip,
-  Banner,
-} from '@shopify/polaris';
-import { EditIcon, XIcon, PlusIcon, XCircleIcon, ExchangeIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { locationPricingEntries, scopeLabel, policyStatus } from '../pricing.js';
 import { money } from '../format.js';
@@ -30,6 +7,7 @@ import { AssignBuyerModal, GeneralModal, ShippingModal, PAYMENT_TERM_OPTIONS, TA
 import { LocationLimitsCard } from '../components/LocationLimitsCard.jsx';
 import { isHeld, heldReason, heldFirst, HeldOrderActions } from '../components/HeldOrders.jsx';
 import { versionFlags } from '../../shared/versions.js';
+import { MenuButton, Tip, useWcId, wcTone, PageHeader } from '../../shared/wc.jsx';
 
 const ORDER_TONE = {
   Fulfilled: 'success',
@@ -55,37 +33,36 @@ export function LocationDetail() {
   const [pricingPage, setPricingPage] = useState(0);
   const [quotesPage, setQuotesPage] = useState(0);
   const [ordersPage, setOrdersPage] = useState(0);
-  const [addPricingOpen, setAddPricingOpen] = useState(false);
+  const ids = useWcId('loc');
   if (!company || !location) return null;
   // Add / edit / change / remove pricing on this location (its own list of that
   // kind — see locationSlotArray), with the same row actions as the company page.
   // Edit of a pricing shared elsewhere offers a copy for here.
   const addPricing = (kind) => {
-    setAddPricingOpen(false);
     dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, locationId: location.id, kind, mode: 'add' });
   };
   const pricingActions = (policy, kind) => (
-    <InlineStack gap="100" align="end" blockAlign="center" wrap={false}>
-      <Button
-        icon={EditIcon}
+    <s-stack direction="inline" gap="small-400" justifyContent="end" alignItems="center">
+      <s-button
+        icon="edit"
         variant="tertiary"
         accessibilityLabel={`Edit ${policy.name}`}
         onClick={() => dispatch({ type: 'OPEN_EDITOR', policy, context: { mode: 'edit', companyId: company.id, locationId: location.id } })}
       />
-      <Button
-        icon={ExchangeIcon}
+      <s-button
+        icon="exchange"
         variant="tertiary"
         accessibilityLabel={`Change ${policy.name}`}
         onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, locationId: location.id, kind, mode: 'swap', swapId: policy.id })}
       />
-      <Button
-        icon={XCircleIcon}
+      <s-button
+        icon="x-circle"
         variant="tertiary"
         tone="critical"
         accessibilityLabel={`Remove ${policy.name}`}
         onClick={() => dispatch({ type: 'REMOVE_LOCATION_PRICING', companyId: company.id, locationId: location.id, kind, policyId: policy.id })}
       />
-    </InlineStack>
+    </s-stack>
   );
 
   const policies = state.db.policies;
@@ -115,71 +92,41 @@ export function LocationDetail() {
   const shipPreview = shipParts.length ? [...shipParts, COUNTRY_NAMES[ship.country] || ''].filter(Boolean) : [];
 
   // Pricing rows: resolved base(s) + quantities — the location's own, else inherited from the company.
+  const pricingRow = (e, kind, first) => {
+    const status = policyStatus(e.policy, state.db);
+    return (
+      <s-table-row key={`${kind}-${e.policy.id}`}>
+        <s-table-cell>{first ? (kind === 'base' ? 'Base pricing' : 'Quantity pricing') : ''}</s-table-cell>
+        <s-table-cell>
+          <s-stack gap="small-500">
+            <s-text>{e.policy.name}</s-text>
+            {e.source === 'COMPANY' ? (
+              <s-text color="subdued" fontSize="small">Inherited from {company.name}</s-text>
+            ) : null}
+          </s-stack>
+        </s-table-cell>
+        <s-table-cell>{scopeLabel(e.policy)}</s-table-cell>
+        <s-table-cell>
+          <s-badge tone={wcTone(status.tone)}>{status.label}</s-badge>
+        </s-table-cell>
+        <s-table-cell>{pricingActions(e.policy, kind)}</s-table-cell>
+      </s-table-row>
+    );
+  };
+  const notSetRow = (kind) => (
+    <s-table-row key={`${kind}-none`}>
+      <s-table-cell>{kind === 'base' ? 'Base pricing' : 'Quantity pricing'}</s-table-cell>
+      <s-table-cell><s-badge tone="warning">Not set</s-badge></s-table-cell>
+      <s-table-cell>—</s-table-cell>
+      <s-table-cell>—</s-table-cell>
+      <s-table-cell />
+    </s-table-row>
+  );
   const pricingRows = [];
-  if (bases.length) {
-    bases.forEach((e, i) => {
-      pricingRows.push(
-        <IndexTable.Row id={`base-${e.policy.id}`} key={`base-${e.policy.id}`} position={i}>
-          <IndexTable.Cell>{i === 0 ? 'Base pricing' : ''}</IndexTable.Cell>
-          <IndexTable.Cell>
-            <BlockStack gap="050">
-              <Text as="span" variant="bodyMd">{e.policy.name}</Text>
-              {e.source === 'COMPANY' ? (
-                <Text as="span" tone="subdued" variant="bodySm">Inherited from {company.name}</Text>
-              ) : null}
-            </BlockStack>
-          </IndexTable.Cell>
-          <IndexTable.Cell>{scopeLabel(e.policy)}</IndexTable.Cell>
-          <IndexTable.Cell>
-            <Badge tone={policyStatus(e.policy, state.db).tone}>{policyStatus(e.policy, state.db).label}</Badge>
-          </IndexTable.Cell>
-          <IndexTable.Cell>{pricingActions(e.policy, 'base')}</IndexTable.Cell>
-        </IndexTable.Row>,
-      );
-    });
-  } else {
-    pricingRows.push(
-      <IndexTable.Row id="base-none" key="base-none" position={0}>
-        <IndexTable.Cell>Base pricing</IndexTable.Cell>
-        <IndexTable.Cell><Badge tone="warning">Not set</Badge></IndexTable.Cell>
-        <IndexTable.Cell>—</IndexTable.Cell>
-        <IndexTable.Cell>—</IndexTable.Cell>
-        <IndexTable.Cell />
-      </IndexTable.Row>,
-    );
-  }
-  if (quantities.length) {
-    quantities.forEach((e, i) => {
-      pricingRows.push(
-        <IndexTable.Row id={`quantity-${e.policy.id}`} key={`quantity-${e.policy.id}`} position={pricingRows.length}>
-          <IndexTable.Cell>{i === 0 ? 'Quantity pricing' : ''}</IndexTable.Cell>
-          <IndexTable.Cell>
-            <BlockStack gap="050">
-              <Text as="span" variant="bodyMd">{e.policy.name}</Text>
-              {e.source === 'COMPANY' ? (
-                <Text as="span" tone="subdued" variant="bodySm">Inherited from {company.name}</Text>
-              ) : null}
-            </BlockStack>
-          </IndexTable.Cell>
-          <IndexTable.Cell>{scopeLabel(e.policy)}</IndexTable.Cell>
-          <IndexTable.Cell>
-            <Badge tone={policyStatus(e.policy, state.db).tone}>{policyStatus(e.policy, state.db).label}</Badge>
-          </IndexTable.Cell>
-          <IndexTable.Cell>{pricingActions(e.policy, 'quantity')}</IndexTable.Cell>
-        </IndexTable.Row>,
-      );
-    });
-  } else {
-    pricingRows.push(
-      <IndexTable.Row id="quantity-none" key="quantity-none" position={pricingRows.length}>
-        <IndexTable.Cell>Quantity pricing</IndexTable.Cell>
-        <IndexTable.Cell><Badge tone="warning">Not set</Badge></IndexTable.Cell>
-        <IndexTable.Cell>—</IndexTable.Cell>
-        <IndexTable.Cell>—</IndexTable.Cell>
-        <IndexTable.Cell />
-      </IndexTable.Row>,
-    );
-  }
+  if (bases.length) bases.forEach((e, i) => pricingRows.push(pricingRow(e, 'base', i === 0)));
+  else pricingRows.push(notSetRow('base'));
+  if (quantities.length) quantities.forEach((e, i) => pricingRows.push(pricingRow(e, 'quantity', i === 0)));
+  else pricingRows.push(notSetRow('quantity'));
 
   // Pricing table pagination.
   const pricingPageCount = Math.max(1, Math.ceil(pricingRows.length / PRICING_PAGE_SIZE));
@@ -208,272 +155,302 @@ export function LocationDetail() {
     ? `${ordersStart + 1}–${ordersStart + pageOrders.length} of ${locOrders.length}`
     : '0 of 0';
 
+  // A card's title row: heading on the left, its action on the right.
+  const cardHeader = (title, action) => (
+    <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
+      <s-heading>{title}</s-heading>
+      {action}
+    </s-grid>
+  );
+  // Polaris React's IndexTable pagination showed "1–5 of 15" between its arrows;
+  // s-table's own pagination has no label, so it sits just under it, on the same band.
+  const pageLabel = (label) => (
+    <s-box background="subdued" paddingBlockEnd="small">
+      <div style={{ textAlign: 'center' }}>
+        <s-text color="subdued" fontSize="small">{label}</s-text>
+      </div>
+    </s-box>
+  );
+  const emptyRows = (text) => (
+    <s-box padding="base">
+      <div style={{ textAlign: 'center' }}>
+        <s-text color="subdued">{text}</s-text>
+      </div>
+    </s-box>
+  );
+
   return (
-    <Page
-      fullWidth
+    <>
+    <PageHeader
+      inlineSize="large"
       backAction={{ content: 'Locations', onAction: () => dispatch({ type: 'OPEN_COMPANY', id: company.id, tab: 'locations' }) }}
-      title={location.name}
+      heading={location.name}
       subtitle={`${company.name} · Location`}
-    >
-      <Layout>
-        <Layout.Section>
-          <BlockStack gap="400">
-            {/* Overview */}
-            <Card>
-              <BlockStack gap="300">
-                <Text as="h2" variant="headingSm">Location overview</Text>
-                <InlineStack gap="400" wrap>
+    />
+    <s-page inlineSize="large">
+      <s-stack gap="base">
+        {/* Two columns (Polaris React Layout + a oneThird section). s-page only renders an
+            aside at its base width, and this page is full width, so the columns are a grid. */}
+        <s-query-container>
+          <s-grid
+            gridTemplateColumns='@container (inline-size > 768px) "minmax(0, 2fr) minmax(0, 1fr)", "minmax(0, 1fr)"'
+            gap="base"
+            alignItems="start"
+          >
+            <s-stack gap="base">
+              {/* Overview */}
+              <s-section heading="Location overview">
+                <s-stack direction="inline" gap="base">
                   <Stat label="Sales" value={money(totalSales)} note="All-time from this location" />
                   <Stat label="Orders" value={String(locOrders.length)} note="Placed by its buyers" />
                   <Stat label="Quotes" value={String(locQuotes.length)} note="RFQ requests from here" />
-                </InlineStack>
-              </BlockStack>
-            </Card>
+                </s-stack>
+              </s-section>
 
-            {/* Pricing */}
-            <Card padding="0">
-              <Box padding="300" paddingBlockEnd="200">
-                <InlineStack align="space-between" blockAlign="center">
-                  <Text as="h2" variant="headingSm">Pricing</Text>
-                  <Popover
-                    active={addPricingOpen}
-                    onClose={() => setAddPricingOpen(false)}
-                    preferredAlignment="right"
-                    activator={
-                      <Button size="slim" icon={PlusIcon} disclosure onClick={() => setAddPricingOpen((v) => !v)}>
-                        Add pricing
-                      </Button>
-                    }
-                  >
-                    <ActionList
-                      actionRole="menuitem"
+              {/* Pricing */}
+              <s-section padding="none">
+                <s-box padding="small" paddingBlockEnd="small-200">
+                  {cardHeader(
+                    'Pricing',
+                    <MenuButton
+                      icon="plus"
                       items={[
                         { content: 'Base pricing', onAction: () => addPricing('base') },
                         { content: 'Quantity pricing', onAction: () => addPricing('quantity') },
                       ]}
-                    />
-                  </Popover>
-                </InlineStack>
-              </Box>
-              <IndexTable
-                resourceName={{ singular: 'pricing', plural: 'pricings' }}
-                itemCount={pagePricingRows.length}
-                selectable={false}
-                headings={[{ title: 'Type' }, { title: 'Pricing' }, { title: 'Products' }, { title: 'Status' }, { title: '', alignment: 'end' }]}
-                pagination={{
-                  hasNext: pricingCurrent < pricingPageCount - 1,
-                  hasPrevious: pricingCurrent > 0,
-                  onNext: () => setPricingPage((p) => Math.min(p + 1, pricingPageCount - 1)),
-                  onPrevious: () => setPricingPage((p) => Math.max(p - 1, 0)),
-                  label: pricingPageLabel,
-                }}
-              >
-                {pagePricingRows}
-              </IndexTable>
-            </Card>
+                    >
+                      Add pricing
+                    </MenuButton>,
+                  )}
+                </s-box>
+                <s-table
+                  paginate={pricingPageCount > 1}
+                  hasPreviousPage={pricingCurrent > 0}
+                  hasNextPage={pricingCurrent < pricingPageCount - 1}
+                  onPreviousPage={() => setPricingPage(Math.max(pricingCurrent - 1, 0))}
+                  onNextPage={() => setPricingPage(Math.min(pricingCurrent + 1, pricingPageCount - 1))}
+                >
+                  <s-table-header-row>
+                    <s-table-header listSlot="primary">Type</s-table-header>
+                    <s-table-header listSlot="labeled">Pricing</s-table-header>
+                    <s-table-header listSlot="labeled">Products</s-table-header>
+                    <s-table-header listSlot="secondary">Status</s-table-header>
+                    <s-table-header listSlot="inline"><s-text accessibilityVisibility="exclusive">Actions</s-text></s-table-header>
+                  </s-table-header-row>
+                  <s-table-body>{pagePricingRows}</s-table-body>
+                </s-table>
+                {pricingPageCount > 1 ? pageLabel(pricingPageLabel) : null}
+              </s-section>
 
-            {/* Quotes from this location */}
-            <Card padding="0">
-              <Box padding="300" paddingBlockEnd="200">
-                <InlineStack align="space-between" blockAlign="center">
-                  <Text as="h2" variant="headingSm">Quotes{locQuotes.length ? ` (${locQuotes.length})` : ''}</Text>
-                  <Button size="slim" onClick={() => dispatch({ type: 'OPEN_COMPANY', id: company.id, tab: 'quotes' })}>View all company quotes</Button>
-                </InlineStack>
-              </Box>
-              <IndexTable
-                resourceName={{ singular: 'quote', plural: 'quotes' }}
-                itemCount={pageQuotes.length}
-                selectable={false}
-                headings={[{ title: 'Quote' }, { title: 'Buyer' }, { title: 'Created' }, { title: 'Status' }]}
-                pagination={{
-                  hasNext: quotesCurrent < quotesPageCount - 1,
-                  hasPrevious: quotesCurrent > 0,
-                  onNext: () => setQuotesPage((p) => Math.min(p + 1, quotesPageCount - 1)),
-                  onPrevious: () => setQuotesPage((p) => Math.max(p - 1, 0)),
-                  label: quotesPageLabel,
-                }}
-                emptyState={
-                  <Box padding="400">
-                    <Text as="p" alignment="center" tone="subdued">No quotes from this location yet.</Text>
-                  </Box>
-                }
-              >
-                {pageQuotes.map((q, i) => (
-                  <IndexTable.Row id={q.id} key={q.id} position={i} onClick={() => dispatch({ type: 'OPEN_QUOTE', id: q.id })}>
-                    <IndexTable.Cell><Text as="span" variant="bodyMd" fontWeight="medium">{q.id}</Text></IndexTable.Cell>
-                    <IndexTable.Cell>{q.buyer}</IndexTable.Cell>
-                    <IndexTable.Cell>{q.created}</IndexTable.Cell>
-                    <IndexTable.Cell><Badge tone={QUOTE_TONE[q.status]}>{q.status}</Badge></IndexTable.Cell>
-                  </IndexTable.Row>
-                ))}
-              </IndexTable>
-            </Card>
-
-            {/* Order history */}
-            <Card padding="0">
-              <Box padding="300" paddingBlockEnd="200">
-                <InlineStack align="space-between" blockAlign="center">
-                  <Text as="h2" variant="headingSm">Order history{locOrders.length ? ` (${locOrders.length})` : ''}</Text>
-                  <Button size="slim" onClick={() => dispatch({ type: 'OPEN_COMPANY', id: company.id, tab: 'orders' })}>View all company orders</Button>
-                </InlineStack>
-              </Box>
-              {/* Held by a review threshold: the decision sits above the list (this column is too narrow for a row of buttons). */}
-              {reviewOrders && locOrders.filter(isHeld).map((o) => (
-                <Box key={o.id} paddingInline="300" paddingBlockEnd="300">
-                  <Banner tone="warning" title={`Order ${o.id} for ${money(o.amount)} is waiting for your review`}>
-                    <BlockStack gap="200">
-                      <Text as="p">{`${heldReason(o, state.db)}. ${o.buyer} couldn’t check out, so it stays a draft order until you decide.`}</Text>
-                      <InlineStack align="start"><HeldOrderActions companyId={company.id} order={o} /></InlineStack>
-                    </BlockStack>
-                  </Banner>
-                </Box>
-              ))}
-              <IndexTable
-                resourceName={{ singular: 'order', plural: 'orders' }}
-                itemCount={pageOrders.length}
-                selectable={false}
-                headings={[{ title: 'Order' }, { title: 'Buyer' }, { title: 'Date' }, { title: 'Total', alignment: 'end' }, { title: 'Status' }]}
-                pagination={{
-                  hasNext: ordersCurrent < ordersPageCount - 1,
-                  hasPrevious: ordersCurrent > 0,
-                  onNext: () => setOrdersPage((p) => Math.min(p + 1, ordersPageCount - 1)),
-                  onPrevious: () => setOrdersPage((p) => Math.max(p - 1, 0)),
-                  label: ordersPageLabel,
-                }}
-                emptyState={
-                  <Box padding="400">
-                    <Text as="p" alignment="center" tone="subdued">No orders from this location yet.</Text>
-                  </Box>
-                }
-              >
-                {pageOrders.map((o, i) => (
-                  <IndexTable.Row id={o.id} key={o.id} position={i}>
-                    <IndexTable.Cell>
-                      <BlockStack gap="050">
-                        <Text as="span" variant="bodyMd" fontWeight="medium">{o.id}</Text>
-                        {o.po && o.po !== 'None' ? <Text as="span" tone="subdued" variant="bodySm">{o.po}</Text> : null}
-                        {reviewOrders && isHeld(o) ? <Text as="span" tone="caution" variant="bodySm">{heldReason(o, state.db)}</Text> : null}
-                      </BlockStack>
-                    </IndexTable.Cell>
-                    <IndexTable.Cell>{o.buyer}</IndexTable.Cell>
-                    <IndexTable.Cell>{o.date}</IndexTable.Cell>
-                    <IndexTable.Cell><Text as="span" alignment="end">{money(o.amount)}</Text></IndexTable.Cell>
-                    <IndexTable.Cell><Badge tone={orderTone(o.status)}>{o.status}</Badge></IndexTable.Cell>
-                  </IndexTable.Row>
-                ))}
-              </IndexTable>
-            </Card>
-          </BlockStack>
-        </Layout.Section>
-
-        <Layout.Section variant="oneThird">
-          <BlockStack gap="400">
-            {/* Location details: general + shipping */}
-            <Card>
-              <BlockStack gap="300">
-                <InlineStack align="space-between" blockAlign="center">
-                  <Text as="h2" variant="headingSm">General</Text>
-                  <Button size="micro" icon={EditIcon} onClick={() => setEditGeneral(true)} accessibilityLabel="Edit general" />
-                </InlineStack>
-                <Kv label="Name" value={location.name} />
-                <Kv label="Location ID" value={location.externalId || 'Not set'} />
-                <Kv label="Status" value={<Badge tone="success">{location.status || 'Active'}</Badge>} />
-                <Divider />
-                <InlineStack align="space-between" blockAlign="center">
-                  <Text as="h2" variant="headingSm">Shipping address</Text>
-                  <Button size="micro" onClick={() => setEditShipping(true)}>{shipPreview.length ? 'Edit' : 'Add'}</Button>
-                </InlineStack>
-                {shipPreview.length ? (
-                  <BlockStack gap="0">
-                    {shipPreview.map((line, i) => (
-                      <Text as="span" key={i} variant="bodySm">{line}</Text>
-                    ))}
-                  </BlockStack>
+              {/* Quotes from this location */}
+              <s-section padding="none">
+                <s-box padding="small" paddingBlockEnd="small-200">
+                  {cardHeader(
+                    `Quotes${locQuotes.length ? ` (${locQuotes.length})` : ''}`,
+                    <s-button onClick={() => dispatch({ type: 'OPEN_COMPANY', id: company.id, tab: 'quotes' })}>View all company quotes</s-button>,
+                  )}
+                </s-box>
+                {pageQuotes.length ? (
+                  <>
+                    <s-table
+                      paginate={quotesPageCount > 1}
+                      hasPreviousPage={quotesCurrent > 0}
+                      hasNextPage={quotesCurrent < quotesPageCount - 1}
+                      onPreviousPage={() => setQuotesPage(Math.max(quotesCurrent - 1, 0))}
+                      onNextPage={() => setQuotesPage(Math.min(quotesCurrent + 1, quotesPageCount - 1))}
+                    >
+                      <s-table-header-row>
+                        <s-table-header listSlot="primary">Quote</s-table-header>
+                        <s-table-header listSlot="labeled">Buyer</s-table-header>
+                        <s-table-header listSlot="labeled">Created</s-table-header>
+                        <s-table-header listSlot="secondary">Status</s-table-header>
+                      </s-table-header-row>
+                      <s-table-body>
+                        {pageQuotes.map((q) => {
+                          const linkId = `${ids}-quote-${q.id}`;
+                          return (
+                            <s-table-row key={q.id} clickDelegate={linkId}>
+                              <s-table-cell>
+                                <s-link id={linkId} onClick={() => dispatch({ type: 'OPEN_QUOTE', id: q.id })}>{q.id}</s-link>
+                              </s-table-cell>
+                              <s-table-cell>{q.buyer}</s-table-cell>
+                              <s-table-cell>{q.created}</s-table-cell>
+                              <s-table-cell><s-badge tone={wcTone(QUOTE_TONE[q.status])}>{q.status}</s-badge></s-table-cell>
+                            </s-table-row>
+                          );
+                        })}
+                      </s-table-body>
+                    </s-table>
+                    {quotesPageCount > 1 ? pageLabel(quotesPageLabel) : null}
+                  </>
                 ) : (
-                  <Text as="span" tone="subdued" variant="bodySm">No shipping address provided.</Text>
+                  emptyRows('No quotes from this location yet.')
                 )}
-                <Text as="span" tone="subdued" variant="bodySm">
-                  {location.billingSameAsShipping ? 'Billing address is same as shipping.' : 'Billing address is set separately.'}
-                </Text>
-              </BlockStack>
-            </Card>
+              </s-section>
 
-            {/* Buyers — names only; the role shows on hover */}
-            <Card>
-              <BlockStack gap="300">
-                <InlineStack align="space-between" blockAlign="center">
-                  <Text as="h2" variant="headingSm">Buyers{buyers.length ? ` (${buyers.length})` : ''}</Text>
-                  <Button size="micro" onClick={() => setAssignOpen(true)}>Assign buyer</Button>
-                </InlineStack>
-                {buyers.length ? (
-                  <BlockStack gap="100">
-                    {buyers.map((b, i) => (
-                      <InlineStack key={b.email || i} align="space-between" blockAlign="center" gap="200" wrap={false}>
-                        <Tooltip content={b.role || 'Ordering only'}>
-                          <Text as="span" variant="bodyMd">{b.name}</Text>
-                        </Tooltip>
-                        <Button
-                          icon={XIcon}
-                          variant="tertiary"
-                          size="micro"
-                          accessibilityLabel={`Remove ${b.name}`}
-                          onClick={() => dispatch({ type: 'UNASSIGN_BUYER', companyId: company.id, locationId: location.id, email: b.email })}
-                        />
-                      </InlineStack>
-                    ))}
-                  </BlockStack>
+              {/* Order history */}
+              <s-section padding="none">
+                <s-box padding="small" paddingBlockEnd="small-200">
+                  {cardHeader(
+                    `Order history${locOrders.length ? ` (${locOrders.length})` : ''}`,
+                    <s-button onClick={() => dispatch({ type: 'OPEN_COMPANY', id: company.id, tab: 'orders' })}>View all company orders</s-button>,
+                  )}
+                </s-box>
+                {/* Held by a review threshold: the decision sits above the list (this column is too narrow for a row of buttons). */}
+                {reviewOrders && locOrders.filter(isHeld).map((o) => (
+                  <s-box key={o.id} paddingInline="small" paddingBlockEnd="small">
+                    <s-banner tone="warning" heading={`Order ${o.id} for ${money(o.amount)} is waiting for your review`}>
+                      <s-stack gap="small-200">
+                        <s-paragraph>{`${heldReason(o, state.db)}. ${o.buyer} couldn’t check out, so it stays a draft order until you decide.`}</s-paragraph>
+                        <s-stack direction="inline" justifyContent="start"><HeldOrderActions companyId={company.id} order={o} /></s-stack>
+                      </s-stack>
+                    </s-banner>
+                  </s-box>
+                ))}
+                {pageOrders.length ? (
+                  <>
+                    <s-table
+                      paginate={ordersPageCount > 1}
+                      hasPreviousPage={ordersCurrent > 0}
+                      hasNextPage={ordersCurrent < ordersPageCount - 1}
+                      onPreviousPage={() => setOrdersPage(Math.max(ordersCurrent - 1, 0))}
+                      onNextPage={() => setOrdersPage(Math.min(ordersCurrent + 1, ordersPageCount - 1))}
+                    >
+                      <s-table-header-row>
+                        <s-table-header listSlot="primary">Order</s-table-header>
+                        <s-table-header listSlot="labeled">Buyer</s-table-header>
+                        <s-table-header listSlot="labeled">Date</s-table-header>
+                        <s-table-header listSlot="labeled" format="currency">Total</s-table-header>
+                        <s-table-header listSlot="secondary">Status</s-table-header>
+                      </s-table-header-row>
+                      <s-table-body>
+                        {pageOrders.map((o) => (
+                          <s-table-row key={o.id}>
+                            <s-table-cell>
+                              <s-stack gap="small-500">
+                                <s-text fontWeight="medium">{o.id}</s-text>
+                                {o.po && o.po !== 'None' ? <s-text color="subdued" fontSize="small">{o.po}</s-text> : null}
+                                {reviewOrders && isHeld(o) ? <s-text tone="caution" fontSize="small">{heldReason(o, state.db)}</s-text> : null}
+                              </s-stack>
+                            </s-table-cell>
+                            <s-table-cell>{o.buyer}</s-table-cell>
+                            <s-table-cell>{o.date}</s-table-cell>
+                            <s-table-cell>{money(o.amount)}</s-table-cell>
+                            <s-table-cell><s-badge tone={wcTone(orderTone(o.status))}>{o.status}</s-badge></s-table-cell>
+                          </s-table-row>
+                        ))}
+                      </s-table-body>
+                    </s-table>
+                    {ordersPageCount > 1 ? pageLabel(ordersPageLabel) : null}
+                  </>
                 ) : (
-                  <Text as="p" tone="subdued" variant="bodySm">No buyers assigned. Assign a buyer so someone can purchase under this location.</Text>
+                  emptyRows('No orders from this location yet.')
                 )}
-              </BlockStack>
-            </Card>
+              </s-section>
+            </s-stack>
 
-            {/* Commerce settings — live */}
-            <Card>
-              <BlockStack gap="300">
-                <Text as="h2" variant="headingSm">Commerce settings</Text>
-                <Select
-                  label="Payment terms"
-                  options={PAYMENT_TERM_OPTIONS.map((t) => ({ label: t, value: t }))}
-                  value={location.paymentTerms || 'No payment terms'}
-                  onChange={(v) => setField({ paymentTerms: v }, true)}
-                />
-                <Select
-                  label="Order submission"
-                  options={[
-                    { label: 'Automatically submit orders', value: 'DIRECT' },
-                    { label: 'Submit all orders as drafts for review', value: 'REQUIRE_APPROVAL' },
-                  ]}
-                  value={location.purchasingMode || 'DIRECT'}
-                  onChange={(v) => setField({ purchasingMode: v }, true)}
-                />
-                <Checkbox
-                  label="Allow any one-time address"
-                  checked={!!location.editableShipping}
-                  onChange={(v) => setField({ editableShipping: v }, true)}
-                />
-                <Divider />
-                <TextField
-                  label="Tax ID"
-                  value={location.taxId || ''}
-                  onChange={(v) => setField({ taxId: v }, true)}
-                  placeholder="Tax / VAT ID"
-                  autoComplete="off"
-                />
-                <Select
-                  label="Tax settings"
-                  options={TAX_SETTINGS}
-                  value={location.taxSettings || 'collect'}
-                  onChange={(v) => setField({ taxSettings: v }, true)}
-                />
-              </BlockStack>
-            </Card>
+            <s-stack gap="base">
+              {/* Location details: general + shipping */}
+              <s-section>
+                <s-stack gap="small">
+                  {cardHeader('General', <s-button icon="edit" onClick={() => setEditGeneral(true)} accessibilityLabel="Edit general" />)}
+                  <Kv label="Name" value={location.name} />
+                  <Kv label="Location ID" value={location.externalId || 'Not set'} />
+                  <Kv label="Status" value={<s-badge tone="success">{location.status || 'Active'}</s-badge>} />
+                  <s-divider />
+                  {cardHeader('Shipping address', <s-button onClick={() => setEditShipping(true)}>{shipPreview.length ? 'Edit' : 'Add'}</s-button>)}
+                  {shipPreview.length ? (
+                    <s-stack gap="none">
+                      {shipPreview.map((line, i) => (
+                        <s-paragraph key={i} fontSize="small">{line}</s-paragraph>
+                      ))}
+                    </s-stack>
+                  ) : (
+                    <s-paragraph color="subdued" fontSize="small">No shipping address provided.</s-paragraph>
+                  )}
+                  <s-paragraph color="subdued" fontSize="small">
+                    {location.billingSameAsShipping ? 'Billing address is same as shipping.' : 'Billing address is set separately.'}
+                  </s-paragraph>
+                </s-stack>
+              </s-section>
 
-            {/* Order limits that reach this location, next to Shopify's own checkout settings */}
-            {versionFlags().orderLimits && <LocationLimitsCard company={company} location={location} />}
-          </BlockStack>
-        </Layout.Section>
-      </Layout>
+              {/* Buyers — names only; the role shows on hover */}
+              <s-section>
+                <s-stack gap="small">
+                  {cardHeader(`Buyers${buyers.length ? ` (${buyers.length})` : ''}`, <s-button onClick={() => setAssignOpen(true)}>Assign buyer</s-button>)}
+                  {buyers.length ? (
+                    <s-stack gap="small-400">
+                      {buyers.map((b, i) => (
+                        <s-grid key={b.email || i} gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
+                          <div>
+                            <Tip content={b.role || 'Ordering only'}>{b.name}</Tip>
+                          </div>
+                          <s-button
+                            icon="x"
+                            variant="tertiary"
+                            accessibilityLabel={`Remove ${b.name}`}
+                            onClick={() => dispatch({ type: 'UNASSIGN_BUYER', companyId: company.id, locationId: location.id, email: b.email })}
+                          />
+                        </s-grid>
+                      ))}
+                    </s-stack>
+                  ) : (
+                    <s-paragraph color="subdued" fontSize="small">No buyers assigned. Assign a buyer so someone can purchase under this location.</s-paragraph>
+                  )}
+                </s-stack>
+              </s-section>
+
+              {/* Commerce settings — live */}
+              <s-section heading="Commerce settings">
+                <s-stack gap="small">
+                  <s-select
+                    label="Payment terms"
+                    value={location.paymentTerms || 'No payment terms'}
+                    onChange={(e) => setField({ paymentTerms: e.currentTarget.value }, true)}
+                  >
+                    {PAYMENT_TERM_OPTIONS.map((t) => (
+                      <s-option key={t} value={t}>{t}</s-option>
+                    ))}
+                  </s-select>
+                  <s-select
+                    label="Order submission"
+                    value={location.purchasingMode || 'DIRECT'}
+                    onChange={(e) => setField({ purchasingMode: e.currentTarget.value }, true)}
+                  >
+                    <s-option value="DIRECT">Automatically submit orders</s-option>
+                    <s-option value="REQUIRE_APPROVAL">Submit all orders as drafts for review</s-option>
+                  </s-select>
+                  <s-checkbox
+                    label="Allow any one-time address"
+                    checked={!!location.editableShipping}
+                    onChange={(e) => setField({ editableShipping: e.currentTarget.checked }, true)}
+                  />
+                  <s-divider />
+                  <s-text-field
+                    label="Tax ID"
+                    value={location.taxId || ''}
+                    onInput={(e) => setField({ taxId: e.currentTarget.value }, true)}
+                    placeholder="Tax / VAT ID"
+                    autocomplete="off"
+                  />
+                  <s-select
+                    label="Tax settings"
+                    value={location.taxSettings || 'collect'}
+                    onChange={(e) => setField({ taxSettings: e.currentTarget.value }, true)}
+                  >
+                    {TAX_SETTINGS.map((t) => (
+                      <s-option key={t.value} value={t.value}>{t.label}</s-option>
+                    ))}
+                  </s-select>
+                </s-stack>
+              </s-section>
+
+              {/* Order limits that reach this location, next to Shopify's own checkout settings */}
+              {versionFlags().orderLimits && <LocationLimitsCard company={company} location={location} />}
+            </s-stack>
+          </s-grid>
+        </s-query-container>
+      </s-stack>
 
       {assignOpen && (
         <AssignBuyerModal company={company} location={location} onClose={() => setAssignOpen(false)} />
@@ -484,31 +461,32 @@ export function LocationDetail() {
       {editShipping && (
         <ShippingModal location={location} onClose={() => setEditShipping(false)} onSave={(patch) => { setField(patch); setEditShipping(false); }} />
       )}
-    </Page>
+    </s-page>
+    </>
   );
 }
 
 function Stat({ label, value, note }) {
   return (
-    <Box minWidth="140px">
-      <BlockStack gap="050">
-        <Text as="span" tone="subdued" variant="bodySm">{label}</Text>
-        <Text as="span" variant="headingLg">{value}</Text>
-        <Text as="span" tone="subdued" variant="bodyXs">{note}</Text>
-      </BlockStack>
-    </Box>
+    <s-box minInlineSize="140px">
+      <s-stack gap="small-500">
+        <s-paragraph color="subdued" fontSize="small">{label}</s-paragraph>
+        <s-heading fontSize="large-200" accessibilityRole="presentation">{value}</s-heading>
+        <s-paragraph color="subdued" fontSize="small-200">{note}</s-paragraph>
+      </s-stack>
+    </s-box>
   );
 }
 
 function Kv({ label, value }) {
   return (
-    <InlineStack align="space-between" blockAlign="center">
-      <Text as="span" tone="subdued" variant="bodySm">{label}</Text>
+    <s-stack direction="inline" justifyContent="space-between" alignItems="center" gap="small-200">
+      <s-text color="subdued" fontSize="small">{label}</s-text>
       {typeof value === 'string' || typeof value === 'number' ? (
-        <Text as="span" variant="bodySm">{value || '—'}</Text>
+        <s-text fontSize="small">{value || '—'}</s-text>
       ) : (
         value
       )}
-    </InlineStack>
+    </s-stack>
   );
 }

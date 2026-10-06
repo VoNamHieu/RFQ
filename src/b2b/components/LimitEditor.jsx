@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
-import { Page, Card, BlockStack, InlineGrid, InlineStack, Text, TextField, Select, ChoiceList, Button, Tag, Modal, InlineError, Box } from '@shopify/polaris';
-import { SearchIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { LIMIT_KINDS, limitErrors, defaultLimitMessage, normalizeLimit } from '../limits.js';
 import { ProductScopeCard } from './pricingEditorCards.jsx';
 import { COLLECTIONS } from '../data/constants.js';
 import { SelectCompaniesModal, companyPicks } from './AssignmentCard.jsx';
+import { Modal, useWcId, PageHeader } from '../../shared/wc.jsx';
 
 const str = (v) => (v == null ? '' : String(v));
 // Errors that only mean "not filled in yet" wait for a save attempt; the rest
@@ -21,6 +20,7 @@ export function LimitEditor() {
   const [tried, setTried] = useState(false);
   const [companyModal, setCompanyModal] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const scopeName = useWcId('limit-scope');
   const patch = (p) => dispatch({ type: 'LIMIT_EDITOR_PATCH', patch: p });
   const close = () => dispatch({ type: 'CLOSE_LIMIT_EDITOR' });
 
@@ -35,184 +35,201 @@ export function LimitEditor() {
   );
 
   const numberField = (key, label, opts = {}) => (
-    <TextField
+    <s-number-field
       label={label}
-      type="number"
       min={opts.step === 1 ? 1 : 0}
       step={opts.step}
+      inputMode={opts.step === 1 ? 'numeric' : 'decimal'}
       prefix={opts.money ? '$' : undefined}
       suffix={opts.suffix}
       value={str(draft[key])}
-      onChange={(v) => patch({ [key]: v })}
+      onInput={(e) => patch({ [key]: e.currentTarget.value })}
       error={errors[key]}
-      helpText={opts.helpText}
+      details={opts.helpText}
       placeholder={opts.placeholder ?? 'No limit'}
-      autoComplete="off"
+      autocomplete="off"
     />
   );
 
   return (
-    <Page
-      title={isNew ? `Create ${kind.label.toLowerCase()}` : `Edit limit: ${draft.name}`}
+    <>
+    <PageHeader
+      heading={isNew ? `Create ${kind.label.toLowerCase()}` : `Edit limit: ${draft.name}`}
       backAction={{ content: 'Order limits', onAction: close }}
       primaryAction={{ content: isNew ? 'Create limit' : 'Save', onAction: save }}
       secondaryActions={[
         ...(isNew ? [] : [{ content: 'Delete', destructive: true, onAction: () => setConfirmDelete(true) }]),
         { content: 'Cancel', onAction: close },
       ]}
-    >
-      <InlineGrid columns={{ xs: '1fr', md: '2fr 1fr' }} gap="400" alignItems="start">
-        <BlockStack gap="400">
-          <Card>
-            <BlockStack gap="300">
-              <BlockStack gap="100">
-                <Text as="h3" variant="headingSm">{kind.label}</Text>
-                <Text as="p" tone="subdued" variant="bodySm">{kind.description}</Text>
-              </BlockStack>
-              <TextField
-                label="Name"
-                requiredIndicator
-                value={draft.name}
-                onChange={(v) => patch({ name: v })}
-                error={errors.name}
-                helpText="Only you see this."
-                maxLength={255}
-                autoComplete="off"
-              />
-            </BlockStack>
-          </Card>
+    />
+    <s-page>
+      <s-stack gap="base">
+        <s-section>
+          <s-stack gap="small">
+            <s-stack gap="small-400">
+              <s-heading>{kind.label}</s-heading>
+              <s-paragraph color="subdued" fontSize="small">
+                {kind.description}
+              </s-paragraph>
+            </s-stack>
+            <s-text-field
+              label="Name"
+              required
+              value={draft.name}
+              onInput={(e) => patch({ name: e.currentTarget.value })}
+              error={errors.name}
+              details="Only you see this."
+              maxLength={255}
+              autocomplete="off"
+            />
+          </s-stack>
+        </s-section>
 
-          {draft.kind === 'order' && (
-            <Card>
-              <BlockStack gap="400">
-                <BlockStack gap="200">
-                  <Text as="h3" variant="headingSm">Order value</Text>
-                  <InlineGrid columns={2} gap="300">
-                    {numberField('minValue', 'Minimum', { money: true })}
-                    {numberField('maxValue', 'Maximum', { money: true })}
-                  </InlineGrid>
-                  <Text as="p" tone="subdued" variant="bodySm">The cart subtotal at the buyer’s B2B prices, before tax and shipping.</Text>
-                </BlockStack>
-                <BlockStack gap="200">
-                  <Text as="h3" variant="headingSm">Order quantity</Text>
-                  <InlineGrid columns={2} gap="300">
-                    {numberField('minQty', 'Minimum', { step: 1, suffix: 'units' })}
-                    {numberField('maxQty', 'Maximum', { step: 1, suffix: 'units' })}
-                  </InlineGrid>
-                  <Text as="p" tone="subdued" variant="bodySm">All items in the cart added together.</Text>
-                </BlockStack>
-                {errors.order && <InlineError message={errors.order} fieldID="order-limits" />}
-              </BlockStack>
-            </Card>
-          )}
+        {draft.kind === 'order' && (
+          <s-section>
+            <s-stack gap="base">
+              <s-stack gap="small-200">
+                <s-heading>Order value</s-heading>
+                <s-grid gridTemplateColumns="repeat(2, minmax(0, 1fr))" gap="small">
+                  {numberField('minValue', 'Minimum', { money: true })}
+                  {numberField('maxValue', 'Maximum', { money: true })}
+                </s-grid>
+                <s-paragraph color="subdued" fontSize="small">
+                  The cart subtotal at the buyer’s B2B prices, before tax and shipping.
+                </s-paragraph>
+              </s-stack>
+              <s-stack gap="small-200">
+                <s-heading>Order quantity</s-heading>
+                <s-grid gridTemplateColumns="repeat(2, minmax(0, 1fr))" gap="small">
+                  {numberField('minQty', 'Minimum', { step: 1, suffix: 'units' })}
+                  {numberField('maxQty', 'Maximum', { step: 1, suffix: 'units' })}
+                </s-grid>
+                <s-paragraph color="subdued" fontSize="small">
+                  All items in the cart added together.
+                </s-paragraph>
+              </s-stack>
+              {errors.order && (
+                <s-paragraph tone="critical" id="order-limits">
+                  {errors.order}
+                </s-paragraph>
+              )}
+            </s-stack>
+          </s-section>
+        )}
 
-          {draft.kind === 'product' && (
-            <>
-              <ProductScopeCard
-                builder={draft}
-                // Switching to a collection picks the first one, as the select shows it.
-                patch={(p) => patch(p.scopeType === 'collection' && !draft.collection ? { ...p, collection: Object.keys(COLLECTIONS)[0] } : p)}
-                products={state.db.products}
-              />
-              {errors.products && <InlineError message={errors.products} fieldID="limit-products" />}
-              <Card>
-                <BlockStack gap="300">
-                  <Text as="h3" variant="headingSm">Quantity per product</Text>
-                  <InlineGrid columns={{ xs: 1, sm: 3 }} gap="300">
+        {draft.kind === 'product' && (
+          <>
+            <ProductScopeCard
+              builder={draft}
+              // Switching to a collection picks the first one, as the select shows it.
+              patch={(p) => patch(p.scopeType === 'collection' && !draft.collection ? { ...p, collection: Object.keys(COLLECTIONS)[0] } : p)}
+              products={state.db.products}
+            />
+            {errors.products && (
+              <s-paragraph tone="critical" id="limit-products">
+                {errors.products}
+              </s-paragraph>
+            )}
+            <s-section heading="Quantity per product">
+              <s-stack gap="small">
+                <s-query-container>
+                  <s-grid gridTemplateColumns="@container (inline-size > 490px) 1fr 1fr 1fr, 1fr" gap="small">
                     {numberField('min', 'Minimum', { step: 1 })}
                     {numberField('max', 'Maximum', { step: 1 })}
                     {numberField('increment', 'Sold in multiples of', { step: 1, placeholder: '1' })}
-                  </InlineGrid>
-                  <Text as="p" tone="subdued" variant="bodySm">
-                    Counted per variant, like Shopify’s quantity rules. Use multiples for case packs, e.g. 12. The minimum and maximum must be multiples of it.
-                  </Text>
-                  {errors.product && <InlineError message={errors.product} fieldID="limit-product-qty" />}
-                </BlockStack>
-              </Card>
-            </>
-          )}
+                  </s-grid>
+                </s-query-container>
+                <s-paragraph color="subdued" fontSize="small">
+                  Counted per variant, like Shopify’s quantity rules. Use multiples for case packs, e.g. 12. The minimum and maximum must be multiples of it.
+                </s-paragraph>
+                {errors.product && (
+                  <s-paragraph tone="critical" id="limit-product-qty">
+                    {errors.product}
+                  </s-paragraph>
+                )}
+              </s-stack>
+            </s-section>
+          </>
+        )}
 
-          {draft.kind === 'review' && (
-            <Card>
-              <BlockStack gap="300">
-                <Text as="h3" variant="headingSm">Amount</Text>
-                {numberField('threshold', 'Review orders above', {
-                  money: true,
-                  placeholder: '',
-                  helpText: 'Buyers can’t check out above this amount. They send the order to you instead, and it arrives as a draft order for you to approve or edit.',
-                })}
-              </BlockStack>
-            </Card>
-          )}
+        {draft.kind === 'review' && (
+          <s-section heading="Amount">
+            {numberField('threshold', 'Review orders above', {
+              money: true,
+              placeholder: '',
+              helpText: 'Buyers can’t check out above this amount. They send the order to you instead, and it arrives as a draft order for you to approve or edit.',
+            })}
+          </s-section>
+        )}
 
-          <Card>
-            <BlockStack gap="200">
-              <Text as="h3" variant="headingSm">Buyer message</Text>
-              <TextField
-                label="Message buyers see"
-                multiline={2}
-                value={draft.message || ''}
-                onChange={(v) => patch({ message: v })}
-                placeholder={defaultLimitMessage(normalizeLimit(draft))}
-                helpText="Shown in the cart and at checkout when an order breaks this limit. Leave it empty to use the suggested message."
-                autoComplete="off"
-              />
-            </BlockStack>
-          </Card>
-        </BlockStack>
+        <s-section heading="Buyer message">
+          <s-text-area
+            label="Message buyers see"
+            rows={2}
+            value={draft.message || ''}
+            onInput={(e) => patch({ message: e.currentTarget.value })}
+            placeholder={defaultLimitMessage(normalizeLimit(draft))}
+            details="Shown in the cart and at checkout when an order breaks this limit. Leave it empty to use the suggested message."
+            autocomplete="off"
+          />
+        </s-section>
+      </s-stack>
 
-        <BlockStack gap="400">
-          <Card>
-            <Select
-              label="Status"
-              options={[{ label: 'Active', value: 'Active' }, { label: 'Inactive', value: 'Inactive' }]}
-              value={draft.status}
-              onChange={(v) => patch({ status: v })}
-            />
-          </Card>
+      <s-section slot="aside">
+        <s-select label="Status" value={draft.status} onChange={(e) => patch({ status: e.currentTarget.value })}>
+          <s-option value="Active">Active</s-option>
+          <s-option value="Inactive">Inactive</s-option>
+        </s-select>
+      </s-section>
 
-          <Card>
-            <BlockStack gap="300">
-              <Text as="h3" variant="headingSm">Applies to</Text>
-              <ChoiceList
-                title="Applies to"
-                titleHidden
-                choices={[
-                  { label: 'Store-wide', value: 'store', helpText: 'Every B2B company and location.' },
-                  { label: 'Specific companies and locations', value: 'specific' },
-                ]}
-                selected={[draft.storeWide ? 'store' : 'specific']}
-                onChange={([v]) => patch({ storeWide: v === 'store' })}
-              />
-              {!draft.storeWide && (
-                <BlockStack gap="200">
-                  <Button icon={SearchIcon} textAlign="left" fullWidth onClick={() => setCompanyModal(true)}>
-                    Select companies
-                  </Button>
-                  {picks.selectedCompanies.length ? (
-                    <InlineStack gap="150" wrap>
-                      {picks.selectedCompanies.map((c) => (
-                        <Tag key={c.id} onRemove={() => picks.setTicked(c, [])}>{picks.tagLabel(c)}</Tag>
-                      ))}
-                    </InlineStack>
-                  ) : null}
-                  {errors.targets && <InlineError message={errors.targets} fieldID="limit-targets" />}
-                </BlockStack>
+      <s-section slot="aside" heading="Applies to">
+        <s-stack gap="small">
+          <s-choice-list
+            label="Applies to"
+            labelAccessibilityVisibility="exclusive"
+            name={scopeName}
+            onChange={(e) => {
+              const v = e.currentTarget.values?.[0];
+              if (v) patch({ storeWide: v === 'store' });
+            }}
+          >
+            <s-choice value="store" selected={!!draft.storeWide}>
+              Store-wide
+              <s-text slot="details">Every B2B company and location.</s-text>
+            </s-choice>
+            <s-choice value="specific" selected={!draft.storeWide}>
+              Specific companies and locations
+            </s-choice>
+          </s-choice-list>
+          {!draft.storeWide && (
+            <s-stack gap="small-200">
+              <s-button icon="search" inlineSize="fill" onClick={() => setCompanyModal(true)}>
+                Select companies
+              </s-button>
+              {picks.selectedCompanies.length ? (
+                <s-stack direction="inline" gap="small-300">
+                  {picks.selectedCompanies.map((c) => (
+                    <s-clickable-chip key={c.id} removable onRemove={() => picks.setTicked(c, [])}>
+                      {picks.tagLabel(c)}
+                    </s-clickable-chip>
+                  ))}
+                </s-stack>
+              ) : null}
+              {errors.targets && (
+                <s-paragraph tone="critical" id="limit-targets">
+                  {errors.targets}
+                </s-paragraph>
               )}
-            </BlockStack>
-          </Card>
+            </s-stack>
+          )}
+        </s-stack>
+      </s-section>
 
-          <Card>
-            <BlockStack gap="100">
-              <Text as="h3" variant="headingSm">When limits overlap</Text>
-              <Text as="p" tone="subdued" variant="bodySm">
-                The most specific limit wins: a location’s own, then its company’s, then store-wide. So you can give one account a lower minimum than everyone else.
-              </Text>
-            </BlockStack>
-          </Card>
-        </BlockStack>
-      </InlineGrid>
-      <Box paddingBlockEnd="1600" />
+      <s-section slot="aside" heading="When limits overlap">
+        <s-paragraph color="subdued" fontSize="small">
+          The most specific limit wins: a location’s own, then its company’s, then store-wide. So you can give one account a lower minimum than everyone else.
+        </s-paragraph>
+      </s-section>
 
       <SelectCompaniesModal
         open={companyModal}
@@ -224,18 +241,17 @@ export function LimitEditor() {
       />
 
       {confirmDelete && (
-        <Modal
-          open
-          onClose={() => setConfirmDelete(false)}
-          title={`Delete ${draft.name}?`}
-          primaryAction={{ content: 'Delete limit', destructive: true, onAction: () => dispatch({ type: 'DELETE_LIMIT', id: draft.id }) }}
-          secondaryActions={[{ content: 'Cancel', onAction: () => setConfirmDelete(false) }]}
-        >
-          <Modal.Section>
-            <Text as="p">Buyers it applies to can check out without it right away. This can’t be undone.</Text>
-          </Modal.Section>
+        <Modal onClose={() => setConfirmDelete(false)} heading={`Delete ${draft.name}?`}>
+          <s-paragraph>Buyers it applies to can check out without it right away. This can’t be undone.</s-paragraph>
+          <s-button slot="primary-action" variant="primary" tone="critical" onClick={() => dispatch({ type: 'DELETE_LIMIT', id: draft.id })}>
+            Delete limit
+          </s-button>
+          <s-button slot="secondary-actions" onClick={() => setConfirmDelete(false)}>
+            Cancel
+          </s-button>
         </Modal>
       )}
-    </Page>
+    </s-page>
+    </>
   );
 }

@@ -1,5 +1,4 @@
 import React, { useState, useRef, useLayoutEffect } from 'react';
-import { Text, BlockStack, InlineStack } from '@shopify/polaris';
 import { money } from '../format.js';
 
 // Measure the container's rendered width so SVG charts draw at real pixels
@@ -37,6 +36,9 @@ export const PALETTE = [
   'var(--p-color-bg-fill-caution)',
 ];
 
+// A single non-wrapping row (Polaris InlineStack gap="300" blockAlign="center" wrap={false}).
+const ROW = { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'nowrap' };
+
 const fmt = (v, prefix = '$') => prefix + Math.round(v).toLocaleString('en-US');
 
 // Sales-over-time line chart with area, dots, hover value label and an optional
@@ -56,7 +58,7 @@ export function LineChart({ data, compare = null, height = 200, prefix = '$', la
   // Per-block empty state: when there's nothing to plot (no points, or every point is 0), show a
   // calm placeholder at the chart's height instead of a flat line pinned to the axis.
   if (empty && (!pts.length || pts.every((p) => !Number(p.v)))) {
-    return <div style={{ height: h, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Text as="p" tone="subdued" variant="bodySm">{empty}</Text></div>;
+    return <div style={{ height: h, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><s-paragraph color="subdued" fontSize="small">{empty}</s-paragraph></div>;
   }
   const max = Math.max(1, ...pts.map((p) => p.v), ...compareVals);
   const x = (i) => pad.l + (data.length <= 1 ? iw / 2 : (i / (data.length - 1)) * iw);
@@ -68,18 +70,18 @@ export function LineChart({ data, compare = null, height = 200, prefix = '$', la
   const active = hover != null ? data[hover] : null;
 
   return (
-    <BlockStack gap="200">
+    <s-stack gap="small-200">
       {hasCompare && (
-        <InlineStack gap="300">
-          <InlineStack gap="100" blockAlign="center">
+        <s-stack direction="inline" gap="small">
+          <s-stack direction="inline" gap="small-400" alignItems="center">
             <span style={{ width: 14, height: 3, borderRadius: 2, background: BRAND, display: 'inline-block' }} />
-            <Text as="span" variant="bodySm" tone="subdued">Selected period</Text>
-          </InlineStack>
-          <InlineStack gap="100" blockAlign="center">
+            <s-text fontSize="small" color="subdued">Selected period</s-text>
+          </s-stack>
+          <s-stack direction="inline" gap="small-400" alignItems="center">
             <span style={{ width: 14, height: 0, borderTop: `2px dashed ${COMPARE}`, display: 'inline-block' }} />
-            <Text as="span" variant="bodySm" tone="subdued">Previous period</Text>
-          </InlineStack>
-        </InlineStack>
+            <s-text fontSize="small" color="subdued">Previous period</s-text>
+          </s-stack>
+        </s-stack>
       )}
       <div ref={ref} style={{ width: '100%' }}>
         <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={label} style={{ display: 'block', maxWidth: '100%' }}>
@@ -141,7 +143,7 @@ export function LineChart({ data, compare = null, height = 200, prefix = '$', la
           })()}
         </svg>
       </div>
-    </BlockStack>
+    </s-stack>
   );
 }
 
@@ -150,30 +152,30 @@ export function LineChart({ data, compare = null, height = 200, prefix = '$', la
 // comes from an explicit `width` (0-100) when provided, else value / max.
 export function RankBars({ rows, empty = 'No data in this filter.' }) {
   if (!rows || !rows.length) {
-    return <Text as="p" tone="subdued" variant="bodySm">{empty}</Text>;
+    return <s-paragraph color="subdued" fontSize="small">{empty}</s-paragraph>;
   }
   const max = Math.max(1, ...rows.map((r) => Number(r.value) || 0));
   return (
-    <BlockStack gap="300">
+    <s-stack gap="small">
       {rows.map((r, i) => {
         const width = r.width != null ? r.width : ((Number(r.value) || 0) / max) * 100;
         return (
-          <InlineStack key={r.key || r.name || i} gap="300" blockAlign="center" wrap={false}>
+          <div key={r.key || r.name || i} style={ROW}>
             <div style={{ flex: '1 1 42%', minWidth: 0 }}>
-              <Text as="p" variant="bodySm" fontWeight="semibold" truncate>{r.name}</Text>
-              {r.sub ? <Text as="p" variant="bodySm" tone="subdued" truncate>{r.sub}</Text> : null}
+              <s-paragraph fontSize="small" fontWeight="semibold" lineClamp={1}>{r.name}</s-paragraph>
+              {r.sub ? <s-paragraph fontSize="small" color="subdued" lineClamp={1}>{r.sub}</s-paragraph> : null}
             </div>
             <div style={{ flex: '1 1 34%', height: 10, borderRadius: 5, background: TRACK, overflow: 'hidden' }}>
               <div style={{ width: `${Math.max(2, width)}%`, height: '100%', background: BRAND, borderRadius: 5 }} />
             </div>
             <div style={{ flex: '0 0 auto', textAlign: 'right', minWidth: 92 }}>
-              <Text as="span" variant="bodySm" fontWeight="semibold">{r.valueLabel}</Text>
-              {r.secondary ? <Text as="span" variant="bodySm" tone="subdued">{` ${r.secondary}`}</Text> : null}
+              <s-text fontSize="small" fontWeight="semibold">{r.valueLabel}</s-text>
+              {r.secondary ? <s-text fontSize="small" color="subdued">{` ${r.secondary}`}</s-text> : null}
             </div>
-          </InlineStack>
+          </div>
         );
       })}
-    </BlockStack>
+    </s-stack>
   );
 }
 
@@ -183,7 +185,7 @@ export function RankBars({ rows, empty = 'No data in this filter.' }) {
 export function StackedBar({ segments, format = money }) {
   const total = segments.reduce((a, s) => a + (Number(s.value) || 0), 0) || 1;
   return (
-    <BlockStack gap="300">
+    <s-stack gap="small">
       <div style={{ display: 'flex', height: 22, borderRadius: 6, overflow: 'hidden', background: TRACK }}>
         {segments.map((s, i) => (
           <div
@@ -193,20 +195,20 @@ export function StackedBar({ segments, format = money }) {
           />
         ))}
       </div>
-      <BlockStack gap="150">
+      <s-stack gap="small-300">
         {segments.map((s, i) => (
-          <InlineStack key={s.name} align="space-between" blockAlign="center" wrap={false}>
-            <InlineStack gap="150" blockAlign="center">
+          <div key={s.name} style={{ ...ROW, justifyContent: 'space-between' }}>
+            <s-stack direction="inline" gap="small-300" alignItems="center">
               <span style={{ width: 10, height: 10, borderRadius: 3, background: PALETTE[i % PALETTE.length], display: 'inline-block' }} />
-              <Text as="span" variant="bodySm">{s.name}</Text>
-            </InlineStack>
-            <Text as="span" variant="bodySm" fontWeight="medium">
+              <s-text fontSize="small">{s.name}</s-text>
+            </s-stack>
+            <s-text fontSize="small" fontWeight="medium">
               {`${Math.round(((Number(s.value) || 0) / total) * 100)}% · ${format(s.value)}`}
-            </Text>
-          </InlineStack>
+            </s-text>
+          </div>
         ))}
-      </BlockStack>
-    </BlockStack>
+      </s-stack>
+    </s-stack>
   );
 }
 
@@ -215,25 +217,25 @@ export function StackedBar({ segments, format = money }) {
 export function FunnelV2({ stages }) {
   const top = Math.max(1, Number(stages[0]?.count) || 1);
   return (
-    <BlockStack gap="300">
+    <s-stack gap="small">
       {stages.map((s, i) => {
         const width = (Number(s.count) || 0) / top * 100;
         return (
-          <InlineStack key={s.name} gap="300" blockAlign="center" wrap={false}>
+          <div key={s.name} style={ROW}>
             <div style={{ flex: '0 0 34%', minWidth: 0 }}>
-              <Text as="span" variant="bodySm" fontWeight="medium">{s.name}</Text>
+              <s-text fontSize="small" fontWeight="medium">{s.name}</s-text>
             </div>
             <div style={{ flex: '1 1 auto', height: 16, borderRadius: 4, background: TRACK, overflow: 'hidden' }}>
               <div style={{ width: `${Math.max(2, width)}%`, height: '100%', background: BRAND, opacity: 1 - i * 0.14, borderRadius: 4 }} />
             </div>
             <div style={{ flex: '0 0 auto', textAlign: 'right', minWidth: 150 }}>
-              <Text as="span" variant="bodySm" fontWeight="semibold">{s.value}</Text>
-              {s.note ? <Text as="span" variant="bodySm" tone="subdued">{` ${s.note}`}</Text> : null}
+              <s-text fontSize="small" fontWeight="semibold">{s.value}</s-text>
+              {s.note ? <s-text fontSize="small" color="subdued">{` ${s.note}`}</s-text> : null}
             </div>
-          </InlineStack>
+          </div>
         );
       })}
-    </BlockStack>
+    </s-stack>
   );
 }
 
@@ -284,7 +286,7 @@ export function VBarChart({ data, height = 200, prefix = '', label = 'Orders by 
 // a bar per completed order (height ∝ amount) with the gap since the prior order.
 export function Timeline({ events, empty = 'No completed orders.' }) {
   if (!events || !events.length) {
-    return <Text as="p" tone="subdued" variant="bodySm">{empty}</Text>;
+    return <s-paragraph color="subdued" fontSize="small">{empty}</s-paragraph>;
   }
   const maxAmt = Math.max(1, ...events.map((e) => Number(e.amount) || 0));
   return (
@@ -296,8 +298,8 @@ export function Timeline({ events, empty = 'No completed orders.' }) {
             style={{ width: 26, height: Math.max(28, ((Number(e.amount) || 0) / maxAmt) * 150), background: BRAND, borderRadius: 5 }}
             title={e.valueLabel}
           />
-          <Text as="span" variant="bodySm" fontWeight="medium">{e.valueLabel}</Text>
-          <Text as="span" variant="bodySm" tone="subdued">{e.dateLabel}</Text>
+          <s-text fontSize="small" fontWeight="medium">{e.valueLabel}</s-text>
+          <s-text fontSize="small" color="subdued">{e.dateLabel}</s-text>
         </div>
       ))}
     </div>

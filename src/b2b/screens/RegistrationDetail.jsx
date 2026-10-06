@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
-import {
-  Page, Card, BlockStack, InlineStack, InlineGrid, Text, Badge, Button, Link, Banner, Divider, Modal, Select, ChoiceList,
-} from '@shopify/polaris';
 import { useStore } from '../store.jsx';
 import { companyNeedsPrice } from '../pricing.js';
 import { REG_STATUS, fullName, fmtDate, registrationDuplicates } from '../registrations.js';
 import { readRegistrationForm, BUILTIN_FIELDS, withoutOptionalNote } from '../../shared/registrationForm.js';
 import { ROLE_OPTIONS } from '../components/LocationModals.jsx';
+import { Modal, wcTone, PageHeader } from '../../shared/wc.jsx';
 
 // Reviewing one registration: registration → identify buyer → approve (activate)
 // → configure pricing. The application is shown in the form's own sections; the
@@ -32,9 +30,14 @@ export function RegistrationDetail() {
   const back = () => dispatch({ type: 'NAVIGATE', view: 'registrations' });
   if (!reg) {
     return (
-      <Page title="Registration" backAction={{ content: 'Registrations', onAction: back }}>
-        <Card><Text as="p" tone="subdued">This registration no longer exists.</Text></Card>
-      </Page>
+      <>
+      <PageHeader heading="Registration" backAction={{ content: 'Registrations', onAction: back }} />
+      <s-page>
+        <s-section>
+          <s-paragraph color="subdued">This registration no longer exists.</s-paragraph>
+        </s-section>
+      </s-page>
+      </>
     );
   }
 
@@ -72,105 +75,107 @@ export function RegistrationDetail() {
           : { content: 'Merge', onAction: doMerge };
 
   return (
-    <Page
-      title={reg.company}
-      titleMetadata={<Badge tone={status.tone}>{status.label}</Badge>}
+    <>
+    <PageHeader
+      heading={reg.company}
+      titleMetadata={<s-badge tone={wcTone(status.tone)}>{status.label}</s-badge>}
       subtitle={`${name} · submitted ${fmtDate(reg.submittedAt)} from the ${reg.source.toLowerCase()}`}
       backAction={{ content: 'Registrations', onAction: back }}
       secondaryActions={[{ content: 'Delete', destructive: true, onAction: () => setConfirm('delete') }]}
-    >
-      <InlineGrid columns={{ xs: 1, md: '2fr 1fr' }} gap="400" alignItems="start">
-        <Card>
-          <BlockStack gap="400">
-            <Text as="h2" variant="headingSm">Application</Text>
-            {applicationSections(reg).map((sec, i) => (
-              <React.Fragment key={sec.key}>
-                {i > 0 && <Divider />}
-                <Section title={sec.title}>
-                  {sec.fields.map((f) => (f.kind === 'textarea' ? (
-                    <BlockStack key={f.id} gap="100">
-                      {sec.fields.length > 1 && <Text as="span" tone="subdued">{f.label}</Text>}
-                      <Text as="p" tone={answerOf(reg, f) ? undefined : 'subdued'}>{answerOf(reg, f) || 'No answer'}</Text>
-                    </BlockStack>
-                  ) : (
-                    <Row key={f.id} label={f.label} value={answerOf(reg, f)} />
-                  )))}
-                </Section>
-              </React.Fragment>
-            ))}
-          </BlockStack>
-        </Card>
+    />
+    <s-page>
+      <s-query-container>
+        <s-grid gridTemplateColumns='@container (inline-size > 640px) "minmax(0, 2fr) minmax(0, 1fr)", "minmax(0, 1fr)"' gap="base" alignItems="start">
+          <s-section heading="Application">
+            <s-stack gap="base">
+              {applicationSections(reg).map((sec, i) => (
+                <React.Fragment key={sec.key}>
+                  {i > 0 && <s-divider />}
+                  <Section title={sec.title}>
+                    {sec.fields.map((f) => (f.kind === 'textarea' ? (
+                      <s-stack key={f.id} gap="small-400">
+                        {sec.fields.length > 1 && <s-text color="subdued">{f.label}</s-text>}
+                        <s-paragraph color={answerOf(reg, f) ? undefined : 'subdued'}>{answerOf(reg, f) || 'No answer'}</s-paragraph>
+                      </s-stack>
+                    ) : (
+                      <Row key={f.id} label={f.label} value={answerOf(reg, f)} />
+                    )))}
+                  </Section>
+                </React.Fragment>
+              ))}
+            </s-stack>
+          </s-section>
 
-        {pending && dup.blocking ? (
-          <MatchCard
-            reg={reg}
-            dup={dup}
-            choice={choice}
-            onChoice={setChoice}
-            merge={merge}
-            onCompany={(id) => { setMergeCompanyId(id); setMergeLocationId(null); setMergeRole(null); }}
-            onLocation={setMergeLocationId}
-            onRole={setMergeRole}
-            actions={<DecisionActions primary={primary} onDecline={() => setConfirm('decline')} />}
-          />
-        ) : pending ? (
-          <Card>
-            <BlockStack gap="300">
-              <BlockStack gap="100">
-                <Text as="h2" variant="headingSm">Company</Text>
-                <Text as="p" tone="subdued">Approving gives {reg.firstName} B2B access through a new company.</Text>
-              </BlockStack>
-              <BlockStack gap="050">
-                <Text as="p" fontWeight="medium">{reg.company}</Text>
-                <Text as="p" variant="bodySm" tone="subdued">{`${name} as the main contact.`}</Text>
-              </BlockStack>
-              {dup.customer ? (
-                <Banner tone="info">
-                  {`Uses the existing Shopify customer ${dup.customer.name} (${reg.email}). Their order history is kept.`}
-                </Banner>
-              ) : null}
-              <Text as="p" variant="bodySm" tone="subdued">You’ll set up the company’s pricing after approving.</Text>
-              <DecisionActions primary={primary} onDecline={() => setConfirm('decline')} />
-            </BlockStack>
-          </Card>
-        ) : reg.status === 'approved' ? (
-          <ApprovedCard reg={reg} />
-        ) : (
-          <Card>
-            <BlockStack gap="200">
-              <Text as="h2" variant="headingSm">Decision</Text>
-              <Text as="p">Declined on {fmtDate(reg.decidedAt)}.</Text>
-              <Text as="p" tone="subdued">{reg.firstName} doesn’t get B2B access or pricing.</Text>
-            </BlockStack>
-          </Card>
-        )}
-      </InlineGrid>
+          {pending && dup.blocking ? (
+            <MatchCard
+              reg={reg}
+              dup={dup}
+              choice={choice}
+              onChoice={setChoice}
+              merge={merge}
+              onCompany={(id) => { setMergeCompanyId(id); setMergeLocationId(null); setMergeRole(null); }}
+              onLocation={setMergeLocationId}
+              onRole={setMergeRole}
+              actions={<DecisionActions primary={primary} onDecline={() => setConfirm('decline')} />}
+            />
+          ) : pending ? (
+            <s-section heading="Company">
+              <s-stack gap="small">
+                <s-paragraph color="subdued">Approving gives {reg.firstName} B2B access through a new company.</s-paragraph>
+                <s-stack gap="small-500">
+                  <s-paragraph fontWeight="medium">{reg.company}</s-paragraph>
+                  <s-paragraph fontSize="small" color="subdued">{`${name} as the main contact.`}</s-paragraph>
+                </s-stack>
+                {dup.customer ? (
+                  <s-banner tone="info">
+                    {`Uses the existing Shopify customer ${dup.customer.name} (${reg.email}). Their order history is kept.`}
+                  </s-banner>
+                ) : null}
+                <s-paragraph fontSize="small" color="subdued">You’ll set up the company’s pricing after approving.</s-paragraph>
+                <DecisionActions primary={primary} onDecline={() => setConfirm('decline')} />
+              </s-stack>
+            </s-section>
+          ) : reg.status === 'approved' ? (
+            <ApprovedCard reg={reg} />
+          ) : (
+            <s-section heading="Decision">
+              <s-stack gap="small-200">
+                <s-paragraph>Declined on {fmtDate(reg.decidedAt)}.</s-paragraph>
+                <s-paragraph color="subdued">{reg.firstName} doesn’t get B2B access or pricing.</s-paragraph>
+              </s-stack>
+            </s-section>
+          )}
+        </s-grid>
+      </s-query-container>
 
       {confirm && (
         <Modal
-          open
           onClose={() => setConfirm(null)}
-          title={confirm === 'decline' ? `Decline ${reg.company}’s registration?` : `Delete ${reg.company}’s registration?`}
-          primaryAction={{
-            content: confirm === 'decline' ? 'Decline' : 'Delete',
-            destructive: true,
-            onAction: () => {
+          heading={confirm === 'decline' ? `Decline ${reg.company}’s registration?` : `Delete ${reg.company}’s registration?`}
+        >
+          <s-paragraph>
+            {confirm === 'decline'
+              ? `${name} won’t get B2B access or pricing. The registration moves to Declined.`
+              : `This removes the submission from Registrations.${reg.status === 'approved' ? ' The company it was approved into is kept.' : ''}`}
+          </s-paragraph>
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            tone="critical"
+            onClick={() => {
               dispatch({ type: confirm === 'decline' ? 'DECLINE_REGISTRATIONS' : 'DELETE_REGISTRATIONS', ids: [reg.id] });
               setConfirm(null);
-            },
-          }}
-          secondaryActions={[{ content: 'Cancel', onAction: () => setConfirm(null) }]}
-        >
-          <Modal.Section>
-            <Text as="p">
-              {confirm === 'decline'
-                ? `${name} won’t get B2B access or pricing. The registration moves to Declined.`
-                : `This removes the submission from Registrations.${reg.status === 'approved' ? ' The company it was approved into is kept.' : ''}`}
-            </Text>
-          </Modal.Section>
+            }}
+          >
+            {confirm === 'decline' ? 'Decline' : 'Delete'}
+          </s-button>
+          <s-button slot="secondary-actions" onClick={() => setConfirm(null)}>
+            Cancel
+          </s-button>
         </Modal>
       )}
-    </Page>
+    </s-page>
+    </>
   );
 }
 
@@ -191,42 +196,52 @@ function MatchCard({ reg, dup, choice, onChoice, merge, onCompany, onLocation, o
           ? `${dup.sameName.length} companies named “${dup.company.name}” already exist`
           : `A company named “${dup.company.name}” already exists`;
   const mergeFields = (
-    <BlockStack gap="200">
+    <s-stack gap="small-200">
       {/* Several to pick from (e.g. companies sharing a name): "Company · main contact". */}
       {dup.mergeTargets.length > 1 ? (
-        <Select
-          label="Company"
-          options={dup.mergeTargets.map((c) => ({ label: `${c.name} · ${c.mainContact || 'No main contact'}`, value: c.id }))}
-          value={merge.company.id}
-          onChange={onCompany}
-        />
+        <s-select label="Company" value={merge.company.id} onChange={(e) => onCompany(e.currentTarget.value)}>
+          {dup.mergeTargets.map((c) => (
+            <s-option key={c.id} value={c.id}>
+              {`${c.name} · ${c.mainContact || 'No main contact'}`}
+            </s-option>
+          ))}
+        </s-select>
       ) : null}
       {/* Already a contact there → they keep their location (and role); only someone
           new to this company picks where they land. */}
       {!merge.current && (merge.company.locations || []).length ? (
-        <Select
-          label="Location"
-          options={merge.company.locations.map((l) => ({ label: l.name, value: l.id }))}
-          value={merge.location?.id || ''}
-          onChange={onLocation}
-        />
+        <s-select label="Location" value={merge.location?.id || ''} onChange={(e) => onLocation(e.currentTarget.value)}>
+          {merge.company.locations.map((l) => (
+            <s-option key={l.id} value={l.id}>
+              {l.name}
+            </s-option>
+          ))}
+        </s-select>
       ) : null}
       {/* A new email picks a role; an existing contact keeps theirs. */}
       {!dup.contactOf ? (
-        <Select label="Role" options={ROLE_OPTIONS.map((r) => ({ label: r, value: r }))} value={merge.role} onChange={onRole} />
+        <s-select label="Role" value={merge.role} onChange={(e) => onRole(e.currentTarget.value)}>
+          {ROLE_OPTIONS.map((r) => (
+            <s-option key={r} value={r}>
+              {r}
+            </s-option>
+          ))}
+        </s-select>
       ) : null}
       {dup.contactOf && dup.contactOf.id !== merge.company.id ? (
-        <Banner tone="warning">
+        <s-banner tone="warning">
           {`${name} is removed from ${dup.contactOf.name}. An email can only belong to one company.`}
-        </Banner>
+        </s-banner>
       ) : null}
-    </BlockStack>
+    </s-stack>
   );
   const mergeHelp = merge.current
     ? `${reg.firstName} stays at ${merge.company.name}${merge.current.locations ? ` · ${merge.current.locations}` : ''} as ${merge.role}. No new company is created.`
     : dup.contactOf
       ? `${reg.firstName} joins ${merge.company.name} as ${merge.role}. No new company is created.`
       : `${reg.firstName} joins ${merge.company.name} as a contact. No new company is created.`;
+  // Nothing to pick when they're already a contact there and there's one company.
+  const showMergeFields = dup.mergeTargets.length > 1 || !merge.current;
   const other =
     dup.kind === 'contact'
         ? {
@@ -234,9 +249,9 @@ function MatchCard({ reg, dup, choice, onChoice, merge, onCompany, onLocation, o
             value: 'create',
             renderChildren: (on) =>
               on ? (
-                <Banner tone="warning">
+                <s-banner tone="warning">
                   {`${name} is removed from ${dup.contactOf.name} and becomes the main contact of ${reg.company}. An email can only belong to one company.`}
-                </Banner>
+                </s-banner>
               ) : null,
           }
         : {
@@ -244,40 +259,56 @@ function MatchCard({ reg, dup, choice, onChoice, merge, onCompany, onLocation, o
             value: 'create',
             helpText: `Shopify allows several companies with the same name. ${reg.firstName} becomes its main contact.`,
           };
+  const choices = [
+    {
+      label: 'Merge',
+      value: 'merge',
+      helpText: mergeHelp,
+      renderChildren: (on) => (on && showMergeFields ? mergeFields : null),
+    },
+    other,
+  ];
   return (
-    <Card>
-      <BlockStack gap="300">
-        <Text as="h2" variant="headingSm">Company</Text>
-        <Banner tone="warning" title={title}>
-          <Text as="p">{dup.kind === 'same' ? 'Merge it into their company, or decline it.' : 'Choose how to handle this registration.'}</Text>
-        </Banner>
+    <s-section heading="Company">
+      <s-stack gap="small">
+        <s-banner tone="warning" heading={title}>
+          <s-paragraph>{dup.kind === 'same' ? 'Merge it into their company, or decline it.' : 'Choose how to handle this registration.'}</s-paragraph>
+        </s-banner>
         {dup.kind === 'same' ? (
           // One path: merge (or Decline, below).
-          <BlockStack gap="200">
-            <Text as="p">{mergeHelp}</Text>
-            {dup.mergeTargets.length > 1 || !merge.current ? mergeFields : null}
-          </BlockStack>
+          <s-stack gap="small-200">
+            <s-paragraph>{mergeHelp}</s-paragraph>
+            {showMergeFields ? mergeFields : null}
+          </s-stack>
         ) : (
-        <ChoiceList
-          title="Handle as"
-          titleHidden
-          selected={[choice]}
-          onChange={([v]) => onChoice(v)}
-          choices={[
-            {
-              label: 'Merge',
-              value: 'merge',
-              helpText: mergeHelp,
-              // Nothing to pick when they're already a contact there and there's one company.
-              renderChildren: (on) => (on && (dup.mergeTargets.length > 1 || !merge.current) ? mergeFields : null),
-            },
-            other,
-          ]}
-        />
+          <s-choice-list
+            label="Handle as"
+            labelAccessibilityVisibility="exclusive"
+            name={`handle-${reg.id}`}
+            onChange={(e) => {
+              const v = e.currentTarget.values?.[0];
+              if (v) onChoice(v);
+            }}
+          >
+            {choices.map((c) => {
+              const extra = c.renderChildren ? c.renderChildren(choice === c.value) : null;
+              return (
+                <s-choice key={c.value} value={c.value} selected={choice === c.value}>
+                  {c.label}
+                  {c.helpText ? <s-text slot="details">{c.helpText}</s-text> : null}
+                  {extra ? (
+                    <div slot="secondary-content" style={{ paddingBlockStart: 8 }}>
+                      {extra}
+                    </div>
+                  ) : null}
+                </s-choice>
+              );
+            })}
+          </s-choice-list>
         )}
         {actions}
-      </BlockStack>
-    </Card>
+      </s-stack>
+    </s-section>
   );
 }
 
@@ -285,13 +316,17 @@ function MatchCard({ reg, dup, choice, onChoice, merge, onCompany, onLocation, o
 // primary action (Approve / Merge / Create …).
 function DecisionActions({ primary, onDecline }) {
   return (
-    <BlockStack gap="300">
-      <Divider />
-      <InlineStack align="end" gap="200">
-        <Button tone="critical" onClick={onDecline}>Decline</Button>
-        <Button variant="primary" onClick={primary.onAction}>{primary.content}</Button>
-      </InlineStack>
-    </BlockStack>
+    <s-stack gap="small">
+      <s-divider />
+      <s-stack direction="inline" justifyContent="end" gap="small-200">
+        <s-button tone="critical" onClick={onDecline}>
+          Decline
+        </s-button>
+        <s-button variant="primary" onClick={primary.onAction}>
+          {primary.content}
+        </s-button>
+      </s-stack>
+    </s-stack>
   );
 }
 
@@ -303,31 +338,32 @@ function ApprovedCard({ reg }) {
   const openCompany = (tab) => dispatch({ type: 'OPEN_COMPANY', id: company.id, tab });
   const needsPrice = company && companyNeedsPrice(company, state.db.policies, state.db.defaults);
   return (
-    <Card>
-      <BlockStack gap="300">
-        <Text as="h2" variant="headingSm">Company</Text>
+    <s-section heading="Company">
+      <s-stack gap="small">
         {company ? (
           <>
-            <BlockStack gap="050">
-              <Link removeUnderline onClick={() => openCompany('contacts')}>{company.name}</Link>
-              <Text as="span" variant="bodySm" tone="subdued">Approved {fmtDate(reg.decidedAt)}</Text>
-            </BlockStack>
+            <s-stack gap="small-500">
+              <s-link onClick={() => openCompany('contacts')}>{company.name}</s-link>
+              <s-text fontSize="small" color="subdued">Approved {fmtDate(reg.decidedAt)}</s-text>
+            </s-stack>
             {needsPrice ? (
-              <Banner tone="warning" title="No pricing yet">
-                <BlockStack gap="200">
-                  <Text as="p">{reg.firstName} can sign in, but pays storefront prices until this company has pricing.</Text>
-                  <InlineStack><Button onClick={() => openCompany('pricing')}>Set up pricing</Button></InlineStack>
-                </BlockStack>
-              </Banner>
+              <s-banner tone="warning" heading="No pricing yet">
+                <s-paragraph>{reg.firstName} can sign in, but pays storefront prices until this company has pricing.</s-paragraph>
+                <s-button slot="secondary-actions" onClick={() => openCompany('pricing')}>
+                  Set up pricing
+                </s-button>
+              </s-banner>
             ) : (
-              <InlineStack><Button onClick={() => openCompany('pricing')}>Open company</Button></InlineStack>
+              <s-stack direction="inline">
+                <s-button onClick={() => openCompany('pricing')}>Open company</s-button>
+              </s-stack>
             )}
           </>
         ) : (
-          <Text as="p" tone="subdued">Approved {fmtDate(reg.decidedAt)}. The company has since been removed.</Text>
+          <s-paragraph color="subdued">Approved {fmtDate(reg.decidedAt)}. The company has since been removed.</s-paragraph>
         )}
-      </BlockStack>
-    </Card>
+      </s-stack>
+    </s-section>
   );
 }
 
@@ -363,18 +399,24 @@ function answerOf(reg, f) {
 
 function Section({ title, children }) {
   return (
-    <BlockStack gap="200">
-      {title && <Text as="h3" variant="headingXs" tone="subdued">{title}</Text>}
+    <s-stack gap="small-200">
+      {title && (
+        <s-heading fontSize="small">
+          <s-text color="subdued">{title}</s-text>
+        </s-heading>
+      )}
       {children}
-    </BlockStack>
+    </s-stack>
   );
 }
 
 function Row({ label, value }) {
   return (
-    <InlineGrid columns="160px minmax(0, 1fr)" gap="200">
-      <Text as="span" tone="subdued">{label}</Text>
-      <Text as="span" tone={value ? undefined : 'subdued'} breakWord>{value || '—'}</Text>
-    </InlineGrid>
+    <s-grid gridTemplateColumns="160px minmax(0, 1fr)" gap="small-200">
+      <s-text color="subdued">{label}</s-text>
+      <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+        <s-text color={value ? undefined : 'subdued'}>{value || '—'}</s-text>
+      </div>
+    </s-grid>
   );
 }

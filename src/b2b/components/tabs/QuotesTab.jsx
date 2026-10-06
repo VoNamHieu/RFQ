@@ -1,15 +1,6 @@
 import React from 'react';
-import {
-  Card,
-  IndexTable,
-  Badge,
-  Text,
-  BlockStack,
-  Box,
-  Tabs,
-  Banner,
-} from '@shopify/polaris';
 import { EmptyBlock } from '../../../shared/EmptyBlock.jsx';
+import { Tabs, useWcId, wcTone } from '../../../shared/wc.jsx';
 import { useStore } from '../../store.jsx';
 
 // quote.status → Badge tone (undefined = the default neutral badge).
@@ -35,14 +26,15 @@ const SUB_TABS = [
 export function QuotesTab({ company }) {
   const { state, dispatch } = useStore();
   const [selected, setSelected] = React.useState(0);
+  const rowId = useWcId('quote-row');
 
   const companyQuotes = (state.db.quotes || []).filter((q) => q.company === company.id);
 
   if (companyQuotes.length === 0) {
     return (
-      <Card>
+      <s-section>
         <EmptyBlock heading="No quotes yet">Quotes from this company will show up here.</EmptyBlock>
-      </Card>
+      </s-section>
     );
   }
 
@@ -60,82 +52,71 @@ export function QuotesTab({ company }) {
     ? companyQuotes.filter((q) => q.status === activeStatus)
     : companyQuotes;
 
-  const rows = shown.map((q, index) => (
-    <IndexTable.Row id={q.id} key={q.id} position={index} onClick={() => dispatch({ type: 'OPEN_QUOTE', id: q.id })}>
-      <IndexTable.Cell>
-        <Text as="span" variant="bodyMd" fontWeight="semibold">
-          {q.id}
-        </Text>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <BlockStack gap="050">
-          <Text as="span" variant="bodyMd">
-            {q.buyer}
-          </Text>
-          {q.email ? (
-            <Text as="span" tone="subdued" variant="bodySm">
-              {q.email}
-            </Text>
-          ) : null}
-        </BlockStack>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <Text as="span" variant="bodySm">
-          {(q.created || '').split(' ')[0] || '—'}
-        </Text>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <Text as="span" variant="bodySm">
-          {q.leadScore != null ? q.leadScore : '—'}
-        </Text>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <Text as="span" variant="bodySm">
-          {q.progress || '—'}
-        </Text>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <Badge tone={STATUS_TONE[q.status]}>{q.status}</Badge>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <Text as="span" variant="bodySm">
-          {q.assignee || '—'}
-        </Text>
-      </IndexTable.Cell>
-    </IndexTable.Row>
-  ));
+  const rows = shown.map((q) => {
+    const linkId = `${rowId}-${q.id}`;
+    return (
+      <s-table-row key={q.id} clickDelegate={linkId}>
+        <s-table-cell>
+          <s-link id={linkId} onClick={() => dispatch({ type: 'OPEN_QUOTE', id: q.id })}>
+            {q.id}
+          </s-link>
+        </s-table-cell>
+        <s-table-cell>
+          <s-stack gap="small-500">
+            <s-text>{q.buyer}</s-text>
+            {q.email ? (
+              <s-text color="subdued" fontSize="small">
+                {q.email}
+              </s-text>
+            ) : null}
+          </s-stack>
+        </s-table-cell>
+        <s-table-cell>
+          <s-text fontSize="small">{(q.created || '').split(' ')[0] || '—'}</s-text>
+        </s-table-cell>
+        <s-table-cell>
+          <s-text fontSize="small">{q.leadScore != null ? q.leadScore : '—'}</s-text>
+        </s-table-cell>
+        <s-table-cell>
+          <s-text fontSize="small">{q.progress || '—'}</s-text>
+        </s-table-cell>
+        <s-table-cell>
+          <s-badge tone={wcTone(STATUS_TONE[q.status])}>{q.status}</s-badge>
+        </s-table-cell>
+        <s-table-cell>
+          <s-text fontSize="small">{q.assignee || '—'}</s-text>
+        </s-table-cell>
+      </s-table-row>
+    );
+  });
 
   return (
-    <Card padding="0">
+    <s-section padding="none">
       {waiting > 0 && (
-        <Box padding="300" paddingBlockEnd="0">
-          <Banner tone="warning">{`${waiting} quote${waiting === 1 ? '' : 's'} waiting on a price. Price them in the RFQ app to move them forward.`}</Banner>
-        </Box>
+        <s-box padding="small" paddingBlockEnd="none">
+          <s-banner tone="warning">{`${waiting} quote${waiting === 1 ? '' : 's'} waiting on a price. Price them in the RFQ app to move them forward.`}</s-banner>
+        </s-box>
       )}
       <Tabs tabs={subTabs} selected={selected} onSelect={setSelected} />
-      <IndexTable
-        resourceName={{ singular: 'quote', plural: 'quotes' }}
-        itemCount={shown.length}
-        selectable={false}
-        headings={[
-          { title: 'Quote ID' },
-          { title: 'Customer' },
-          { title: 'Created' },
-          { title: 'Lead score' },
-          { title: 'Progress' },
-          { title: 'Status' },
-          { title: 'Assignee' },
-        ]}
-        emptyState={
-          <Box padding="400">
-            <Text as="p" alignment="center" tone="subdued">
-              No quotes in this view.
-            </Text>
-          </Box>
-        }
-      >
-        {rows}
-      </IndexTable>
-    </Card>
+      <s-table>
+        <s-table-header-row>
+          <s-table-header listSlot="primary">Quote ID</s-table-header>
+          <s-table-header listSlot="labeled">Customer</s-table-header>
+          <s-table-header listSlot="labeled">Created</s-table-header>
+          <s-table-header listSlot="labeled">Lead score</s-table-header>
+          <s-table-header listSlot="labeled">Progress</s-table-header>
+          <s-table-header listSlot="secondary">Status</s-table-header>
+          <s-table-header listSlot="labeled">Assignee</s-table-header>
+        </s-table-header-row>
+        <s-table-body>{rows}</s-table-body>
+      </s-table>
+      {shown.length === 0 ? (
+        <s-box padding="base">
+          <div style={{ textAlign: 'center' }}>
+            <s-text color="subdued">No quotes in this view.</s-text>
+          </div>
+        </s-box>
+      ) : null}
+    </s-section>
   );
 }

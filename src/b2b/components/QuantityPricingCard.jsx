@@ -1,10 +1,9 @@
 import React from 'react';
-import { Card, IndexTable, Badge, Button, InlineStack, Text, Box, BlockStack } from '@shopify/polaris';
-import { EditIcon, ExchangeIcon, XCircleIcon, PlusIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { companyQuantityEntries, locationOnlyEntries, pricingLocationsLabel, policyStatus, scopeTypeLabel } from '../pricing.js';
 import { LocationOnlyActions } from './BasePricingCard.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
+import { wcTone } from '../../shared/wc.jsx';
 import quantityPricingArt from '../assets/quantity-pricing-empty.webp';
 
 export function QuantityPricingCard({ company }) {
@@ -20,81 +19,76 @@ export function QuantityPricingCard({ company }) {
   // (mirrors the Base pricing card) instead of a "Not set" row with a bare +.
   if (!policies.length) {
     return (
-      <Card>
-        <BlockStack gap="200">
-          <Text as="h2" variant="headingSm">
-            Quantity pricing
-          </Text>
-          <EmptyBlock
-            image={quantityPricingArt}
-            imageAlt="Growing box stacks with the unit price dropping from $10 to $9 to $8"
-            heading="No quantity pricing yet"
-            action={{ content: 'Add quantity pricing', onAction: openAdd }}
-          >
-            Add a quantity pricing to give buyers a discount as the order quantity grows.
-          </EmptyBlock>
-        </BlockStack>
-      </Card>
+      <s-section heading="Quantity pricing">
+        <EmptyBlock
+          image={quantityPricingArt}
+          imageAlt="Growing box stacks with the unit price dropping from $10 to $9 to $8"
+          heading="No quantity pricing yet"
+          action={{ content: 'Add quantity pricing', onAction: openAdd }}
+        >
+          Add a quantity pricing to give buyers a discount as the order quantity grows.
+        </EmptyBlock>
+      </s-section>
     );
   }
 
   return (
-    <Card padding="0">
-      <Box padding="300" paddingBlockEnd="200">
-        <InlineStack align="space-between" blockAlign="center">
-          <Text as="h2" variant="headingSm">
-            Quantity pricing
-          </Text>
-          <Text as="span" tone="subdued" variant="bodySm">
+    <s-section padding="none">
+      <s-box padding="small" paddingBlockEnd="small-200">
+        <s-stack direction="inline" justifyContent="space-between" alignItems="center" gap="small-200">
+          <s-heading>Quantity pricing</s-heading>
+          <s-text color="subdued" fontSize="small">
             How the price changes with quantity
-          </Text>
-        </InlineStack>
-      </Box>
-      <IndexTable
-        resourceName={{ singular: 'quantity pricing', plural: 'quantity pricings' }}
-        itemCount={policies.length}
-        selectable={false}
-        headings={[{ title: 'Pricing' }, { title: 'Location' }, { title: 'Products' }, { title: 'Status' }, { title: '', alignment: 'end' }]}
-      >
-        {entries.map((entry, index) => {
-          const policy = entry.policy;
-          const st = policyStatus(policy, state.db);
-          return (
-            <IndexTable.Row id={policy.id} key={policy.id} position={index}>
-              <IndexTable.Cell>
-                <Text as="span" variant="bodyMd" fontWeight="medium">
-                  {policy.name}
-                </Text>
-              </IndexTable.Cell>
-              <IndexTable.Cell>{pricingLocationsLabel(company, 'quantity', policy.id)}</IndexTable.Cell>
-              <IndexTable.Cell>
-                <Text as="span" tone="subdued">
-                  {scopeTypeLabel(policy)}
-                </Text>
-              </IndexTable.Cell>
-              <IndexTable.Cell>
-                <Badge tone={st.tone}>{st.label}</Badge>
-              </IndexTable.Cell>
-              <IndexTable.Cell>
-                {entry.locations ? (
-                  <LocationOnlyActions company={company} kind="quantity" entry={entry} />
-                ) : (
-                <InlineStack gap="100" align="end" blockAlign="center" wrap={false}>
-                  <Button icon={EditIcon} variant="tertiary" accessibilityLabel="Edit pricing" onClick={() => dispatch({ type: 'OPEN_EDITOR', policy, context: { mode: 'edit', companyId: company.id } })} />
-                  <Button icon={ExchangeIcon} variant="tertiary" accessibilityLabel="Change pricing" onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, kind: 'quantity', mode: 'swap', swapId: policy.id })} />
-                  <Button icon={XCircleIcon} variant="tertiary" tone="critical" accessibilityLabel="Remove" onClick={() => dispatch({ type: 'REMOVE_COMPANY_QUANTITY', companyId: company.id, policyId: policy.id })} />
-                </InlineStack>
-                )}
-              </IndexTable.Cell>
-            </IndexTable.Row>
-          );
-        })}
-      </IndexTable>
-      <Box padding="300">
-        <Button icon={PlusIcon} onClick={openAdd}>
+          </s-text>
+        </s-stack>
+      </s-box>
+      <s-table>
+        <s-table-header-row>
+          <s-table-header listSlot="primary">Pricing</s-table-header>
+          <s-table-header listSlot="labeled">Location</s-table-header>
+          <s-table-header listSlot="labeled">Products</s-table-header>
+          <s-table-header listSlot="secondary">Status</s-table-header>
+          <s-table-header listSlot="inline">
+            <s-text accessibilityVisibility="exclusive">Actions</s-text>
+          </s-table-header>
+        </s-table-header-row>
+        <s-table-body>
+          {entries.map((entry) => {
+            const policy = entry.policy;
+            const st = policyStatus(policy, state.db);
+            return (
+              <s-table-row key={policy.id}>
+                <s-table-cell>
+                  <s-text fontWeight="medium">{policy.name}</s-text>
+                </s-table-cell>
+                <s-table-cell>{pricingLocationsLabel(company, 'quantity', policy.id)}</s-table-cell>
+                <s-table-cell>
+                  <s-text color="subdued">{scopeTypeLabel(policy)}</s-text>
+                </s-table-cell>
+                <s-table-cell>
+                  <s-badge tone={wcTone(st.tone)}>{st.label}</s-badge>
+                </s-table-cell>
+                <s-table-cell>
+                  {entry.locations ? (
+                    <LocationOnlyActions company={company} kind="quantity" entry={entry} />
+                  ) : (
+                    <s-stack direction="inline" gap="small-400" justifyContent="end" alignItems="center">
+                      <s-button icon="edit" variant="tertiary" accessibilityLabel="Edit pricing" onClick={() => dispatch({ type: 'OPEN_EDITOR', policy, context: { mode: 'edit', companyId: company.id } })} />
+                      <s-button icon="exchange" variant="tertiary" accessibilityLabel="Change pricing" onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, kind: 'quantity', mode: 'swap', swapId: policy.id })} />
+                      <s-button icon="x-circle" variant="tertiary" tone="critical" accessibilityLabel="Remove" onClick={() => dispatch({ type: 'REMOVE_COMPANY_QUANTITY', companyId: company.id, policyId: policy.id })} />
+                    </s-stack>
+                  )}
+                </s-table-cell>
+              </s-table-row>
+            );
+          })}
+        </s-table-body>
+      </s-table>
+      <s-box padding="small">
+        <s-button icon="plus" onClick={openAdd}>
           Add quantity pricing
-        </Button>
-      </Box>
-    </Card>
+        </s-button>
+      </s-box>
+    </s-section>
   );
 }

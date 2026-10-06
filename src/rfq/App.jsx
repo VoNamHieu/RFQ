@@ -1,17 +1,6 @@
 import React from 'react';
-import { Toast } from '@shopify/polaris';
-import {
-  HomeIcon,
-  OrderIcon,
-  ProductIcon,
-  PersonIcon,
-  DiscountIcon,
-  ChartVerticalIcon,
-  ClipboardIcon,
-  StoreIcon,
-  ViewIcon,
-} from '@shopify/polaris-icons';
 import { AdminFrame } from '../shared/AdminFrame.jsx';
+import { Toast } from '../shared/wc.jsx';
 import { activeVersion } from '../shared/versions.js';
 import { useStore } from './store.jsx';
 
@@ -41,21 +30,21 @@ export function App() {
   const sections = [
     {
       items: [
-        { label: 'Home', icon: HomeIcon, onClick: () => {} },
-        { label: 'Orders', icon: OrderIcon, badge: '16', onClick: () => {} },
-        { label: 'Products', icon: ProductIcon, onClick: () => {} },
-        { label: 'Customers', icon: PersonIcon, onClick: () => {} },
-        { label: 'Discounts', icon: DiscountIcon, onClick: () => {} },
-        { label: 'Analytics', icon: ChartVerticalIcon, onClick: () => {} },
+        { label: 'Home', icon: 'home', onClick: () => {} },
+        { label: 'Orders', icon: 'order', badge: '16', onClick: () => {} },
+        { label: 'Products', icon: 'product', onClick: () => {} },
+        { label: 'Customers', icon: 'person', onClick: () => {} },
+        { label: 'Discounts', icon: 'discount', onClick: () => {} },
+        { label: 'Analytics', icon: 'chart-vertical', onClick: () => {} },
       ],
     },
     {
       title: 'Apps',
       items: [
-        { label: 'Storefront', icon: ViewIcon, url: '#/storefront', onClick: () => { window.location.href = '/storefront'; } },
+        { label: 'Storefront', icon: 'view', url: '#/storefront', onClick: () => { window.location.href = '/storefront'; } },
         {
           label: 'O:Request a Quote',
-          icon: ClipboardIcon,
+          icon: 'clipboard',
           url: '#/rfq',
           onClick: goList,
           subNavigationItems: [
@@ -68,13 +57,13 @@ export function App() {
             { label: 'View more', url: '#/rfq/view-more', matches: false, onClick: () => {} },
           ],
         },
-        { label: 'Wholesale B2B Solution', icon: StoreIcon, onClick: () => { window.location.href = withV('/b2b'); } },
+        { label: 'Wholesale B2B Solution', icon: 'store', onClick: () => { window.location.href = withV('/b2b'); } },
       ],
     },
   ];
 
   return (
-    <AdminFrame app="rfq" location="#/rfq/submission-list" sections={sections} searchPlaceholder="Search quotes, customers and prices">
+    <AdminFrame app="rfq" sections={sections} searchPlaceholder="Search quotes, customers and prices">
       <CurrentView />
       {state.toast && (
         <Toast content={state.toast} onDismiss={() => dispatch({ type: 'CLEAR_TOAST' })} />

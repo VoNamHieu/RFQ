@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, BlockStack, InlineStack, InlineGrid, Box, Text, Badge, Button, Banner, Checkbox, Select, TextField, Divider } from '@shopify/polaris';
+import { Modal } from '../../shared/wc.jsx';
 import { useStore, handoffToB2B } from '../store.jsx';
 import { shopifyCompanyDirectory } from '../data/companies.js';
 
@@ -8,11 +8,22 @@ const ROLES = [
   { label: 'Location admin', value: 'Location admin' },
 ];
 const PAYMENT_TERMS = ['No payment terms', 'Due on receipt', 'Net 15', 'Net 30', 'Net 60'].map((t) => ({ label: t, value: t }));
+const ORDER_SUBMISSION = [
+  { label: 'Buy directly', value: 'direct' },
+  { label: 'Require merchant approval (draft)', value: 'draft' },
+];
 
 const locationsOf = (company) =>
   company
     ? company.locationList || (company.locationSummary && company.locationSummary !== 'Company location' ? [company.locationSummary] : [])
     : [];
+
+const options = (list) =>
+  list.map((o) => (
+    <s-option key={o.value} value={o.value}>
+      {o.label}
+    </s-option>
+  ));
 
 export function SyncFlowModals() {
   const { state, dispatch } = useStore();
@@ -64,77 +75,78 @@ export function SyncFlowModals() {
       : 'Shopify company';
 
     return (
-      <Modal
-        open
-        onClose={close}
-        title="Sync Shopify company to B2B"
-        primaryAction={{ content: 'Review', disabled: !company, onAction: () => dispatch({ type: 'SYNC_GOTO', step: 'review' }) }}
-        secondaryActions={[{ content: 'Cancel', onAction: close }]}
-      >
-        <Modal.Section>
-          <BlockStack gap="400">
-            {/* Zone — the company to sync. */}
-            {isMember ? (
-              <BlockStack gap="300">
-                <BlockStack gap="100">
-                  <Text as="span" tone="subdued" variant="bodySm" fontWeight="medium">Company</Text>
-                  <Text as="span" variant="headingMd">{company?.name}</Text>
-                </BlockStack>
-                <InlineGrid columns={{ xs: 1, sm: 3 }} gap="300">
+      <Modal onClose={close} heading="Sync Shopify company to B2B">
+        <s-stack gap="base">
+          {/* Zone — the company to sync. */}
+          {isMember ? (
+            <s-stack gap="small">
+              <s-stack gap="small-400">
+                <s-text color="subdued" fontSize="small" fontWeight="medium">Company</s-text>
+                <s-heading fontSize="large">{company?.name}</s-heading>
+              </s-stack>
+              <s-query-container>
+                <s-grid gridTemplateColumns="@container (inline-size > 400px) 1fr 1fr 1fr, 1fr" gap="small">
                   <KvItem align="start" label="Shopify Company ID" value={company?.shopifyId} />
                   <KvItem align="center" label="Main contact" value={buyer} />
                   <KvItem align="end" label="Locations" value={`${locCount} location${locCount === 1 ? '' : 's'}`} />
-                </InlineGrid>
-              </BlockStack>
-            ) : (
-              // Independent: lead with the recommended company + signals; dropdown to change.
-              <BlockStack gap="200">
-                <BlockStack gap="050">
-                  <Text as="span" tone="subdued" variant="bodySm" fontWeight="medium">{selectLabel}</Text>
-                  {company ? <Text as="span" variant="headingMd">{company.name}</Text> : null}
-                </BlockStack>
-                {isReco && company?.signals?.length ? (
-                  <InlineStack gap="100">
-                    {company.signals.map((s) => (
-                      <Badge key={s} tone="info" size="small">{s}</Badge>
-                    ))}
-                  </InlineStack>
-                ) : null}
-                <Select
-                  label="Select a Shopify company"
-                  placeholder="Select a Shopify company…"
-                  options={companyOptions}
-                  value={sf.companyKey}
-                  onChange={(v) => dispatch({ type: 'SYNC_PATCH', patch: { companyKey: v, location: '', createdLocations: [] } })}
-                />
-              </BlockStack>
-            )}
+                </s-grid>
+              </s-query-container>
+            </s-stack>
+          ) : (
+            // Independent: lead with the recommended company + signals; dropdown to change.
+            <s-stack gap="small-200">
+              <s-stack gap="small-500">
+                <s-text color="subdued" fontSize="small" fontWeight="medium">{selectLabel}</s-text>
+                {company ? <s-heading fontSize="large">{company.name}</s-heading> : null}
+              </s-stack>
+              {isReco && company?.signals?.length ? (
+                <s-stack direction="inline" gap="small-400">
+                  {company.signals.map((s) => (
+                    <s-badge key={s} tone="info">{s}</s-badge>
+                  ))}
+                </s-stack>
+              ) : null}
+              <s-select
+                label="Select a Shopify company"
+                placeholder="Select a Shopify company…"
+                value={sf.companyKey || ''}
+                onChange={(e) => dispatch({ type: 'SYNC_PATCH', patch: { companyKey: e.currentTarget.value, location: '', createdLocations: [] } })}
+              >
+                {options(companyOptions)}
+              </s-select>
+            </s-stack>
+          )}
 
-            {/* Consequence of the sync. */}
-            {company ? (
-              <Text as="p" tone="subdued" variant="bodySm">
-                {alreadyInB2B
-                  ? `Adds ${buyer} to ${company.name} in B2B. Existing company data won’t be re-synced.`
-                  : `Creates the full company in QuoteSnap B2B, including all ${locCount} location${locCount === 1 ? '' : 's'} and its buyers.`}
-              </Text>
-            ) : (
-              <Text as="p" tone="subdued" variant="bodySm">
-                Select the Shopify company this requester belongs to, or create a new one.
-              </Text>
-            )}
+          {/* Consequence of the sync. */}
+          {company ? (
+            <s-paragraph color="subdued" fontSize="small">
+              {alreadyInB2B
+                ? `Adds ${buyer} to ${company.name} in B2B. Existing company data won’t be re-synced.`
+                : `Creates the full company in QuoteSnap B2B, including all ${locCount} location${locCount === 1 ? '' : 's'} and its buyers.`}
+            </s-paragraph>
+          ) : (
+            <s-paragraph color="subdued" fontSize="small">
+              Select the Shopify company this requester belongs to, or create a new one.
+            </s-paragraph>
+          )}
 
-            {/* Zone 3 — create-company fallback (independent only; god file inline row). */}
-            {isIndependent ? (
-              <>
-                <Divider />
-                <InlineStack align="space-between" blockAlign="center" wrap={false}>
-                  <Text as="span" tone="subdued" variant="bodySm">No suitable Shopify company?</Text>
-                  <Button onClick={() => dispatch({ type: 'OPEN_CREATE_COMPANY', quoteId: sf.quoteId })}>Create new company</Button>
-                </InlineStack>
-              </>
-            ) : null}
-          </BlockStack>
-        </Modal.Section>
+          {/* Zone 3 — create-company fallback (independent only; god file inline row). */}
+          {isIndependent ? (
+            <>
+              <s-divider />
+              <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
+                <s-text color="subdued" fontSize="small">No suitable Shopify company?</s-text>
+                <s-button onClick={() => dispatch({ type: 'OPEN_CREATE_COMPANY', quoteId: sf.quoteId })}>Create new company</s-button>
+              </s-grid>
+            </>
+          ) : null}
+        </s-stack>
+        <s-button slot="primary-action" variant="primary" disabled={!company} onClick={() => dispatch({ type: 'SYNC_GOTO', step: 'review' })}>
+          Review
+        </s-button>
+        <s-button slot="secondary-actions" onClick={close}>
+          Cancel
+        </s-button>
       </Modal>
     );
   }
@@ -144,39 +156,37 @@ export function SyncFlowModals() {
     const nl = sf.newLocation || {};
     const patch = (p) => dispatch({ type: 'SYNC_LOCATION_PATCH', patch: p });
     return (
-      <Modal
-        open
-        onClose={close}
-        title="Create a location"
-        primaryAction={{ content: 'Add location', disabled: !(nl.name || '').trim(), onAction: () => dispatch({ type: 'SYNC_LOCATION_ADD' }) }}
-        secondaryActions={[{ content: 'Back', onAction: () => dispatch({ type: 'SYNC_GOTO', step: 'review' }) }]}
-      >
-        <Modal.Section>
-          <BlockStack gap="300">
-            <TextField label="Location name" value={nl.name || ''} onChange={(v) => patch({ name: v })} autoComplete="off" requiredIndicator />
-            <TextField label="Location ID (optional)" value={nl.locationId || ''} onChange={(v) => patch({ locationId: v })} autoComplete="off" />
-            <Divider />
-            <Text as="span" variant="headingSm">Address</Text>
-            <TextField label="Address" value={nl.address1 || ''} onChange={(v) => patch({ address1: v })} autoComplete="off" />
-            <InlineGrid columns={2} gap="300">
-              <TextField label="City" value={nl.city || ''} onChange={(v) => patch({ city: v })} autoComplete="off" />
-              <TextField label="Postal code" value={nl.postal || ''} onChange={(v) => patch({ postal: v })} autoComplete="off" />
-              <TextField label="Country" value={nl.country || ''} onChange={(v) => patch({ country: v })} autoComplete="off" />
-              <TextField label="Phone" value={nl.phone || ''} onChange={(v) => patch({ phone: v })} autoComplete="off" />
-            </InlineGrid>
-            <Divider />
-            <Select
-              label="Order submission"
-              options={[
-                { label: 'Buy directly', value: 'direct' },
-                { label: 'Require merchant approval (draft)', value: 'draft' },
-              ]}
-              value={nl.checkoutToDraft ? 'draft' : 'direct'}
-              onChange={(v) => patch({ checkoutToDraft: v === 'draft' })}
-            />
-            <Select label="Payment terms" options={PAYMENT_TERMS} value={nl.paymentTerms || 'No payment terms'} onChange={(v) => patch({ paymentTerms: v })} />
-          </BlockStack>
-        </Modal.Section>
+      <Modal onClose={close} heading="Create a location">
+        <s-stack gap="small">
+          <s-text-field label="Location name" value={nl.name || ''} onInput={(e) => patch({ name: e.currentTarget.value })} autocomplete="off" required />
+          <s-text-field label="Location ID (optional)" value={nl.locationId || ''} onInput={(e) => patch({ locationId: e.currentTarget.value })} autocomplete="off" />
+          <s-divider />
+          <s-heading>Address</s-heading>
+          <s-text-field label="Address" value={nl.address1 || ''} onInput={(e) => patch({ address1: e.currentTarget.value })} autocomplete="off" />
+          <s-grid gridTemplateColumns="repeat(2, minmax(0, 1fr))" gap="small">
+            <s-text-field label="City" value={nl.city || ''} onInput={(e) => patch({ city: e.currentTarget.value })} autocomplete="off" />
+            <s-text-field label="Postal code" value={nl.postal || ''} onInput={(e) => patch({ postal: e.currentTarget.value })} autocomplete="off" />
+            <s-text-field label="Country" value={nl.country || ''} onInput={(e) => patch({ country: e.currentTarget.value })} autocomplete="off" />
+            <s-text-field label="Phone" value={nl.phone || ''} onInput={(e) => patch({ phone: e.currentTarget.value })} autocomplete="off" />
+          </s-grid>
+          <s-divider />
+          <s-select
+            label="Order submission"
+            value={nl.checkoutToDraft ? 'draft' : 'direct'}
+            onChange={(e) => patch({ checkoutToDraft: e.currentTarget.value === 'draft' })}
+          >
+            {options(ORDER_SUBMISSION)}
+          </s-select>
+          <s-select label="Payment terms" value={nl.paymentTerms || 'No payment terms'} onChange={(e) => patch({ paymentTerms: e.currentTarget.value })}>
+            {options(PAYMENT_TERMS)}
+          </s-select>
+        </s-stack>
+        <s-button slot="primary-action" variant="primary" disabled={!(nl.name || '').trim()} onClick={() => dispatch({ type: 'SYNC_LOCATION_ADD' })}>
+          Add location
+        </s-button>
+        <s-button slot="secondary-actions" onClick={() => dispatch({ type: 'SYNC_GOTO', step: 'review' })}>
+          Back
+        </s-button>
       </Modal>
     );
   }
@@ -194,122 +204,121 @@ export function SyncFlowModals() {
         : `Syncs the whole company to B2B, then adds ${buyer} to the selected location.`;
 
     return (
-      <Modal
-        open
-        onClose={close}
-        title={title}
-        primaryAction={{ content: cta, onAction: () => dispatch({ type: 'SYNC_CONFIRM' }) }}
-        secondaryActions={[{ content: 'Back', onAction: () => dispatch({ type: 'SYNC_GOTO', step: 'sync' }) }]}
-      >
-        <Modal.Section>
-          <BlockStack gap="300">
-            <Banner tone={addBuyerOnly ? 'info' : 'success'}>{banner}</Banner>
-            <BlockStack gap="150">
-              <Kv label="Company" value={company?.name} />
-              <Kv label="Company ID" value={String(company?.shopifyId || '')} />
-              {memberSync ? (
-                <Kv label="Assigned location" value={baseLocations[0] || company?.locationSummary || '—'} />
-              ) : (
-                <Kv label="Locations" value={allLocations.join(', ') || '—'} />
-              )}
-              <Kv label="Main contact" value={company?.mainContact} />
-              <Kv label="Auto-sync future quotes" value={sf.autoSync ? 'On' : 'Off'} />
-            </BlockStack>
+      <Modal onClose={close} heading={title}>
+        <s-stack gap="small">
+          <s-banner tone={addBuyerOnly ? 'info' : 'success'}>{banner}</s-banner>
+          <s-stack gap="small-300">
+            <Kv label="Company" value={company?.name} />
+            <Kv label="Company ID" value={String(company?.shopifyId || '')} />
+            {memberSync ? (
+              <Kv label="Assigned location" value={baseLocations[0] || company?.locationSummary || '—'} />
+            ) : (
+              <Kv label="Locations" value={allLocations.join(', ') || '—'} />
+            )}
+            <Kv label="Main contact" value={company?.mainContact} />
+            <Kv label="Auto-sync future quotes" value={sf.autoSync ? 'On' : 'Off'} />
+          </s-stack>
 
-            {showAssign ? (
-              <>
-                <Divider />
-                <Select
-                  label="Add buyer to location"
-                  options={allLocations.map((l) => ({ label: l, value: l }))}
-                  value={sf.location || allLocations[0] || ''}
-                  onChange={(v) => dispatch({ type: 'SYNC_PATCH', patch: { location: v } })}
-                />
-                <Select
-                  label="Role"
-                  options={ROLES}
-                  value={sf.role}
-                  onChange={(v) => dispatch({ type: 'SYNC_PATCH', patch: { role: v } })}
-                />
-                <Box>
-                  <Button variant="plain" onClick={() => dispatch({ type: 'SYNC_LOCATION_NEW' })}>
-                    + Create new location
-                  </Button>
-                </Box>
-              </>
-            ) : null}
+          {showAssign ? (
+            <>
+              <s-divider />
+              <s-select
+                label="Add buyer to location"
+                value={sf.location || allLocations[0] || ''}
+                onChange={(e) => dispatch({ type: 'SYNC_PATCH', patch: { location: e.currentTarget.value } })}
+              >
+                {options(allLocations.map((l) => ({ label: l, value: l })))}
+              </s-select>
+              <s-select label="Role" value={sf.role} onChange={(e) => dispatch({ type: 'SYNC_PATCH', patch: { role: e.currentTarget.value } })}>
+                {options(ROLES)}
+              </s-select>
+              <s-box>
+                <s-link onClick={() => dispatch({ type: 'SYNC_LOCATION_NEW' })}>+ Create new location</s-link>
+              </s-box>
+            </>
+          ) : null}
 
-            {showSyncPast ? (
-              <>
-                <Divider />
-                <Checkbox
-                  label="Also sync past quotes"
-                  helpText="Add this customer’s past quotes to the B2B company and its quote history."
-                  checked={syncPast}
-                  onChange={(v) => dispatch({ type: 'SYNC_PATCH', patch: { syncPast: v } })}
-                />
-              </>
-            ) : null}
-          </BlockStack>
-        </Modal.Section>
+          {showSyncPast ? (
+            <>
+              <s-divider />
+              <s-checkbox
+                label="Also sync past quotes"
+                details="Add this customer’s past quotes to the B2B company and its quote history."
+                checked={syncPast}
+                onChange={(e) => dispatch({ type: 'SYNC_PATCH', patch: { syncPast: e.currentTarget.checked } })}
+              />
+            </>
+          ) : null}
+        </s-stack>
+        <s-button slot="primary-action" variant="primary" onClick={() => dispatch({ type: 'SYNC_CONFIRM' })}>
+          {cta}
+        </s-button>
+        <s-button slot="secondary-actions" onClick={() => dispatch({ type: 'SYNC_GOTO', step: 'sync' })}>
+          Back
+        </s-button>
       </Modal>
     );
   }
 
   // ── Step 3: success ────────────────────────────────────────────────────────
   return (
-    <Modal
-      open
-      size="small"
-      onClose={close}
-      title={alreadyInB2B ? 'Buyer added' : 'Sync complete'}
-      primaryAction={{ content: 'View in B2B app', onAction: () => handoffToB2B(state, sf.quoteId) }}
-      secondaryActions={[{ content: 'Stay in RFQ', onAction: close }]}
-    >
-      <Modal.Section>
-        <BlockStack gap="300" inlineAlign="center">
-          <Badge tone="success">Done</Badge>
-          <Text as="p" alignment="center">
+    <Modal size="small" onClose={close} heading={alreadyInB2B ? 'Buyer added' : 'Sync complete'}>
+      <s-stack gap="small" alignItems="center">
+        <s-badge tone="success">Done</s-badge>
+        <div style={{ textAlign: 'center' }}>
+          <s-text>
             {alreadyInB2B
               ? `${buyer} added to ${company?.name}${sf.location ? ` · ${sf.location}` : ''}.`
               : `${company?.name} is now managed in the B2B app${sf.location ? `, ${buyer} added to ${sf.location}` : ''}.`}
-          </Text>
-          {!alreadyInB2B ? (
-            <InlineStack gap="200" blockAlign="center">
-              <Badge>{`${locCount} location${locCount === 1 ? '' : 's'}`}</Badge>
-              <Badge>{`${buyersPill} buyer${buyersPill === 1 ? '' : 's'}`}</Badge>
-            </InlineStack>
-          ) : null}
-          {sf.backfilled > 0 ? (
-            <Text as="p" alignment="center" tone="subdued" variant="bodySm">
+          </s-text>
+        </div>
+        {!alreadyInB2B ? (
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            <s-badge>{`${locCount} location${locCount === 1 ? '' : 's'}`}</s-badge>
+            <s-badge>{`${buyersPill} buyer${buyersPill === 1 ? '' : 's'}`}</s-badge>
+          </s-stack>
+        ) : null}
+        {sf.backfilled > 0 ? (
+          <div style={{ textAlign: 'center' }}>
+            <s-text color="subdued" fontSize="small">
               {`${sf.backfilled} past quote${sf.backfilled === 1 ? '' : 's'} from ${buyer} also moved into B2B under ${company?.name}.`}
-            </Text>
-          ) : null}
-        </BlockStack>
-      </Modal.Section>
+            </s-text>
+          </div>
+        ) : null}
+      </s-stack>
+      <s-button slot="primary-action" variant="primary" onClick={() => handoffToB2B(state, sf.quoteId)}>
+        View in B2B app
+      </s-button>
+      <s-button slot="secondary-actions" onClick={close}>
+        Stay in RFQ
+      </s-button>
     </Modal>
   );
 }
 
 function Kv({ label, value }) {
   return (
-    <InlineStack align="space-between">
-      <Text as="span" tone="subdued" variant="bodySm">
+    <s-grid gridTemplateColumns="auto minmax(0, 1fr)" gap="base" alignItems="start">
+      <s-paragraph color="subdued" fontSize="small">
         {label}
-      </Text>
-      <Text as="span" variant="bodySm">
-        {value || '—'}
-      </Text>
-    </InlineStack>
+      </s-paragraph>
+      <div style={{ textAlign: 'end', lineHeight: '16px' }}>
+        <s-text fontSize="small">{value || '—'}</s-text>
+      </div>
+    </s-grid>
   );
 }
 
 // A key/value cell for the sync modal's company grid.
 function KvItem({ label, value, align = 'start' }) {
   return (
-    <BlockStack gap="050" inlineAlign={align}>
-      <Text as="span" tone="subdued" variant="bodySm" alignment={align}>{label}</Text>
-      <Text as="span" variant="bodyMd" alignment={align}>{value || '—'}</Text>
-    </BlockStack>
+    <div style={{ display: 'grid', gap: 2, textAlign: align }}>
+      <div style={{ lineHeight: '16px' }}>
+        <s-text color="subdued" fontSize="small">{label}</s-text>
+      </div>
+      <div>
+        <s-text>{value || '—'}</s-text>
+      </div>
+    </div>
   );
 }

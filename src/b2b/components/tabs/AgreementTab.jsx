@@ -1,28 +1,32 @@
 import React, { useState } from 'react';
-import { Card, BlockStack, InlineStack, Text, Badge, Button, Divider, Modal } from '@shopify/polaris';
 import { EmptyBlock } from '../../../shared/EmptyBlock.jsx';
 import { useStore } from '../../store.jsx';
 import { scopeLabel } from '../../pricing.js';
 import { currentAgreement, agreementScopeLabel, agreementTermLines } from '../../agreements.js';
+import { Modal, wcTone } from '../../../shared/wc.jsx';
 
 const STATUS_TONE = { Active: 'success', Draft: undefined, Ended: undefined };
 const fmtDate = (iso) => (iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '');
 
 function Section({ title, children }) {
   return (
-    <BlockStack gap="200">
-      <Text as="h3" variant="headingSm">{title}</Text>
+    <s-stack gap="small-200">
+      <s-heading>{title}</s-heading>
       {children}
-    </BlockStack>
+    </s-stack>
   );
 }
 
 function Line({ main, side }) {
   return (
-    <InlineStack align="space-between" blockAlign="center" gap="300" wrap={false}>
-      <Text as="span" variant="bodyMd">{main}</Text>
-      {side ? <Text as="span" tone="subdued" variant="bodySm">{side}</Text> : null}
-    </InlineStack>
+    <s-grid gridTemplateColumns="1fr auto" alignItems="center" gap="small">
+      <s-text>{main}</s-text>
+      {side ? (
+        <s-text color="subdued" fontSize="small">
+          {side}
+        </s-text>
+      ) : null}
+    </s-grid>
   );
 }
 
@@ -37,101 +41,115 @@ export function AgreementTab({ company }) {
   const edit = () => dispatch({ type: 'OPEN_AGREEMENT_EDITOR', agreementId: ag.id, returnTo });
 
   const pastCard = past.length ? (
-    <Card>
-      <BlockStack gap="200">
-        <Text as="h3" variant="headingSm">Past agreements</Text>
+    <s-section heading="Past agreements">
+      <s-stack gap="small-200">
         {past.map((a) => (
           <Line key={a.id} main={`${a.number} · ${a.name}`} side={`Ended ${fmtDate(a.history?.[0]?.date)} · version ${a.version}`} />
         ))}
-      </BlockStack>
-    </Card>
+      </s-stack>
+    </s-section>
   ) : null;
 
   if (!ag) {
     return (
-      <BlockStack gap="400">
-        <Card>
+      <s-stack gap="base">
+        <s-section>
           <EmptyBlock
             heading="No agreement yet"
             action={{ content: 'Create agreement', onAction: () => dispatch({ type: 'OPEN_AGREEMENT_EDITOR', companyId: company.id, returnTo }) }}
           >
             {`Put ${company.name}’s pricing and order limits in one agreement. Activating it applies them together, and every change is kept as a version.`}
           </EmptyBlock>
-        </Card>
+        </s-section>
         {pastCard}
-      </BlockStack>
+      </s-stack>
     );
   }
 
   const terms = agreementTermLines(state.db, ag);
   const isActive = ag.status === 'Active';
+  const none = <s-paragraph color="subdued">None</s-paragraph>;
 
   return (
-    <BlockStack gap="400">
-      <Card>
-        <BlockStack gap="400">
-          <InlineStack align="space-between" blockAlign="start" gap="300">
-            <BlockStack gap="100">
-              {/* align="start": nested stacks inherit the header's space-between otherwise */}
-              <InlineStack align="start" gap="200" blockAlign="center">
-                <Text as="h2" variant="headingMd">{`${ag.number} · ${ag.name || 'Untitled agreement'}`}</Text>
-                <Badge tone={STATUS_TONE[ag.status]}>{ag.status}</Badge>
-              </InlineStack>
-              <Text as="p" tone="subdued">
+    <s-stack gap="base">
+      <s-section>
+        <s-stack gap="base">
+          <s-grid gridTemplateColumns="1fr auto" alignItems="start" gap="small">
+            <s-stack gap="small-400">
+              <s-stack direction="inline" gap="small-200" alignItems="center">
+                <s-heading fontSize="large">{`${ag.number} · ${ag.name || 'Untitled agreement'}`}</s-heading>
+                <s-badge tone={wcTone(STATUS_TONE[ag.status])}>{ag.status}</s-badge>
+              </s-stack>
+              <s-paragraph color="subdued">
                 {isActive
                   ? `Version ${ag.version} · applies to ${agreementScopeLabel(company, ag)} · active since ${fmtDate(ag.history?.[ag.history.length - 1]?.date)}`
                   : `Draft · would apply to ${agreementScopeLabel(company, ag)} · not applied yet`}
-              </Text>
-            </BlockStack>
-            <InlineStack gap="200">
+              </s-paragraph>
+            </s-stack>
+            <s-stack direction="inline" gap="small-200">
               {isActive ? (
-                <Button tone="critical" variant="tertiary" onClick={() => setConfirmEnd(true)}>End agreement</Button>
+                <s-button tone="critical" variant="tertiary" onClick={() => setConfirmEnd(true)}>
+                  End agreement
+                </s-button>
               ) : (
-                <Button tone="critical" variant="tertiary" onClick={() => dispatch({ type: 'DELETE_AGREEMENT', id: ag.id })}>Delete draft</Button>
+                <s-button tone="critical" variant="tertiary" onClick={() => dispatch({ type: 'DELETE_AGREEMENT', id: ag.id })}>
+                  Delete draft
+                </s-button>
               )}
-              {isActive ? <Button onClick={edit}>Edit</Button> : <Button variant="primary" onClick={edit}>Review and activate</Button>}
-            </InlineStack>
-          </InlineStack>
+              {isActive ? (
+                <s-button onClick={edit}>Edit</s-button>
+              ) : (
+                <s-button variant="primary" onClick={edit}>
+                  Review and activate
+                </s-button>
+              )}
+            </s-stack>
+          </s-grid>
 
-          <Divider />
+          <s-divider />
           <Section title="Base pricing">
-            {terms.base.length ? terms.base.map((p) => <Line key={p.id} main={p.name} side={`Priority ${p.priority ?? 0} · ${scopeLabel(p)}`} />) : <Text as="p" tone="subdued">None</Text>}
+            {terms.base.length ? terms.base.map((p) => <Line key={p.id} main={p.name} side={`Priority ${p.priority ?? 0} · ${scopeLabel(p)}`} />) : none}
           </Section>
           <Section title="Quantity pricing">
-            {terms.quantity.length ? terms.quantity.map((p) => <Line key={p.id} main={p.name} side={scopeLabel(p)} />) : <Text as="p" tone="subdued">None</Text>}
+            {terms.quantity.length ? terms.quantity.map((p) => <Line key={p.id} main={p.name} side={scopeLabel(p)} />) : none}
           </Section>
           <Section title="Order limits">
-            {terms.limits.length ? terms.limits.map(({ limit, summary }) => <Line key={limit.id} main={limit.name} side={summary} />) : <Text as="p" tone="subdued">None</Text>}
+            {terms.limits.length ? terms.limits.map(({ limit, summary }) => <Line key={limit.id} main={limit.name} side={summary} />) : none}
           </Section>
-        </BlockStack>
-      </Card>
+        </s-stack>
+      </s-section>
 
       {ag.history?.length ? (
-        <Card>
-          <BlockStack gap="200">
-            <Text as="h3" variant="headingSm">Version history</Text>
+        <s-section heading="Version history">
+          <s-stack gap="small-200">
             {ag.history.map((h, i) => (
               <Line key={i} main={`Version ${h.version} · ${h.note}`} side={fmtDate(h.date)} />
             ))}
-          </BlockStack>
-        </Card>
+          </s-stack>
+        </s-section>
       ) : null}
 
       {pastCard}
 
       {confirmEnd && (
-        <Modal
-          open
-          onClose={() => setConfirmEnd(false)}
-          title={`End ${ag.number}?`}
-          primaryAction={{ content: 'End agreement', destructive: true, onAction: () => { setConfirmEnd(false); dispatch({ type: 'END_AGREEMENT', id: ag.id }); } }}
-          secondaryActions={[{ content: 'Cancel', onAction: () => setConfirmEnd(false) }]}
-        >
-          <Modal.Section>
-            <Text as="p">{`Its pricing and order limits come off ${company.name} right away. Anything assigned outside the agreement stays.`}</Text>
-          </Modal.Section>
+        <Modal onClose={() => setConfirmEnd(false)} heading={`End ${ag.number}?`}>
+          <s-paragraph>{`Its pricing and order limits come off ${company.name} right away. Anything assigned outside the agreement stays.`}</s-paragraph>
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            tone="critical"
+            onClick={() => {
+              setConfirmEnd(false);
+              dispatch({ type: 'END_AGREEMENT', id: ag.id });
+            }}
+          >
+            End agreement
+          </s-button>
+          <s-button slot="secondary-actions" onClick={() => setConfirmEnd(false)}>
+            Cancel
+          </s-button>
         </Modal>
       )}
-    </BlockStack>
+    </s-stack>
   );
 }

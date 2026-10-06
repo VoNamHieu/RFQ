@@ -1,23 +1,6 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  Page,
-  Card,
-  Text,
-  BlockStack,
-  InlineGrid,
-  InlineStack,
-  Box,
-  Select,
-  TextField,
-  Tabs,
-  IndexTable,
-  Badge,
-  Banner,
-  Button,
-  Icon,
-} from '@shopify/polaris';
-import { InfoIcon, MaximizeIcon, XIcon } from '@shopify/polaris-icons';
+import { Tabs, wcTone } from '../../shared/wc.jsx';
 import { useStore } from '../store.jsx';
 import { money } from '../format.js';
 import { LineChart, VBarChart, StackedBar, FunnelV2, RankBars, Timeline, moneyShort } from '../components/charts.jsx';
@@ -105,7 +88,7 @@ function DeltaChip({ v, suffix = '%', goodDown = false }) {
     // show a signal instead of nothing, so "compared but nothing to compare with" is visible.
     return (
       <MetricTooltip help="No data in the previous period to compare with.">
-        <Text as="span" variant="bodySm" tone="subdued">—</Text>
+        <s-text fontSize="small" color="subdued">—</s-text>
       </MetricTooltip>
     );
   }
@@ -114,9 +97,89 @@ function DeltaChip({ v, suffix = '%', goodDown = false }) {
   const good = goodDown ? down : up;
   const bad = goodDown ? up : down;
   return (
-    <Text as="span" variant="bodySm" tone={good ? 'success' : bad ? 'critical' : 'subdued'}>
+    <s-text fontSize="small" tone={good ? 'success' : bad ? 'critical' : undefined} color={good || bad ? undefined : 'subdued'}>
       {`${up ? '↑ ' : down ? '↓ ' : ''}${Math.abs(v)}${suffix}`}
-    </Text>
+    </s-text>
+  );
+}
+
+// Non-wrapping inline row (Polaris InlineStack wrap={false}): s-stack inline always wraps.
+const nowrapRow = (gap) => ({ display: 'flex', alignItems: 'center', gap, flexWrap: 'nowrap', minWidth: 0 });
+
+// A nested visual card inside the tab card (Polaris Card nested in Card).
+function Panel({ children, padding = 'base' }) {
+  return (
+    <s-box background="base" border="base" borderRadius="base" padding={padding}>
+      {children}
+    </s-box>
+  );
+}
+
+// Responsive columns (Polaris InlineGrid columns={{ xs: 1, sm: min(n, 2), md: n }}), measured
+// on the container rather than the viewport. (Responsive values are comma-separated, so the
+// track lists can't use repeat() / minmax() — spell the columns out; when several conditions
+// match, the LAST one wins, so list them from narrow to wide.)
+function ResponsiveGrid({ n, gap = 'base', children }) {
+  const cols = (k) => Array.from({ length: k }, () => '1fr').join(' ');
+  return (
+    <s-query-container>
+      <s-grid gridTemplateColumns={`@container (inline-size > 400px) ${cols(Math.min(n, 2))}, (inline-size > 640px) ${cols(n)}, 1fr`} gap={gap}>
+        {children}
+      </s-grid>
+    </s-query-container>
+  );
+}
+
+// Two equal columns from md up (Polaris InlineGrid columns={{ xs: 1, md: 2 }}).
+function TwoColumns({ children }) {
+  return (
+    <s-query-container>
+      <s-grid gridTemplateColumns="@container (inline-size > 640px) 1fr 1fr, 1fr" gap="base">
+        {children}
+      </s-grid>
+    </s-query-container>
+  );
+}
+
+// Polaris Select replacement: options [{ label, value }], onChange(value).
+function SelectField({ label, labelHidden = false, options, value, onChange, disabled = false }) {
+  return (
+    <s-select
+      label={label}
+      labelAccessibilityVisibility={labelHidden ? 'exclusive' : 'visible'}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.currentTarget.value)}
+    >
+      {options.map((o) => (
+        <s-option key={o.value} value={o.value}>
+          {o.label}
+        </s-option>
+      ))}
+    </s-select>
+  );
+}
+
+// IndexTable `emptyState` replacement, shown under the table when it has no rows.
+function TableEmpty({ show, children }) {
+  if (!show) return null;
+  return (
+    <s-box padding="base">
+      {/* Centred by a flex wrapper: s-paragraph's inner <p> sets its own text-align, so
+          neither a style prop on the host nor an inherited text-align centres it. */}
+      <div style={{ display: 'flex', justifyContent: 'center', textAlign: 'center' }}>
+        <s-paragraph color="subdued">{children}</s-paragraph>
+      </div>
+    </s-box>
+  );
+}
+
+// The ⓘ icon that opens a metric tooltip.
+function InfoTip({ title, help, formula }) {
+  return (
+    <MetricTooltip title={title} help={help} formula={formula}>
+      <span style={{ display: 'inline-flex', cursor: 'help' }}><s-icon type="info" color="subdued" /></span>
+    </MetricTooltip>
   );
 }
 
@@ -124,31 +187,29 @@ function DeltaChip({ v, suffix = '%', goodDown = false }) {
 function ScoreGrid({ items }) {
   const n = items.length;
   return (
-    <InlineGrid columns={{ xs: 1, sm: Math.min(n, 2), md: n }} gap="400">
+    <ResponsiveGrid n={n}>
       {items.map((it) => (
-        <Card key={it.label}>
-          <BlockStack gap="100">
+        <Panel key={it.label}>
+          <s-stack gap="small-400">
             {it.help ? (
-              <InlineStack gap="050" blockAlign="center" wrap={false}>
-                <Text as="span" tone="subdued" variant="bodySm">{it.label}</Text>
-                <MetricTooltip title={it.label} help={it.help} formula={it.formula}>
-                  <span style={{ display: 'inline-flex', cursor: 'help' }}><Icon source={InfoIcon} tone="subdued" /></span>
-                </MetricTooltip>
-              </InlineStack>
+              <div style={nowrapRow(2)}>
+                <s-text fontSize="small" color="subdued">{it.label}</s-text>
+                <InfoTip title={it.label} help={it.help} formula={it.formula} />
+              </div>
             ) : (
-              <Text as="span" tone="subdued" variant="bodySm">{it.label}</Text>
+              <s-text fontSize="small" color="subdued">{it.label}</s-text>
             )}
-            <Text as="span" variant="headingLg">{it.value}</Text>
+            <s-heading fontSize="large-200">{it.value}</s-heading>
             {(it.delta || it.foot) && (
-              <InlineStack gap="150" blockAlign="center" wrap={false}>
+              <div style={nowrapRow(6)}>
                 {it.delta || null}
-                {it.foot ? <Text as="span" tone="subdued" variant="bodySm">{it.foot}</Text> : null}
-              </InlineStack>
+                {it.foot ? <s-text fontSize="small" color="subdued">{it.foot}</s-text> : null}
+              </div>
             )}
-          </BlockStack>
-        </Card>
+          </s-stack>
+        </Panel>
       ))}
-    </InlineGrid>
+    </ResponsiveGrid>
   );
 }
 
@@ -156,32 +217,32 @@ function ScoreGrid({ items }) {
 function MiniCompare({ items, plain = false }) {
   const n = items.length;
   const grid = (
-    <InlineGrid columns={{ xs: 1, sm: Math.min(n, 2), md: n }} gap="300">
+    <ResponsiveGrid n={n} gap="small">
       {items.map((it) => (
-        <BlockStack gap="050" key={it.label}>
+        <s-stack gap="small-500" key={it.label}>
           {it.help ? (
             <MetricTooltip title={it.label} help={it.help} formula={it.formula}>
-              <Text as="span" tone="subdued" variant="bodySm">
+              <s-text fontSize="small" color="subdued">
                 <span style={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 2 }}>{it.label}</span>
-              </Text>
+              </s-text>
             </MetricTooltip>
           ) : (
-            <Text as="span" tone="subdued" variant="bodySm">{it.label}</Text>
+            <s-text fontSize="small" color="subdued">{it.label}</s-text>
           )}
-          <InlineStack gap="150" blockAlign="center" wrap={false}>
-            <Text as="span" variant="headingMd">{it.value}</Text>
+          <div style={nowrapRow(6)}>
+            <s-text fontSize="large" fontWeight="semibold">{it.value}</s-text>
             {it.delta || null}
-          </InlineStack>
-          {it.sub ? <Text as="span" tone="subdued" variant="bodySm">{it.sub}</Text> : null}
-        </BlockStack>
+          </div>
+          {it.sub ? <s-text fontSize="small" color="subdued">{it.sub}</s-text> : null}
+        </s-stack>
       ))}
-    </InlineGrid>
+    </ResponsiveGrid>
   );
   if (plain) return grid;
   return (
-    <Box borderColor="border" borderWidth="025" borderRadius="200" padding="300">
+    <s-box border="base" borderRadius="base" padding="small">
       {grid}
-    </Box>
+    </s-box>
   );
 }
 
@@ -189,21 +250,21 @@ function MiniCompare({ items, plain = false }) {
 // supporting context, and a CTA that jumps to the relevant screen.
 function InsightCard({ headline, value, tone, context, note, cta, onAction }) {
   return (
-    <Card>
-      <BlockStack gap="200">
-        <BlockStack gap="050">
-          <Text as="span" tone="subdued" variant="bodySm">{headline}</Text>
-          <Text as="span" variant="headingLg" tone={tone}>{value}</Text>
-          {context ? <Text as="p" tone="subdued" variant="bodySm">{context}</Text> : null}
-        </BlockStack>
-        {note ? <Text as="span" tone="subdued" variant="bodyXs">{note}</Text> : null}
+    <Panel>
+      <s-stack gap="small-200">
+        <s-stack gap="small-500">
+          <s-text fontSize="small" color="subdued">{headline}</s-text>
+          <s-heading fontSize="large-200">{tone ? <s-text tone={tone}>{value}</s-text> : value}</s-heading>
+          {context ? <s-paragraph fontSize="small" color="subdued">{context}</s-paragraph> : null}
+        </s-stack>
+        {note ? <s-text fontSize="small-200" color="subdued">{note}</s-text> : null}
         {cta ? (
-          <Box>
-            <Button variant="plain" onClick={onAction}>{cta}</Button>
-          </Box>
+          <s-box>
+            <s-link onClick={onAction}>{cta}</s-link>
+          </s-box>
         ) : null}
-      </BlockStack>
-    </Card>
+      </s-stack>
+    </Panel>
   );
 }
 
@@ -220,11 +281,11 @@ function HeadHelp({ label, help, formula }) {
 // An h4 sub-card heading with a dotted underline + hover tooltip (same idea as HeadHelp).
 function HeadingHelp({ label, help, formula }) {
   return (
-    <Text as="h4" variant="headingXs">
+    <s-heading fontSize="small">
       <MetricTooltip title={label} help={help} formula={formula}>
         <span style={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 3 }}>{label}</span>
       </MetricTooltip>
-    </Text>
+    </s-heading>
   );
 }
 
@@ -238,77 +299,71 @@ const RELATIONSHIP_STATE_DEFS = [
   ['Inactive', 'More than twice its usual reorder interval has passed since the last order.'],
   ['Insufficient history', 'Not enough order history to establish a reliable rhythm. Requires at least 4 orders.'],
 ];
+// Tooltip content: s-tooltip only shows s-paragraph / s-text children.
 function RelationshipStateHelp() {
   return (
-    <BlockStack gap="150">
-      <Text as="span" variant="bodySm">Relationship state shows whether a company is ordering on its usual schedule, based on its own order history.</Text>
+    <>
+      <s-paragraph>Relationship state shows whether a company is ordering on its usual schedule, based on its own order history.</s-paragraph>
       {RELATIONSHIP_STATE_DEFS.map(([name, def]) => (
-        <BlockStack gap="025" key={name}>
-          <Text as="span" variant="bodySm" fontWeight="semibold">{name}</Text>
-          <Text as="span" variant="bodySm" tone="subdued">{def}</Text>
-        </BlockStack>
+        <s-paragraph key={name}>
+          <s-text fontWeight="semibold">{name}</s-text> <s-text color="subdued">{def}</s-text>
+        </s-paragraph>
       ))}
-    </BlockStack>
+    </>
   );
 }
 
 function ReportCard({ title, subtitle, controls, help, formula, children }) {
   return (
-    <Card>
-      <BlockStack gap="300">
-        <InlineStack align="space-between" blockAlign="start" gap="300" wrap>
-          <BlockStack gap="050">
+    <Panel>
+      <s-stack gap="small">
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          <s-stack gap="small-500">
             {/* With controls, the help icon sits next to the title (a card with a wide
                 controls row shouldn't push the ⓘ to the far right past the controls).
                 Without controls, it goes in the right slot below, pinned flush-right. */}
             {help && controls ? (
-              <InlineStack gap="100" align="start" blockAlign="center" wrap={false}>
-                <Text as="h3" variant="headingSm">{title}</Text>
-                <MetricTooltip title={title} help={help} formula={formula}>
-                  <span style={{ display: 'inline-flex', cursor: 'help' }}><Icon source={InfoIcon} tone="subdued" /></span>
-                </MetricTooltip>
-              </InlineStack>
+              <div style={nowrapRow(4)}>
+                <s-heading>{title}</s-heading>
+                <InfoTip title={title} help={help} formula={formula} />
+              </div>
             ) : (
-              <Text as="h3" variant="headingSm">{title}</Text>
+              <s-heading>{title}</s-heading>
             )}
-            {subtitle ? <Text as="p" tone="subdued" variant="bodySm">{subtitle}</Text> : null}
-          </BlockStack>
+            {subtitle ? <s-paragraph fontSize="small" color="subdued">{subtitle}</s-paragraph> : null}
+          </s-stack>
           {(controls || (help && !controls)) ? (
-            <InlineStack gap="200" blockAlign="center" wrap={false}>
+            <div style={nowrapRow(8)}>
               {controls || null}
-              {help && !controls ? (
-                <MetricTooltip title={title} help={help} formula={formula}>
-                  <span style={{ display: 'inline-flex', cursor: 'help' }}><Icon source={InfoIcon} tone="subdued" /></span>
-                </MetricTooltip>
-              ) : null}
-            </InlineStack>
+              {help && !controls ? <InfoTip title={title} help={help} formula={formula} /> : null}
+            </div>
           ) : null}
-        </InlineStack>
+        </div>
         {children}
-      </BlockStack>
-    </Card>
+      </s-stack>
+    </Panel>
   );
 }
 
 function SectionTitle({ kicker, title, subtitle }) {
   return (
-    <BlockStack gap="050">
-      {kicker ? <Text as="span" tone="subdued" variant="bodySm" fontWeight="medium">{kicker}</Text> : null}
-      <Text as="h2" variant="headingMd">{title}</Text>
-      {subtitle ? <Text as="p" tone="subdued" variant="bodySm">{subtitle}</Text> : null}
-    </BlockStack>
+    <s-stack gap="small-500">
+      {kicker ? <s-text fontSize="small" color="subdued" fontWeight="medium">{kicker}</s-text> : null}
+      <s-heading fontSize="large">{title}</s-heading>
+      {subtitle ? <s-paragraph fontSize="small" color="subdued">{subtitle}</s-paragraph> : null}
+    </s-stack>
   );
 }
 
 // Small inline share bar for the breakdown table's "Share" cell.
 function ShareBar({ share }) {
   return (
-    <InlineStack gap="150" blockAlign="center" wrap={false}>
+    <div style={nowrapRow(6)}>
       <div style={{ flex: '1 1 auto', minWidth: 56, height: 6, borderRadius: 3, background: 'var(--p-color-bg-fill-tertiary, var(--p-color-bg-surface-secondary))', overflow: 'hidden' }}>
         <div style={{ width: `${Math.max(2, Math.round(share || 0))}%`, height: '100%', background: 'var(--p-color-bg-fill-brand)' }} />
       </div>
-      <Text as="span" variant="bodySm" tone="subdued">{Math.round(share || 0)}%</Text>
-    </InlineStack>
+      <s-text fontSize="small" color="subdued">{Math.round(share || 0)}%</s-text>
+    </div>
   );
 }
 
@@ -1035,13 +1090,7 @@ export function Analytics({ embeddedCompanyId = null }) {
 
   // Clickable company cell → drill into that company.
   const CompanyLink = ({ id, children }) => (
-    <button
-      type="button"
-      onClick={() => setCompanyFilter(id)}
-      style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', color: 'var(--p-color-text-emphasis)', font: 'inherit', textAlign: 'left' }}
-    >
-      {children}
-    </button>
+    <s-link onClick={() => setCompanyFilter(id)}>{children}</s-link>
   );
 
   // Four screens (spec §1). No Orders screen — order data feeds Overview, Companies
@@ -1055,31 +1104,31 @@ export function Analytics({ embeddedCompanyId = null }) {
 
   // Reusable breakdown metric table.
   const metricTable = (rows, { entity = 'Company', clickable = false, showGrowth = true } = {}) => (
-    <IndexTable
-      resourceName={{ singular: entity.toLowerCase(), plural: `${entity.toLowerCase()}s` }}
-      itemCount={rows.length}
-      selectable={false}
-      headings={[
-        { title: entity },
-        { title: 'Sales', alignment: 'end' },
-        { title: 'Share' },
-        { title: 'Orders', alignment: 'end' },
-        { title: 'AOV', alignment: 'end' },
-        ...(showGrowth ? [{ title: 'Vs previous period', alignment: 'end' }] : []),
-      ]}
-      emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No completed-order data.</Text></Box>}
-    >
-      {rows.map((r, i) => (
-        <IndexTable.Row id={String(r.id || r.name || i)} key={r.id || r.name || i} position={i}>
-          <IndexTable.Cell>{clickable && r.id ? <CompanyLink id={r.id}>{r.name}</CompanyLink> : <Text as="span">{r.name}{r.sub ? <Text as="span" tone="subdued">{` · ${r.sub}`}</Text> : null}</Text>}</IndexTable.Cell>
-          <IndexTable.Cell><Text as="span" alignment="end">{money(r.revenue || 0)}</Text></IndexTable.Cell>
-          <IndexTable.Cell><ShareBar share={r.share} /></IndexTable.Cell>
-          <IndexTable.Cell><Text as="span" alignment="end">{r.orders || 0}</Text></IndexTable.Cell>
-          <IndexTable.Cell><Text as="span" alignment="end">{money(r.aov || 0)}</Text></IndexTable.Cell>
-          {showGrowth && <IndexTable.Cell><Text as="span" alignment="end">{r.growth == null ? '—' : `${r.growth > 0 ? '+' : ''}${r.growth}%`}</Text></IndexTable.Cell>}
-        </IndexTable.Row>
-      ))}
-    </IndexTable>
+    <>
+      <s-table>
+        <s-table-header-row>
+          <s-table-header listSlot="primary">{entity}</s-table-header>
+          <s-table-header listSlot="labeled" format="currency">Sales</s-table-header>
+          <s-table-header listSlot="labeled">Share</s-table-header>
+          <s-table-header listSlot="labeled" format="numeric">Orders</s-table-header>
+          <s-table-header listSlot="labeled" format="currency">AOV</s-table-header>
+          {showGrowth && <s-table-header listSlot="labeled" format="numeric">Vs previous period</s-table-header>}
+        </s-table-header-row>
+        <s-table-body>
+          {rows.map((r, i) => (
+            <s-table-row key={r.id || r.name || i}>
+              <s-table-cell>{clickable && r.id ? <CompanyLink id={r.id}>{r.name}</CompanyLink> : <s-text>{r.name}{r.sub ? <s-text color="subdued">{` · ${r.sub}`}</s-text> : null}</s-text>}</s-table-cell>
+              <s-table-cell>{money(r.revenue || 0)}</s-table-cell>
+              <s-table-cell><ShareBar share={r.share} /></s-table-cell>
+              <s-table-cell>{r.orders || 0}</s-table-cell>
+              <s-table-cell>{money(r.aov || 0)}</s-table-cell>
+              {showGrowth && <s-table-cell>{r.growth == null ? '—' : `${r.growth > 0 ? '+' : ''}${r.growth}%`}</s-table-cell>}
+            </s-table-row>
+          ))}
+        </s-table-body>
+      </s-table>
+      <TableEmpty show={rows.length === 0}>No completed-order data.</TableEmpty>
+    </>
   );
 
   // ── OVERVIEW ────────────────────────────────────────────────────────────────
@@ -1171,7 +1220,7 @@ export function Analytics({ embeddedCompanyId = null }) {
   const shownProducts = blankRows(showAllProducts ? productRows : productRows.slice(0, 5));
 
   const overviewTab = (
-    <BlockStack gap="500">
+    <s-stack gap="large">
       {/* §3.1 — Hero KPIs */}
       <ScoreGrid
         items={cmpOnly([
@@ -1216,9 +1265,9 @@ export function Analytics({ embeddedCompanyId = null }) {
 
       {/* §3.4 — Needs attention (problem → financial context → CTA) */}
       {!selected && (
-        <BlockStack gap="300">
+        <s-stack gap="small">
           <SectionTitle title="Needs attention" subtitle="Each signal with its financial context and where to act." />
-          <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
+          <TwoColumns>
             <InsightCard
               headline="Past their normal reorder cycle"
               value={compareOnly ? '—' : `${pastCycleCompanies.length} compan${pastCycleCompanies.length === 1 ? 'y' : 'ies'}`}
@@ -1246,8 +1295,8 @@ export function Analytics({ embeddedCompanyId = null }) {
                 onAction={() => setTab(3)}
               />
             )}
-          </InlineGrid>
-        </BlockStack>
+          </TwoColumns>
+        </s-stack>
       )}
 
       {/* §3.6 Top companies + §3.2 revenue mix */}
@@ -1256,25 +1305,29 @@ export function Analytics({ embeddedCompanyId = null }) {
           <ReportCard
             title="Top companies"
             subtitle="Sales, gross profit and margin by company. Click a company to filter, or open the full ranking."
-            controls={<Button variant="plain" onClick={() => setTab(1)}>View all companies</Button>}
+            controls={<s-link onClick={() => setTab(1)}>View all companies</s-link>}
           >
-            <IndexTable
-              resourceName={{ singular: 'company', plural: 'companies' }}
-              itemCount={Math.min(5, blankRows(companyRows).length)}
-              selectable={false}
-              headings={[{ title: 'Company' }, { title: 'Sales', alignment: 'end' }, { title: 'Gross profit', alignment: 'end' }, { title: 'Margin', alignment: 'end' }, { title: '% of sales', alignment: 'end' }]}
-              emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No completed-order data.</Text></Box>}
-            >
-              {blankRows(companyRows).slice(0, 5).map((r, i) => (
-                <IndexTable.Row id={r.id} key={r.id} position={i}>
-                  <IndexTable.Cell><CompanyLink id={r.id}>{r.name}</CompanyLink></IndexTable.Cell>
-                  <IndexTable.Cell><Text as="span" alignment="end">{money(r.revenue || 0)}</Text></IndexTable.Cell>
-                  <IndexTable.Cell><Text as="span" alignment="end">{moneyN(r.gp)}</Text></IndexTable.Cell>
-                  <IndexTable.Cell><Text as="span" alignment="end">{pctN(r.margin)}</Text></IndexTable.Cell>
-                  <IndexTable.Cell><Text as="span" alignment="end">{`${Math.round(r.share || 0)}%`}</Text></IndexTable.Cell>
-                </IndexTable.Row>
-              ))}
-            </IndexTable>
+            <s-table>
+              <s-table-header-row>
+                <s-table-header listSlot="primary">Company</s-table-header>
+                <s-table-header listSlot="labeled" format="currency">Sales</s-table-header>
+                <s-table-header listSlot="labeled" format="currency">Gross profit</s-table-header>
+                <s-table-header listSlot="labeled" format="numeric">Margin</s-table-header>
+                <s-table-header listSlot="labeled" format="numeric">% of sales</s-table-header>
+              </s-table-header-row>
+              <s-table-body>
+                {blankRows(companyRows).slice(0, 5).map((r) => (
+                  <s-table-row key={r.id}>
+                    <s-table-cell><CompanyLink id={r.id}>{r.name}</CompanyLink></s-table-cell>
+                    <s-table-cell>{money(r.revenue || 0)}</s-table-cell>
+                    <s-table-cell>{moneyN(r.gp)}</s-table-cell>
+                    <s-table-cell>{pctN(r.margin)}</s-table-cell>
+                    <s-table-cell>{`${Math.round(r.share || 0)}%`}</s-table-cell>
+                  </s-table-row>
+                ))}
+              </s-table-body>
+            </s-table>
+            <TableEmpty show={Math.min(5, blankRows(companyRows).length) === 0}>No completed-order data.</TableEmpty>
           </ReportCard>
           <ReportCard title="New vs existing revenue" subtitle="Revenue by whether the company first purchased in the selected period.">
             <StackedBar segments={revenueMix} />
@@ -1286,32 +1339,36 @@ export function Analytics({ embeddedCompanyId = null }) {
       <ReportCard
         title="Top products"
         subtitle="Sales, units and margin by product."
-        controls={blankRows(productRows).length > 5 ? <Button variant="plain" onClick={() => setShowAllProducts((v) => !v)}>{showAllProducts ? 'Show top 5' : 'View all'}</Button> : null}
+        controls={blankRows(productRows).length > 5 ? <s-link onClick={() => setShowAllProducts((v) => !v)}>{showAllProducts ? 'Show top 5' : 'View all'}</s-link> : null}
       >
-        <IndexTable
-          resourceName={{ singular: 'product', plural: 'products' }}
-          itemCount={shownProducts.length}
-          selectable={false}
-          headings={[{ title: 'Product' }, { title: 'Sales', alignment: 'end' }, { title: 'Units', alignment: 'end' }, { title: 'Orders', alignment: 'end' }, { title: 'Margin', alignment: 'end' }]}
-          emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No line-level product data.</Text></Box>}
-        >
-          {shownProducts.map((r, i) => (
-            <IndexTable.Row id={r.sku || String(i)} key={r.sku || i} position={i}>
-              <IndexTable.Cell>
-                <BlockStack gap="025">
-                  <Text as="span" variant="bodyMd" fontWeight="medium">{r.name}</Text>
-                  {r.sub ? <Text as="span" tone="subdued" variant="bodySm">{r.sub}</Text> : null}
-                </BlockStack>
-              </IndexTable.Cell>
-              <IndexTable.Cell><Text as="span" alignment="end">{money(r.revenue || 0)}</Text></IndexTable.Cell>
-              <IndexTable.Cell><Text as="span" alignment="end">{(r.units || 0).toLocaleString('en-US')}</Text></IndexTable.Cell>
-              <IndexTable.Cell><Text as="span" alignment="end">{r.orders || 0}</Text></IndexTable.Cell>
-              <IndexTable.Cell><Text as="span" alignment="end">{pctN(r.margin)}</Text></IndexTable.Cell>
-            </IndexTable.Row>
-          ))}
-        </IndexTable>
+        <s-table>
+          <s-table-header-row>
+            <s-table-header listSlot="primary">Product</s-table-header>
+            <s-table-header listSlot="labeled" format="currency">Sales</s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">Units</s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">Orders</s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">Margin</s-table-header>
+          </s-table-header-row>
+          <s-table-body>
+            {shownProducts.map((r, i) => (
+              <s-table-row key={r.sku || i}>
+                <s-table-cell>
+                  <s-stack gap="small-500">
+                    <s-text fontWeight="medium">{r.name}</s-text>
+                    {r.sub ? <s-text fontSize="small" color="subdued">{r.sub}</s-text> : null}
+                  </s-stack>
+                </s-table-cell>
+                <s-table-cell>{money(r.revenue || 0)}</s-table-cell>
+                <s-table-cell>{(r.units || 0).toLocaleString('en-US')}</s-table-cell>
+                <s-table-cell>{r.orders || 0}</s-table-cell>
+                <s-table-cell>{pctN(r.margin)}</s-table-cell>
+              </s-table-row>
+            ))}
+          </s-table-body>
+        </s-table>
+        <TableEmpty show={shownProducts.length === 0}>No line-level product data.</TableEmpty>
       </ReportCard>
-    </BlockStack>
+    </s-stack>
   );
 
   // ── COMPANIES (spec §4) ─────────────────────────────────────────────────────
@@ -1381,65 +1438,65 @@ export function Analytics({ embeddedCompanyId = null }) {
   const companyPerfTable = selected ? (
     metricTable(allLocationRows, { entity: 'Location', clickable: false, showGrowth: compareEnabled })
   ) : (
-    <IndexTable
-      resourceName={{ singular: 'company', plural: 'companies' }}
-      itemCount={sortedCompanyRows.length}
-      selectable={false}
-      headings={[
-        { title: 'Company' },
-        { title: 'Sales', alignment: 'end' },
-        { title: 'Gross profit', alignment: 'end' },
-        { title: 'Margin', alignment: 'end' },
-        ...(compareEnabled ? [{ title: 'Growth', alignment: 'end' }] : []),
-        { title: <HeadHelp label="Repeat revenue" help="Share of sales from repeat orders." formula="Repeat revenue = sales after first order / company sales" />, alignment: 'end' },
-        { title: 'Last order', alignment: 'end' },
-        { title: 'Typical reorder', alignment: 'end' },
-        { title: 'Status' },
-      ]}
-      emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No companies match these filters.</Text></Box>}
-    >
-      {sortedCompanyRows.map((r, i) => (
-        <IndexTable.Row id={r.id} key={r.id} position={i}>
-          <IndexTable.Cell><CompanyLink id={r.id}>{r.name}</CompanyLink></IndexTable.Cell>
-          <IndexTable.Cell><Text as="span" alignment="end">{money(r.revenue || 0)}</Text></IndexTable.Cell>
-          <IndexTable.Cell><Text as="span" alignment="end">{moneyN(r.gp)}</Text></IndexTable.Cell>
-          <IndexTable.Cell><Text as="span" alignment="end">{pctN(r.margin)}</Text></IndexTable.Cell>
-          {compareEnabled && <IndexTable.Cell><Text as="span" alignment="end">{r.growth == null ? '—' : `${r.growth > 0 ? '+' : ''}${r.growth}%`}</Text></IndexTable.Cell>}
-          <IndexTable.Cell><Text as="span" alignment="end">{`${Math.round(r.repeat || 0)}%`}</Text></IndexTable.Cell>
-          {/* Recency only — the overdue amount and reorder ratio live on the Status tooltip
-              so this cell answers one thing: how long since the last order. */}
-          <IndexTable.Cell><Text as="span" alignment="end">{r.since != null ? `${r.since}d ago` : '—'}</Text></IndexTable.Cell>
-          {/* Baseline only ("how often do they usually buy") — the current-state ratio moves
-              to Status, so this cell isn't mixing a stable interval with a TODAY value. */}
-          <IndexTable.Cell><Text as="span" alignment="end">{r.typical != null ? `~${r.typical}d` : '—'}</Text></IndexTable.Cell>
-          <IndexTable.Cell>
-            {r.ratio != null ? (
-              <MetricTooltip title={r.health} help={`${r.ratio.toFixed(1)}× its usual reorder gap${r.overdue ? ` · ${r.overdue} days past its typical reorder time` : ''}`}>
-                <span style={{ display: 'inline-flex', cursor: 'help' }}><Badge tone={HEALTH_TONE[r.health]}>{r.health}</Badge></span>
-              </MetricTooltip>
-            ) : (
-              <Badge tone={HEALTH_TONE[r.health]}>{r.health}</Badge>
-            )}
-          </IndexTable.Cell>
-        </IndexTable.Row>
-      ))}
-    </IndexTable>
+    <>
+      <s-table>
+        <s-table-header-row>
+          <s-table-header listSlot="primary">Company</s-table-header>
+          <s-table-header listSlot="labeled" format="currency">Sales</s-table-header>
+          <s-table-header listSlot="labeled" format="currency">Gross profit</s-table-header>
+          <s-table-header listSlot="labeled" format="numeric">Margin</s-table-header>
+          {compareEnabled && <s-table-header listSlot="labeled" format="numeric">Growth</s-table-header>}
+          <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Repeat revenue" help="Share of sales from repeat orders." formula="Repeat revenue = sales after first order / company sales" /></s-table-header>
+          <s-table-header listSlot="labeled" format="numeric">Last order</s-table-header>
+          <s-table-header listSlot="labeled" format="numeric">Typical reorder</s-table-header>
+          <s-table-header listSlot="secondary">Status</s-table-header>
+        </s-table-header-row>
+        <s-table-body>
+          {sortedCompanyRows.map((r) => (
+            <s-table-row key={r.id}>
+              <s-table-cell><CompanyLink id={r.id}>{r.name}</CompanyLink></s-table-cell>
+              <s-table-cell>{money(r.revenue || 0)}</s-table-cell>
+              <s-table-cell>{moneyN(r.gp)}</s-table-cell>
+              <s-table-cell>{pctN(r.margin)}</s-table-cell>
+              {compareEnabled && <s-table-cell>{r.growth == null ? '—' : `${r.growth > 0 ? '+' : ''}${r.growth}%`}</s-table-cell>}
+              <s-table-cell>{`${Math.round(r.repeat || 0)}%`}</s-table-cell>
+              {/* Recency only — the overdue amount and reorder ratio live on the Status tooltip
+                  so this cell answers one thing: how long since the last order. */}
+              <s-table-cell>{r.since != null ? `${r.since}d ago` : '—'}</s-table-cell>
+              {/* Baseline only ("how often do they usually buy") — the current-state ratio moves
+                  to Status, so this cell isn't mixing a stable interval with a TODAY value. */}
+              <s-table-cell>{r.typical != null ? `~${r.typical}d` : '—'}</s-table-cell>
+              <s-table-cell>
+                {r.ratio != null ? (
+                  <MetricTooltip title={r.health} help={`${r.ratio.toFixed(1)}× its usual reorder gap${r.overdue ? ` · ${r.overdue} days past its typical reorder time` : ''}`}>
+                    <span style={{ display: 'inline-flex', cursor: 'help' }}><s-badge tone={wcTone(HEALTH_TONE[r.health])}>{r.health}</s-badge></span>
+                  </MetricTooltip>
+                ) : (
+                  <s-badge tone={wcTone(HEALTH_TONE[r.health])}>{r.health}</s-badge>
+                )}
+              </s-table-cell>
+            </s-table-row>
+          ))}
+        </s-table-body>
+      </s-table>
+      <TableEmpty show={sortedCompanyRows.length === 0}>No companies match these filters.</TableEmpty>
+    </>
   );
 
   // Filter/sort controls shared by the inline Company performance card and its full-screen view.
   const companyFilters = (
-    <InlineStack gap="200" wrap blockAlign="center">
-      <div style={{ minWidth: 150 }}><Select label="Health" labelHidden options={[{ label: 'All health', value: 'all' }, ...HEALTH_SEGMENTS.map(([n]) => ({ label: `${n} (${countHealth(n)})`, value: n }))]} value={healthFilter} onChange={setHealthFilter} /></div>
-      <div style={{ minWidth: 150 }}><Select label="Lifecycle" labelHidden options={[{ label: 'All lifecycle', value: 'all' }, ...['No purchase', 'Recently activated', 'Established'].map((n) => ({ label: `${n} (${countLifecycle(n)})`, value: n }))]} value={lifecycleFilter} onChange={setLifecycleFilter} /></div>
-      <div style={{ minWidth: 140 }}><Select label="Pricing" labelHidden options={[{ label: 'Any pricing', value: 'all' }, { label: 'Has pricing', value: 'has' }, { label: 'No pricing', value: 'none' }]} value={pricingFilter} onChange={setPricingFilter} /></div>
+    <s-stack direction="inline" gap="small-200" alignItems="center">
+      <div style={{ minWidth: 150 }}><SelectField label="Health" labelHidden options={[{ label: 'All health', value: 'all' }, ...HEALTH_SEGMENTS.map(([n]) => ({ label: `${n} (${countHealth(n)})`, value: n }))]} value={healthFilter} onChange={setHealthFilter} /></div>
+      <div style={{ minWidth: 150 }}><SelectField label="Lifecycle" labelHidden options={[{ label: 'All lifecycle', value: 'all' }, ...['No purchase', 'Recently activated', 'Established'].map((n) => ({ label: `${n} (${countLifecycle(n)})`, value: n }))]} value={lifecycleFilter} onChange={setLifecycleFilter} /></div>
+      <div style={{ minWidth: 140 }}><SelectField label="Pricing" labelHidden options={[{ label: 'Any pricing', value: 'all' }, { label: 'Has pricing', value: 'has' }, { label: 'No pricing', value: 'none' }]} value={pricingFilter} onChange={setPricingFilter} /></div>
       {/* Only offer sorts for metrics the table actually shows — Orders/AOV columns aren't
           on this screen, so sorting by them would reorder rows with nothing to verify against. */}
-      <div style={{ minWidth: 160 }}><Select label="Sort" labelHidden options={[{ label: 'Health (default)', value: 'default' }, { label: 'Sales', value: 'sales' }, ...(compareEnabled ? [{ label: 'Growth', value: 'growth' }] : []), { label: 'Repeat revenue', value: 'repeat' }, { label: 'Last order', value: 'recency' }, { label: 'Days overdue', value: 'overdue' }]} value={companySort} onChange={setCompanySort} /></div>
-    </InlineStack>
+      <div style={{ minWidth: 160 }}><SelectField label="Sort" labelHidden options={[{ label: 'Health (default)', value: 'default' }, { label: 'Sales', value: 'sales' }, ...(compareEnabled ? [{ label: 'Growth', value: 'growth' }] : []), { label: 'Repeat revenue', value: 'repeat' }, { label: 'Last order', value: 'recency' }, { label: 'Days overdue', value: 'overdue' }]} value={companySort} onChange={setCompanySort} /></div>
+    </s-stack>
   );
 
   const companiesTab = (
-    <BlockStack gap="500">
+    <s-stack gap="large">
       <ScoreGrid items={cmpOnly(companiesScores)} />
 
       {/* §4.4 — exposure: named as historical revenue, not "revenue at risk". */}
@@ -1448,21 +1505,21 @@ export function Analytics({ embeddedCompanyId = null }) {
           title="Companies past their buying cycle"
           subtitle="Historical revenue from companies now past their normal reorder cadence — not a prediction of loss."
           help={
-            <BlockStack gap="150">
-              <Text as="span" variant="bodySm">Companies ordering later than they usually do — marked Watch, At risk or Inactive.</Text>
-              <Text as="span" variant="bodySm" tone="subdued">Sales and gross profit are from these companies’ last 90 days. They show what already happened, not a forecast of what you might lose. If some product costs are missing, gross profit notes how much of sales it covers.</Text>
-            </BlockStack>
+            <>
+              <s-paragraph>Companies ordering later than they usually do — marked Watch, At risk or Inactive.</s-paragraph>
+              <s-paragraph color="subdued">Sales and gross profit are from these companies’ last 90 days. They show what already happened, not a forecast of what you might lose. If some product costs are missing, gross profit notes how much of sales it covers.</s-paragraph>
+            </>
           }
         >
-          <BlockStack gap="200">
-            <Text as="span" variant="bodyMd" fontWeight="medium">{compareOnly ? '—' : `${pastCycleCompanies.length} compan${pastCycleCompanies.length === 1 ? 'y' : 'ies'} past normal buying cycle`}</Text>
+          <s-stack gap="small-200">
+            <s-text fontWeight="medium">{compareOnly ? '—' : `${pastCycleCompanies.length} compan${pastCycleCompanies.length === 1 ? 'y' : 'ies'} past normal buying cycle`}</s-text>
             <MiniCompare
               items={cmpOnly([
                 { label: 'Trailing 90-day sales', value: money(pastCycleSales) },
                 { label: 'Trailing 90-day gross profit', value: moneyN(pastCycleGP), sub: pastCycleCoverageNote },
               ])}
             />
-          </BlockStack>
+          </s-stack>
         </ReportCard>
       )}
 
@@ -1470,49 +1527,49 @@ export function Analytics({ embeddedCompanyId = null }) {
         <ReportCard
           title="Location performance"
           subtitle="Location contribution in the selected period."
-          help={<Text as="span" variant="bodySm">Each of this company's locations, with its sales, share of the company's sales, orders and average order value in the selected period.</Text>}
+          help={<s-paragraph>Each of this company's locations, with its sales, share of the company's sales, orders and average order value in the selected period.</s-paragraph>}
         >{companyPerfTable}</ReportCard>
       ) : (
-        <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
+        <TwoColumns>
           <ReportCard title="Relationship state" subtitle="Reorder ratio vs each company's own rhythm — separate from lifecycle. Click a segment to filter the table." help={<RelationshipStateHelp />} formula="Reorder gap = days since last order / usual days between orders">
-            <BlockStack gap="300">
+            <s-stack gap="small">
               <div style={{ display: 'flex', height: 12, borderRadius: 6, overflow: 'hidden', gap: 2 }}>
                 {healthCounts.filter((s) => s.count > 0).map((s) => (
                   <div key={s.name} title={`${s.name}: ${s.count}`} style={{ width: `${(s.count / healthTotal) * 100}%`, background: s.color }} />
                 ))}
               </div>
-              <InlineStack gap="300" wrap>
+              <s-stack direction="inline" gap="small">
                 {healthCounts.map((s) => (
                   <button key={s.name} type="button" onClick={() => setHealthFilter(healthFilter === s.name ? 'all' : s.name)} style={{ all: 'unset', cursor: 'pointer' }}>
-                    <InlineStack gap="150" blockAlign="center">
+                    <s-stack direction="inline" gap="small-300" alignItems="center">
                       <span style={{ width: 10, height: 10, borderRadius: 3, background: s.color, display: 'inline-block' }} />
-                      <Text as="span" variant="bodySm" fontWeight={healthFilter === s.name ? 'bold' : 'regular'}>{s.name}</Text>
-                      <Text as="span" variant="bodySm" tone="subdued">{s.count}</Text>
-                    </InlineStack>
+                      <s-text fontSize="small" fontWeight={healthFilter === s.name ? 'bold' : 'base'}>{s.name}</s-text>
+                      <s-text fontSize="small" color="subdued">{s.count}</s-text>
+                    </s-stack>
                   </button>
                 ))}
-              </InlineStack>
-            </BlockStack>
+              </s-stack>
+            </s-stack>
           </ReportCard>
           <ReportCard
             title="New vs existing revenue"
             subtitle="Revenue by whether the company first purchased in the selected period."
             help={
-              <BlockStack gap="150">
-                <Text as="span" variant="bodySm"><Text as="span" variant="bodySm" fontWeight="semibold">New</Text> — Revenue from companies whose first purchase falls within the selected period.</Text>
-                <Text as="span" variant="bodySm"><Text as="span" variant="bodySm" fontWeight="semibold">Existing</Text> — Revenue from companies that first purchased before the selected period.</Text>
-                <Text as="span" variant="bodySm" tone="subdued">Percentages show each group's share of total B2B sales in the period.</Text>
-              </BlockStack>
+              <>
+                <s-paragraph><s-text fontWeight="semibold">New</s-text> — Revenue from companies whose first purchase falls within the selected period.</s-paragraph>
+                <s-paragraph><s-text fontWeight="semibold">Existing</s-text> — Revenue from companies that first purchased before the selected period.</s-paragraph>
+                <s-paragraph color="subdued">Percentages show each group's share of total B2B sales in the period.</s-paragraph>
+              </>
             }
           >
             <StackedBar segments={revenueMix} />
-            <Box paddingBlockStart="200">
+            <s-box paddingBlockStart="small-200">
               {/* Revenue mix — denominator is total B2B sales (existing + new = sales),
                   so these are existingCompanyRevenue/sales and newCompanyRevenue/sales. */}
-              <Text as="p" tone="subdued" variant="bodySm">{`${pct(revenueMix[0].value, sales)}% existing · ${pct(revenueMix[1].value, sales)}% new.`}</Text>
-            </Box>
+              <s-paragraph fontSize="small" color="subdued">{`${pct(revenueMix[0].value, sales)}% existing · ${pct(revenueMix[1].value, sales)}% new.`}</s-paragraph>
+            </s-box>
           </ReportCard>
-        </InlineGrid>
+        </TwoColumns>
       )}
 
       {!selected && (
@@ -1521,41 +1578,40 @@ export function Analytics({ embeddedCompanyId = null }) {
             title="Company performance"
             subtitle="Value, gross profit, growth, reorder behaviour and relationship state per company."
             help={
-              <BlockStack gap="150">
-                <Text as="span" variant="bodySm">One row per company, combining performance for the selected period with its current relationship state.</Text>
-                <Text as="span" variant="bodySm" tone="subdued">Sales, gross profit, margin, growth, and repeat revenue follow the selected period. Last order, typical reorder, and status show where each company stands today and aren't limited by the date range.</Text>
-              </BlockStack>
+              <>
+                <s-paragraph>One row per company, combining performance for the selected period with its current relationship state.</s-paragraph>
+                <s-paragraph color="subdued">Sales, gross profit, margin, growth, and repeat revenue follow the selected period. Last order, typical reorder, and status show where each company stands today and aren't limited by the date range.</s-paragraph>
+              </>
             }
             controls={
-              <InlineStack gap="200" wrap blockAlign="center">
+              <s-stack direction="inline" gap="small-200" alignItems="center">
                 {companyFilters}
-                <Button icon={MaximizeIcon} variant="tertiary" onClick={() => setCompanyModalOpen(true)} accessibilityLabel="Open full-screen view">Expand</Button>
-              </InlineStack>
+                <s-button icon="maximize" variant="tertiary" onClick={() => setCompanyModalOpen(true)} accessibilityLabel="Open full-screen view">Expand</s-button>
+              </s-stack>
             }
           >
-            {/* Only mount here when the full-screen view is closed — IndexTable's sticky
-                first column uses DOM refs, so two live instances of the same table clash
-                and the second loses its Company column. */}
+            {/* Only mount here when the full-screen view is closed, so the page never holds
+                two live copies of the same table. */}
             {!companyModalOpen && companyPerfTable}
           </ReportCard>
           {companyModalOpen && createPortal(
             <div style={{ position: 'fixed', inset: 0, zIndex: 519, display: 'flex', flexDirection: 'column', background: 'var(--p-color-bg, #f1f1f1)' }}>
-              <Box background="bg-surface" borderColor="border" borderBlockEndWidth="025" padding="400">
-                <InlineStack align="space-between" blockAlign="center" gap="400">
-                  <BlockStack gap="050">
-                    <Text as="h2" variant="headingMd">Company performance</Text>
-                    <Text as="span" tone="subdued" variant="bodySm">{`${sortedCompanyRows.length} compan${sortedCompanyRows.length === 1 ? 'y' : 'ies'} · in the selected period and scope`}</Text>
-                  </BlockStack>
-                  <InlineStack gap="200" blockAlign="center">
+              <div style={{ background: 'var(--p-color-bg-surface)', borderBottom: '1px solid var(--p-color-border)', padding: 16 }}>
+                <s-stack direction="inline" justifyContent="space-between" alignItems="center" gap="base">
+                  <s-stack gap="small-500">
+                    <s-heading fontSize="large">Company performance</s-heading>
+                    <s-text fontSize="small" color="subdued">{`${sortedCompanyRows.length} compan${sortedCompanyRows.length === 1 ? 'y' : 'ies'} · in the selected period and scope`}</s-text>
+                  </s-stack>
+                  <s-stack direction="inline" gap="small-200" alignItems="center">
                     {companyFilters}
-                    <Button icon={XIcon} variant="tertiary" onClick={() => setCompanyModalOpen(false)} accessibilityLabel="Close full-screen view" />
-                  </InlineStack>
-                </InlineStack>
-              </Box>
+                    <s-button icon="x" variant="tertiary" onClick={() => setCompanyModalOpen(false)} accessibilityLabel="Close full-screen view" />
+                  </s-stack>
+                </s-stack>
+              </div>
               <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
-                <Box background="bg-surface" borderColor="border" borderWidth="025" borderRadius="300" padding="200">
+                <s-box background="base" border="base" borderRadius="base" padding="small-200">
                   {companyPerfTable}
-                </Box>
+                </s-box>
               </div>
             </div>,
             document.body,
@@ -1568,10 +1624,10 @@ export function Analytics({ embeddedCompanyId = null }) {
           title="B2B activation"
           subtitle="Registration cohort — companies that registered in the selected period, tracked to their approval and first purchase to date."
           help={
-            <Text as="span" variant="bodySm">Companies that registered in the selected period, followed through approval and first purchase up to today. Recent registrations may still convert, so their numbers can keep growing.</Text>
+            <s-paragraph>Companies that registered in the selected period, followed through approval and first purchase up to today. Recent registrations may still convert, so their numbers can keep growing.</s-paragraph>
           }
         >
-          <BlockStack gap="300">
+          <s-stack gap="small">
             <FunnelV2
               stages={[
                 { name: 'Registered', count: activationRows.length, value: String(activationRows.length) },
@@ -1585,10 +1641,10 @@ export function Analytics({ embeddedCompanyId = null }) {
                 { label: 'Typical approval → first order', value: activationTypical == null ? '—' : `${activationTypical}d` },
               ])}
             />
-          </BlockStack>
+          </s-stack>
         </ReportCard>
       )}
-    </BlockStack>
+    </s-stack>
   );
 
   // ── QUOTES (spec §5) ────────────────────────────────────────────────────────
@@ -1664,31 +1720,31 @@ export function Analytics({ embeddedCompanyId = null }) {
   });
   const dealSizeMaxRate = Math.max(1, ...dealSizeBuckets.map((b) => b.rate || 0));
   const quoteDetailTable = (
-    <IndexTable
-      resourceName={{ singular: 'quote', plural: 'quotes' }}
-      itemCount={blankRows(quotes).length}
-      selectable={false}
-      headings={[
-        { title: <HeadHelp label="Quote" help="The quote number." /> },
-        { title: <HeadHelp label="Status" help="Current quote status." /> },
-        { title: <HeadHelp label="Age" help="Number of days since the quote was created." formula="Age = today − created date" />, alignment: 'end' },
-        { title: <HeadHelp label="Quoted value" help="Total quoted value across all lines in the quote." />, alignment: 'end' },
-      ]}
-      emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No RFQs.</Text></Box>}
-    >
-      {blankRows(quotes).map((q, i) => (
-        <IndexTable.Row id={q.id} key={q.id} position={i}>
-          <IndexTable.Cell>{q.id}</IndexTable.Cell>
-          <IndexTable.Cell><Badge tone={q.status === 'Deal Closed' ? 'success' : q.status === 'Deal Rejected' ? 'critical' : undefined}>{q.status}</Badge></IndexTable.Cell>
-          <IndexTable.Cell><Text as="span" alignment="end">{`${quoteAge(q)}d`}</Text></IndexTable.Cell>
-          <IndexTable.Cell><Text as="span" alignment="end">{money(quoteVal(q))}</Text></IndexTable.Cell>
-        </IndexTable.Row>
-      ))}
-    </IndexTable>
+    <>
+      <s-table>
+        <s-table-header-row>
+          <s-table-header listSlot="primary"><HeadHelp label="Quote" help="The quote number." /></s-table-header>
+          <s-table-header listSlot="secondary"><HeadHelp label="Status" help="Current quote status." /></s-table-header>
+          <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Age" help="Number of days since the quote was created." formula="Age = today − created date" /></s-table-header>
+          <s-table-header listSlot="labeled" format="currency"><HeadHelp label="Quoted value" help="Total quoted value across all lines in the quote." /></s-table-header>
+        </s-table-header-row>
+        <s-table-body>
+          {blankRows(quotes).map((q) => (
+            <s-table-row key={q.id}>
+              <s-table-cell>{q.id}</s-table-cell>
+              <s-table-cell><s-badge tone={q.status === 'Deal Closed' ? 'success' : q.status === 'Deal Rejected' ? 'critical' : undefined}>{q.status}</s-badge></s-table-cell>
+              <s-table-cell>{`${quoteAge(q)}d`}</s-table-cell>
+              <s-table-cell>{money(quoteVal(q))}</s-table-cell>
+            </s-table-row>
+          ))}
+        </s-table-body>
+      </s-table>
+      <TableEmpty show={blankRows(quotes).length === 0}>No RFQs.</TableEmpty>
+    </>
   );
 
   const quotesTab = (
-    <BlockStack gap="500">
+    <s-stack gap="large">
       {/* §5.1 — hero metrics: future revenue + where it's stuck */}
       <ScoreGrid
         items={cmpOnly([
@@ -1712,7 +1768,7 @@ export function Analytics({ embeddedCompanyId = null }) {
       />
 
       {/* §5.3 aging + §5.5 cohort funnel */}
-      <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
+      <TwoColumns>
         <ReportCard title="Open quote aging" help="Value of quotes that are still open, grouped by how long ago they were created. Bars represent quoted value, not the number of quotes.">
           <RankBars rows={blankRows(agingBuckets).map((b) => ({ key: b.name, name: b.name, sub: `${b.count} quote${b.count === 1 ? '' : 's'} still open`, value: b.value, width: (b.value / agingMaxVal) * 100, valueLabel: money(b.value) }))} empty="No quotes still open." />
         </ReportCard>
@@ -1729,11 +1785,11 @@ export function Analytics({ embeddedCompanyId = null }) {
         >
           <StackedBar segments={blankRows(distSegments)} format={quoteFunnelMode === 'value' ? moneyShort : (v) => String(v)} />
         </ReportCard>
-      </InlineGrid>
+      </TwoColumns>
 
       {/* §5.4 sales cycle */}
       <ReportCard title="Median time to decision" help="Typical time from when a quote comes in until it is won or lost." formula="Time to decision = median(won or lost date − created date)">
-        <Text as="span" variant="headingLg">{formatTypicalTime(compareOnly ? null : decisionMedian)}</Text>
+        <s-heading fontSize="large-200">{formatTypicalTime(compareOnly ? null : decisionMedian)}</s-heading>
       </ReportCard>
 
       {/* per-company quote detail (selected view) */}
@@ -1748,79 +1804,77 @@ export function Analytics({ embeddedCompanyId = null }) {
         <ReportCard
           title="Advanced quote analysis"
           subtitle="Explore patterns associated with won and lost quotes. Small samples can be noisy, and these patterns do not prove cause and effect."
-          controls={<Button variant="plain" onClick={() => setAdvancedPipeline((v) => !v)}>{advancedPipeline ? 'Hide' : 'Show'}</Button>}
+          controls={<s-link onClick={() => setAdvancedPipeline((v) => !v)}>{advancedPipeline ? 'Hide' : 'Show'}</s-link>}
         >
           {advancedPipeline ? (
-            <BlockStack gap="400">
-              <BlockStack gap="150">
-                <Text as="h4" variant="headingXs">Win rate by company</Text>
-                <IndexTable
-                  resourceName={{ singular: 'company', plural: 'companies' }}
-                  itemCount={blankRows(companyQuoteTable).length}
-                  selectable={false}
-                  headings={[
-                    { title: <HeadHelp label="Company" help="Company associated with these quotes." /> },
-                    { title: <HeadHelp label="Quotes" help="Number of quotes for this company in the selected period." />, alignment: 'end' },
-                    { title: <HeadHelp label="Quoted value" help="Total quoted value of this company's quotes." />, alignment: 'end' },
-                    { title: <HeadHelp label="Open quote value" help="Quoted value of this company's quotes that are still open." />, alignment: 'end' },
-                    { title: <HeadHelp label="Win rate (count)" help="Share of won quotes among this company's quotes that were won or lost." formula="Win rate (count) = won quotes / (won quotes + lost quotes)" />, alignment: 'end' },
-                    { title: <HeadHelp label="Win rate (value)" help="Share of won quote value among this company's quote value that was won or lost." formula="Win rate (value) = won value / (won value + lost value)" />, alignment: 'end' },
-                    { title: <HeadHelp label="First response time" help="Typical time from when this company's quotes come in until you first price or send them." formula="First response time = median(first priced or sent − created)" />, alignment: 'end' },
-                  ]}
-                  emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No RFQs in this scope.</Text></Box>}
-                >
-                  {blankRows(companyQuoteTable).map((r, i) => (
-                    <IndexTable.Row id={r.id} key={r.id} position={i}>
-                      <IndexTable.Cell><CompanyLink id={r.id}>{r.name}</CompanyLink></IndexTable.Cell>
-                      <IndexTable.Cell><Text as="span" alignment="end">{r.rfqs}</Text></IndexTable.Cell>
-                      <IndexTable.Cell><Text as="span" alignment="end">{money(r.quoted)}</Text></IndexTable.Cell>
-                      <IndexTable.Cell><Text as="span" alignment="end">{money(r.openValue)}</Text></IndexTable.Cell>
-                      <IndexTable.Cell><Text as="span" alignment="end">{r.winCount == null ? '—' : `${r.winCount}%`}</Text></IndexTable.Cell>
-                      <IndexTable.Cell><Text as="span" alignment="end">{r.winValue == null ? '—' : `${r.winValue}%`}</Text></IndexTable.Cell>
-                      <IndexTable.Cell><Text as="span" alignment="end">{r.response == null ? '—' : formatTypicalTime(r.response)}</Text></IndexTable.Cell>
-                    </IndexTable.Row>
-                  ))}
-                </IndexTable>
-              </BlockStack>
-              <Text as="h4" variant="headingXs">Win rate analysis</Text>
-              <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
-                <Box borderColor="border" borderWidth="025" borderRadius="300" padding="400">
-                  <BlockStack gap="150">
+            <s-stack gap="base">
+              <s-stack gap="small-300">
+                <s-heading fontSize="small">Win rate by company</s-heading>
+                <s-table>
+                  <s-table-header-row>
+                    <s-table-header listSlot="primary"><HeadHelp label="Company" help="Company associated with these quotes." /></s-table-header>
+                    <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Quotes" help="Number of quotes for this company in the selected period." /></s-table-header>
+                    <s-table-header listSlot="labeled" format="currency"><HeadHelp label="Quoted value" help="Total quoted value of this company's quotes." /></s-table-header>
+                    <s-table-header listSlot="labeled" format="currency"><HeadHelp label="Open quote value" help="Quoted value of this company's quotes that are still open." /></s-table-header>
+                    <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Win rate (count)" help="Share of won quotes among this company's quotes that were won or lost." formula="Win rate (count) = won quotes / (won quotes + lost quotes)" /></s-table-header>
+                    <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Win rate (value)" help="Share of won quote value among this company's quote value that was won or lost." formula="Win rate (value) = won value / (won value + lost value)" /></s-table-header>
+                    <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="First response time" help="Typical time from when this company's quotes come in until you first price or send them." formula="First response time = median(first priced or sent − created)" /></s-table-header>
+                  </s-table-header-row>
+                  <s-table-body>
+                    {blankRows(companyQuoteTable).map((r) => (
+                      <s-table-row key={r.id}>
+                        <s-table-cell><CompanyLink id={r.id}>{r.name}</CompanyLink></s-table-cell>
+                        <s-table-cell>{r.rfqs}</s-table-cell>
+                        <s-table-cell>{money(r.quoted)}</s-table-cell>
+                        <s-table-cell>{money(r.openValue)}</s-table-cell>
+                        <s-table-cell>{r.winCount == null ? '—' : `${r.winCount}%`}</s-table-cell>
+                        <s-table-cell>{r.winValue == null ? '—' : `${r.winValue}%`}</s-table-cell>
+                        <s-table-cell>{r.response == null ? '—' : formatTypicalTime(r.response)}</s-table-cell>
+                      </s-table-row>
+                    ))}
+                  </s-table-body>
+                </s-table>
+                <TableEmpty show={blankRows(companyQuoteTable).length === 0}>No RFQs in this scope.</TableEmpty>
+              </s-stack>
+              <s-heading fontSize="small">Win rate analysis</s-heading>
+              <TwoColumns>
+                <s-box border="base" borderRadius="base" padding="base">
+                  <s-stack gap="small-300">
                     <HeadingHelp label="Win rate by deal size" help="Shows how win rate changes across quote value ranges." />
                     <RankBars rows={blankRows(dealSizeBuckets).map((b) => ({ key: b.name, name: b.name, sub: `${b.count} won or lost quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / dealSizeMaxRate) * 100, valueLabel: b.rate == null ? '—' : `${b.wins} of ${b.count} won · ${b.rate}%` }))} empty="No won or lost quotes." />
-                  </BlockStack>
-                </Box>
-                <Box borderColor="border" borderWidth="025" borderRadius="300" padding="400">
-                  <BlockStack gap="150">
+                  </s-stack>
+                </s-box>
+                <s-box border="base" borderRadius="base" padding="base">
+                  <s-stack gap="small-300">
                     <HeadingHelp label="Win rate by discount" help="Shows how win rate changes at different discount levels from the Shopify price." />
                     <MiniCompare plain items={cmpOnly([{ label: 'Average discount vs Shopify', value: avgListDiscount == null ? '—' : `${avgListDiscount.toFixed(1)}%`, sub: 'Weighted by the Shopify value of each quote.', help: 'How much lower your quoted prices are than your regular Shopify prices, on average. Bigger quotes count more.', formula: 'Average discount vs Shopify = (Shopify value − quoted value) / Shopify value' }])} />
                     <RankBars rows={blankRows(discountBuckets).map((b) => ({ key: b.name, name: b.name, sub: `${b.count} won or lost quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / maxDiscountRate) * 100, valueLabel: b.rate == null ? '—' : `${b.rate}% won` }))} empty="No won or lost quotes." />
-                  </BlockStack>
-                </Box>
-                <Box borderColor="border" borderWidth="025" borderRadius="300" padding="400">
-                  <BlockStack gap="150">
+                  </s-stack>
+                </s-box>
+                <s-box border="base" borderRadius="base" padding="base">
+                  <s-stack gap="small-300">
                     <HeadingHelp label="Quoted price vs company pricing" help="Shows how quoted prices compare with the pricing already assigned to each company." />
                     <MiniCompare plain items={cmpOnly([{ label: 'Average difference from company pricing', value: avgPriceVariance == null ? '—' : `${avgPriceVariance > 0 ? '+' : ''}${avgPriceVariance.toFixed(1)}%`, sub: avgPriceVariance == null ? 'No quotes with company pricing in this period.' : `Quotes were ${Math.abs(avgPriceVariance).toFixed(1)}% ${avgPriceVariance >= 0 ? 'higher' : 'lower'} than assigned company prices on average.`, help: 'How far your quoted prices are from the pricing you set for each company, on average. Bigger quotes count more. Positive means you quoted higher; negative means lower.', formula: 'Average difference from company pricing = (quoted value − company pricing value) / company pricing value' }])} />
                     <RankBars rows={blankRows(varianceBuckets).map((b) => ({ key: b.name, name: b.name, sub: `${b.count} won or lost quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / varianceMaxRate) * 100, valueLabel: b.rate == null ? '—' : `${b.rate}% won` }))} empty="No won or lost quotes with company pricing." />
-                  </BlockStack>
-                </Box>
-                <Box borderColor="border" borderWidth="025" borderRadius="300" padding="400">
-                  <BlockStack gap="150">
+                  </s-stack>
+                </s-box>
+                <s-box border="base" borderRadius="base" padding="base">
+                  <s-stack gap="small-300">
                     <HeadingHelp label="Win rate with vs without company pricing" help="Compares how often you win quotes for companies with their own pricing versus quotes based on your regular Shopify prices." />
                     <MiniCompare plain items={cmpOnly([
                       { label: 'Company pricing', value: winWithPricing == null ? '—' : `${winWithPricing}%`, sub: `${withPricing.length} won or lost quote${withPricing.length === 1 ? '' : 's'}`, help: 'Win rate for quotes to companies that had their own pricing when the quote was made.', formula: 'Win rate = won quotes / (won quotes + lost quotes)' },
                       { label: 'Shopify price only', value: winWithoutPricing == null ? '—' : `${winWithoutPricing}%`, sub: withoutPricing.length === 0 ? 'No won or lost quotes in this period.' : `${withoutPricing.length} won or lost quote${withoutPricing.length === 1 ? '' : 's'}`, help: 'Win rate for quotes to companies without their own pricing, quoted from your regular Shopify prices.', formula: 'Win rate = won quotes / (won quotes + lost quotes)' },
                     ])} />
-                  </BlockStack>
-                </Box>
-              </InlineGrid>
-            </BlockStack>
+                  </s-stack>
+                </s-box>
+              </TwoColumns>
+            </s-stack>
           ) : (
-            <Text as="p" tone="subdued" variant="bodySm">Win rate by company, deal size, quoted discount, and how quoted prices compare to company pricing — each with its sample size.</Text>
+            <s-paragraph fontSize="small" color="subdued">Win rate by company, deal size, quoted discount, and how quoted prices compare to company pricing — each with its sample size.</s-paragraph>
           )}
         </ReportCard>
       )}
-    </BlockStack>
+    </s-stack>
   );
 
   // ── PRICING & MARGIN (spec §6) ──────────────────────────────────────────────
@@ -1829,7 +1883,7 @@ export function Analytics({ embeddedCompanyId = null }) {
     { name: 'Other pricing', value: otherPricingValue },
   ].filter((s) => s.value > 0);
   const pricingTab = (
-    <BlockStack gap="500">
+    <s-stack gap="large">
       {/* §6.1 — core economics, ALL at the price applied when the order was created */}
       <ScoreGrid
         items={cmpOnly([
@@ -1839,12 +1893,12 @@ export function Analytics({ embeddedCompanyId = null }) {
           { cmp: true, label: 'Order value below margin threshold', value: money(marginExceptionValue), delta: cmpDelta(marginExceptionDelta, { goodDown: true }), foot: `${marginExceptionLines.length} line${marginExceptionLines.length === 1 ? '' : 's'} below ${marginFloor}% margin${marginCoverage != null && marginCoverage < 99.5 ? ` · Based on ${Math.round(marginCoverage)}% cost coverage` : ''}`, help: 'Value of items sold below the profit margin you picked. Items without a product cost aren’t included.' },
         ])}
       />
-      <InlineStack align="end" blockAlign="center" gap="200">
-        <Text as="span" tone="subdued" variant="bodySm">Margin exception threshold</Text>
+      <s-stack direction="inline" justifyContent="end" alignItems="center" gap="small-200">
+        <s-text fontSize="small" color="subdued">Margin exception threshold</s-text>
         <div style={{ width: 100 }}>
-          <Select label="Margin threshold" labelHidden options={[{ label: '15%', value: '15' }, { label: '20%', value: '20' }, { label: '25%', value: '25' }, { label: '30%', value: '30' }]} value={marginThreshold} onChange={setMarginThreshold} />
+          <SelectField label="Margin threshold" labelHidden options={[{ label: '15%', value: '15' }, { label: '20%', value: '20' }, { label: '25%', value: '25' }, { label: '30%', value: '30' }]} value={marginThreshold} onChange={setMarginThreshold} />
         </div>
-      </InlineStack>
+      </s-stack>
 
       {/* §6.2 — baseline pricing footprint */}
       <MiniCompare
@@ -1856,49 +1910,47 @@ export function Analytics({ embeddedCompanyId = null }) {
       />
 
       {/* §6.3 provenance + margin by source */}
-      <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
+      <TwoColumns>
         <ReportCard title="Order value by pricing source" help="How your order value splits between items sold at B2B pricing and items sold at other prices.">
           <StackedBar segments={blankRows(provenanceSegments)} />
         </ReportCard>
         <ReportCard title="Margin by pricing source" help="Compares profit margin on items sold at B2B pricing with items sold at other prices, based on prices and costs when each order was placed. Later refunds, returns and price changes aren’t included.">
           <RankBars rows={blankRows(pricingSourceRows).map((s) => ({ key: s.name, name: s.name, sub: `${money(s.value)} order value · ${moneyN(s.gp)} gross profit${s.coverage != null && s.coverage < 99.5 ? ` · ${Math.round(s.coverage)}% cost coverage` : ''}`, value: s.margin ?? 0, width: s.margin == null ? 0 : (s.margin / pricingSourceMaxMargin) * 100, valueLabel: pctN(s.margin) }))} empty="No completed orders." />
         </ReportCard>
-      </InlineGrid>
+      </TwoColumns>
 
       {/* §6.4 — pricing performance table (sorted by gross profit) */}
       <ReportCard title="Pricing performance" subtitle="Order value, gross profit, margin and price vs Shopify, by B2B pricing profile. Hover a column heading for its definition.">
-        <IndexTable
-          resourceName={{ singular: 'pricing', plural: 'pricings' }}
-          itemCount={blankRows(pricingUsage).length}
-          selectable={false}
-          headings={[
-            { title: <HeadHelp label="Pricing" help="The B2B pricing that set the price for these items." /> },
-            { title: <HeadHelp label="Order value" help="Total value of items sold at this pricing." />, alignment: 'end' },
-            { title: <HeadHelp label="Gross profit" help="Order value minus product cost, for items that have a product cost." formula="Gross profit = order value − product cost" />, alignment: 'end' },
-            { title: <HeadHelp label="Margin" help="The share of order value you keep as profit, for items that have a product cost." formula="Margin = gross profit / order value" />, alignment: 'end' },
-            { title: <HeadHelp label="vs Shopify" help="How this pricing compares with your regular Shopify prices on the items it priced. Bigger orders count more." formula="vs Shopify = (B2B price − Shopify price) / Shopify price" />, alignment: 'end' },
-            { title: <HeadHelp label="Orders" help="Number of orders with at least one item sold at this pricing." />, alignment: 'end' },
-            { title: <HeadHelp label="Companies" help="Number of companies that bought at least one item at this pricing." />, alignment: 'end' },
-          ]}
-          emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No pricing usage on completed orders.</Text></Box>}
-        >
-          {blankRows(pricingUsage).map((r, i) => (
-            <IndexTable.Row id={r.name} key={r.name} position={i}>
-              <IndexTable.Cell>{r.name}</IndexTable.Cell>
-              <IndexTable.Cell><Text as="span" alignment="end">{money(r.value)}</Text></IndexTable.Cell>
-              <IndexTable.Cell><Text as="span" alignment="end">{moneyN(r.gp)}</Text></IndexTable.Cell>
-              <IndexTable.Cell><Text as="span" alignment="end">{pctN(r.margin)}</Text></IndexTable.Cell>
-              <IndexTable.Cell><Text as="span" alignment="end">{r.deltaPct == null ? '—' : `${Math.abs(r.deltaPct).toFixed(1)}% ${r.deltaPct >= 0 ? 'higher' : 'lower'}`}</Text></IndexTable.Cell>
-              <IndexTable.Cell><Text as="span" alignment="end">{r.orders}</Text></IndexTable.Cell>
-              <IndexTable.Cell><Text as="span" alignment="end">{r.companies}</Text></IndexTable.Cell>
-            </IndexTable.Row>
-          ))}
-        </IndexTable>
+        <s-table>
+          <s-table-header-row>
+            <s-table-header listSlot="primary"><HeadHelp label="Pricing" help="The B2B pricing that set the price for these items." /></s-table-header>
+            <s-table-header listSlot="labeled" format="currency"><HeadHelp label="Order value" help="Total value of items sold at this pricing." /></s-table-header>
+            <s-table-header listSlot="labeled" format="currency"><HeadHelp label="Gross profit" help="Order value minus product cost, for items that have a product cost." formula="Gross profit = order value − product cost" /></s-table-header>
+            <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Margin" help="The share of order value you keep as profit, for items that have a product cost." formula="Margin = gross profit / order value" /></s-table-header>
+            <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="vs Shopify" help="How this pricing compares with your regular Shopify prices on the items it priced. Bigger orders count more." formula="vs Shopify = (B2B price − Shopify price) / Shopify price" /></s-table-header>
+            <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Orders" help="Number of orders with at least one item sold at this pricing." /></s-table-header>
+            <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Companies" help="Number of companies that bought at least one item at this pricing." /></s-table-header>
+          </s-table-header-row>
+          <s-table-body>
+            {blankRows(pricingUsage).map((r) => (
+              <s-table-row key={r.name}>
+                <s-table-cell>{r.name}</s-table-cell>
+                <s-table-cell>{money(r.value)}</s-table-cell>
+                <s-table-cell>{moneyN(r.gp)}</s-table-cell>
+                <s-table-cell>{pctN(r.margin)}</s-table-cell>
+                <s-table-cell>{r.deltaPct == null ? '—' : `${Math.abs(r.deltaPct).toFixed(1)}% ${r.deltaPct >= 0 ? 'higher' : 'lower'}`}</s-table-cell>
+                <s-table-cell>{r.orders}</s-table-cell>
+                <s-table-cell>{r.companies}</s-table-cell>
+              </s-table-row>
+            ))}
+          </s-table-body>
+        </s-table>
+        <TableEmpty show={blankRows(pricingUsage).length === 0}>No pricing usage on completed orders.</TableEmpty>
       </ReportCard>
 
       {/* §6.6 — MOQ / quantity pricing */}
       <ReportCard title="Quantity pricing effectiveness" subtitle="Of the purchases eligible for a quantity tier, how many reached it, the order value that went through tiers, and the discount realized.">
-        <BlockStack gap="300">
+        <s-stack gap="small">
           <MiniCompare
             items={cmpOnly([
               { label: 'Tier reach rate', value: tierReachRate == null ? '—' : `${Math.round(tierReachRate)}%`, sub: `${tierReached} of ${tierEligible} eligible purchase${tierEligible === 1 ? '' : 's'} reached a tier`, help: 'Share of eligible purchases that reached the quantity required for a pricing tier.', formula: 'Tier reach rate = purchases that reached a tier / eligible purchases' },
@@ -1906,182 +1958,188 @@ export function Analytics({ embeddedCompanyId = null }) {
               { label: 'Average tier discount', value: tierAvgDiscount == null ? '—' : `${tierAvgDiscount.toFixed(1)}%`, help: 'Average discount buyers got when they bought enough to reach a quantity tier. Bigger purchases count more.', formula: 'Average tier discount = discount from tiers / value before tier discount' },
             ])}
           />
-          <IndexTable
-            resourceName={{ singular: 'policy', plural: 'policies' }}
-            itemCount={blankRows(tierPolicies).length}
-            selectable={false}
-            headings={[
-              { title: <HeadHelp label="Quantity pricing" help="The quantity pricing shown in this row." /> },
-              { title: <HeadHelp label="Eligible purchases" help="Number of purchases where this quantity pricing tier could be reached." />, alignment: 'end' },
-              { title: <HeadHelp label="Reached tier" help="Number of eligible purchases that reached the quantity required for this tier." />, alignment: 'end' },
-              { title: <HeadHelp label="Reach rate" help="Share of eligible purchases that reached this tier." formula="Reach rate = reached tier / eligible purchases" />, alignment: 'end' },
-              { title: <HeadHelp label="Order value at tier" help="Total order value from purchases that reached this tier." />, alignment: 'end' },
-              { title: <HeadHelp label="Tier discount" help="Average discount buyers got when they reached this tier. Bigger purchases count more." formula="Tier discount = discount from tier / value before tier discount" />, alignment: 'end' },
-            ]}
-            emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No quantity-rule observations in this scope.</Text></Box>}
-          >
-            {blankRows(tierPolicies).map((r, i) => (
-              <IndexTable.Row id={r.name} key={r.name} position={i}>
-                <IndexTable.Cell>{r.name}</IndexTable.Cell>
-                <IndexTable.Cell><Text as="span" alignment="end">{r.eligible}</Text></IndexTable.Cell>
-                <IndexTable.Cell><Text as="span" alignment="end">{r.reached}</Text></IndexTable.Cell>
-                <IndexTable.Cell><Text as="span" alignment="end">{r.reachRate == null ? '—' : `${Math.round(r.reachRate)}%`}</Text></IndexTable.Cell>
-                <IndexTable.Cell><Text as="span" alignment="end">{money(r.orderValue)}</Text></IndexTable.Cell>
-                <IndexTable.Cell><Text as="span" alignment="end">{r.discount == null ? '—' : `${r.discount.toFixed(1)}%`}</Text></IndexTable.Cell>
-              </IndexTable.Row>
-            ))}
-          </IndexTable>
-        </BlockStack>
+          <s-table>
+            <s-table-header-row>
+              <s-table-header listSlot="primary"><HeadHelp label="Quantity pricing" help="The quantity pricing shown in this row." /></s-table-header>
+              <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Eligible purchases" help="Number of purchases where this quantity pricing tier could be reached." /></s-table-header>
+              <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Reached tier" help="Number of eligible purchases that reached the quantity required for this tier." /></s-table-header>
+              <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Reach rate" help="Share of eligible purchases that reached this tier." formula="Reach rate = reached tier / eligible purchases" /></s-table-header>
+              <s-table-header listSlot="labeled" format="currency"><HeadHelp label="Order value at tier" help="Total order value from purchases that reached this tier." /></s-table-header>
+              <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Tier discount" help="Average discount buyers got when they reached this tier. Bigger purchases count more." formula="Tier discount = discount from tier / value before tier discount" /></s-table-header>
+            </s-table-header-row>
+            <s-table-body>
+              {blankRows(tierPolicies).map((r) => (
+                <s-table-row key={r.name}>
+                  <s-table-cell>{r.name}</s-table-cell>
+                  <s-table-cell>{r.eligible}</s-table-cell>
+                  <s-table-cell>{r.reached}</s-table-cell>
+                  <s-table-cell>{r.reachRate == null ? '—' : `${Math.round(r.reachRate)}%`}</s-table-cell>
+                  <s-table-cell>{money(r.orderValue)}</s-table-cell>
+                  <s-table-cell>{r.discount == null ? '—' : `${r.discount.toFixed(1)}%`}</s-table-cell>
+                </s-table-row>
+              ))}
+            </s-table-body>
+          </s-table>
+          <TableEmpty show={blankRows(tierPolicies).length === 0}>No quantity-rule observations in this scope.</TableEmpty>
+        </s-stack>
       </ReportCard>
 
       {/* §6.5 — advanced pricing analysis */}
       <ReportCard
         title="Advanced pricing analysis"
         subtitle="Pricing-change outcomes and deeper cuts. Temporal comparison, not causal attribution."
-        controls={<Button variant="plain" onClick={() => setAdvancedPricing((v) => !v)}>{advancedPricing ? 'Hide' : 'Show'}</Button>}
+        controls={<s-link onClick={() => setAdvancedPricing((v) => !v)}>{advancedPricing ? 'Hide' : 'Show'}</s-link>}
       >
         {advancedPricing ? (
-          <BlockStack gap="400">
-            <BlockStack gap="150">
-              <Text as="h4" variant="headingXs">Pricing change outcomes</Text>
-              <Text as="p" tone="subdued" variant="bodySm">Compares business outcomes before and after a pricing change using equal time windows. This shows what changed over time, not what caused the change.</Text>
-              <IndexTable
-                resourceName={{ singular: 'change', plural: 'changes' }}
-                itemCount={blankRows(ruleChanges).length}
-                selectable={false}
-                headings={[
-                  { title: <HeadHelp label="Date" help="When this pricing change took effect." /> },
-                  { title: <HeadHelp label="Company / pricing" help="The company or pricing that changed." /> },
-                  { title: <HeadHelp label="Pricing change" help="What changed in the pricing, shown as before → after." /> },
-                  { title: <HeadHelp label="Comparison period" help="Equal periods before and after the pricing change." />, alignment: 'end' },
-                  { title: <HeadHelp label="Sales before" help="Total sales during the period before the pricing change." />, alignment: 'end' },
-                  { title: <HeadHelp label="Sales after" help="Total sales during the period after the pricing change." />, alignment: 'end' },
-                  { title: <HeadHelp label="AOV before" help="Average order value during the period before the pricing change." formula="AOV before = sales before / orders before" />, alignment: 'end' },
-                  { title: <HeadHelp label="AOV after" help="Average order value during the period after the pricing change." formula="AOV after = sales after / orders after" />, alignment: 'end' },
-                  { title: <HeadHelp label="vs Shopify before" help="How B2B prices compared with Shopify prices before the change. Negative means B2B prices were lower." formula="vs Shopify before = (B2B price − Shopify price) / Shopify price" />, alignment: 'end' },
-                  { title: <HeadHelp label="vs Shopify after" help="How B2B prices compared with Shopify prices after the change. Negative means B2B prices were lower." formula="vs Shopify after = (B2B price − Shopify price) / Shopify price" />, alignment: 'end' },
-                ]}
-                emptyState={<Box padding="400"><Text as="p" alignment="center" tone="subdued">No tracked pricing changes in this scope.</Text></Box>}
-              >
-                {blankRows(ruleChanges).map((r, i) => (
-                  <IndexTable.Row id={`${r.date}-${i}`} key={i} position={i}>
-                    <IndexTable.Cell>{r.date}</IndexTable.Cell>
-                    <IndexTable.Cell>{r.scope}</IndexTable.Cell>
-                    <IndexTable.Cell><BlockStack gap="050"><Text as="span">{r.rule}</Text><Text as="span" tone="subdued" variant="bodySm">{r.change}</Text></BlockStack></IndexTable.Cell>
-                    <IndexTable.Cell><Text as="span" alignment="end">{r.windowDays ? `±${r.windowDays}d` : '—'}</Text></IndexTable.Cell>
-                    <IndexTable.Cell><Text as="span" alignment="end">{money(r.before.sales)}</Text></IndexTable.Cell>
-                    <IndexTable.Cell><Text as="span" alignment="end">{money(r.after.sales)}</Text></IndexTable.Cell>
-                    <IndexTable.Cell><Text as="span" alignment="end">{money(r.before.aov)}</Text></IndexTable.Cell>
-                    <IndexTable.Cell><Text as="span" alignment="end">{money(r.after.aov)}</Text></IndexTable.Cell>
-                    <IndexTable.Cell><Text as="span" alignment="end">{`${r.before.priceDelta.toFixed(1)}%`}</Text></IndexTable.Cell>
-                    <IndexTable.Cell><Text as="span" alignment="end">{`${r.after.priceDelta.toFixed(1)}%`}</Text></IndexTable.Cell>
-                  </IndexTable.Row>
-                ))}
-              </IndexTable>
-            </BlockStack>
-            <Text as="p" tone="subdued" variant="bodySm">
+          <s-stack gap="base">
+            <s-stack gap="small-300">
+              <s-heading fontSize="small">Pricing change outcomes</s-heading>
+              <s-paragraph fontSize="small" color="subdued">Compares business outcomes before and after a pricing change using equal time windows. This shows what changed over time, not what caused the change.</s-paragraph>
+              <s-table>
+                <s-table-header-row>
+                  <s-table-header listSlot="primary"><HeadHelp label="Date" help="When this pricing change took effect." /></s-table-header>
+                  <s-table-header listSlot="labeled"><HeadHelp label="Company / pricing" help="The company or pricing that changed." /></s-table-header>
+                  <s-table-header listSlot="labeled"><HeadHelp label="Pricing change" help="What changed in the pricing, shown as before → after." /></s-table-header>
+                  <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Comparison period" help="Equal periods before and after the pricing change." /></s-table-header>
+                  <s-table-header listSlot="labeled" format="currency"><HeadHelp label="Sales before" help="Total sales during the period before the pricing change." /></s-table-header>
+                  <s-table-header listSlot="labeled" format="currency"><HeadHelp label="Sales after" help="Total sales during the period after the pricing change." /></s-table-header>
+                  <s-table-header listSlot="labeled" format="currency"><HeadHelp label="AOV before" help="Average order value during the period before the pricing change." formula="AOV before = sales before / orders before" /></s-table-header>
+                  <s-table-header listSlot="labeled" format="currency"><HeadHelp label="AOV after" help="Average order value during the period after the pricing change." formula="AOV after = sales after / orders after" /></s-table-header>
+                  <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="vs Shopify before" help="How B2B prices compared with Shopify prices before the change. Negative means B2B prices were lower." formula="vs Shopify before = (B2B price − Shopify price) / Shopify price" /></s-table-header>
+                  <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="vs Shopify after" help="How B2B prices compared with Shopify prices after the change. Negative means B2B prices were lower." formula="vs Shopify after = (B2B price − Shopify price) / Shopify price" /></s-table-header>
+                </s-table-header-row>
+                <s-table-body>
+                  {blankRows(ruleChanges).map((r, i) => (
+                    <s-table-row key={i}>
+                      <s-table-cell>{r.date}</s-table-cell>
+                      <s-table-cell>{r.scope}</s-table-cell>
+                      <s-table-cell><s-stack gap="small-500"><s-text>{r.rule}</s-text><s-text fontSize="small" color="subdued">{r.change}</s-text></s-stack></s-table-cell>
+                      <s-table-cell>{r.windowDays ? `±${r.windowDays}d` : '—'}</s-table-cell>
+                      <s-table-cell>{money(r.before.sales)}</s-table-cell>
+                      <s-table-cell>{money(r.after.sales)}</s-table-cell>
+                      <s-table-cell>{money(r.before.aov)}</s-table-cell>
+                      <s-table-cell>{money(r.after.aov)}</s-table-cell>
+                      <s-table-cell>{`${r.before.priceDelta.toFixed(1)}%`}</s-table-cell>
+                      <s-table-cell>{`${r.after.priceDelta.toFixed(1)}%`}</s-table-cell>
+                    </s-table-row>
+                  ))}
+                </s-table-body>
+              </s-table>
+              <TableEmpty show={blankRows(ruleChanges).length === 0}>No tracked pricing changes in this scope.</TableEmpty>
+            </s-stack>
+            <s-paragraph fontSize="small" color="subdued">
               Pocket-price waterfall, pocket margin and price leakage need pocket-price data (freight/servicing concessions) that isn't captured yet.
-            </Text>
-          </BlockStack>
+            </s-paragraph>
+          </s-stack>
         ) : (
-          <Text as="p" tone="subdued" variant="bodySm">Pricing-change before/after, plus pocket-margin and price-leakage once pocket-price data is captured.</Text>
+          <s-paragraph fontSize="small" color="subdued">Pricing-change before/after, plus pocket-margin and price-leakage once pocket-price data is captured.</s-paragraph>
         )}
       </ReportCard>
-    </BlockStack>
+    </s-stack>
   );
 
   const tabContent = [overviewTab, companiesTab, quotesTab, pricingTab][tab];
 
+  // Custom date fields: keep only complete YYYY-MM-DD values (or a cleared field) so a
+  // half-typed date never reaches the range maths. Idempotent, so input + change can both set it.
+  const dateHandler = (set) => (e) => {
+    const v = e.currentTarget.value || '';
+    if (!v || /^\d{4}-\d{2}-\d{2}$/.test(v)) set(v);
+  };
+
   const content = (
-    <BlockStack gap="400">
+    <s-stack gap="base">
       {SHOW_DEV_TOOLS && (
-        <Box background="bg-surface-secondary" borderColor="border" borderWidth="025" borderRadius="200" padding="200">
-          <BlockStack gap="200">
-            <InlineStack gap="200" blockAlign="center" wrap>
-              <Badge tone="info">Dev</Badge>
-              <Text as="span" variant="bodySm" tone="subdued">
+        <s-box background="subdued" border="base" borderRadius="base" padding="small-200">
+          <s-stack gap="small-200">
+            <s-stack direction="inline" gap="small-200" alignItems="center">
+              <s-badge tone="info">Dev</s-badge>
+              <s-text fontSize="small" color="subdued">
                 {genuinelyEmpty
                   ? 'No B2B orders or quotes exist, so Analytics is showing its empty state.'
                   : devEmpty
                   ? 'Previewing the empty state — B2B data actually exists.'
                   : 'Preview the Analytics empty state (how it looks for a brand-new merchant with no orders or quotes).'}
-              </Text>
-              <Button size="slim" pressed={devEmpty} disabled={genuinelyEmpty} onClick={() => setDevEmpty((v) => !v)}>
+              </s-text>
+              <s-press-button pressed={devEmpty} disabled={genuinelyEmpty} onClick={() => setDevEmpty((v) => !v)}>
                 {devEmpty ? 'Show data' : 'Preview empty state'}
-              </Button>
-            </InlineStack>
-            <InlineStack gap="200" blockAlign="center" wrap>
-              <Badge tone="info">Dev</Badge>
-              <Text as="span" variant="bodySm" tone="subdued">
+              </s-press-button>
+            </s-stack>
+            <s-stack direction="inline" gap="small-200" alignItems="center">
+              <s-badge tone="info">Dev</s-badge>
+              <s-text fontSize="small" color="subdued">
                 {devInject
                   ? 'Event-basis test data injected: #1039 −$400 discount, #1033 SEA-30 return (−$1,250 sales / −$1,000 COGS). Net sales, GP and Top products reflect it.'
                   : 'Inject event-basis test data (a discount + a return) to demo the production Net sales / GP / Top-products definitions.'}
-              </Text>
-              <Button size="slim" pressed={devInject} onClick={() => setDevInject((v) => !v)}>
+              </s-text>
+              <s-press-button pressed={devInject} onClick={() => setDevInject((v) => !v)}>
                 {devInject ? 'Reset test data' : 'Inject test data'}
-              </Button>
-            </InlineStack>
-            <InlineStack gap="200" blockAlign="center" wrap>
-              <Badge tone="info">Dev</Badge>
-              <Text as="span" variant="bodySm" tone="subdued">
+              </s-press-button>
+            </s-stack>
+            <s-stack direction="inline" gap="small-200" alignItems="center">
+              <s-badge tone="info">Dev</s-badge>
+              <s-text fontSize="small" color="subdued">
                 {devMissingCost
                   ? `Missing cost injected: ${DEV_MISSING_COST_SKU} has no unit cost, so its lines drop from GP/Margin. Cost coverage now shows on Margin at order creation, the "Order value below margin threshold" card and Margin by pricing source.`
                   : `Strip the unit cost from ${DEV_MISSING_COST_SKU} to demo the cost-coverage disclosures (they stay hidden while every product is costed).`}
-              </Text>
-              <Button size="slim" pressed={devMissingCost} onClick={() => setDevMissingCost((v) => !v)}>
+              </s-text>
+              <s-press-button pressed={devMissingCost} onClick={() => setDevMissingCost((v) => !v)}>
                 {devMissingCost ? 'Reset missing cost' : 'Inject missing cost'}
-              </Button>
-            </InlineStack>
-            <InlineStack gap="200" blockAlign="center" wrap>
-              <Badge tone="info">Dev</Badge>
-              <Text as="span" variant="bodySm" tone="subdued">
+              </s-press-button>
+            </s-stack>
+            <s-stack direction="inline" gap="small-200" alignItems="center">
+              <s-badge tone="info">Dev</s-badge>
+              <s-text fontSize="small" color="subdued">
                 {compareOnly
                   ? 'Compare only: Compare to is locked to Previous period. Metrics with a previous-period comparison show data; everything else shows its empty state.'
                   : 'Keep the layout but show data only for metrics compared with the previous period (KPIs with a delta, the trend chart, growth columns).'}
-              </Text>
-              <Button size="slim" pressed={compareOnly} disabled={genuinelyEmpty} onClick={() => setCompareOnly((v) => !v)}>
+              </s-text>
+              <s-press-button pressed={compareOnly} disabled={genuinelyEmpty} onClick={() => setCompareOnly((v) => !v)}>
                 {compareOnly ? 'Show all data' : 'Compare only'}
-              </Button>
-            </InlineStack>
-          </BlockStack>
-        </Box>
+              </s-press-button>
+            </s-stack>
+          </s-stack>
+        </s-box>
       )}
       {showEmpty && (
-        <Banner tone="info">
+        <s-banner tone="info">
           You don't have any B2B orders or quotes yet. As your companies start ordering and you send quotes, performance across companies, quotes and pricing will fill in below.
-        </Banner>
+        </s-banner>
       )}
-      <Card>
-        <BlockStack gap="300">
-          <InlineStack gap="300" wrap blockAlign="end">
-            <div style={{ minWidth: 150 }}><Select label="Date range" options={periodOptions} value={period} onChange={setPeriod} disabled={showEmpty} /></div>
+      <s-section>
+        <s-stack gap="small">
+          <s-stack direction="inline" gap="small" alignItems="end">
+            <div style={{ minWidth: 150 }}><SelectField label="Date range" options={periodOptions} value={period} onChange={setPeriod} disabled={showEmpty} /></div>
             {period === 'custom' && (
               <>
-                <div style={{ minWidth: 150 }}><TextField label="Start date" type="date" value={customStart} onChange={setCustomStart} autoComplete="off" /></div>
-                <div style={{ minWidth: 150 }}><TextField label="End date" type="date" value={customEnd} onChange={setCustomEnd} autoComplete="off" /></div>
+                <div style={{ minWidth: 150 }}><s-date-field label="Start date" value={customStart} onInput={dateHandler(setCustomStart)} onChange={dateHandler(setCustomStart)} /></div>
+                <div style={{ minWidth: 150 }}><s-date-field label="End date" value={customEnd} onInput={dateHandler(setCustomEnd)} onChange={dateHandler(setCustomEnd)} /></div>
               </>
             )}
-            <div style={{ minWidth: 160 }}><Select label="Compare to" options={compareOptions} value={compareOnly ? 'previous' : compare} onChange={setCompare} disabled={showEmpty || compareOnly} /></div>
-            {!embeddedCompanyId && <div style={{ minWidth: 190 }}><Select label="Company" options={companyOptions} value={companyFilter} onChange={setCompanyFilter} disabled={showEmpty} /></div>}
-          </InlineStack>
-          <InlineStack align="space-between" blockAlign="center" gap="200" wrap>
-            <Text as="span" tone="subdued" variant="bodySm">{scopeText}</Text>
-            {showClear && <Button variant="tertiary" onClick={clearFilters}>Clear filters</Button>}
-          </InlineStack>
-        </BlockStack>
-      </Card>
+            <div style={{ minWidth: 160 }}><SelectField label="Compare to" options={compareOptions} value={compareOnly ? 'previous' : compare} onChange={setCompare} disabled={showEmpty || compareOnly} /></div>
+            {!embeddedCompanyId && <div style={{ minWidth: 190 }}><SelectField label="Company" options={companyOptions} value={companyFilter} onChange={setCompanyFilter} disabled={showEmpty} /></div>}
+          </s-stack>
+          <s-stack direction="inline" justifyContent="space-between" alignItems="center" gap="small-200">
+            <s-text fontSize="small" color="subdued">{scopeText}</s-text>
+            {showClear && <s-button variant="tertiary" onClick={clearFilters}>Clear filters</s-button>}
+          </s-stack>
+        </s-stack>
+      </s-section>
 
-      <Card padding="0">
+      <s-section padding="none">
         <Tabs tabs={tabs} selected={tab} onSelect={setTab} />
-        <Box padding="400">{tabContent}</Box>
-      </Card>
-    </BlockStack>
+        <s-box padding="base">{tabContent}</s-box>
+      </s-section>
+    </s-stack>
   );
 
   if (embeddedCompanyId) return content;
   return (
-    <Page fullWidth title="Analytics" subtitle="Explore B2B performance across companies, quotes and pricing.">
-      {content}
-    </Page>
+    <s-page heading="Analytics" inlineSize="large">
+      <s-stack gap="base">
+        <s-paragraph color="subdued">Explore B2B performance across companies, quotes and pricing.</s-paragraph>
+        {content}
+      </s-stack>
+    </s-page>
   );
 }

@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Select, BlockStack, InlineStack, Box, Text, Badge, Divider, Button, Scrollable } from '@shopify/polaris';
 import { money } from '../format.js';
 import {
   locationPricingEntries,
@@ -97,78 +96,81 @@ export function PriceWhyContent({ company, location, policies, product }) {
     }));
 
   return (
-    <BlockStack gap="400">
-          <InlineStack align="space-between" blockAlign="center" gap="300" wrap>
-            <BlockStack gap="050">
-              <Text as="h2" variant="headingLg">{product.title}</Text>
-              <Text as="span" tone="subdued" variant="bodySm">{product.sku}</Text>
-            </BlockStack>
-            {variants.length > 1 ? (
-              <Box minWidth="200px">
-                <Select
-                  label="Variant"
-                  labelHidden
-                  options={variants.map((v) => ({ label: v.title, value: v.id }))}
-                  value={variantId}
-                  onChange={setVariantId}
-                />
-              </Box>
-            ) : null}
-          </InlineStack>
+    <s-stack gap="base">
+      <s-stack direction="inline" justifyContent="space-between" alignItems="center" gap="small">
+        <s-stack gap="small-500">
+          <s-heading fontSize="large-200">{product.title}</s-heading>
+          <s-text color="subdued" fontSize="small">
+            {product.sku}
+          </s-text>
+        </s-stack>
+        {variants.length > 1 ? (
+          <div style={{ minWidth: 200 }}>
+            <s-select label="Variant" labelAccessibilityVisibility="exclusive" value={variantId} onChange={(e) => setVariantId(e.currentTarget.value)}>
+              {variants.map((v) => (
+                <s-option key={v.id} value={v.id}>
+                  {v.title}
+                </s-option>
+              ))}
+            </s-select>
+          </div>
+        ) : null}
+      </s-stack>
 
-          {/* The discount attached to this product at this location */}
-          <BlockStack gap="200">
-            <Text as="h3" variant="headingSm">Applied pricing</Text>
-            {applied ? (
-              <Step entry={applied.entry} order={applied.order} status="applied" breakdown={applied.breakdown} variant={variant} />
-            ) : (
-              <Box padding="300" borderWidth="025" borderColor="border" borderRadius="200">
-                <Text as="span" tone="subdued" variant="bodySm">No B2B pricing covers this product — buyers pay the Shopify list price.</Text>
-              </Box>
-            )}
-          </BlockStack>
+      {/* The discount attached to this product at this location */}
+      <s-stack gap="small-200">
+        <s-heading>Applied pricing</s-heading>
+        {applied ? (
+          <Step entry={applied.entry} order={applied.order} status="applied" breakdown={applied.breakdown} variant={variant} />
+        ) : (
+          <s-box padding="small" border="base" borderRadius="base">
+            <s-text color="subdued" fontSize="small">
+              No B2B pricing covers this product — buyers pay the Shopify list price.
+            </s-text>
+          </s-box>
+        )}
+      </s-stack>
 
-          {/* Other pricings that also cover this product but lost out — the
-              "why isn't my pricing applied?" answer, with each would-be price. */}
-          {covering.length ? (
-            <BlockStack gap="200">
-              <BlockStack gap="050">
-                <Text as="h3" variant="headingSm">Also covers this product</Text>
-                <Text as="span" tone="subdued" variant="bodySm">
-                  {covering.length === 1 ? 'This pricing also covers' : 'These pricings also cover'} this product but{' '}
-                  {covering.length === 1 ? "isn't" : "aren't"} applied
-                  {winnerName ? ` — ${winnerName} has higher priority.` : '.'}
-                </Text>
-              </BlockStack>
-              {showAll ? (
-                <Scrollable shadow style={{ maxHeight: 300 }}>
-                  <Box paddingInlineEnd="100" paddingBlockEnd="100">
-                    <BlockStack gap="200">
-                      {covering.map((t, i) => (
-                        <Box key={i} padding="300" borderWidth="025" borderColor="border" borderRadius="200">
-                          <InlineStack align="space-between" blockAlign="center" gap="200">
-                            <BlockStack gap="050">
-                              <Text as="span" variant="bodyMd" fontWeight="medium">{t.entry.policy.name}</Text>
-                              <Text as="span" tone="subdued" variant="bodySm">
-                                {coverReason(t.entry.policy)} · would price at {money(t.wouldBe)}
-                              </Text>
-                            </BlockStack>
-                            <Badge>Not applied</Badge>
-                          </InlineStack>
-                        </Box>
-                      ))}
-                    </BlockStack>
-                  </Box>
-                </Scrollable>
-              ) : null}
-              <InlineStack align="start">
-                <Button variant="plain" onClick={() => setShowAll((v) => !v)}>
-                  {showAll ? 'Hide' : `Show all ${covering.length}`}
-                </Button>
-              </InlineStack>
-            </BlockStack>
+      {/* Other pricings that also cover this product but lost out — the
+          "why isn't my pricing applied?" answer, with each would-be price. */}
+      {covering.length ? (
+        <s-stack gap="small-200">
+          <s-stack gap="small-500">
+            <s-heading>Also covers this product</s-heading>
+            <s-text color="subdued" fontSize="small">
+              {covering.length === 1 ? 'This pricing also covers' : 'These pricings also cover'} this product but{' '}
+              {covering.length === 1 ? "isn't" : "aren't"} applied
+              {winnerName ? ` — ${winnerName} has higher priority.` : '.'}
+            </s-text>
+          </s-stack>
+          {showAll ? (
+            // Native scroller: s-scroll-box's maxBlockSize caps its outer box, not its scroll container.
+            <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+              <s-box paddingInlineEnd="small-400" paddingBlockEnd="small-400">
+                <s-stack gap="small-200">
+                  {covering.map((t, i) => (
+                    <s-box key={i} padding="small" border="base" borderRadius="base">
+                      <s-grid gridTemplateColumns="1fr auto" gap="small-200" alignItems="center">
+                        <s-stack gap="small-500">
+                          <s-text fontWeight="medium">{t.entry.policy.name}</s-text>
+                          <s-text color="subdued" fontSize="small">
+                            {coverReason(t.entry.policy)} · would price at {money(t.wouldBe)}
+                          </s-text>
+                        </s-stack>
+                        <s-badge>Not applied</s-badge>
+                      </s-grid>
+                    </s-box>
+                  ))}
+                </s-stack>
+              </s-box>
+            </div>
           ) : null}
-    </BlockStack>
+          <s-stack direction="inline">
+            <s-link onClick={() => setShowAll((v) => !v)}>{showAll ? 'Hide' : `Show all ${covering.length}`}</s-link>
+          </s-stack>
+        </s-stack>
+      ) : null}
+    </s-stack>
   );
 }
 
@@ -194,63 +196,60 @@ function Step({ entry, order, status, breakdown, variant }) {
         : `${defaultAdjLabel(p)} discount`;
 
   return (
-    <Box
-      padding="300"
-      borderWidth="025"
-      borderColor="border"
-      borderRadius="200"
-      background={applied ? 'bg-surface-secondary' : undefined}
-    >
-      <BlockStack gap="200">
-        <InlineStack align="space-between" blockAlign="start" gap="200" wrap={false}>
-          <InlineStack gap="150" blockAlign="center">
-            {order != null ? (
-              <Badge size="small">{`Priority ${order}`}</Badge>
-            ) : (
-              <Badge size="small" tone="info">Quantity</Badge>
-            )}
-            <BlockStack gap="0">
-              <Text as="span" variant="bodyMd" fontWeight="medium">{p.name}</Text>
-              <Text as="span" tone="subdued" variant="bodySm">
+    <s-box padding="small" border="base" borderRadius="base" background={applied ? 'subdued' : undefined}>
+      <s-stack gap="small-200">
+        <s-grid gridTemplateColumns="1fr auto" gap="small-200" alignItems="start">
+          <s-stack direction="inline" gap="small-300" alignItems="center">
+            {order != null ? <s-badge>{`Priority ${order}`}</s-badge> : <s-badge tone="info">Quantity</s-badge>}
+            <s-stack gap="none">
+              <s-text fontWeight="medium">{p.name}</s-text>
+              <s-text color="subdued" fontSize="small">
                 {scopeLabel(p)}
                 {entry.source === 'LOCATION' ? ' · Location override' : ''}
-              </Text>
-            </BlockStack>
-          </InlineStack>
-          <Badge tone={STATUS.tone}>{STATUS.label}</Badge>
-        </InlineStack>
+              </s-text>
+            </s-stack>
+          </s-stack>
+          <s-badge tone={STATUS.tone}>{STATUS.label}</s-badge>
+        </s-grid>
 
         {applied && breakdown ? (
-          <Box paddingInlineStart="300">
-            <BlockStack gap="100">
+          <s-box paddingInlineStart="small">
+            <s-stack gap="small-400">
               <Line label="Shopify list price" value={money(breakdown.shopify)} />
               <Line label={deciderLabel} value={money(breakdown.final)} decider />
-              <Divider />
-              <InlineStack align="space-between">
-                <Text as="span" variant="bodyMd" fontWeight="semibold">Buyer pays</Text>
-                <Text as="span" variant="bodyMd" fontWeight="semibold">{money(breakdown.final)}</Text>
-              </InlineStack>
-            </BlockStack>
-          </Box>
+              <s-divider />
+              <s-stack direction="inline" justifyContent="space-between">
+                <s-text fontWeight="semibold">Buyer pays</s-text>
+                <s-text fontWeight="semibold">{money(breakdown.final)}</s-text>
+              </s-stack>
+            </s-stack>
+          </s-box>
         ) : status === 'unreached' ? (
-          <Box paddingInlineStart="300">
-            <Text as="span" tone="subdued" variant="bodySm">A higher-priority pricing already set the price.</Text>
-          </Box>
+          <s-box paddingInlineStart="small">
+            <s-text color="subdued" fontSize="small">
+              A higher-priority pricing already set the price.
+            </s-text>
+          </s-box>
         ) : null}
-      </BlockStack>
-    </Box>
+      </s-stack>
+    </s-box>
   );
 }
 
 function Line({ label, value, dim, strike, decider }) {
-  const deco = strike ? 'line-through' : undefined;
+  const color = dim ? 'subdued' : undefined;
+  const deco = (text) => (strike ? <s>{text}</s> : text);
   return (
-    <InlineStack align="space-between" blockAlign="center" gap="200">
-      <InlineStack gap="150" blockAlign="center">
-        <Text as="span" variant="bodySm" tone={dim ? 'subdued' : undefined} textDecorationLine={deco}>{label}</Text>
-        {decider ? <Badge size="small">Applied</Badge> : null}
-      </InlineStack>
-      <Text as="span" variant="bodySm" tone={dim ? 'subdued' : undefined} textDecorationLine={deco}>{value}</Text>
-    </InlineStack>
+    <s-stack direction="inline" justifyContent="space-between" alignItems="center" gap="small-200">
+      <s-stack direction="inline" gap="small-300" alignItems="center">
+        <s-text fontSize="small" color={color}>
+          {deco(label)}
+        </s-text>
+        {decider ? <s-badge>Applied</s-badge> : null}
+      </s-stack>
+      <s-text fontSize="small" color={color}>
+        {deco(value)}
+      </s-text>
+    </s-stack>
   );
 }

@@ -1,27 +1,6 @@
 import React, { useState } from 'react';
-import {
-  Page,
-  InlineGrid,
-  Card,
-  IndexTable,
-  Modal,
-  TextField,
-  Select,
-  Button,
-  ButtonGroup,
-  Badge,
-  Text,
-  BlockStack,
-  InlineStack,
-  Box,
-  Divider,
-  Checkbox,
-  Icon,
-  Popover,
-  ActionList,
-} from '@shopify/polaris';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
-import { PlusIcon, XIcon, ChevronDownIcon, ChevronRightIcon } from '@shopify/polaris-icons';
+import { Modal, useWcId, PageHeader } from '../../shared/wc.jsx';
 import { useStore, handoffCompanyToB2B } from '../store.jsx';
 import { activeVersion } from '../../shared/versions.js';
 import { money, subtotalOf } from '../utils.js';
@@ -53,56 +32,78 @@ function LockedCustomerCard({ customer }) {
   const isCompany = !!co?.inB2B;
   const shipLines = (customer.shipping || '').split('\n');
   return (
-    <BlockStack gap="300">
-      <BlockStack gap="050">
-        <Text as="span" tone="subdued" variant="bodySm">
+    <s-stack gap="small">
+      <s-stack gap="small-500">
+        <s-text color="subdued" fontSize="small">
           Email address
-        </Text>
-        <Text as="span" variant="bodyMd">
-          {customer.email}
-        </Text>
-      </BlockStack>
-      <Divider />
+        </s-text>
+        <s-text>{customer.email}</s-text>
+      </s-stack>
+      <s-divider />
       {isCompany ? (
-        <BlockStack gap="300">
+        <s-stack gap="small">
           <Field label="Contact person" value={customer.name} sub={customer.email} />
           <Field label="Company" value={customer.company} sub={String(co.shopifyId || '')} />
           <Field label="Shipping address" lines={shipLines} />
           <Field label="Billing address" lines={shipLines} />
-        </BlockStack>
+        </s-stack>
       ) : (
-        <BlockStack gap="300">
+        <s-stack gap="small">
           <Field label="Customer" value={customer.name} sub={customer.email} />
           <Field label="Shipping address" lines={shipLines} />
-        </BlockStack>
+        </s-stack>
       )}
-    </BlockStack>
+    </s-stack>
   );
 }
 
 function Field({ label, value, sub, lines }) {
   return (
-    <BlockStack gap="050">
-      <Text as="span" tone="subdued" variant="bodySm">
+    <s-stack gap="small-500">
+      <s-text color="subdued" fontSize="small">
         {label}
-      </Text>
-      {lines ? (
-        lines.map((l, i) => (
-          <Text as="span" variant="bodyMd" key={i}>
-            {l}
-          </Text>
-        ))
-      ) : (
-        <Text as="span" variant="bodyMd">
-          {value}
-        </Text>
-      )}
+      </s-text>
+      {lines ? lines.map((l, i) => <s-text key={i}>{l}</s-text>) : <s-text>{value}</s-text>}
       {sub ? (
-        <Text as="span" tone="subdued" variant="bodySm">
+        <s-text color="subdued" fontSize="small">
           {sub}
-        </Text>
+        </s-text>
       ) : null}
-    </BlockStack>
+    </s-stack>
+  );
+}
+
+// "More actions" source menu (Polaris React Popover + ActionList with help text):
+// each entry is a two-line clickable row that also closes the popover.
+function MoreSourcesMenu({ items }) {
+  const id = useWcId('more-sources');
+  return (
+    <>
+      <s-button commandFor={id}>More actions</s-button>
+      <s-popover id={id}>
+        <s-box padding="small-300">
+          <s-stack gap="none">
+            {items.map((it) => (
+              <s-clickable
+                key={it.content}
+                commandFor={id}
+                command="--hide"
+                disabled={it.disabled}
+                paddingInline="small-200"
+                paddingBlock="small-300"
+                borderRadius="base"
+                onClick={it.onAction}
+              >
+                <s-paragraph>{it.content}</s-paragraph>
+                <s-paragraph color="subdued" fontSize="small">
+                  {it.helpText}
+                </s-paragraph>
+              </s-clickable>
+            ))}
+          </s-stack>
+        </s-box>
+      </s-popover>
+    </>
   );
 }
 
@@ -139,7 +140,6 @@ export function CreateQuote() {
   const [changingCustomer, setChangingCustomer] = useState(false); // re-open the customer picker after selection
   const [pendingCustomerKey, setPendingCustomerKey] = useState(null); // confirm reset when switching company with lines
   const [catalogPicker, setCatalogPicker] = useState(false); // Shopify B2B catalog picker
-  const [addMenu, setAddMenu] = useState(false); // "Add product" source menu (catalog / whole store)
   const [storePicker, setStorePicker] = useState(false); // whole-store (Shopify) picker
   const [customItemOpen, setCustomItemOpen] = useState(false); // "Add custom item" dialog
   const [expandedGroups, setExpandedGroups] = useState(() => new Set()); // expanded product groups (mix editing)
@@ -282,59 +282,58 @@ export function CreateQuote() {
   const productCell = (l, { title, subtitle, indent }) => (
     <div style={indent ? { paddingInlineStart: 28 } : undefined}>
       {l.custom ? (
-        <BlockStack gap="050">
-          <InlineStack gap="150" blockAlign="center" wrap={false}>
-            <Text as="span" variant="bodyMd" fontWeight="medium">{title || 'Custom item'}</Text>
-            <Badge size="small">Custom</Badge>
-          </InlineStack>
+        <s-stack gap="small-500">
+          <s-stack direction="inline" gap="small-300" alignItems="center">
+            <s-text fontWeight="medium">{title || 'Custom item'}</s-text>
+            <s-badge>Custom</s-badge>
+          </s-stack>
           {l.physical ? (
-            <Text as="span" tone="subdued" variant="bodySm">{`Physical${l.weight ? ` · ${l.weight} ${l.weightUnit}` : ''}`}</Text>
+            <s-text color="subdued" fontSize="small">{`Physical${l.weight ? ` · ${l.weight} ${l.weightUnit}` : ''}`}</s-text>
           ) : null}
-        </BlockStack>
+        </s-stack>
       ) : (
-        <BlockStack gap="050">
-          <Text as="span" variant="bodyMd" fontWeight="medium">{title}</Text>
-          <InlineStack gap="100">
-            {subtitle ? <Text as="span" tone="subdued" variant="bodySm">{subtitle}</Text> : null}
-            {l.priced ? <Text as="span" tone="subdued" variant="bodySm">· B2B price</Text> : null}
-          </InlineStack>
-        </BlockStack>
+        <s-stack gap="small-500">
+          <s-text fontWeight="medium">{title}</s-text>
+          <s-stack direction="inline" gap="small-400">
+            {subtitle ? <s-text color="subdued" fontSize="small">{subtitle}</s-text> : null}
+            {l.priced ? <s-text color="subdued" fontSize="small">· B2B price</s-text> : null}
+          </s-stack>
+        </s-stack>
       )}
     </div>
   );
 
   // Price / Qty / Total / Remove cells for one editable line.
   const editCells = (l, i) => [
-    <IndexTable.Cell key="price">
+    <s-table-cell key="price">
       <div style={{ width: 96 }}>
-        <TextField label="Price" labelHidden type="number" min={0} prefix="$" value={String(l.price ?? '')} onChange={(v) => patchLine(i, { price: Number(v) })} autoComplete="off" />
+        <s-number-field label="Price" labelAccessibilityVisibility="exclusive" min={0} prefix="$" value={String(l.price ?? '')} onInput={(e) => patchLine(i, { price: Number(e.currentTarget.value) })} autocomplete="off" />
       </div>
-    </IndexTable.Cell>,
-    <IndexTable.Cell key="qty">
+    </s-table-cell>,
+    <s-table-cell key="qty">
       <div style={{ width: 72 }}>
-        <TextField label="Qty" labelHidden type="number" min={1} value={String(l.qty ?? '')} onChange={(v) => patchLine(i, { qty: Number(v) })} autoComplete="off" />
+        <s-number-field label="Qty" labelAccessibilityVisibility="exclusive" inputMode="numeric" min={1} value={String(l.qty ?? '')} onInput={(e) => patchLine(i, { qty: Number(e.currentTarget.value) })} autocomplete="off" />
       </div>
-    </IndexTable.Cell>,
-    <IndexTable.Cell key="total">
-      <Text as="span" alignment="end">{money((Number(l.price) || 0) * (Number(l.qty) || 0))}</Text>
-    </IndexTable.Cell>,
-    <IndexTable.Cell key="remove">
-      <Button icon={XIcon} variant="tertiary" accessibilityLabel="Remove line" onClick={() => removeLine(i)} />
-    </IndexTable.Cell>,
+    </s-table-cell>,
+    <s-table-cell key="total">
+      <s-text>{money((Number(l.price) || 0) * (Number(l.qty) || 0))}</s-text>
+    </s-table-cell>,
+    <s-table-cell key="remove">
+      <s-button icon="x" variant="tertiary" accessibilityLabel="Remove line" onClick={() => removeLine(i)} />
+    </s-table-cell>,
   ];
 
   const lineRows = [];
-  let rowPos = 0;
   lineGroups.forEach((g) => {
     const { product, items } = g;
     const isVariantGroup = product && (items.length > 1 || items[0].l.sku !== product.sku);
     if (!isVariantGroup) {
       const { l, i } = items[0];
       lineRows.push(
-        <IndexTable.Row id={`l-${i}`} key={`l-${i}`} position={rowPos++}>
-          <IndexTable.Cell>{productCell(l, { title: l.custom ? l.title || 'Custom item' : lineTitle(l), subtitle: l.sku })}</IndexTable.Cell>
+        <s-table-row key={`l-${i}`}>
+          <s-table-cell>{productCell(l, { title: l.custom ? l.title || 'Custom item' : lineTitle(l), subtitle: l.sku })}</s-table-cell>
           {editCells(l, i)}
-        </IndexTable.Row>,
+        </s-table-row>,
       );
       return;
     }
@@ -350,35 +349,35 @@ export function CreateQuote() {
     const sameQ = qtys.every((x) => x === qtys[0]);
     const isExp = expandedGroups.has(product.sku);
     lineRows.push(
-      <IndexTable.Row id={`h-${product.sku}`} key={`h-${product.sku}`} position={rowPos++}>
-        <IndexTable.Cell>
-          <button type="button" onClick={() => toggleGroupExpand(product.sku)} style={{ all: 'unset', cursor: 'pointer', display: 'block', minWidth: 0 }}>
-            <InlineStack gap="150" blockAlign="center" wrap={false}>
-              <span style={{ display: 'flex' }}><Icon source={isExp ? ChevronDownIcon : ChevronRightIcon} tone="subdued" /></span>
-              <BlockStack gap="050">
-                <Text as="span" variant="bodyMd" fontWeight="semibold">{product.title}</Text>
-                <Text as="span" tone="subdued" variant="bodySm">{`${items.length} variants${isExp ? '' : sameP ? '' : ' · Mixed prices'}`}</Text>
-              </BlockStack>
-            </InlineStack>
-          </button>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
+      <s-table-row key={`h-${product.sku}`}>
+        <s-table-cell>
+          <s-clickable onClick={() => toggleGroupExpand(product.sku)} borderRadius="base">
+            <s-grid gridTemplateColumns="auto minmax(0, 1fr)" gap="small-300" alignItems="center">
+              <s-icon type={isExp ? 'chevron-down' : 'chevron-right'} color="subdued" />
+              <s-stack gap="small-500">
+                <s-text fontWeight="semibold">{product.title}</s-text>
+                <s-text color="subdued" fontSize="small">{`${items.length} variants${isExp ? '' : sameP ? '' : ' · Mixed prices'}`}</s-text>
+              </s-stack>
+            </s-grid>
+          </s-clickable>
+        </s-table-cell>
+        <s-table-cell>
           <div style={{ width: 96 }}>
-            <TextField label="Group price" labelHidden type="number" min={0} prefix="$" value={sameP ? String(prices[0] ?? '') : ''} placeholder={sameP ? undefined : 'Mixed'} onChange={(v) => patchGroup(indices, { price: Number(v) })} autoComplete="off" />
+            <s-number-field label="Group price" labelAccessibilityVisibility="exclusive" min={0} prefix="$" value={sameP ? String(prices[0] ?? '') : ''} placeholder={sameP ? undefined : 'Mixed'} onInput={(e) => patchGroup(indices, { price: Number(e.currentTarget.value) })} autocomplete="off" />
           </div>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
+        </s-table-cell>
+        <s-table-cell>
           <div style={{ width: 72 }}>
-            <TextField label="Group qty" labelHidden type="number" min={1} value={sameQ ? String(qtys[0] ?? '') : ''} placeholder={sameQ ? undefined : 'Mixed'} onChange={(v) => patchGroup(indices, { qty: Number(v) })} autoComplete="off" />
+            <s-number-field label="Group qty" labelAccessibilityVisibility="exclusive" inputMode="numeric" min={1} value={sameQ ? String(qtys[0] ?? '') : ''} placeholder={sameQ ? undefined : 'Mixed'} onInput={(e) => patchGroup(indices, { qty: Number(e.currentTarget.value) })} autocomplete="off" />
           </div>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
-          <Text as="span" alignment="end" fontWeight="medium">{money(groupTotal)}</Text>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
-          <Button icon={XIcon} variant="tertiary" accessibilityLabel={`Remove all ${product.title} variants`} onClick={() => setLines(lines.filter((x) => !groupSkus.has(x.sku)))} />
-        </IndexTable.Cell>
-      </IndexTable.Row>,
+        </s-table-cell>
+        <s-table-cell>
+          <s-text fontWeight="medium">{money(groupTotal)}</s-text>
+        </s-table-cell>
+        <s-table-cell>
+          <s-button icon="x" variant="tertiary" accessibilityLabel={`Remove all ${product.title} variants`} onClick={() => setLines(lines.filter((x) => !groupSkus.has(x.sku)))} />
+        </s-table-cell>
+      </s-table-row>,
     );
     // Indented variant sub-rows — only when expanded (the "mix" per-variant edit).
     if (isExp) {
@@ -386,169 +385,146 @@ export function CreateQuote() {
         const variant = product.variants?.find((v) => v.id === l.sku);
         const vTitle = variant?.title || (l.title || '').split(' — ').slice(1).join(' — ') || l.sku;
         lineRows.push(
-          <IndexTable.Row id={`l-${i}`} key={`l-${i}`} position={rowPos++}>
-            <IndexTable.Cell>{productCell(l, { title: vTitle, subtitle: l.sku, indent: true })}</IndexTable.Cell>
+          <s-table-row key={`l-${i}`}>
+            <s-table-cell>{productCell(l, { title: vTitle, subtitle: l.sku, indent: true })}</s-table-cell>
             {editCells(l, i)}
-          </IndexTable.Row>,
+          </s-table-row>,
         );
       });
     }
   });
 
   return (
-    <Page
+    <>
+    <PageHeader
       backAction={{ content: 'Submission list', onAction: () => dispatch({ type: 'NAVIGATE', view: 'submissionList' }) }}
-      title="Create quote"
+      heading="Create quote"
       primaryAction={{ content: 'Create quote', disabled: !canCreate, onAction: () => cqCreate() }}
-    >
-      <InlineGrid columns={{ xs: '1fr', md: '2fr 1fr' }} gap="400" alignItems="start">
-        <Card padding="0">
-            <Box padding="300">
-              <InlineStack align="space-between" blockAlign="center" wrap>
-                <Text as="h2" variant="headingSm">
-                  Products
-                </Text>
-                <ButtonGroup>
-                  <Button
-                    icon={PlusIcon}
-                    disabled={!customer}
-                    onClick={() => setPicker({ mode: 'priced', templateId: null, picks: {}, search: '' })}
-                  >
-                    Add B2B price
-                  </Button>
-                  {/* Add product = the whole Shopify store (list price), a direct button. */}
-                  <Button onClick={() => setStorePicker(true)}>Add product</Button>
-                  {/* Secondary sources grouped under "More actions". */}
-                  <Popover
-                    active={addMenu}
-                    onClose={() => setAddMenu(false)}
-                    preferredAlignment="left"
-                    activator={
-                      <Button disclosure onClick={() => setAddMenu((v) => !v)}>
-                        More actions
-                      </Button>
-                    }
-                  >
-                    <ActionList
-                      items={[
-                        {
-                          content: 'Add product from catalog',
-                          helpText: 'The company’s Shopify catalog',
-                          disabled: !customer,
-                          onAction: () => {
-                            setAddMenu(false);
-                            setCatalogPicker(true);
-                          },
-                        },
-                        {
-                          content: 'Add custom item',
-                          helpText: 'A free-form line with your own price',
-                          onAction: () => {
-                            setAddMenu(false);
-                            setCustomItemOpen(true);
-                          },
-                        },
-                      ]}
-                    />
-                  </Popover>
-                </ButtonGroup>
-              </InlineStack>
-            </Box>
-            {lines.length === 0 ? (
-              <Box padding="400">
-                <EmptyBlock heading="No products yet">
-                  Add priced items from the company’s pricing, a product from the catalog, or a custom item.
-                </EmptyBlock>
-              </Box>
+    />
+    <s-page>
+      <s-section padding="none">
+        <s-box padding="small">
+          <s-stack direction="inline" justifyContent="space-between" alignItems="center" gap="small-200">
+            <s-heading>Products</s-heading>
+            <s-stack direction="inline" gap="small-200">
+              <s-button
+                icon="plus"
+                disabled={!customer}
+                onClick={() => setPicker({ mode: 'priced', templateId: null, picks: {}, search: '' })}
+              >
+                Add B2B price
+              </s-button>
+              {/* Add product = the whole Shopify store (list price), a direct button. */}
+              <s-button onClick={() => setStorePicker(true)}>Add product</s-button>
+              {/* Secondary sources grouped under "More actions". */}
+              <MoreSourcesMenu
+                items={[
+                  {
+                    content: 'Add product from catalog',
+                    helpText: 'The company’s Shopify catalog',
+                    disabled: !customer,
+                    onAction: () => setCatalogPicker(true),
+                  },
+                  {
+                    content: 'Add custom item',
+                    helpText: 'A free-form line with your own price',
+                    onAction: () => setCustomItemOpen(true),
+                  },
+                ]}
+              />
+            </s-stack>
+          </s-stack>
+        </s-box>
+        {lines.length === 0 ? (
+          <s-box padding="base">
+            <EmptyBlock heading="No products yet">
+              Add priced items from the company’s pricing, a product from the catalog, or a custom item.
+            </EmptyBlock>
+          </s-box>
+        ) : (
+          <>
+            <s-table>
+              <s-table-header-row>
+                <s-table-header listSlot="primary">Product</s-table-header>
+                <s-table-header listSlot="labeled">Price</s-table-header>
+                <s-table-header listSlot="labeled">Qty</s-table-header>
+                <s-table-header listSlot="labeled" format="currency">
+                  Total
+                </s-table-header>
+                <s-table-header listSlot="inline" />
+              </s-table-header-row>
+              <s-table-body>{lineRows}</s-table-body>
+            </s-table>
+            <s-box padding="small">
+              <s-stack direction="inline" justifyContent="end" gap="small-200">
+                <s-text color="subdued">Subtotal</s-text>
+                <s-text fontWeight="semibold">{money(subtotal)}</s-text>
+              </s-stack>
+            </s-box>
+          </>
+        )}
+      </s-section>
+
+      <s-stack slot="aside" gap="base">
+        <s-section>
+          <s-stack gap="small">
+            <s-grid gridTemplateColumns="1fr auto" gap="small-200" alignItems="center">
+              <s-heading>Customer</s-heading>
+              {customer &&
+                (changingCustomer ? (
+                  <s-button variant="tertiary" onClick={() => setChangingCustomer(false)}>
+                    Cancel
+                  </s-button>
+                ) : (
+                  <s-button variant="tertiary" disabled={lines.length > 0} onClick={() => setChangingCustomer(true)}>
+                    Change
+                  </s-button>
+                ))}
+            </s-grid>
+            {!customer || changingCustomer ? (
+              <s-select
+                // Re-mount when a company switch is pending/cancelled so the field
+                // shows the current customer again (it was a controlled Select).
+                key={`customer-${pendingCustomerKey || ''}`}
+                label="Choose a customer"
+                labelAccessibilityVisibility="exclusive"
+                placeholder="Select a customer…"
+                value={customer?.key || ''}
+                onChange={(e) => {
+                  const key = e.currentTarget.value;
+                  if (key) requestPickCustomer(key);
+                }}
+              >
+                {RFQ_CUSTOMERS.map((c) => (
+                  <s-option key={c.key} value={c.key}>{`${c.name} — ${c.company}`}</s-option>
+                ))}
+              </s-select>
             ) : (
               <>
-                <IndexTable
-                  resourceName={{ singular: 'line', plural: 'lines' }}
-                  itemCount={lineRows.length}
-                  selectable={false}
-                  headings={[
-                    { title: 'Product' },
-                    { title: 'Price' },
-                    { title: 'Qty' },
-                    { title: 'Total', alignment: 'end' },
-                    { title: '' },
-                  ]}
-                >
-                  {lineRows}
-                </IndexTable>
-                <Box padding="300">
-                  <InlineStack align="end" gap="200">
-                    <Text as="span" tone="subdued">
-                      Subtotal
-                    </Text>
-                    <Text as="span" fontWeight="semibold">
-                      {money(subtotal)}
-                    </Text>
-                  </InlineStack>
-                </Box>
+                <LockedCustomerCard customer={customer} />
+                <s-divider />
+                <s-text-area
+                  label="Message"
+                  rows={3}
+                  value={cq.message}
+                  onInput={(e) => dispatch({ type: 'CQ_PATCH', patch: { message: e.currentTarget.value } })}
+                  autocomplete="off"
+                />
               </>
             )}
-          </Card>
-
-        <BlockStack gap="400">
-            <Card>
-              <BlockStack gap="300">
-                <InlineStack align="space-between" blockAlign="center">
-                  <Text as="h2" variant="headingSm">
-                    Customer
-                  </Text>
-                  {customer &&
-                    (changingCustomer ? (
-                      <Button variant="plain" onClick={() => setChangingCustomer(false)}>
-                        Cancel
-                      </Button>
-                    ) : (
-                      <Button variant="plain" disabled={lines.length > 0} onClick={() => setChangingCustomer(true)}>
-                        Change
-                      </Button>
-                    ))}
-                </InlineStack>
-                {!customer || changingCustomer ? (
-                  <Select
-                    label="Choose a customer"
-                    labelHidden
-                    placeholder="Select a customer…"
-                    options={RFQ_CUSTOMERS.map((c) => ({ label: `${c.name} — ${c.company}`, value: c.key }))}
-                    value={customer?.key || ''}
-                    onChange={requestPickCustomer}
-                  />
-                ) : (
-                  <>
-                    <LockedCustomerCard customer={customer} />
-                    <Divider />
-                    <TextField
-                      label="Message"
-                      multiline={3}
-                      value={cq.message}
-                      onChange={(v) => dispatch({ type: 'CQ_PATCH', patch: { message: v } })}
-                      autoComplete="off"
-                    />
-                  </>
-                )}
-              </BlockStack>
-            </Card>
-            <Card>
-              <BlockStack gap="200">
-                <Text as="h2" variant="headingSm">
-                  Due date
-                </Text>
-                <TextField
-                  label="Due date"
-                  labelHidden
-                  type="date"
-                  value={cq.dueDate}
-                  onChange={(v) => dispatch({ type: 'CQ_PATCH', patch: { dueDate: v } })}
-                  autoComplete="off"
-                />
-              </BlockStack>
-            </Card>
-          </BlockStack>
-      </InlineGrid>
+          </s-stack>
+        </s-section>
+        <s-section heading="Due date">
+          <s-date-field
+            label="Due date"
+            labelAccessibilityVisibility="exclusive"
+            value={cq.dueDate}
+            onInput={(e) => dispatch({ type: 'CQ_PATCH', patch: { dueDate: e.currentTarget.value } })}
+            onChange={(e) => dispatch({ type: 'CQ_PATCH', patch: { dueDate: e.currentTarget.value } })}
+            autocomplete="off"
+          />
+        </s-section>
+      </s-stack>
 
       {picker && (
         <PickerModal
@@ -603,23 +579,22 @@ export function CreateQuote() {
         />
       )}
       {pendingCustomerKey && (
-        <Modal
-          open
-          onClose={() => setPendingCustomerKey(null)}
-          title="Change company?"
-          primaryAction={{ content: 'Change and clear items', destructive: true, onAction: confirmChangeCustomer }}
-          secondaryActions={[{ content: 'Cancel', onAction: () => setPendingCustomerKey(null) }]}
-        >
-          <Modal.Section>
-            <Text as="p">
-              Switching to {RFQ_CUSTOMERS.find((c) => c.key === pendingCustomerKey)?.company} will remove the{' '}
-              {lines.length} product{lines.length === 1 ? '' : 's'} you’ve added, because pricing is specific to each
-              company.
-            </Text>
-          </Modal.Section>
+        <Modal onClose={() => setPendingCustomerKey(null)} heading="Change company?">
+          <s-paragraph>
+            Switching to {RFQ_CUSTOMERS.find((c) => c.key === pendingCustomerKey)?.company} will remove the{' '}
+            {lines.length} product{lines.length === 1 ? '' : 's'} you’ve added, because pricing is specific to each
+            company.
+          </s-paragraph>
+          <s-button slot="primary-action" variant="primary" tone="critical" onClick={confirmChangeCustomer}>
+            Change and clear items
+          </s-button>
+          <s-button slot="secondary-actions" onClick={() => setPendingCustomerKey(null)}>
+            Cancel
+          </s-button>
         </Modal>
       )}
-    </Page>
+    </s-page>
+    </>
   );
 }
 

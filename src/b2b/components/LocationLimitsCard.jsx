@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
-import { Card, BlockStack, InlineStack, Text, Button, Badge, Divider, Popover, ActionList } from '@shopify/polaris';
-import { PlusIcon } from '@shopify/polaris-icons';
+import React from 'react';
 import { useStore } from '../store.jsx';
 import { LIMIT_KINDS, limitKey, locationLimits } from '../limits.js';
+import { useWcId } from '../../shared/wc.jsx';
 
 const LEVEL_LABEL = { location: 'This location', company: 'Company', store: 'Store-wide' };
 
@@ -11,12 +10,11 @@ const LEVEL_LABEL = { location: 'This location', company: 'Company', store: 'Sto
 // replaces here is struck through and names the limit that wins.
 export function LocationLimitsCard({ company, location }) {
   const { state, dispatch } = useStore();
-  const [addOpen, setAddOpen] = useState(false);
+  const addId = useWcId('add-limit');
   const rows = locationLimits(state.db, company.id, location.id);
   // The editor opens in Order limits and comes back here on save or cancel.
   const returnTo = { view: 'location', selectedCompany: company.id, selectedLocation: location.id };
   const add = (kind) => {
-    setAddOpen(false);
     dispatch({
       type: 'OPEN_LIMIT_EDITOR',
       kind,
@@ -26,53 +24,75 @@ export function LocationLimitsCard({ company, location }) {
   };
 
   return (
-    <Card>
-      <BlockStack gap="300">
-        <InlineStack align="space-between" blockAlign="center">
-          <Text as="h2" variant="headingSm">Order limits</Text>
-          <Popover
-            active={addOpen}
-            onClose={() => setAddOpen(false)}
-            activator={<Button size="micro" icon={PlusIcon} onClick={() => setAddOpen((o) => !o)}>Add limit</Button>}
-          >
-            <ActionList
-              items={Object.entries(LIMIT_KINDS).map(([kind, k]) => ({ content: k.label, helpText: k.description, onAction: () => add(kind) }))}
-            />
-          </Popover>
-        </InlineStack>
+    <s-section>
+      <s-stack gap="small">
+        <s-grid gridTemplateColumns="1fr auto" alignItems="center" gap="small-200">
+          <s-heading>Order limits</s-heading>
+          <s-button icon="plus" commandFor={addId}>
+            Add limit
+          </s-button>
+        </s-grid>
+        {/* Popover + ActionList with help text: each kind's description stays under its name. */}
+        <s-popover id={addId} maxInlineSize="320px">
+          <s-box padding="small-200">
+            <s-stack gap="none">
+              {Object.entries(LIMIT_KINDS).map(([kind, k]) => (
+                <s-clickable
+                  key={kind}
+                  padding="small-200"
+                  borderRadius="base"
+                  commandFor={addId}
+                  command="--hide"
+                  onClick={() => add(kind)}
+                >
+                  <s-paragraph>{k.label}</s-paragraph>
+                  <s-paragraph color="subdued" fontSize="small">
+                    {k.description}
+                  </s-paragraph>
+                </s-clickable>
+              ))}
+            </s-stack>
+          </s-box>
+        </s-popover>
 
         {rows.length ? (
           rows.map(({ limit, level, rules }, i) => (
             <React.Fragment key={limit.id}>
-              {i > 0 && <Divider />}
-              <BlockStack gap="100">
-                <InlineStack align="space-between" blockAlign="start" gap="200" wrap={false}>
-                  <Button variant="plain" textAlign="left" onClick={() => dispatch({ type: 'OPEN_LIMIT_EDITOR', limit, returnTo })}>
-                    {limit.name}
-                  </Button>
-                  <Badge tone={level === 'location' ? 'info' : undefined}>{LEVEL_LABEL[level]}</Badge>
-                </InlineStack>
+              {i > 0 && <s-divider />}
+              <s-stack gap="small-400">
+                <s-grid gridTemplateColumns="1fr auto" alignItems="start" gap="small-200">
+                  <div>
+                    <s-link onClick={() => dispatch({ type: 'OPEN_LIMIT_EDITOR', limit, returnTo })}>{limit.name}</s-link>
+                  </div>
+                  <s-badge tone={level === 'location' ? 'info' : undefined}>{LEVEL_LABEL[level]}</s-badge>
+                </s-grid>
                 {rules.map((r) =>
                   r.replacedBy ? (
-                    <BlockStack key={r.text} gap="0">
-                      <Text as="p" variant="bodySm" tone="subdued"><s>{r.text}</s></Text>
-                      <Text as="p" variant="bodySm" tone="subdued">{`Replaced here by ${r.replacedBy.name}`}</Text>
-                    </BlockStack>
+                    <s-stack key={r.text} gap="none">
+                      <s-paragraph fontSize="small" color="subdued">
+                        <s>{r.text}</s>
+                      </s-paragraph>
+                      <s-paragraph fontSize="small" color="subdued">{`Replaced here by ${r.replacedBy.name}`}</s-paragraph>
+                    </s-stack>
                   ) : (
-                    <Text key={r.text} as="p" variant="bodySm">{r.text}</Text>
+                    <s-paragraph key={r.text} fontSize="small">
+                      {r.text}
+                    </s-paragraph>
                   ),
                 )}
-              </BlockStack>
+              </s-stack>
             </React.Fragment>
           ))
         ) : (
-          <Text as="p" tone="subdued" variant="bodySm">No order limits. Buyers here can check out any amount.</Text>
+          <s-paragraph color="subdued" fontSize="small">
+            No order limits. Buyers here can check out any amount.
+          </s-paragraph>
         )}
 
-        <InlineStack>
-          <Button variant="plain" onClick={() => dispatch({ type: 'NAVIGATE', view: 'limits' })}>Manage all order limits</Button>
-        </InlineStack>
-      </BlockStack>
-    </Card>
+        <s-stack direction="inline">
+          <s-link onClick={() => dispatch({ type: 'NAVIGATE', view: 'limits' })}>Manage all order limits</s-link>
+        </s-stack>
+      </s-stack>
+    </s-section>
   );
 }

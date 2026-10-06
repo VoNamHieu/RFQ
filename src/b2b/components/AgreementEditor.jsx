@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Page, Card, BlockStack, InlineGrid, Text, TextField, Badge, Modal, InlineError, Box } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
 import { kindOf, scopeLabel } from '../pricing.js';
 import { limitSummary } from '../limits.js';
 import { agreementChanges } from '../agreements.js';
 import { PricingCombobox } from './PricingCombobox.jsx';
 import { LocationScopePicker } from './LocationScopePicker.jsx';
+import { Modal, PageHeader } from '../../shared/wc.jsx';
 
 // Create / edit a company's agreement — an in-frame page in the Agreements view
 // (OPEN_AGREEMENT_EDITOR). Terms are picked from the Pricing and Order limits
@@ -42,114 +42,120 @@ export function AgreementEditor() {
   const nextVersion = (saved?.version || 0) + 1;
 
   return (
-    <Page
-      title={saved ? `${draft.number} · ${saved.name}` : `New agreement ${draft.number}`}
+    <>
+    <PageHeader
+      heading={saved ? `${draft.number} · ${saved.name}` : `New agreement ${draft.number}`}
       subtitle={company?.name}
       backAction={{ content: 'Agreements', onAction: close }}
       primaryAction={{ content: isActive ? `Save as version ${nextVersion}` : 'Activate', onAction: goLive }}
       secondaryActions={[...(isActive ? [] : [{ content: 'Save draft', onAction: saveDraft }]), { content: 'Cancel', onAction: close }]}
-    >
-      <InlineGrid columns={{ xs: '1fr', md: '2fr 1fr' }} gap="400" alignItems="start">
-        <BlockStack gap="400">
-          <Card>
-            <TextField
-              label="Agreement name"
-              requiredIndicator
-              value={draft.name}
-              onChange={(v) => patch({ name: v })}
-              error={shown('name')}
-              placeholder="e.g. 2027 distributor terms"
-              helpText="Buyers see this name in their account."
-              autoComplete="off"
-            />
-          </Card>
+    />
+    <s-page>
+      <s-stack gap="base">
+        <s-section>
+          <s-text-field
+            label="Agreement name"
+            required
+            value={draft.name}
+            onInput={(e) => patch({ name: e.currentTarget.value })}
+            error={shown('name')}
+            placeholder="e.g. 2027 distributor terms"
+            details="Buyers see this name in their account."
+            autocomplete="off"
+          />
+        </s-section>
 
-          <Card>
-            <BlockStack gap="400">
-              <BlockStack gap="200">
-                <Text as="h3" variant="headingSm">Base pricing</Text>
-                <PricingCombobox
-                  label="Base pricing"
-                  placeholder="Search base pricing"
-                  candidates={bases}
-                  selectedIds={draft.terms.base}
-                  onChange={(ids) => setTerms({ base: ids })}
-                  optionLabel={(p) => `${p.name} · Priority ${p.priority ?? 0}`}
-                />
-              </BlockStack>
-              <BlockStack gap="200">
-                <Text as="h3" variant="headingSm">Quantity pricing</Text>
-                <PricingCombobox
-                  label="Quantity pricing"
-                  placeholder="Search quantity pricing"
-                  candidates={quantities}
-                  selectedIds={draft.terms.quantity}
-                  onChange={(ids) => setTerms({ quantity: ids })}
-                  optionLabel={(p) => `${p.name} · ${scopeLabel(p)}`}
-                />
-              </BlockStack>
-              <BlockStack gap="200">
-                <Text as="h3" variant="headingSm">Order limits</Text>
-                <PricingCombobox
-                  label="Order limits"
-                  placeholder="Search order limits"
-                  candidates={limits}
-                  selectedIds={draft.terms.limits}
-                  onChange={(ids) => setTerms({ limits: ids })}
-                  optionLabel={(l) => `${l.name} · ${limitSummary(l, state.db)}`}
-                  emptyText="No order limits to add. Store-wide limits already apply to every company."
-                />
-              </BlockStack>
-              {shown('terms') && <InlineError message={errors.terms} fieldID="agreement-terms" />}
-            </BlockStack>
-          </Card>
-        </BlockStack>
+        <s-section>
+          <s-stack gap="base">
+            <s-stack gap="small-200">
+              <s-heading>Base pricing</s-heading>
+              <PricingCombobox
+                label="Base pricing"
+                placeholder="Search base pricing"
+                candidates={bases}
+                selectedIds={draft.terms.base}
+                onChange={(ids) => setTerms({ base: ids })}
+                optionLabel={(p) => `${p.name} · Priority ${p.priority ?? 0}`}
+              />
+            </s-stack>
+            <s-stack gap="small-200">
+              <s-heading>Quantity pricing</s-heading>
+              <PricingCombobox
+                label="Quantity pricing"
+                placeholder="Search quantity pricing"
+                candidates={quantities}
+                selectedIds={draft.terms.quantity}
+                onChange={(ids) => setTerms({ quantity: ids })}
+                optionLabel={(p) => `${p.name} · ${scopeLabel(p)}`}
+              />
+            </s-stack>
+            <s-stack gap="small-200">
+              <s-heading>Order limits</s-heading>
+              <PricingCombobox
+                label="Order limits"
+                placeholder="Search order limits"
+                candidates={limits}
+                selectedIds={draft.terms.limits}
+                onChange={(ids) => setTerms({ limits: ids })}
+                optionLabel={(l) => `${l.name} · ${limitSummary(l, state.db)}`}
+                emptyText="No order limits to add. Store-wide limits already apply to every company."
+              />
+            </s-stack>
+            {shown('terms') && (
+              <s-paragraph tone="critical" id="agreement-terms">
+                {errors.terms}
+              </s-paragraph>
+            )}
+          </s-stack>
+        </s-section>
+      </s-stack>
 
-        <BlockStack gap="400">
-          <Card>
-            <BlockStack gap="200">
-              <Text as="h3" variant="headingSm">Status</Text>
-              <div><Badge tone={isActive ? 'success' : undefined}>{isActive ? `Active · version ${saved.version}` : 'Draft'}</Badge></div>
-              <Text as="p" tone="subdued" variant="bodySm">
-                {isActive
-                  ? `Saving applies your changes to ${company?.name} right away, as version ${nextVersion}.`
-                  : `Nothing is applied yet. Activate to give ${company?.name} these terms.`}
-              </Text>
-            </BlockStack>
-          </Card>
-          <Card>
-            <BlockStack gap="200">
-              <LocationScopePicker company={company} locationIds={draft.locationIds} onChange={(ids) => patch({ locationIds: ids })} title="Applies to" />
-              {shown('scope') && <InlineError message={errors.scope} fieldID="agreement-scope" />}
-            </BlockStack>
-          </Card>
-        </BlockStack>
-      </InlineGrid>
-      <Box paddingBlockEnd="1600" />
+      <s-section slot="aside" heading="Status">
+        <s-stack gap="small-200">
+          <div>
+            <s-badge tone={isActive ? 'success' : undefined}>{isActive ? `Active · version ${saved.version}` : 'Draft'}</s-badge>
+          </div>
+          <s-paragraph color="subdued" fontSize="small">
+            {isActive
+              ? `Saving applies your changes to ${company?.name} right away, as version ${nextVersion}.`
+              : `Nothing is applied yet. Activate to give ${company?.name} these terms.`}
+          </s-paragraph>
+        </s-stack>
+      </s-section>
+      <s-section slot="aside">
+        <s-stack gap="small-200">
+          <LocationScopePicker company={company} locationIds={draft.locationIds} onChange={(ids) => patch({ locationIds: ids })} title="Applies to" />
+          {shown('scope') && (
+            <s-paragraph tone="critical" id="agreement-scope">
+              {errors.scope}
+            </s-paragraph>
+          )}
+        </s-stack>
+      </s-section>
 
       {confirm && (
-        <Modal
-          open
-          onClose={() => setConfirm(false)}
-          title={isActive ? `Save ${draft.number} as version ${nextVersion}?` : `Activate ${draft.number}?`}
-          primaryAction={{
-            content: isActive ? 'Save and apply' : 'Activate',
-            onAction: () => {
+        <Modal onClose={() => setConfirm(false)} heading={isActive ? `Save ${draft.number} as version ${nextVersion}?` : `Activate ${draft.number}?`}>
+          <s-paragraph>
+            {isActive
+              ? `${agreementChanges(saved, draft, state.db)}. ${company?.name} gets the new terms right away.`
+              : `Its pricing and order limits are assigned to ${company?.name} right away.`}
+          </s-paragraph>
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            onClick={() => {
               setConfirm(false);
               dispatch({ type: 'SAVE_AGREEMENT', activate: true });
-            },
-          }}
-          secondaryActions={[{ content: 'Cancel', onAction: () => setConfirm(false) }]}
-        >
-          <Modal.Section>
-            <Text as="p">
-              {isActive
-                ? `${agreementChanges(saved, draft, state.db)}. ${company?.name} gets the new terms right away.`
-                : `Its pricing and order limits are assigned to ${company?.name} right away.`}
-            </Text>
-          </Modal.Section>
+            }}
+          >
+            {isActive ? 'Save and apply' : 'Activate'}
+          </s-button>
+          <s-button slot="secondary-actions" onClick={() => setConfirm(false)}>
+            Cancel
+          </s-button>
         </Modal>
       )}
-    </Page>
+    </s-page>
+    </>
   );
 }

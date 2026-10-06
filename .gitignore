@@ -11,3 +11,6 @@ dist/
 /vendor/
 /versions/
 .env*
+
+# Production frontend archives (contain .env secrets) — never commit
+*.rar

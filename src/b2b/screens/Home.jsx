@@ -1,10 +1,4 @@
 import React, { useState } from 'react';
-import {
-  Page, Card, InlineGrid, BlockStack, InlineStack, Box, Text, Button, Badge, Icon, ProgressBar, List, Divider, FooterHelp, Link,
-} from '@shopify/polaris';
-import {
-  TeamIcon, ProductIcon, NoteIcon, ClipboardIcon, InfoIcon, XIcon, ChevronUpIcon, ChevronDownIcon,
-} from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { companyNeedsPrice, kindOf, policyStatus, policyUsageCount } from '../pricing.js';
 import { versionFlags, activeVersion } from '../../shared/versions.js';
@@ -125,22 +119,21 @@ export function Home() {
   const guideVisible = !state.homeGuideHidden;
 
   return (
-    <Page
-      title={setupComplete ? 'Wholesale B2B Solution' : 'Get your B2B selling workflow ready'}
-      subtitle={setupComplete
-        ? 'Your B2B companies, pricing and registrations at a glance.'
-        : 'Complete a few setup steps to start accepting B2B registrations and selling with custom pricing.'}
-      secondaryActions={[
-        { content: 'Add company', onAction: addCompany },
-        { content: 'Create pricing', onAction: createPricing },
-      ]}
-    >
-      <BlockStack gap="400">
+    <s-page heading={setupComplete ? 'Wholesale B2B Solution' : 'Get your B2B selling workflow ready'}>
+      <s-button slot="secondary-actions" onClick={addCompany}>Add company</s-button>
+      <s-button slot="secondary-actions" onClick={createPricing}>Create pricing</s-button>
+      <s-stack gap="base">
+        <s-text color="subdued">
+          {setupComplete
+            ? 'Your B2B companies, pricing and registrations at a glance.'
+            : 'Complete a few setup steps to start accepting B2B registrations and selling with custom pricing.'}
+        </s-text>
+
         {SHOW_DEV_TOOLS && (
-          <Box background="bg-surface-secondary" borderColor="border" borderWidth="025" borderRadius="200" padding="200">
-            <InlineStack gap="200" blockAlign="center" wrap>
-              <Badge tone="info">Dev</Badge>
-              <Text as="span" variant="bodySm" tone="subdued">
+          <s-box background="subdued" border="base" borderRadius="base" padding="small-200">
+            <s-stack direction="inline" gap="small-200" alignItems="center">
+              <s-badge tone="info">Dev</s-badge>
+              <s-text fontSize="small" color="subdued">
                 {devEmpty
                   ? 'Previewing the empty state — companies, pricing and the form actually exist.'
                   : devPreview === 'noQuotes'
@@ -148,15 +141,15 @@ export function Home() {
                   : genuinelyEmpty
                   ? 'No companies, pricing or form exist, so the home is showing its empty state.'
                   : 'Preview other states: a brand-new merchant, or the Quotes card before any quote arrives.'}
-              </Text>
-              <Button size="slim" pressed={devEmpty} disabled={genuinelyEmpty} onClick={() => togglePreview('empty')}>
+              </s-text>
+              <s-press-button pressed={devEmpty} disabled={genuinelyEmpty} onClick={() => togglePreview('empty')}>
                 {devEmpty ? 'Show data' : 'Preview empty state'}
-              </Button>
-              <Button size="slim" pressed={devPreview === 'noQuotes'} onClick={() => togglePreview('noQuotes')}>
+              </s-press-button>
+              <s-press-button pressed={devPreview === 'noQuotes'} onClick={() => togglePreview('noQuotes')}>
                 {devPreview === 'noQuotes' ? 'Show quotes' : 'Preview empty quotes'}
-              </Button>
-            </InlineStack>
-          </Box>
+              </s-press-button>
+            </s-stack>
+          </s-box>
         )}
 
         {guideVisible && (
@@ -164,97 +157,105 @@ export function Home() {
             onDismiss={() => dispatch({ type: 'SET_HOME_GUIDE', hidden: true })} />
         )}
 
-        <Card>
-          <BlockStack gap="300">
-            <Text as="h2" variant="headingMd">Needs attention</Text>
-            {attention.length ? (
-              <BlockStack gap="0">
-                {attention.map((a, i) => (
-                  <div key={a.title}>
-                    {i ? <Divider /> : null}
-                    <Box paddingBlock="300">
-                      <InlineStack align="space-between" blockAlign="center" gap="400" wrap={false}>
-                        <BlockStack gap="050">
-                          <Text as="p" variant="bodyMd" fontWeight="semibold">{a.title}</Text>
-                          <Text as="p" variant="bodySm" tone="subdued">{a.meta}</Text>
-                        </BlockStack>
-                        {a.action ? <Box minWidth="fit-content"><Button onClick={a.action.onAction}>{a.action.content}</Button></Box> : null}
-                      </InlineStack>
-                      {a.orders ? (
-                        <HeldOrderList
-                          items={a.orders}
-                          db={db}
-                          onOpen={(company, location) =>
-                            location
-                              ? dispatch({ type: 'OPEN_LOCATION', companyId: company.id, locationId: location.id })
-                              : dispatch({ type: 'OPEN_COMPANY', id: company.id, tab: 'orders' })}
-                        />
-                      ) : null}
-                    </Box>
-                  </div>
-                ))}
-              </BlockStack>
-            ) : (
-              <Text as="p" tone="subdued">You're all caught up. Nothing needs your attention right now.</Text>
-            )}
-          </BlockStack>
-        </Card>
+        <s-section heading="Needs attention">
+          {attention.length ? (
+            <s-stack gap="none">
+              {attention.map((a, i) => (
+                <React.Fragment key={a.title}>
+                  {i ? <s-divider /> : null}
+                  <s-box paddingBlock="small">
+                    <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="base" alignItems="center">
+                      <s-stack gap="small-500">
+                        <s-paragraph fontWeight="semibold">{a.title}</s-paragraph>
+                        <s-paragraph fontSize="small" color="subdued">{a.meta}</s-paragraph>
+                      </s-stack>
+                      {a.action ? <s-button onClick={a.action.onAction}>{a.action.content}</s-button> : null}
+                    </s-grid>
+                    {a.orders ? (
+                      <HeldOrderList
+                        items={a.orders}
+                        db={db}
+                        onOpen={(company, location) =>
+                          location
+                            ? dispatch({ type: 'OPEN_LOCATION', companyId: company.id, locationId: location.id })
+                            : dispatch({ type: 'OPEN_COMPANY', id: company.id, tab: 'orders' })}
+                      />
+                    ) : null}
+                  </s-box>
+                </React.Fragment>
+              ))}
+            </s-stack>
+          ) : (
+            <s-paragraph color="subdued">You're all caught up. Nothing needs your attention right now.</s-paragraph>
+          )}
+        </s-section>
 
-        <BlockStack gap="300">
-          <InlineStack align="space-between" blockAlign="center">
-            <Text as="h2" variant="headingMd">Your B2B at a glance</Text>
-            {flags.analytics && <Button variant="plain" onClick={() => nav('analytics')}>View analytics</Button>}
-          </InlineStack>
+        <s-stack gap="small">
+          <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="base" alignItems="center">
+            <s-heading fontSize="large">Your B2B at a glance</s-heading>
+            {flags.analytics && <s-link onClick={() => nav('analytics')}>View analytics</s-link>}
+          </s-grid>
           <style>{FEATURE_CARD_CSS}</style>
-          <InlineGrid columns={{ xs: 1, sm: 2, lg: 4 }} gap="300">
-            <FeatureCard icon={TeamIcon} title="Companies" value={companies.length}
-              caption={`${locations} ${locations <= 1 ? 'location' : 'locations'}`}
-              desc="B2B companies with their locations, buyers and payment terms."
-              action={companies.length ? { content: 'View companies', onAction: () => viewCompanies() } : { content: 'Add company', onAction: addCompany }} />
-            <FeatureCard icon={ProductIcon} title="B2B pricing" value={activePricing}
-              caption={policies.length ? `active · ${plural(quantityPricing, 'quantity break', 'quantity breaks')}` : 'active'}
-              desc="Base prices and quantity breaks for companies and customers."
-              action={policies.length ? { content: 'View pricing', onAction: () => nav('pricing') } : { content: 'Create pricing', onAction: createPricing }} />
-            <FeatureCard icon={NoteIcon} title="Registrations" value={pending} caption="pending review"
-              badge={formOff ? <Badge>Form off</Badge> : formLive ? <Badge tone="success">Form live</Badge> : hasForm ? <Badge tone="attention">Form draft</Badge> : <Badge>No form</Badge>}
-              desc="B2B applications from the registration form on your storefront."
-              action={hasForm ? { content: 'View registrations', onAction: () => viewRegistrations() } : { content: 'Create form', onAction: openForm }} />
-            {rfqInstalled ? (
-              <FeatureCard icon={ClipboardIcon} title="Quotes" value={openQuotes.length}
-                caption={`open · ${plural(dealsClosed, 'deal', 'deals')} closed`}
-                desc="Quote requests from the RFQ app, tracked on each company."
-                action={{ content: 'Open RFQ app', onAction: openRfq }} />
-            ) : (
-              <FeatureCard icon={ClipboardIcon} title="Quotes" badge={<Badge>Not installed</Badge>} art={quotesArt}
-                desc="Install O:Request a Quote to collect quote requests and turn accepted quotes into B2B pricing."
-                action={{ content: 'Install app', onAction: () => toast('Opening App Store') }} />
-            )}
-          </InlineGrid>
-        </BlockStack>
+          <s-query-container>
+            <s-grid
+              gridTemplateColumns="@container (inline-size > 400px) 1fr 1fr, (inline-size > 720px) 1fr 1fr 1fr 1fr, 1fr"
+              gap="small"
+            >
+              <FeatureCard icon="team" title="Companies" value={companies.length}
+                caption={`${locations} ${locations <= 1 ? 'location' : 'locations'}`}
+                desc="B2B companies with their locations, buyers and payment terms."
+                action={companies.length ? { content: 'View companies', onAction: () => viewCompanies() } : { content: 'Add company', onAction: addCompany }} />
+              <FeatureCard icon="product" title="B2B pricing" value={activePricing}
+                caption={policies.length ? `active · ${plural(quantityPricing, 'quantity break', 'quantity breaks')}` : 'active'}
+                desc="Base prices and quantity breaks for companies and customers."
+                action={policies.length ? { content: 'View pricing', onAction: () => nav('pricing') } : { content: 'Create pricing', onAction: createPricing }} />
+              <FeatureCard icon="note" title="Registrations" value={pending} caption="pending review"
+                badge={formOff ? <s-badge>Form off</s-badge> : formLive ? <s-badge tone="success">Form live</s-badge> : hasForm ? <s-badge tone="caution">Form draft</s-badge> : <s-badge>No form</s-badge>}
+                desc="B2B applications from the registration form on your storefront."
+                action={hasForm ? { content: 'View registrations', onAction: () => viewRegistrations() } : { content: 'Create form', onAction: openForm }} />
+              {rfqInstalled ? (
+                <FeatureCard icon="clipboard" title="Quotes" value={openQuotes.length}
+                  caption={`open · ${plural(dealsClosed, 'deal', 'deals')} closed`}
+                  desc="Quote requests from the RFQ app, tracked on each company."
+                  action={{ content: 'Open RFQ app', onAction: openRfq }} />
+              ) : (
+                <FeatureCard icon="clipboard" title="Quotes" badge={<s-badge>Not installed</s-badge>} art={quotesArt}
+                  desc="Install O:Request a Quote to collect quote requests and turn accepted quotes into B2B pricing."
+                  action={{ content: 'Install app', onAction: () => toast('Opening App Store') }} />
+              )}
+            </s-grid>
+          </s-query-container>
+        </s-stack>
 
         {!setupComplete && (
-          <Card>
-            <InlineStack gap="300" blockAlign="start" wrap={false}>
-              <Box><Icon source={InfoIcon} tone="info" /></Box>
-              <BlockStack gap="100">
-                <Text as="h2" variant="headingSm">What happens next</Text>
-                <Text as="p">Once you complete the setup, you can:</Text>
-                <List type="bullet">
-                  <List.Item>Review registration requests from your storefront</List.Item>
-                  <List.Item>Approve and assign buyers to companies</List.Item>
-                  <List.Item>Reuse your B2B pricing across products and customer groups</List.Item>
-                </List>
-              </BlockStack>
-            </InlineStack>
-          </Card>
+          <s-section>
+            <s-grid gridTemplateColumns="auto minmax(0, 1fr)" gap="small" alignItems="start">
+              <s-icon type="info" tone="info" />
+              <s-stack gap="small-400">
+                <s-heading>What happens next</s-heading>
+                <s-paragraph>Once you complete the setup, you can:</s-paragraph>
+                <s-unordered-list>
+                  <s-list-item>Review registration requests from your storefront</s-list-item>
+                  <s-list-item>Approve and assign buyers to companies</s-list-item>
+                  <s-list-item>Reuse your B2B pricing across products and customer groups</s-list-item>
+                </s-unordered-list>
+              </s-stack>
+            </s-grid>
+          </s-section>
         )}
 
-        <FooterHelp>
-          Learn more about <Link onClick={() => toast('Opening guide')}>Wholesale B2B Solution</Link> or{' '}
-          <Link onClick={() => toast('Opening support')}>contact support</Link>.
-        </FooterHelp>
-      </BlockStack>
-    </Page>
+        <s-box paddingBlock="large">
+          {/* text-align on an s-paragraph doesn't reach its shadow <p>; a native block centers inline s-text. */}
+          <div style={{ textAlign: 'center' }}>
+            <s-text>Learn more about </s-text>
+            <s-link onClick={() => toast('Opening guide')}>Wholesale B2B Solution</s-link>
+            <s-text> or </s-text>
+            <s-link onClick={() => toast('Opening support')}>contact support</s-link>
+            <s-text>.</s-text>
+          </div>
+        </s-box>
+      </s-stack>
+    </s-page>
   );
 }
 
@@ -268,31 +269,33 @@ const shortDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US
 function HeldOrderList({ items, db, onOpen }) {
   const shown = items.slice(0, HELD_SHOWN);
   return (
-    <Box paddingBlockStart="300">
-      <BlockStack gap="200">
-        <Box borderWidth="025" borderColor="border" borderRadius="200">
+    <s-box paddingBlockStart="small">
+      <s-stack gap="small-200">
+        <s-box border="base" borderRadius="base">
           {shown.map(({ order, company, location }, i) => (
-            <Box key={`${company.id}${order.id}`} padding="300" borderBlockStartWidth={i ? '025' : '0'} borderColor="border">
-              <InlineStack align="space-between" blockAlign="center" gap="300" wrap={false}>
-                <BlockStack gap="050">
-                  {/* align="start": nested stacks inherit the row's space-between otherwise */}
-                  <InlineStack align="start" gap="200" blockAlign="center" wrap>
-                    <Button variant="plain" onClick={() => onOpen(company, location)}>{order.id}</Button>
-                    <Text as="span" variant="bodyMd">{`${company.name}${location ? ` · ${location.name}` : ''}`}</Text>
-                    <Text as="span" variant="bodyMd" fontWeight="semibold">{money(order.amount)}</Text>
-                  </InlineStack>
-                  <Text as="p" variant="bodySm" tone="subdued">{`${order.buyer} · ${shortDate(order.date)} · ${heldReason(order, db)}`}</Text>
-                </BlockStack>
-                <HeldOrderActions companyId={company.id} order={order} />
-              </InlineStack>
-            </Box>
+            <React.Fragment key={`${company.id}${order.id}`}>
+              {i ? <s-divider /> : null}
+              <s-box padding="small">
+                <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small" alignItems="center">
+                  <s-stack gap="small-500">
+                    <s-stack direction="inline" gap="small-200" alignItems="center">
+                      <s-link onClick={() => onOpen(company, location)}>{order.id}</s-link>
+                      <s-text>{`${company.name}${location ? ` · ${location.name}` : ''}`}</s-text>
+                      <s-text fontWeight="semibold">{money(order.amount)}</s-text>
+                    </s-stack>
+                    <s-paragraph fontSize="small" color="subdued">{`${order.buyer} · ${shortDate(order.date)} · ${heldReason(order, db)}`}</s-paragraph>
+                  </s-stack>
+                  <HeldOrderActions companyId={company.id} order={order} />
+                </s-grid>
+              </s-box>
+            </React.Fragment>
           ))}
-        </Box>
+        </s-box>
         {items.length > shown.length ? (
-          <Text as="p" variant="bodySm" tone="subdued">{`And ${items.length - shown.length} more in each company’s Orders tab.`}</Text>
+          <s-paragraph fontSize="small" color="subdued">{`And ${items.length - shown.length} more in each company’s Orders tab.`}</s-paragraph>
         ) : null}
-      </BlockStack>
-    </Box>
+      </s-stack>
+    </s-box>
   );
 }
 
@@ -303,36 +306,36 @@ function SetupGuide({ steps, doneCount, onDismiss }) {
   const pct = Math.round((doneCount / steps.length) * 100);
 
   return (
-    <Card>
-      <BlockStack gap="300">
+    <s-section>
+      <s-stack gap="small">
         {/* Header: title with its controls on one line, then the description, then progress. */}
-        <BlockStack gap="100">
-          <InlineStack align="space-between" blockAlign="center" wrap={false}>
-            <Text as="h2" variant="headingMd">Setup guide</Text>
-            <InlineStack gap="100" wrap={false}>
-              <Button variant="tertiary" icon={XIcon} accessibilityLabel="Dismiss setup guide" onClick={onDismiss} />
-              <Button variant="tertiary" icon={collapsed ? ChevronDownIcon : ChevronUpIcon}
+        <s-stack gap="small-400">
+          <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-400" alignItems="center">
+            <s-heading fontSize="large">Setup guide</s-heading>
+            <s-stack direction="inline" gap="small-400">
+              <s-button variant="tertiary" icon="x" accessibilityLabel="Dismiss setup guide" onClick={onDismiss} />
+              <s-button variant="tertiary" icon={collapsed ? 'chevron-down' : 'chevron-up'}
                 accessibilityLabel={collapsed ? 'Expand setup guide' : 'Collapse setup guide'} onClick={() => setCollapsed((v) => !v)} />
-            </InlineStack>
-          </InlineStack>
-          <Text as="p" tone="subdued">Use this guide to get your B2B store up and running.</Text>
-        </BlockStack>
-        <BlockStack gap="150">
-          <Text as="p" variant="bodySm" tone="subdued">{`${doneCount} of ${steps.length} tasks completed`}</Text>
-          <InlineStack gap="300" blockAlign="center" wrap={false}>
-            <div style={{ flex: 1, minWidth: 0 }}><ProgressBar progress={pct} tone="success" size="small" /></div>
-            <Text as="span" variant="bodySm" tone="subdued">{`${pct}%`}</Text>
-          </InlineStack>
-        </BlockStack>
+            </s-stack>
+          </s-grid>
+          <s-paragraph color="subdued">Use this guide to get your B2B store up and running.</s-paragraph>
+        </s-stack>
+        <s-stack gap="small-300">
+          <s-paragraph fontSize="small" color="subdued">{`${doneCount} of ${steps.length} tasks completed`}</s-paragraph>
+          <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small" alignItems="center">
+            <s-progress value={pct} max={100} tone="success" accessibilityLabel="Setup progress" />
+            <s-text fontSize="small" color="subdued">{`${pct}%`}</s-text>
+          </s-grid>
+        </s-stack>
         {!collapsed && (
-          <BlockStack gap="100">
+          <s-stack gap="small-400">
             {steps.map((s, i) => (
               <SetupStep key={s.title} step={s} open={i === open} current={i === firstOpen} onOpen={() => setOpen(i)} />
             ))}
-          </BlockStack>
+          </s-stack>
         )}
-      </BlockStack>
-    </Card>
+      </s-stack>
+    </s-section>
   );
 }
 
@@ -340,26 +343,28 @@ function SetupGuide({ steps, doneCount, onDismiss }) {
 // step is unfinished). Closed: just the title, which opens it.
 function SetupStep({ step, open, current, onOpen }) {
   return (
-    <Box padding="300" borderRadius="200" background={open ? 'bg-surface-secondary' : undefined}>
-      <InlineStack gap="300" blockAlign="start" wrap={false}>
+    <s-box padding="small" borderRadius="base" background={open ? 'subdued' : 'transparent'}>
+      <s-grid gridTemplateColumns="auto minmax(0, 1fr)" gap="small" alignItems="start">
         <StepMark state={step.done ? 'done' : current ? 'active' : 'todo'} />
-        <BlockStack gap="100">
+        <s-stack gap="small-400">
           {open ? (
-            <Text as="h3" variant="bodyMd" fontWeight="semibold">{step.title}</Text>
+            <s-paragraph fontWeight="semibold">{step.title}</s-paragraph>
           ) : (
-            <Button variant="monochromePlain" textAlign="left" onClick={onOpen}>{step.title}</Button>
+            <s-paragraph>
+              <s-link tone="neutral" onClick={onOpen}>{step.title}</s-link>
+            </s-paragraph>
           )}
           {open && (
             <>
-              <Text as="p" variant="bodySm" tone="subdued">{step.desc}</Text>
-              <Box paddingBlockStart="200">
-                <Button variant={step.done ? undefined : 'primary'} onClick={step.action.onAction}>{step.action.content}</Button>
-              </Box>
+              <s-paragraph fontSize="small" color="subdued">{step.desc}</s-paragraph>
+              <s-box paddingBlockStart="small-200">
+                <s-button variant={step.done ? undefined : 'primary'} onClick={step.action.onAction}>{step.action.content}</s-button>
+              </s-box>
             </>
           )}
-        </BlockStack>
-      </InlineStack>
-    </Box>
+        </s-stack>
+      </s-grid>
+    </s-box>
   );
 }
 
@@ -380,13 +385,16 @@ function StepMark({ state }) {
   );
 }
 
-// Feature cards share one row height; these rules let each card fill it (the Card's own
-// surface becomes a flex column) so the action can sit on the card's bottom edge.
+// Feature cards share one row height; these rules let each card fill it so the
+// action can sit on the card's bottom edge. The card surface is app-drawn (an
+// s-section can't be stretched to its grid row from outside its shadow root).
 const FEATURE_CARD_CSS = `
-.qs-feature-card { display: flex; flex-direction: column; }
-.qs-feature-card > * { flex: 1 1 auto; }
-.qs-feature-card > * > * { display: flex; flex-direction: column; }
-.qs-feature-card__body { flex: 1 1 auto; display: flex; flex-direction: column; gap: var(--p-space-300); }
+.qs-feature-card {
+  display: flex; flex-direction: column; gap: var(--p-space-300); height: 100%;
+  padding: 16px; border-radius: 12px; background: var(--p-color-bg-surface);
+  box-shadow: 0 1px 0 0 rgba(26, 26, 26, 0.07), inset 0 1px 0 0 rgba(204, 204, 204, 0.5),
+    inset 1px 0 0 0 rgba(0, 0, 0, 0.07), inset -1px 0 0 0 rgba(0, 0, 0, 0.07), inset 0 -1px 0 0 rgba(0, 0, 0, 0.13);
+}
 .qs-feature-card__action { margin-top: auto; }
 `;
 
@@ -398,33 +406,29 @@ function FeatureCard({ icon, title, badge, value, caption, desc, action, art }) 
   const noValue = value == null;
   return (
     <div className="qs-feature-card">
-      <Card>
-        <div className="qs-feature-card__body">
-          <InlineStack align="space-between" blockAlign="center" gap="200">
-            <InlineStack gap="200" blockAlign="center" wrap={false}>
-              <Box><Icon source={icon} tone="base" /></Box>
-              <Text as="h3" variant="headingSm">{title}</Text>
-            </InlineStack>
-            {badge}
-          </InlineStack>
-          <div style={{ position: 'relative' }}>
-            <div aria-hidden={noValue || undefined} style={noValue ? { visibility: 'hidden' } : undefined}>
-              <BlockStack gap="050">
-                <Text as="p" variant="heading2xl">{noValue ? '0' : String(value)}</Text>
-                <Text as="p" variant="bodySm" tone="subdued">{caption || '\u00a0'}</Text>
-              </BlockStack>
-            </div>
-            {/* Art fills exactly the number's slot, centered, so the rows stay aligned. */}
-            {noValue && art && (
-              <img src={art} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'center' }} />
-            )}
-          </div>
-          <Text as="p" variant="bodySm" tone="subdued">{desc}</Text>
-          <div className="qs-feature-card__action">
-            <Button fullWidth onClick={action.onAction}>{action.content}</Button>
-          </div>
+      <s-stack direction="inline" justifyContent="space-between" alignItems="center" gap="small-200">
+        <s-stack direction="inline" gap="small-200" alignItems="center">
+          <s-icon type={icon} />
+          <s-heading>{title}</s-heading>
+        </s-stack>
+        {badge}
+      </s-stack>
+      <div style={{ position: 'relative' }}>
+        <div aria-hidden={noValue || undefined} style={noValue ? { visibility: 'hidden' } : undefined}>
+          <s-stack gap="small-500">
+            <s-heading fontSize="large-400" accessibilityRole="presentation">{noValue ? '0' : String(value)}</s-heading>
+            <s-paragraph fontSize="small" color="subdued">{caption || ' '}</s-paragraph>
+          </s-stack>
         </div>
-      </Card>
+        {/* Art fills exactly the number's slot, centered, so the rows stay aligned. */}
+        {noValue && art && (
+          <img src={art} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'center' }} />
+        )}
+      </div>
+      <s-paragraph fontSize="small" color="subdued">{desc}</s-paragraph>
+      <div className="qs-feature-card__action">
+        <s-button inlineSize="fill" onClick={action.onAction}>{action.content}</s-button>
+      </div>
     </div>
   );
 }

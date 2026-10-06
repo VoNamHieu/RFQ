@@ -1,6 +1,5 @@
 import React from 'react';
-import { Modal, BlockStack, InlineStack, Box, Text, TextField, Divider, Banner, Icon, Avatar, Badge, Checkbox, RadioButton } from '@shopify/polaris';
-import { SearchIcon } from '@shopify/polaris-icons';
+import { Modal } from '../../shared/wc.jsx';
 import { useStore } from '../store.jsx';
 import { shopifyCompanies } from '../data/directory.js';
 
@@ -17,9 +16,6 @@ const initialsOf = (name) => {
   const clean = (name || '').trim();
   return clean ? clean[0].toUpperCase() + (clean[1] || '').toLowerCase() : '?';
 };
-
-// Keeps a click on a company row's checkbox/radio from also toggling the row.
-const stop = (e) => e.stopPropagation();
 
 export function AddCompanyWizard() {
   const { state, dispatch } = useStore();
@@ -60,7 +56,6 @@ export function AddCompanyWizard() {
     : available;
   const allFilteredSel = filtered.length > 0 && filtered.every(isSel);
   const someFilteredSel = filtered.some(isSel);
-  const toggleAllCompanies = () => patch({ selected: allFilteredSel ? withoutAll(filtered) : withAll(filtered) });
 
   // Only adding locations to companies already in the app → count locations.
   const nLocs = chosen.reduce((n, r) => n + r.remaining.length, 0);
@@ -72,120 +67,175 @@ export function AddCompanyWizard() {
         : 'Add company';
 
   return (
-    <Modal
-      open
-      onClose={close}
-      title={single ? 'Add company from Shopify' : 'Add companies from Shopify'}
-      primaryAction={{ content: primaryLabel, onAction: () => dispatch({ type: 'ADD_COMPANY_CONFIRM' }), disabled: nSel === 0 }}
-      secondaryActions={[{ content: 'Cancel', onAction: close }]}
-    >
-      <Modal.Section>
-        {isEmpty ? (
-          <Banner tone="info">Every Shopify company is already in the B2B app.</Banner>
-        ) : (
-          <BlockStack gap="400">
-            {hiddenCount > 0 ? (
-              <Banner tone="info">
-                {`${hiddenCount} ${hiddenCount === 1 ? 'company' : 'companies'} already added ${hiddenCount === 1 ? 'is' : 'are'} hidden.`}
-              </Banner>
-            ) : null}
-            <TextField
-              label="Search"
-              labelHidden
-              placeholder="Search by company name"
-              value={ac.search || ''}
-              onChange={(v) => patch({ search: v })}
-              prefix={<Icon source={SearchIcon} tone="subdued" />}
-              autoComplete="off"
-            />
-            <div>
-              <Box paddingBlockEnd="200">
-                <InlineStack align="space-between" blockAlign="center">
-                  {single ? null : filtered.length > 0 ? (
-                    <Checkbox
-                      label={nSel > 0 ? `${nSel} selected` : 'Select all'}
-                      checked={allFilteredSel ? true : someFilteredSel ? 'indeterminate' : false}
-                      onChange={toggleAllCompanies}
-                    />
-                  ) : (
-                    <span />
-                  )}
-                  <Text as="span" tone="subdued" variant="bodySm">
-                    {`Showing ${filtered.length} ${filtered.length === 1 ? 'company' : 'companies'}`}
-                  </Text>
-                </InlineStack>
-              </Box>
-              <Divider />
-              {/* Only the list scrolls, so search, Select all and the auto-add
-                  option below stay in view however many companies there are. It
-                  shrinks on short screens: the rest of the modal takes ~480px. */}
-              <div style={{ maxHeight: 'max(160px, min(360px, calc(100vh - 480px)))', overflowY: 'auto' }}>
-                {filtered.length === 0 ? (
-                  <Box paddingBlockStart="300">
-                    <Text as="p" tone="subdued">No Shopify company matches your search.</Text>
-                  </Box>
+    <Modal onClose={close} heading={single ? 'Add company from Shopify' : 'Add companies from Shopify'}>
+      {isEmpty ? (
+        <s-banner tone="info">Every Shopify company is already in the B2B app.</s-banner>
+      ) : (
+        <s-stack gap="base">
+          {hiddenCount > 0 ? (
+            <s-banner tone="info">
+              {`${hiddenCount} ${hiddenCount === 1 ? 'company' : 'companies'} already added ${hiddenCount === 1 ? 'is' : 'are'} hidden.`}
+            </s-banner>
+          ) : null}
+          <s-search-field
+            label="Search"
+            labelAccessibilityVisibility="exclusive"
+            placeholder="Search by company name"
+            value={ac.search || ''}
+            onInput={(e) => patch({ search: e.currentTarget.value })}
+            autocomplete="off"
+          />
+          <div>
+            <s-box paddingBlockEnd="small-200">
+              <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small" alignItems="center">
+                {single || filtered.length === 0 ? (
+                  <span />
                 ) : (
-                  filtered.map((r, idx) => {
-                    const { shp, linked, remaining } = r;
-                    const sel = isSel(r);
-                    const main = (shp.contacts || [])[0] || null;
-                    const nLoc = (shp.locations || []).length;
-                    const nCon = (shp.contacts || []).length;
-                    return (
-                      <React.Fragment key={shp.id}>
-                        {idx > 0 ? <Divider /> : null}
-                        {/* The whole row picks the company. */}
-                        <div onClick={() => toggleCompany(r)} style={{ cursor: 'pointer' }}>
-                          <Box paddingBlock="300">
-                            <InlineStack gap="300" blockAlign="center" wrap={false}>
-                              <span onClick={stop}>
-                                {single ? (
-                                  <RadioButton label={`Select ${shp.name}`} labelHidden name="add-company" checked={sel} onChange={() => toggleCompany(r)} />
-                                ) : (
-                                  <Checkbox label={`Select ${shp.name}`} labelHidden checked={sel} onChange={() => toggleCompany(r)} />
-                                )}
-                              </span>
-                              <Avatar size="md" initials={initialsOf(shp.name)} name={shp.name} />
-                              <BlockStack gap="050">
-                                <InlineStack gap="200" blockAlign="center">
-                                  <Text as="span" variant="bodyMd" fontWeight="semibold">{shp.name}</Text>
-                                  {linked ? <Badge>Added</Badge> : null}
-                                </InlineStack>
-                                {main ? (
-                                  <Text as="span" tone="subdued" variant="bodySm">{`${main.name} · ${main.email}`}</Text>
-                                ) : null}
-                                <Text as="span" tone="subdued" variant="bodySm">
-                                  {linked
-                                    ? `${remaining.length} of ${nLoc} locations not added yet`
-                                    : `${nLoc} location${nLoc === 1 ? '' : 's'} · ${nCon} contact${nCon === 1 ? '' : 's'}`}
-                                </Text>
-                              </BlockStack>
-                            </InlineStack>
-                          </Box>
-                        </div>
-                      </React.Fragment>
-                    );
-                  })
+                  <s-checkbox
+                    label={nSel > 0 ? `${nSel} selected` : 'Select all'}
+                    checked={allFilteredSel}
+                    indeterminate={someFilteredSel && !allFilteredSel}
+                    onChange={(e) => patch({ selected: e.currentTarget.checked ? withAll(filtered) : withoutAll(filtered) })}
+                  />
                 )}
-              </div>
-              <Divider />
+                <s-text color="subdued" fontSize="small">
+                  {`Showing ${filtered.length} ${filtered.length === 1 ? 'company' : 'companies'}`}
+                </s-text>
+              </s-grid>
+            </s-box>
+            <s-divider />
+            {/* Only the list scrolls, so search, Select all and the auto-add
+                option below stay in view however many companies there are. It
+                shrinks on short screens: the rest of the modal takes ~480px. */}
+            <div style={{ maxHeight: 'max(160px, min(360px, calc(100vh - 480px)))', overflowY: 'auto' }}>
+              {filtered.length === 0 ? (
+                <s-box paddingBlockStart="small">
+                  <s-paragraph color="subdued">No Shopify company matches your search.</s-paragraph>
+                </s-box>
+              ) : (
+                filtered.map((r, idx) => {
+                  const { shp, linked, remaining } = r;
+                  const sel = isSel(r);
+                  const main = (shp.contacts || [])[0] || null;
+                  const nLoc = (shp.locations || []).length;
+                  const nCon = (shp.contacts || []).length;
+                  return (
+                    <React.Fragment key={shp.id}>
+                      {idx > 0 ? <s-divider /> : null}
+                      {/* The whole row picks the company. */}
+                      <button
+                        type="button"
+                        aria-pressed={sel}
+                        aria-label={`Select ${shp.name}`}
+                        onClick={() => toggleCompany(r)}
+                        style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%' }}
+                      >
+                        <s-box paddingBlock="small">
+                          <s-grid gridTemplateColumns="auto auto minmax(0, 1fr)" gap="small" alignItems="center">
+                            {single ? <Radio checked={sel} /> : <CheckMark checked={sel} />}
+                            <s-avatar size="base" initials={initialsOf(shp.name)} alt={shp.name} />
+                            <s-stack gap="small-500">
+                              <s-stack direction="inline" gap="small-200" alignItems="center">
+                                <s-text fontWeight="semibold">{shp.name}</s-text>
+                                {linked ? <s-badge>Added</s-badge> : null}
+                              </s-stack>
+                              {main ? (
+                                <s-paragraph color="subdued" fontSize="small">{`${main.name} · ${main.email}`}</s-paragraph>
+                              ) : null}
+                              <s-paragraph color="subdued" fontSize="small">
+                                {linked
+                                  ? `${remaining.length} of ${nLoc} locations not added yet`
+                                  : `${nLoc} location${nLoc === 1 ? '' : 's'} · ${nCon} contact${nCon === 1 ? '' : 's'}`}
+                              </s-paragraph>
+                            </s-stack>
+                          </s-grid>
+                        </s-box>
+                      </button>
+                    </React.Fragment>
+                  );
+                })
+              )}
             </div>
-            <Checkbox
-              label="Automatically add new locations"
-              helpText="When a selected company gets a new location in Shopify, it's added here too and uses the company's pricing."
-              checked={!!ac.autoAddLocations}
-              onChange={(on) => patch({ autoAddLocations: on })}
-            />
-            <Text as="p" tone="subdued" variant="bodySm">
-              {nSel > 1
-                ? 'Each company comes with all its locations and their contacts. Set pricing from each company’s page.'
-                : chosen[0]?.linked
-                  ? `Adds the remaining locations, and their contacts, to ${chosen[0].shp.name}.`
-                  : 'The company comes with all its locations and their contacts. You set its pricing next.'}
-            </Text>
-          </BlockStack>
-        )}
-      </Modal.Section>
+            <s-divider />
+          </div>
+          <s-checkbox
+            label="Automatically add new locations"
+            details="When a selected company gets a new location in Shopify, it's added here too and uses the company's pricing."
+            checked={!!ac.autoAddLocations}
+            onChange={(e) => patch({ autoAddLocations: e.currentTarget.checked })}
+          />
+          <s-paragraph color="subdued" fontSize="small">
+            {nSel > 1
+              ? 'Each company comes with all its locations and their contacts. Set pricing from each company’s page.'
+              : chosen[0]?.linked
+                ? `Adds the remaining locations, and their contacts, to ${chosen[0].shp.name}.`
+                : 'The company comes with all its locations and their contacts. You set its pricing next.'}
+          </s-paragraph>
+        </s-stack>
+      )}
+      <s-button
+        slot="primary-action"
+        variant="primary"
+        disabled={nSel === 0}
+        onClick={() => dispatch({ type: 'ADD_COMPANY_CONFIRM' })}
+      >
+        {primaryLabel}
+      </s-button>
+      <s-button slot="secondary-actions" onClick={close}>
+        Cancel
+      </s-button>
     </Modal>
+  );
+}
+
+const inputBorder = (checked) => (checked ? 'var(--p-color-input-border-active, #303030)' : 'var(--p-color-input-border, #8a8a8a)');
+
+// Visual-only radio dot for the company rows (the row's <button> owns the click).
+function Radio({ checked }) {
+  const color = inputBorder(checked);
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: 18,
+        height: 18,
+        flex: '0 0 auto',
+        boxSizing: 'border-box',
+        borderRadius: '50%',
+        border: `2px solid ${color}`,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      {checked ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: color }} /> : null}
+    </span>
+  );
+}
+
+// Visual-only checkbox for the company rows when several can be picked.
+function CheckMark({ checked }) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: 18,
+        height: 18,
+        flex: '0 0 auto',
+        boxSizing: 'border-box',
+        borderRadius: 4,
+        border: checked ? 'none' : `2px solid ${inputBorder(false)}`,
+        background: checked ? inputBorder(true) : 'transparent',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      {checked ? (
+        <svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true">
+          <path fill="#fff" d="M14.03 6.97a.75.75 0 0 1 0 1.06l-5 5a.75.75 0 0 1-1.06 0l-2.5-2.5a.75.75 0 1 1 1.06-1.06l1.97 1.97 4.47-4.47a.75.75 0 0 1 1.06 0Z" />
+        </svg>
+      ) : null}
+    </span>
   );
 }

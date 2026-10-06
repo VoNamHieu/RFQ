@@ -1,16 +1,14 @@
 import React from 'react';
-import { Modal, BlockStack, Text, Button } from '@shopify/polaris';
-import { PlusIcon } from '@shopify/polaris-icons';
 import { useStore } from '../store.jsx';
 import { companyBaseEntries, companyQuantityEntries, locationPricingEntries, scopeTypeLabel } from '../pricing.js';
+import { Modal } from '../../shared/wc.jsx';
 import { PricingCombobox } from './PricingCombobox.jsx';
 import { LocationScopePicker } from './LocationScopePicker.jsx';
 
 // Assign existing pricing(s) to a company, or swap one for another (spec §2.8),
-// laid out like the god file's "Assign price list" modal: a Combobox dropdown whose
-// options carry checkboxes (Combobox manages the floating overlay so it positions
-// correctly inside the Modal), the picks shown as removable tags, OR create a new
-// one. Add is MULTI-select (base and quantity alike); swap is single.
+// laid out like the god file's "Assign price list" modal: a picker whose options
+// carry checkboxes, the picks shown as removable tags, OR create a new one. Add is
+// MULTI-select (base and quantity alike); swap is single.
 export function AssignModal() {
   const { state, dispatch } = useStore();
   const a = state.assign;
@@ -63,60 +61,65 @@ export function AssignModal() {
 
   return (
     <Modal
-      open
       onClose={() => dispatch({ type: 'CLOSE_ASSIGN' })}
-      title={isSwap ? `Change ${swapped?.name || kindName}` : `Assign ${kindName}: ${location?.name || company?.name || ''}`}
-      primaryAction={{
-        content: isSwap ? 'Change' : 'Assign',
-        onAction: () => dispatch({ type: 'ASSIGN_CONFIRM' }),
-        disabled: selectedIds.length === 0 || (someLocations && pickedLocIds.length === 0),
-      }}
-      secondaryActions={[{ content: 'Cancel', onAction: () => dispatch({ type: 'CLOSE_ASSIGN' }) }]}
+      heading={isSwap ? `Change ${swapped?.name || kindName}` : `Assign ${kindName}: ${location?.name || company?.name || ''}`}
     >
-      <Modal.Section>
-        <BlockStack gap="400">
-          <BlockStack gap="150">
-            <Text as="h3" variant="headingSm">
-              {isSwap ? `Replace with an existing ${kindName}` : `Use an existing ${kindName}`}
-            </Text>
-            {candidates.length === 0 ? (
-              <Text as="p" tone="subdued">{`No other ${kindName} available — create a new one below.`}</Text>
-            ) : (
-              <>
-                <PricingCombobox
-                  label={`Use an existing ${kindName}`}
-                  placeholder={`Select ${kindName}`}
-                  candidates={candidates}
-                  selectedIds={selectedIds}
-                  onChange={(ids) => dispatch({ type: 'ASSIGN_SET', ids })}
-                  single={single}
-                  optionLabel={optionLabel}
-                  emptyText={`No matching ${kindName}`}
-                />
-                {!single && (
-                  <Text as="p" tone="subdued" variant="bodySm">Pick one or more — the lowest priority applies first.</Text>
-                )}
-              </>
-            )}
-          </BlockStack>
+      <s-stack gap="base">
+        <s-stack gap="small-300">
+          <s-heading>{isSwap ? `Replace with an existing ${kindName}` : `Use an existing ${kindName}`}</s-heading>
+          {candidates.length === 0 ? (
+            <s-paragraph color="subdued">{`No other ${kindName} available — create a new one below.`}</s-paragraph>
+          ) : (
+            <>
+              <PricingCombobox
+                label={`Use an existing ${kindName}`}
+                placeholder={`Select ${kindName}`}
+                candidates={candidates}
+                selectedIds={selectedIds}
+                onChange={(ids) => dispatch({ type: 'ASSIGN_SET', ids })}
+                single={single}
+                optionLabel={optionLabel}
+                emptyText={`No matching ${kindName}`}
+              />
+              {!single && (
+                <s-paragraph color="subdued" fontSize="small">
+                  Pick one or more — the lowest priority applies first.
+                </s-paragraph>
+              )}
+            </>
+          )}
+        </s-stack>
 
-          {pickLocations ? (
-            <LocationScopePicker
-              company={company}
-              locationIds={someLocations ? pickedLocIds : null}
-              onChange={(ids) => dispatch({ type: 'ASSIGN_PATCH', patch: { applyTo: ids ? 'some' : 'all', locationIds: ids || [] } })}
-            />
-          ) : null}
+        {pickLocations ? (
+          <LocationScopePicker
+            company={company}
+            locationIds={someLocations ? pickedLocIds : null}
+            onChange={(ids) => dispatch({ type: 'ASSIGN_PATCH', patch: { applyTo: ids ? 'some' : 'all', locationIds: ids || [] } })}
+          />
+        ) : null}
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ flex: 1, height: 1, background: 'var(--p-color-border)' }} />
-            <Text as="span" tone="subdued" variant="bodySm">OR</Text>
-            <div style={{ flex: 1, height: 1, background: 'var(--p-color-border)' }} />
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, height: 1, background: 'var(--p-color-border)' }} />
+          <s-text color="subdued" fontSize="small">
+            OR
+          </s-text>
+          <div style={{ flex: 1, height: 1, background: 'var(--p-color-border)' }} />
+        </div>
 
-          <Button icon={PlusIcon} fullWidth onClick={createNew}>{`Create a new ${kindName}`}</Button>
-        </BlockStack>
-      </Modal.Section>
+        <s-button icon="plus" inlineSize="fill" onClick={createNew}>{`Create a new ${kindName}`}</s-button>
+      </s-stack>
+
+      <s-button
+        slot="primary-action"
+        variant="primary"
+        disabled={selectedIds.length === 0 || (someLocations && pickedLocIds.length === 0)}
+        onClick={() => dispatch({ type: 'ASSIGN_CONFIRM' })}
+      >
+        {isSwap ? 'Change' : 'Assign'}
+      </s-button>
+      <s-button slot="secondary-actions" onClick={() => dispatch({ type: 'CLOSE_ASSIGN' })}>
+        Cancel
+      </s-button>
     </Modal>
   );
 }

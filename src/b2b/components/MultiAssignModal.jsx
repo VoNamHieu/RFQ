@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Modal, BlockStack, Text, ButtonGroup, Button, ChoiceList, Banner, Box } from '@shopify/polaris';
 import { useStore } from '../store.jsx';
 import { companyForCustomerEmail } from '../pricing.js';
+import { Modal } from '../../shared/wc.jsx';
 
 // Assign one pricing profile to many targets at once (legacy renderAssign, the
 // unlocked/target-picker path): companies, locations, customers, customer tags, or
@@ -51,36 +51,55 @@ export function MultiAssignModal() {
   };
 
   return (
-    <Modal
-      open
-      onClose={() => dispatch({ type: 'CLOSE_MULTI_ASSIGN' })}
-      title={`Assign ${policy.name} to…`}
-      primaryAction={{ content: 'Assign', onAction: confirm, disabled: !isGlobal && ids.length === 0 }}
-      secondaryActions={[{ content: 'Cancel', onAction: () => dispatch({ type: 'CLOSE_MULTI_ASSIGN' }) }]}
-    >
-      <Modal.Section>
-        <BlockStack gap="300">
-          <ButtonGroup variant="segmented">
+    <Modal onClose={() => dispatch({ type: 'CLOSE_MULTI_ASSIGN' })} heading={`Assign ${policy.name} to…`}>
+      <s-stack gap="small">
+        <s-stack direction="inline">
+          <s-button-group gap="none" accessibilityLabel="Target type">
             {targets.map((t) => (
-              <Button key={t.id} pressed={targetType === t.id} onClick={() => switchTarget(t.id)}>
+              <s-press-button
+                key={t.id}
+                slot="secondary-actions"
+                pressed={targetType === t.id}
+                onClick={(e) => {
+                  // A press button flips itself on click; the picked one stays pressed.
+                  e.currentTarget.pressed = true;
+                  if (targetType !== t.id) switchTarget(t.id);
+                }}
+              >
                 {t.label}
-              </Button>
+              </s-press-button>
             ))}
-          </ButtonGroup>
+          </s-button-group>
+        </s-stack>
 
-          {isGlobal ? (
-            <Banner tone="info">
-              {`Make “${policy.name}” the ${globalLabel}. It applies wherever no more specific pricing is assigned.`}
-            </Banner>
-          ) : choicesFor.length === 0 ? (
-            <Text as="p" tone="subdued">No eligible targets of this type.</Text>
-          ) : (
-            <Box maxWidth="100%">
-              <ChoiceList allowMultiple title="Assign to" titleHidden choices={choicesFor} selected={ids} onChange={setIds} />
-            </Box>
-          )}
-        </BlockStack>
-      </Modal.Section>
+        {isGlobal ? (
+          <s-banner tone="info">{`Make “${policy.name}” the ${globalLabel}. It applies wherever no more specific pricing is assigned.`}</s-banner>
+        ) : choicesFor.length === 0 ? (
+          <s-paragraph color="subdued">No eligible targets of this type.</s-paragraph>
+        ) : (
+          <s-choice-list
+            key={targetType}
+            label="Assign to"
+            labelAccessibilityVisibility="exclusive"
+            name={`multi-assign-${targetType}`}
+            multiple
+            onChange={(e) => setIds(e.currentTarget.values || [])}
+          >
+            {choicesFor.map((c) => (
+              <s-choice key={c.value} value={c.value} selected={ids.includes(c.value)}>
+                {c.label}
+              </s-choice>
+            ))}
+          </s-choice-list>
+        )}
+      </s-stack>
+
+      <s-button slot="primary-action" variant="primary" disabled={!isGlobal && ids.length === 0} onClick={confirm}>
+        Assign
+      </s-button>
+      <s-button slot="secondary-actions" onClick={() => dispatch({ type: 'CLOSE_MULTI_ASSIGN' })}>
+        Cancel
+      </s-button>
     </Modal>
   );
 }

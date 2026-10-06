@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, TextField, Select, Checkbox, Text, InlineStack, Box, Icon } from '@shopify/polaris';
-import { SearchIcon, ImageIcon, ChevronDownIcon, ChevronRightIcon } from '@shopify/polaris-icons';
+import { Modal } from '../../shared/wc.jsx';
 import { money } from '../format.js';
 import { productVariants } from '../pricing.js';
 
@@ -12,6 +11,8 @@ import { productVariants } from '../pricing.js';
 const PICK_GRID = { display: 'grid', gridTemplateColumns: 'auto minmax(140px, 1fr) 92px', gap: 12, alignItems: 'center' };
 const THUMB = { width: 32, height: 32, borderRadius: 6, background: 'var(--p-color-bg-surface-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' };
 const CARET = { all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', flex: '0 0 auto', width: 20 };
+// Caret/spacer · thumbnail · name, on one line that never wraps.
+const ROW_START = { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 };
 // Sort options mirror Shopify's product index (title / price).
 const SORT_OPTIONS = [
   { label: 'Product A–Z', value: 'title-asc' },
@@ -40,19 +41,20 @@ export function VariantPicker({ products, initialSelected, onCancel, onAdd }) {
     }
   });
 
-  const toggleVariant = (vid) =>
+  // Checkbox handlers set the state from the box's checked value (a repeated change
+  // event is then harmless): a variant, or every variant of a product.
+  const setVariant = (vid, on) =>
     setSelected((s) => {
       const n = new Set(s);
-      if (n.has(vid)) n.delete(vid);
-      else n.add(vid);
+      if (on) n.add(vid);
+      else n.delete(vid);
       return n;
     });
-  const toggleProduct = (p) => {
+  const setProduct = (p, on) => {
     const vids = productVariants(p).map((v) => v.id);
-    const all = vids.every((id) => selected.has(id));
     setSelected((s) => {
       const n = new Set(s);
-      vids.forEach((id) => (all ? n.delete(id) : n.add(id)));
+      vids.forEach((id) => (on ? n.add(id) : n.delete(id)));
       return n;
     });
   };
@@ -68,137 +70,173 @@ export function VariantPicker({ products, initialSelected, onCancel, onAdd }) {
   const shownVids = shown.flatMap((p) => productVariants(p).map((v) => v.id));
   const allShownSel = shownVids.length > 0 && shownVids.every((id) => selected.has(id));
   const someShownSel = shownVids.some((id) => selected.has(id));
-  const toggleAllShown = () =>
+  const setAllShown = (on) =>
     setSelected((s) => {
       const n = new Set(s);
-      shownVids.forEach((id) => (allShownSel ? n.delete(id) : n.add(id)));
+      shownVids.forEach((id) => (on ? n.add(id) : n.delete(id)));
       return n;
     });
 
   const count = selected.size;
 
   return (
-    <Modal
-      open
-      onClose={onCancel}
-      title="Add products"
-      primaryAction={{ content: count ? `Add ${count} variant${count === 1 ? '' : 's'}` : 'Done', onAction: () => onAdd(selected) }}
-      secondaryActions={[{ content: 'Cancel', onAction: onCancel }]}
-    >
-      <Modal.Section>
-        <InlineStack gap="200" blockAlign="center" wrap={false}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <TextField
-              label="Search products"
-              labelHidden
-              value={query}
-              onChange={setQuery}
-              prefix={<Icon source={SearchIcon} tone="subdued" />}
-              placeholder="Search products by name or SKU"
-              autoComplete="off"
-              clearButton
-              onClearButtonClick={() => setQuery('')}
-            />
+    <Modal onClose={onCancel} heading="Add products" padding="none">
+      <s-box padding="base">
+        <s-grid gridTemplateColumns="minmax(0, 1fr) 210px" gap="small-200" alignItems="center">
+          <s-search-field
+            label="Search products"
+            labelAccessibilityVisibility="exclusive"
+            value={query}
+            onInput={(e) => setQuery(e.currentTarget.value)}
+            placeholder="Search products by name or SKU"
+            autocomplete="off"
+          />
+          <s-select label="Sort by" labelAccessibilityVisibility="exclusive" value={sort} onChange={(e) => setSort(e.currentTarget.value)}>
+            {SORT_OPTIONS.map((o) => (
+              <s-option key={o.value} value={o.value}>{o.label}</s-option>
+            ))}
+          </s-select>
+        </s-grid>
+      </s-box>
+      <s-divider />
+      {/* Column header — mirrors the overrides table. */}
+      <s-box background="subdued" paddingBlock="small-300" paddingInline="base">
+        <div style={PICK_GRID}>
+          <s-checkbox
+            accessibilityLabel="Select all shown products"
+            checked={allShownSel}
+            indeterminate={!allShownSel && someShownSel}
+            onChange={(e) => setAllShown(e.currentTarget.checked)}
+          />
+          <s-text fontSize="small" color="subdued" fontWeight="medium">Product</s-text>
+          <div style={{ textAlign: 'end' }}>
+            <s-text fontSize="small" color="subdued" fontWeight="medium">Price</s-text>
           </div>
-          <div style={{ width: 210, flex: '0 0 auto' }}>
-            <Select label="Sort by" labelHidden options={SORT_OPTIONS} value={sort} onChange={setSort} />
-          </div>
-        </InlineStack>
-      </Modal.Section>
-      <Modal.Section flush>
-        {/* Column header — mirrors the overrides table. */}
-        <Box background="bg-surface-secondary" borderBlockEndWidth="025" borderColor="border" paddingBlock="150" paddingInline="400">
-          <div style={PICK_GRID}>
-            <Checkbox label="" labelHidden checked={allShownSel ? true : someShownSel ? 'indeterminate' : false} onChange={toggleAllShown} />
-            <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium">Product</Text>
-            <Text as="span" variant="bodySm" tone="subdued" fontWeight="medium" alignment="end">Price</Text>
-          </div>
-        </Box>
-        <div style={{ maxHeight: 420, overflowY: 'auto', overflowX: 'hidden' }}>
-          {shown.map((p, i) => {
-            const variants = productVariants(p);
-            const multi = variants.length > 1;
-            const vids = variants.map((v) => v.id);
-            const allSel = vids.every((id) => selected.has(id));
-            const someSel = vids.some((id) => selected.has(id));
-            const isExp = expanded.has(p.sku);
-            const topBorder = i === 0 ? '0' : '025';
-            // Price shown for the product: a single value, or a low–high range
-            // when its variants are priced differently.
-            const listVals = variants.map((v) => v.list ?? p.list);
-            const listLo = Math.min(...listVals);
-            const listHi = Math.max(...listVals);
-            const price = listLo === listHi ? money(listLo) : `${money(listLo)}–${money(listHi)}`;
+        </div>
+      </s-box>
+      <s-divider />
+      <div style={{ maxHeight: 420, overflowY: 'auto', overflowX: 'hidden' }}>
+        {shown.map((p, i) => {
+          const variants = productVariants(p);
+          const multi = variants.length > 1;
+          const vids = variants.map((v) => v.id);
+          const allSel = vids.every((id) => selected.has(id));
+          const someSel = vids.some((id) => selected.has(id));
+          const isExp = expanded.has(p.sku);
+          // Price shown for the product: a single value, or a low–high range
+          // when its variants are priced differently.
+          const listVals = variants.map((v) => v.list ?? p.list);
+          const listLo = Math.min(...listVals);
+          const listHi = Math.max(...listVals);
+          const price = listLo === listHi ? money(listLo) : `${money(listLo)}–${money(listHi)}`;
 
-            // Single-variant product → one inline row (no caret, aligned via a spacer).
-            if (!multi) {
-              return (
-                <Box key={p.sku} paddingBlock="200" paddingInline="400" borderBlockStartWidth={topBorder} borderColor="border">
-                  <div style={PICK_GRID}>
-                    <Checkbox label="" labelHidden checked={selected.has(vids[0])} onChange={() => toggleVariant(vids[0])} />
-                    <InlineStack gap="200" blockAlign="center" wrap={false}>
-                      <span style={{ width: 20, flex: '0 0 auto' }} />
-                      <span style={THUMB}><Icon source={ImageIcon} tone="subdued" /></span>
-                      <div style={{ minWidth: 0 }}>
-                        <Text as="span" variant="bodyMd" truncate>{p.title}</Text>
-                        <Text as="p" tone="subdued" variant="bodySm" truncate>{[p.sku, p.vendor].filter(Boolean).join(' · ')}</Text>
-                      </div>
-                    </InlineStack>
-                    <Text as="span" variant="bodyMd" alignment="end">{price}</Text>
-                  </div>
-                </Box>
-              );
-            }
-            // Multi-variant product → collapsible product row + variant sub-rows.
+          // Single-variant product → one inline row (no caret, aligned via a spacer).
+          if (!multi) {
             return (
-              <Box key={p.sku} borderBlockStartWidth={topBorder} borderColor="border">
-                <Box paddingBlock="200" paddingInline="400">
+              <React.Fragment key={p.sku}>
+                {i > 0 ? <s-divider /> : null}
+                <s-box paddingBlock="small-200" paddingInline="base">
                   <div style={PICK_GRID}>
-                    <Checkbox label="" labelHidden checked={allSel ? true : someSel ? 'indeterminate' : false} onChange={() => toggleProduct(p)} />
-                    <button type="button" onClick={() => toggleExpand(p.sku)} style={{ all: 'unset', cursor: 'pointer', display: 'block', minWidth: 0 }}>
-                      <InlineStack gap="200" blockAlign="center" wrap={false}>
-                        <span style={CARET}><Icon source={isExp ? ChevronDownIcon : ChevronRightIcon} tone="subdued" /></span>
-                        <span style={THUMB}><Icon source={ImageIcon} tone="subdued" /></span>
-                        <div style={{ minWidth: 0 }}>
-                          <Text as="span" variant="bodyMd" truncate>{p.title}</Text>
-                          <Text as="p" tone="subdued" variant="bodySm">{`${variants.length} variants`}</Text>
-                        </div>
-                      </InlineStack>
-                    </button>
-                    <Text as="span" variant="bodyMd" alignment="end">{price}</Text>
+                    <s-checkbox
+                      accessibilityLabel={`Select ${p.title}`}
+                      checked={selected.has(vids[0])}
+                      onChange={(e) => setVariant(vids[0], e.currentTarget.checked)}
+                    />
+                    <div style={ROW_START}>
+                      <span style={{ width: 20, flex: '0 0 auto' }} />
+                      <span style={THUMB}><s-icon type="image" color="subdued" /></span>
+                      <div style={{ minWidth: 0 }}>
+                        <s-paragraph lineClamp={1}>{p.title}</s-paragraph>
+                        <s-paragraph color="subdued" fontSize="small" lineClamp={1}>{[p.sku, p.vendor].filter(Boolean).join(' · ')}</s-paragraph>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'end' }}>
+                      <s-text>{price}</s-text>
+                    </div>
                   </div>
-                </Box>
-                {isExp && variants.map((v) => (
-                  <Box key={v.id} paddingBlock="200" paddingInline="400" borderBlockStartWidth="025" borderColor="border" background="bg-surface-secondary">
+                </s-box>
+              </React.Fragment>
+            );
+          }
+          // Multi-variant product → collapsible product row + variant sub-rows.
+          return (
+            <React.Fragment key={p.sku}>
+              {i > 0 ? <s-divider /> : null}
+              <s-box paddingBlock="small-200" paddingInline="base">
+                <div style={PICK_GRID}>
+                  <s-checkbox
+                    accessibilityLabel={`Select all variants of ${p.title}`}
+                    checked={allSel}
+                    indeterminate={!allSel && someSel}
+                    onChange={(e) => setProduct(p, e.currentTarget.checked)}
+                  />
+                  <button
+                    type="button"
+                    aria-expanded={isExp}
+                    onClick={() => toggleExpand(p.sku)}
+                    style={{ all: 'unset', cursor: 'pointer', display: 'block', minWidth: 0 }}
+                  >
+                    <div style={ROW_START}>
+                      <span style={CARET}><s-icon type={isExp ? 'chevron-down' : 'chevron-right'} color="subdued" /></span>
+                      <span style={THUMB}><s-icon type="image" color="subdued" /></span>
+                      <div style={{ minWidth: 0 }}>
+                        <s-paragraph lineClamp={1}>{p.title}</s-paragraph>
+                        <s-paragraph color="subdued" fontSize="small">{`${variants.length} variants`}</s-paragraph>
+                      </div>
+                    </div>
+                  </button>
+                  <div style={{ textAlign: 'end' }}>
+                    <s-text>{price}</s-text>
+                  </div>
+                </div>
+              </s-box>
+              {isExp && variants.map((v) => (
+                <React.Fragment key={v.id}>
+                  <s-divider />
+                  <s-box paddingBlock="small-200" paddingInline="base" background="subdued">
                     <div style={PICK_GRID}>
                       {/* Indent the variant checkbox one level (under the product's
                           thumbnail) so the row reads as a child; the name stays
                           aligned under the product title. No variant thumbnail —
                           matching the Shopify desktop resource picker. */}
                       <span style={{ paddingInlineStart: 40, display: 'flex', alignItems: 'center' }}>
-                        <Checkbox label="" labelHidden checked={selected.has(v.id)} onChange={() => toggleVariant(v.id)} />
+                        <s-checkbox
+                          accessibilityLabel={`Select ${v.title || v.id}`}
+                          checked={selected.has(v.id)}
+                          onChange={(e) => setVariant(v.id, e.currentTarget.checked)}
+                        />
                       </span>
-                      <InlineStack gap="200" blockAlign="center" wrap={false}>
+                      <div style={ROW_START}>
                         <span style={{ width: 20, flex: '0 0 auto' }} />
                         <div style={{ minWidth: 0 }}>
-                          <Text as="span" variant="bodyMd" truncate>{v.title || v.id}</Text>
-                          {v.id && v.id !== v.title ? <Text as="p" tone="subdued" variant="bodySm" truncate>{v.id}</Text> : null}
+                          <s-paragraph lineClamp={1}>{v.title || v.id}</s-paragraph>
+                          {v.id && v.id !== v.title ? <s-paragraph color="subdued" fontSize="small" lineClamp={1}>{v.id}</s-paragraph> : null}
                         </div>
-                      </InlineStack>
-                      <Text as="span" variant="bodyMd" alignment="end">{money(v.list ?? p.list)}</Text>
+                      </div>
+                      <div style={{ textAlign: 'end' }}>
+                        <s-text>{money(v.list ?? p.list)}</s-text>
+                      </div>
                     </div>
-                  </Box>
-                ))}
-              </Box>
-            );
-          })}
-          {shown.length === 0 && (
-            <Box padding="400">
-              <Text as="p" alignment="center" tone="subdued">{`No products match “${query.trim()}”.`}</Text>
-            </Box>
-          )}
-        </div>
-      </Modal.Section>
+                  </s-box>
+                </React.Fragment>
+              ))}
+            </React.Fragment>
+          );
+        })}
+        {shown.length === 0 && (
+          <s-box padding="base">
+            <div style={{ textAlign: 'center' }}>
+              <s-text color="subdued">{`No products match “${query.trim()}”.`}</s-text>
+            </div>
+          </s-box>
+        )}
+      </div>
+      <s-button slot="primary-action" variant="primary" onClick={() => onAdd(selected)}>
+        {count ? `Add ${count} variant${count === 1 ? '' : 's'}` : 'Done'}
+      </s-button>
+      <s-button slot="secondary-actions" onClick={onCancel}>
+        Cancel
+      </s-button>
     </Modal>
   );
 }
