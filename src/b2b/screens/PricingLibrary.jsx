@@ -26,7 +26,6 @@ const SORT_OPTIONS = [
   { label: 'Name', value: 'name', directionLabel: 'A–Z' },
   { label: 'Most assigned', value: 'assigned', directionLabel: 'Most first' },
 ];
-const labelOf = (choices, value) => choices.find((c) => c.value === value)?.label ?? value;
 
 const PAGE_SIZE = 10;
 
@@ -199,12 +198,6 @@ export function PricingLibrary() {
   const tabs = AUDIENCE.map((a) => ({ id: `aud-${a.id}`, content: a.label }));
   const selectedTab = Math.max(0, AUDIENCE.findIndex((a) => a.id === audience));
 
-  // Pricing type / Status filters sit under the search; the ones in use also
-  // show as removable chips (with Clear all), like IndexFilters' applied filters.
-  const appliedFilters = [];
-  if (kind !== 'all') appliedFilters.push({ key: 'kind', label: `Pricing type: ${labelOf(TYPE_CHOICES, kind)}`, onRemove: () => setKind('all') });
-  if (statusFilter !== 'all') appliedFilters.push({ key: 'status', label: `Status: ${labelOf(STATUS_CHOICES, statusFilter)}`, onRemove: () => setStatusFilter('all') });
-
   return (
     <s-page heading="Pricing settings">
       <s-button slot="primary-action" variant="primary" onClick={() => setChooserOpen(true)}>
@@ -230,53 +223,16 @@ export function PricingLibrary() {
             sortOptions={SORT_OPTIONS}
             sortSelected={sort}
             onSort={setSort}
-          >
-            <s-grid gridTemplateColumns="180px 180px 1fr" gap="small-200" alignItems="center">
-              <s-select
-                label="Pricing type"
-                labelAccessibilityVisibility="exclusive"
-                value={kind}
-                onChange={(e) => setKind(e.currentTarget.value)}
-              >
-                {TYPE_CHOICES.map((c) => (
-                  <s-option key={c.value} value={c.value}>
-                    {c.label}
-                  </s-option>
-                ))}
-              </s-select>
-              <s-select
-                label="Status"
-                labelAccessibilityVisibility="exclusive"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.currentTarget.value)}
-              >
-                {STATUS_CHOICES.map((c) => (
-                  <s-option key={c.value} value={c.value}>
-                    {c.label}
-                  </s-option>
-                ))}
-              </s-select>
-              {appliedFilters.length ? (
-                <s-stack direction="inline" gap="small-200" alignItems="center">
-                  {appliedFilters.map((f) => (
-                    <s-clickable-chip key={f.key} removable accessibilityLabel={`Remove ${f.label}`} onRemove={f.onRemove}>
-                      {f.label}
-                    </s-clickable-chip>
-                  ))}
-                  <s-link
-                    onClick={() => {
-                      setKind('all');
-                      setStatusFilter('all');
-                    }}
-                  >
-                    Clear all
-                  </s-link>
-                </s-stack>
-              ) : (
-                <span />
-              )}
-            </s-grid>
-          </IndexFiltersBar>
+            filters={[
+              { key: 'kind', label: 'Pricing type', choices: TYPE_CHOICES, value: kind, defaultValue: 'all' },
+              { key: 'status', label: 'Status', choices: STATUS_CHOICES, value: statusFilter, defaultValue: 'all' },
+            ]}
+            onFilterChange={(key, v) => (key === 'kind' ? setKind(v) : setStatusFilter(v))}
+            onClearAll={() => {
+              setKind('all');
+              setStatusFilter('all');
+            }}
+          />
           <s-table-header-row>
             <s-table-header listSlot="primary">Name</s-table-header>
             <s-table-header listSlot="labeled">Pricing type</s-table-header>

@@ -5,9 +5,10 @@ import { money } from '../format.js';
 
 import { AssignBuyerModal, GeneralModal, ShippingModal, PAYMENT_TERM_OPTIONS, TAX_SETTINGS, COUNTRY_NAMES } from '../components/LocationModals.jsx';
 import { LocationLimitsCard } from '../components/LocationLimitsCard.jsx';
+import { DeleteLocationsModal } from '../components/tabs/LocationsTab.jsx';
 import { isHeld, heldReason, heldFirst, HeldOrderActions } from '../components/HeldOrders.jsx';
 import { versionFlags } from '../../shared/versions.js';
-import { MenuButton, Tip, useWcId, wcTone, PageHeader } from '../../shared/wc.jsx';
+import { MenuButton, Tip, useWcId, wcTone, PageHeader, Tabs } from '../../shared/wc.jsx';
 
 const ORDER_TONE = {
   Fulfilled: 'success',
@@ -21,6 +22,10 @@ const ORDER_TONE = {
 const orderTone = (s) => ORDER_TONE[s];
 const QUOTE_TONE = { 'New Received': 'attention', Read: undefined, Updated: 'info', 'Deal Closed': 'success', 'Deal Rejected': 'critical' };
 const PRICING_PAGE_SIZE = 5;
+const PRICING_KINDS = [
+  { id: 'base', content: 'Base pricing' },
+  { id: 'quantity', content: 'Quantity pricing' },
+];
 const HISTORY_PAGE_SIZE = 5;
 
 export function LocationDetail() {
@@ -30,7 +35,10 @@ export function LocationDetail() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [editGeneral, setEditGeneral] = useState(false);
   const [editShipping, setEditShipping] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [pricingPage, setPricingPage] = useState(0);
+  // The Pricing card shows one kind at a time (its tabs).
+  const [pricingKind, setPricingKind] = useState('base');
   const [quotesPage, setQuotesPage] = useState(0);
   const [ordersPage, setOrdersPage] = useState(0);
   const ids = useWcId('loc');
@@ -91,12 +99,11 @@ export function LocationDetail() {
     .filter(Boolean);
   const shipPreview = shipParts.length ? [...shipParts, COUNTRY_NAMES[ship.country] || ''].filter(Boolean) : [];
 
-  // Pricing rows: resolved base(s) + quantities — the location's own, else inherited from the company.
-  const pricingRow = (e, kind, first) => {
+  // Pricing rows of the picked kind: the location's own, else inherited from the company.
+  const pricingRow = (e, kind) => {
     const status = policyStatus(e.policy, state.db);
     return (
       <s-table-row key={`${kind}-${e.policy.id}`}>
-        <s-table-cell>{first ? (kind === 'base' ? 'Base pricing' : 'Quantity pricing') : ''}</s-table-cell>
         <s-table-cell>
           <s-stack gap="small-500">
             <s-text>{e.policy.name}</s-text>
@@ -115,18 +122,14 @@ export function LocationDetail() {
   };
   const notSetRow = (kind) => (
     <s-table-row key={`${kind}-none`}>
-      <s-table-cell>{kind === 'base' ? 'Base pricing' : 'Quantity pricing'}</s-table-cell>
       <s-table-cell><s-badge tone="warning">Not set</s-badge></s-table-cell>
       <s-table-cell>—</s-table-cell>
       <s-table-cell>—</s-table-cell>
       <s-table-cell />
     </s-table-row>
   );
-  const pricingRows = [];
-  if (bases.length) bases.forEach((e, i) => pricingRows.push(pricingRow(e, 'base', i === 0)));
-  else pricingRows.push(notSetRow('base'));
-  if (quantities.length) quantities.forEach((e, i) => pricingRows.push(pricingRow(e, 'quantity', i === 0)));
-  else pricingRows.push(notSetRow('quantity'));
+  const kindEntries = pricingKind === 'base' ? bases : quantities;
+  const pricingRows = kindEntries.length ? kindEntries.map((e) => pricingRow(e, pricingKind)) : [notSetRow(pricingKind)];
 
   // Pricing table pagination.
   const pricingPageCount = Math.max(1, Math.ceil(pricingRows.length / PRICING_PAGE_SIZE));
@@ -182,15 +185,15 @@ export function LocationDetail() {
   return (
     <>
     <PageHeader
-      inlineSize="large"
       backAction={{ content: 'Locations', onAction: () => dispatch({ type: 'OPEN_COMPANY', id: company.id, tab: 'locations' }) }}
       heading={location.name}
       subtitle={`${company.name} · Location`}
+      secondaryActions={[{ content: 'Delete', destructive: true, onAction: () => setConfirmDelete(true) }]}
     />
-    <s-page inlineSize="large">
+    <s-page>
       <s-stack gap="base">
-        {/* Two columns (Polaris React Layout + a oneThird section). s-page only renders an
-            aside at its base width, and this page is full width, so the columns are a grid. */}
+        {/* Two columns (Polaris React Layout + a oneThird section), as a grid so they
+            stack below 768px like Layout did. */}
         <s-query-container>
           <s-grid
             gridTemplateColumns='@container (inline-size > 768px) "minmax(0, 2fr) minmax(0, 1fr)", "minmax(0, 1fr)"'
@@ -223,23 +226,53 @@ export function LocationDetail() {
                     </MenuButton>,
                   )}
                 </s-box>
-                <s-table
-                  paginate={pricingPageCount > 1}
-                  hasPreviousPage={pricingCurrent > 0}
-                  hasNextPage={pricingCurrent < pricingPageCount - 1}
-                  onPreviousPage={() => setPricingPage(Math.max(pricingCurrent - 1, 0))}
-                  onNextPage={() => setPricingPage(Math.min(pricingCurrent + 1, pricingPageCount - 1))}
-                >
+                <Tabs
+                  tabs={PRICING_KINDS}
+                  selected={PRICING_KINDS.findIndex((k) => k.id === pricingKind)}
+                  onSelect={(i) => {
+                    setPricingKind(PRICING_KINDS[i].id);
+                    setPricingPage(0);
+                  }}
+                />
+                <s-table>
                   <s-table-header-row>
-                    <s-table-header listSlot="primary">Type</s-table-header>
-                    <s-table-header listSlot="labeled">Pricing</s-table-header>
+                    <s-table-header listSlot="primary">Pricing</s-table-header>
                     <s-table-header listSlot="labeled">Products</s-table-header>
                     <s-table-header listSlot="secondary">Status</s-table-header>
                     <s-table-header listSlot="inline"><s-text accessibilityVisibility="exclusive">Actions</s-text></s-table-header>
                   </s-table-header-row>
                   <s-table-body>{pagePricingRows}</s-table-body>
                 </s-table>
-                {pricingPageCount > 1 ? pageLabel(pricingPageLabel) : null}
+                {/* One-row footer, as on the company page's Base pricing card. */}
+                {pricingPageCount > 1 ? (
+                  <>
+                    <s-divider />
+                    <s-box padding="small">
+                      <s-stack direction="inline" justifyContent="space-between" alignItems="center">
+                        <s-text color="subdued" fontSize="small">{pricingPageLabel}</s-text>
+                        <s-stack direction="inline" gap="small-200" alignItems="center">
+                          <s-text color="subdued" fontSize="small">{`Page ${pricingCurrent + 1} of ${pricingPageCount}`}</s-text>
+                          <s-button-group gap="none" accessibilityLabel="Pagination">
+                            <s-button
+                              slot="secondary-actions"
+                              icon="chevron-left"
+                              accessibilityLabel="Previous"
+                              disabled={pricingCurrent <= 0}
+                              onClick={() => setPricingPage(Math.max(pricingCurrent - 1, 0))}
+                            />
+                            <s-button
+                              slot="secondary-actions"
+                              icon="chevron-right"
+                              accessibilityLabel="Next"
+                              disabled={pricingCurrent >= pricingPageCount - 1}
+                              onClick={() => setPricingPage(Math.min(pricingCurrent + 1, pricingPageCount - 1))}
+                            />
+                          </s-button-group>
+                        </s-stack>
+                      </s-stack>
+                    </s-box>
+                  </>
+                ) : null}
               </s-section>
 
               {/* Quotes from this location */}
@@ -356,7 +389,7 @@ export function LocationDetail() {
                   {cardHeader('General', <s-button icon="edit" onClick={() => setEditGeneral(true)} accessibilityLabel="Edit general" />)}
                   <Kv label="Name" value={location.name} />
                   <Kv label="Location ID" value={location.externalId || 'Not set'} />
-                  <Kv label="Status" value={<s-badge tone="success">{location.status || 'Active'}</s-badge>} />
+                  <Kv label="Status" value={<s-badge tone={location.status === 'Deleted' ? 'critical' : 'success'}>{location.status || 'Active'}</s-badge>} />
                   <s-divider />
                   {cardHeader('Shipping address', <s-button onClick={() => setEditShipping(true)}>{shipPreview.length ? 'Edit' : 'Add'}</s-button>)}
                   {shipPreview.length ? (
@@ -460,6 +493,9 @@ export function LocationDetail() {
       )}
       {editShipping && (
         <ShippingModal location={location} onClose={() => setEditShipping(false)} onSave={(patch) => { setField(patch); setEditShipping(false); }} />
+      )}
+      {confirmDelete && (
+        <DeleteLocationsModal company={company} locationIds={[location.id]} onClose={() => setConfirmDelete(false)} />
       )}
     </s-page>
     </>

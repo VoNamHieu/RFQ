@@ -1,14 +1,18 @@
 import React from 'react';
 import { useStore } from '../store.jsx';
-import { companyBaseEntries, companyQuantityEntries, locationPricingEntries, scopeTypeLabel } from '../pricing.js';
+import { companyBaseEntries, companyQuantityEntries, locationPricingEntries } from '../pricing.js';
 import { Modal } from '../../shared/wc.jsx';
 import { PricingCombobox } from './PricingCombobox.jsx';
 import { LocationScopePicker } from './LocationScopePicker.jsx';
 
-// Assign existing pricing(s) to a company, or swap one for another (spec §2.8),
-// laid out like the god file's "Assign price list" modal: a picker whose options
-// carry checkboxes, the picks shown as removable tags, OR create a new one. Add is
-// MULTI-select (base and quantity alike); swap is single.
+// Add existing pricing(s) to a company, or swap one for another — production's
+// AssignPricingModal / SwapPricingModal: the pricing picker with the picks as
+// tags, OR create a new one. Add is MULTI-select (base and quantity alike); swap
+// is single. Prototype addition: from a company with 2+ locations, which of its
+// locations get it.
+
+// Long names are cut in modal titles, as production's truncateName does.
+const truncateName = (name, max = 48) => (name.length > max ? `${name.slice(0, max)}…` : name);
 export function AssignModal() {
   const { state, dispatch } = useStore();
   const a = state.assign;
@@ -42,7 +46,12 @@ export function AssignModal() {
   const swapped = isSwap ? state.db.policies.find((p) => p.id === a.swapId) : null;
   const selectedIds = a.selectedIds || [];
 
-  const optionLabel = (p) => `${p.name} · Priority ${p.priority ?? '—'} · ${scopeTypeLabel(p)}`;
+  // The library has pricing of this kind, but the company already uses all of it.
+  const exhausted =
+    candidates.length === 0 &&
+    state.db.policies.some((p) => (isQuantity ? p.priceKind === 'quantity' : p.priceKind !== 'quantity') && p.audienceType === 'b2b');
+  const targetName = location?.name || company?.name || '';
+  const action = isSwap ? 'swap in' : 'assign';
 
   const createNew = () => {
     dispatch({ type: 'CLOSE_ASSIGN' });
@@ -59,54 +68,60 @@ export function AssignModal() {
     });
   };
 
+  // Production's PricingProfileEmpty: a note and "Create a new …".
+  const createSection = (
+    <s-stack gap="small">
+      <s-paragraph color="subdued" fontSize="small">
+        {exhausted
+          ? `${targetName} already uses every ${kindName} you have. Create a new one to ${action}.`
+          : `No company-based ${kindName} profiles yet — create one right here.`}
+      </s-paragraph>
+      <s-button icon="plus" inlineSize="fill" onClick={createNew}>{`Create a new ${kindName}`}</s-button>
+    </s-stack>
+  );
+
   return (
     <Modal
       onClose={() => dispatch({ type: 'CLOSE_ASSIGN' })}
-      heading={isSwap ? `Change ${swapped?.name || kindName}` : `Assign ${kindName}: ${location?.name || company?.name || ''}`}
+      heading={`${isSwap ? 'Swap' : 'Add'} ${kindName}: ${truncateName(targetName)}`}
     >
-      <s-stack gap="base">
-        <s-stack gap="small-300">
-          <s-heading>{isSwap ? `Replace with an existing ${kindName}` : `Use an existing ${kindName}`}</s-heading>
-          {candidates.length === 0 ? (
-            <s-paragraph color="subdued">{`No other ${kindName} available — create a new one below.`}</s-paragraph>
-          ) : (
-            <>
-              <PricingCombobox
-                label={`Use an existing ${kindName}`}
-                placeholder={`Select ${kindName}`}
-                candidates={candidates}
-                selectedIds={selectedIds}
-                onChange={(ids) => dispatch({ type: 'ASSIGN_SET', ids })}
-                single={single}
-                optionLabel={optionLabel}
-                emptyText={`No matching ${kindName}`}
+      <s-stack gap={isSwap ? 'small' : 'base'}>
+        {candidates.length === 0 ? (
+          createSection
+        ) : (
+          <>
+            <PricingCombobox
+              label={`Use an existing ${kindName}`}
+              placeholder={`Select a ${kindName}...`}
+              candidates={candidates}
+              selectedIds={selectedIds}
+              onChange={(ids) => dispatch({ type: 'ASSIGN_SET', ids })}
+              single={single}
+              emptyText={`No matching ${kindName}`}
+            />
+
+            {pickLocations ? (
+              <LocationScopePicker
+                company={company}
+                locationIds={someLocations ? pickedLocIds : null}
+                onChange={(ids) => dispatch({ type: 'ASSIGN_PATCH', patch: { applyTo: ids ? 'some' : 'all', locationIds: ids || [] } })}
               />
-              {!single && (
-                <s-paragraph color="subdued" fontSize="small">
-                  Pick one or more — the lowest priority applies first.
-                </s-paragraph>
-              )}
-            </>
-          )}
-        </s-stack>
+            ) : null}
 
-        {pickLocations ? (
-          <LocationScopePicker
-            company={company}
-            locationIds={someLocations ? pickedLocIds : null}
-            onChange={(ids) => dispatch({ type: 'ASSIGN_PATCH', patch: { applyTo: ids ? 'some' : 'all', locationIds: ids || [] } })}
-          />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ flex: 1, height: 1, background: 'var(--p-color-border)' }} />
+              <s-text color="subdued" fontSize="small">
+                OR
+              </s-text>
+              <div style={{ flex: 1, height: 1, background: 'var(--p-color-border)' }} />
+            </div>
+
+            {createSection}
+          </>
+        )}
+        {isSwap && swapped ? (
+          <s-paragraph color="subdued" fontSize="small">{`Swap ${swapped.name} to another pricing.`}</s-paragraph>
         ) : null}
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ flex: 1, height: 1, background: 'var(--p-color-border)' }} />
-          <s-text color="subdued" fontSize="small">
-            OR
-          </s-text>
-          <div style={{ flex: 1, height: 1, background: 'var(--p-color-border)' }} />
-        </div>
-
-        <s-button icon="plus" inlineSize="fill" onClick={createNew}>{`Create a new ${kindName}`}</s-button>
       </s-stack>
 
       <s-button
@@ -115,7 +130,7 @@ export function AssignModal() {
         disabled={selectedIds.length === 0 || (someLocations && pickedLocIds.length === 0)}
         onClick={() => dispatch({ type: 'ASSIGN_CONFIRM' })}
       >
-        {isSwap ? 'Change' : 'Assign'}
+        {isSwap ? 'Swap' : 'Assign'}
       </s-button>
       <s-button slot="secondary-actions" onClick={() => dispatch({ type: 'CLOSE_ASSIGN' })}>
         Cancel

@@ -214,41 +214,44 @@ export function Discounts() {
             tabs={DISCOUNT_TAB.map((t) => ({ id: `discount-tab-${t.id}`, content: t.label }))}
             selected={selectedTab}
             onSelect={handleChangeTab}
+            filtersApplied={dateApplied}
+            filterControls={
+              <>
+                {dateApplied ? (
+                  <s-clickable-chip removable commandFor={dateFilterId} onRemove={clearDates}>
+                    {dateFilterLabel}
+                  </s-clickable-chip>
+                ) : (
+                  // Polaris FilterPill (unselected): label + disclosure chevron.
+                  <s-clickable-chip commandFor={dateFilterId}>
+                    <span className="discounts-pill-label">
+                      Created date
+                      <s-icon type="chevron-down" size="small" />
+                    </span>
+                  </s-clickable-chip>
+                )}
+                <s-popover id={dateFilterId}>
+                  <s-box padding="base">
+                    <s-stack gap="small-200">
+                      <DateFilterContent
+                        startDate={startDate}
+                        endDate={endDate}
+                        onStartDateChange={handleStartDate}
+                        onEndDateChange={handleEndDate}
+                      />
+                      {/* FilterPill's own "Clear" under the filter, disabled until a date is set. */}
+                      <div>
+                        <s-button variant="tertiary" disabled={!dateApplied} onClick={clearDates}>
+                          Clear
+                        </s-button>
+                      </div>
+                    </s-stack>
+                  </s-box>
+                </s-popover>
+                {dateApplied ? <s-link onClick={handleFiltersClearAll}>Clear all</s-link> : null}
+              </>
+            }
           >
-            <s-stack direction="inline" gap="small-200" alignItems="center">
-              {dateApplied ? (
-                <s-clickable-chip removable commandFor={dateFilterId} onRemove={clearDates}>
-                  {dateFilterLabel}
-                </s-clickable-chip>
-              ) : (
-                // Polaris FilterPill (unselected): label + disclosure chevron.
-                <s-clickable-chip commandFor={dateFilterId}>
-                  <span className="discounts-pill-label">
-                    Created date
-                    <s-icon type="chevron-down" size="small" />
-                  </span>
-                </s-clickable-chip>
-              )}
-              <s-popover id={dateFilterId}>
-                <s-box padding="base">
-                  <s-stack gap="small-200">
-                    <DateFilterContent
-                      startDate={startDate}
-                      endDate={endDate}
-                      onStartDateChange={handleStartDate}
-                      onEndDateChange={handleEndDate}
-                    />
-                    {/* FilterPill's own "Clear" under the filter, disabled until a date is set. */}
-                    <div>
-                      <s-button variant="tertiary" disabled={!dateApplied} onClick={clearDates}>
-                        Clear
-                      </s-button>
-                    </div>
-                  </s-stack>
-                </s-box>
-              </s-popover>
-              {dateApplied ? <s-link onClick={handleFiltersClearAll}>Clear all</s-link> : null}
-            </s-stack>
             {selected.length > 0 ? (
               <s-stack direction="inline" gap="small-200" alignItems="center">
                 <s-text fontWeight="semibold">{`${selected.length} selected`}</s-text>

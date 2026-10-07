@@ -71,6 +71,7 @@ export function AgreementEditor() {
               <s-heading>Base pricing</s-heading>
               <PricingCombobox
                 label="Base pricing"
+                labelHidden
                 placeholder="Search base pricing"
                 candidates={bases}
                 selectedIds={draft.terms.base}
@@ -82,6 +83,7 @@ export function AgreementEditor() {
               <s-heading>Quantity pricing</s-heading>
               <PricingCombobox
                 label="Quantity pricing"
+                labelHidden
                 placeholder="Search quantity pricing"
                 candidates={quantities}
                 selectedIds={draft.terms.quantity}
@@ -93,6 +95,7 @@ export function AgreementEditor() {
               <s-heading>Order limits</s-heading>
               <PricingCombobox
                 label="Order limits"
+                labelHidden
                 placeholder="Search order limits"
                 candidates={limits}
                 selectedIds={draft.terms.limits}

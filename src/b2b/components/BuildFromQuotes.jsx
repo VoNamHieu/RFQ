@@ -3,14 +3,14 @@ import { useStore } from '../store.jsx';
 import { quoteToBasePricing } from '../dbHelpers.js';
 import { companyBaseEntries, resolvedPriceFor, hasOwnSlot, slotIds } from '../pricing.js';
 import { money } from '../format.js';
-import { activeVersion } from '../../shared/versions.js';
+import { withVersion } from '../../shared/versions.js';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import { Modal, MenuButton, Tip } from '../../shared/wc.jsx';
 import emptyStateArt from '../assets/empty-state.png';
 
 // The RFQ app lives at the site root; its default view is the quotes submission
 // list. Keep the ?v= version param so the switch stays on the same prototype.
-const rfqSubmissionsUrl = () => (activeVersion() === 'latest' ? '/' : `/?v=${activeVersion()}`);
+const rfqSubmissionsUrl = () => withVersion('/');
 // The RFQ app's Shopify App Store listing — where a merchant without it goes to install.
 const RFQ_APP_STORE_URL = 'https://apps.shopify.com/request-for-quote-by-omega';
 

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { shopifyCompanyDirectory } from '../data/directory.js';
 import { resetDemo } from '../../shared/persistence.js';
 
 const APPROVED_APP = [
@@ -37,7 +36,6 @@ export function Settings() {
   const { state, dispatch } = useStore();
   const toast = (m) => dispatch({ type: 'TOAST', message: m });
   const [behaviors, setBehaviors] = useState({ approvedApp: 'standard', expiredPrice: 'shopify', acceptedQuote: 'order' });
-  const [newLocationCompany, setNewLocationCompany] = useState(shopifyCompanyDirectory[0]?.id || '');
   const setB = (k) => (e) => {
     const v = e.currentTarget.value;
     setBehaviors((p) => ({ ...p, [k]: v }));
@@ -50,7 +48,7 @@ export function Settings() {
   ];
 
   return (
-    <s-page heading="Settings" inlineSize="large">
+    <s-page heading="Settings">
       <s-button slot="primary-action" variant="primary" onClick={() => toast('Settings saved')}>
         Save
       </s-button>
@@ -134,31 +132,6 @@ export function Settings() {
             checked={!!state.emptyMode}
             onChange={(e) => dispatch({ type: 'SET_EMPTY_MODE', on: e.currentTarget.checked })}
           />
-          <s-box paddingBlock="small">
-            <s-divider />
-          </s-box>
-          {/* Stands in for a merchant adding a location to a company in Shopify admin. */}
-          <s-stack gap="small-200">
-            <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="end">
-              <s-select
-                label="Add a location to a company in Shopify"
-                value={newLocationCompany}
-                onChange={(e) => setNewLocationCompany(e.currentTarget.value)}
-              >
-                {shopifyCompanyDirectory.map((c) => (
-                  <s-option key={c.id} value={c.id}>
-                    {c.name}
-                  </s-option>
-                ))}
-              </s-select>
-              <s-button onClick={() => dispatch({ type: 'SHOPIFY_LOCATION_CREATED', shopifyId: newLocationCompany })}>
-                Add in Shopify
-              </s-button>
-            </s-grid>
-            <s-paragraph color="subdued" fontSize="small">
-              A company with "Automatically add new locations" on gets the new location right away. Otherwise it waits in Add company.
-            </s-paragraph>
-          </s-stack>
         </s-section>
       </s-stack>
     </s-page>

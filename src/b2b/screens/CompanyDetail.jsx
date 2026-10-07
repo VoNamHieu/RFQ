@@ -50,13 +50,12 @@ export function CompanyDetail() {
   return (
     <>
     <PageHeader
-      inlineSize="large"
       heading={company.name}
       backAction={{ content: 'Companies', onAction: () => dispatch({ type: 'NAVIGATE', view: 'customers' }) }}
       subtitle={`${company.source ? `From ${company.source}` : 'Active'} · ${locationCount} location${locationCount === 1 ? '' : 's'}`}
       secondaryActions={[{ content: 'Delete', destructive: true, onAction: () => setConfirmDelete(true) }]}
     />
-    <s-page inlineSize="large">
+    <s-page>
       <s-stack gap="base">
         <s-section padding="none">
           <Tabs tabs={tabs} selected={tabIndex} onSelect={(i) => dispatch({ type: 'SET_COMPANY_TAB', tab: TABS[i].id })} />

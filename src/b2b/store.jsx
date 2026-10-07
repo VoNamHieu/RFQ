@@ -68,6 +68,29 @@ function seedAssignment(policy, db) {
   return { ...none, customerTarget: 'none', assignmentTargetIds: [] };
 }
 
+// Make exactly the `wanted` locations of a company (with locations) get a pricing.
+// Only touches a company whose locations actually change, so re-saving an
+// unchanged pick never reshapes where the pricing is stored.
+function syncCompanyLocations(c, kind, policyId, wanted, priority) {
+  const locs = c.locations || [];
+  const ensure = (list) => {
+    if (!list.some((e) => e.id === policyId)) list.push({ id: policyId, priority: priority || list.length + 1 });
+  };
+  if (locs.every((l) => wanted(l) === locationHolds(c, l, kind, policyId))) return;
+  if (locs.every(wanted)) {
+    // Every location: the company holds it (locations added later get it too),
+    // and so does any location keeping its own list.
+    addCompanySlot(c, kind, policyId, priority);
+    locs.forEach((l) => hasOwnSlot(l, kind) && ensure(locationSlotArray(c, l, kind)));
+    return;
+  }
+  // Some locations: each ticked one holds it in its own list (starting from what
+  // it inherited — copied before the company lets go), the company doesn't.
+  locs.forEach((l) => wanted(l) && ensure(locationSlotArray(c, l, kind)));
+  removeCompanySlot(c, kind, policyId);
+  locs.forEach((l) => !wanted(l) && hasOwnSlot(l, kind) && removeCompanySlot(l, kind, policyId));
+}
+
 // Push the builder's assignment choices into the db on save. B2B syncs exactly
 // which locations get this pricing (of its kind); D2C sets the chosen customer /
 // tag / global target. A full sync — unticking removes the pricing — and it is
@@ -96,9 +119,6 @@ function applyAssignment(db, policyId, b) {
   if (audience === 'b2b') {
     const wantCompany = new Set(b.b2bCompanyIds || []);
     const wantLoc = new Set(b.b2bLocationKeys || []);
-    const ensure = (list) => {
-      if (!list.some((e) => e.id === policyId)) list.push({ id: policyId, priority: b.priority || list.length + 1 });
-    };
     (db.companies || []).forEach((c) => {
       const locs = c.locations || [];
       if (!locs.length) {
@@ -107,22 +127,7 @@ function applyAssignment(db, policyId, b) {
         else if (!wantCompany.has(c.id) && holds) removeCompanySlot(c, kind, policyId);
         return;
       }
-      const wanted = (l) => wantCompany.has(c.id) || wantLoc.has(locKey(c.id, l.id));
-      // Only touch a company whose locations actually change, so re-saving an
-      // unchanged pick never reshapes where the pricing is stored.
-      if (locs.every((l) => wanted(l) === locationHolds(c, l, kind, policyId))) return;
-      if (locs.every(wanted)) {
-        // Every location: the company holds it (locations added later get it too),
-        // and so does any location keeping its own list.
-        addCompanySlot(c, kind, policyId, b.priority);
-        locs.forEach((l) => hasOwnSlot(l, kind) && ensure(locationSlotArray(c, l, kind)));
-        return;
-      }
-      // Some locations: each ticked one holds it in its own list (starting from what
-      // it inherited — copied before the company lets go), the company doesn't.
-      locs.forEach((l) => wanted(l) && ensure(locationSlotArray(c, l, kind)));
-      removeCompanySlot(c, kind, policyId);
-      locs.forEach((l) => !wanted(l) && hasOwnSlot(l, kind) && removeCompanySlot(l, kind, policyId));
+      syncCompanyLocations(c, kind, policyId, (l) => wantCompany.has(c.id) || wantLoc.has(locKey(c.id, l.id)), b.priority);
     });
     return;
   }
@@ -356,33 +361,57 @@ function reducer(state, action) {
       }
       return { ...state, db, toast: 'Buyer removed' };
     }
-    case 'ADD_LOCATION': {
+    // Locations tab → Add location: the company's Shopify locations not in the app
+    // yet. Each comes with the contacts at it (a contact already here without a
+    // location gets it back) and follows the company's pricing.
+    case 'ADD_SHOPIFY_LOCATIONS': {
       const db = clone(state.db);
       const c = db.companies.find((x) => x.id === action.companyId);
-      if (c) {
-        c.locations = c.locations || [];
-        const id = `${c.id}-l${c.locations.length + 1}`;
-        const approval = action.purchasingMode === 'REQUIRE_APPROVAL';
-        c.locations.push({
-          id,
-          name: action.name,
-          status: 'Active',
-          paymentTerms: action.paymentTerms || 'No payment terms',
-          purchasingMode: action.purchasingMode || 'DIRECT',
-          ordering: approval ? 'You approve first' : 'Buys directly',
-          terms: action.paymentTerms || 'Not set',
-          externalId: action.externalId || '',
-          shipping: { country: 'VN', address1: '', address2: '', city: '', postal: '', phone: '' },
-          billingSameAsShipping: true,
-          editableShipping: false,
-          taxId: '',
-          taxSettings: 'collect',
-          pricing: { base: null, quantity: null },
-          buyers: 0,
-          lastOrder: null,
+      const shp = c && shopifyCompanies(state.shopifyNewLocations).find((s) => s.id === c.shopifyCompanyId || s.name === c.name);
+      if (!shp) return state;
+      const has = (l) => (c.locations || []).some((x) => x.id === l.id || x.name === l.name);
+      const picked = (shp.locations || []).filter((l) => (action.shopifyLocationIds || []).includes(l.id) && !has(l));
+      if (!picked.length) return state;
+      const names = picked.map((l) => l.name);
+      c.contacts = c.contacts || [];
+      (shp.contacts || [])
+        .filter((sc) => names.includes(sc.location))
+        .forEach((sc) => {
+          const known = c.contacts.find((ct) => ct.email === sc.email);
+          if (!known) c.contacts.push({ name: sc.name, email: sc.email, role: sc.role, access: sc.access, locations: sc.location });
+          else if (!known.locations) known.locations = sc.location;
         });
-      }
-      return { ...state, db, toast: 'Location added' };
+      const added = picked.map((l) => ({ ...fromShopifyLocation(l), buyers: c.contacts.filter((ct) => ct.locations === l.name).length }));
+      c.locations = [...(c.locations || []), ...added];
+      return { ...state, db, toast: added.length === 1 ? 'Location added' : `${added.length} locations added` };
+    }
+    // Removes locations from the app only (Shopify keeps them, unless already deleted
+    // there): their pricing goes with them, and order limits / agreements / contacts
+    // stop pointing at them.
+    case 'DELETE_LOCATIONS': {
+      const db = clone(state.db);
+      const c = db.companies.find((x) => x.id === action.companyId);
+      if (!c) return state;
+      const ids = action.locationIds || [];
+      const names = (c.locations || []).filter((l) => ids.includes(l.id)).map((l) => l.name);
+      c.locations = (c.locations || []).filter((l) => !ids.includes(l.id));
+      (c.contacts || []).forEach((ct) => {
+        if (names.includes(ct.locations)) ct.locations = '';
+      });
+      db.limits = (db.limits || []).map((l) => ({
+        ...l,
+        locationKeys: (l.locationKeys || []).filter((k) => !ids.some((id) => k === `${c.id}::${id}`)),
+      }));
+      db.agreements = (db.agreements || []).map((a) =>
+        a.companyId === c.id && a.locationIds ? { ...a, locationIds: a.locationIds.filter((id) => !ids.includes(id)) } : a
+      );
+      const leaveDetail = state.view === 'location' && ids.includes(state.selectedLocation);
+      return {
+        ...state,
+        db,
+        ...(leaveDetail ? { view: 'company', companyTab: 'locations', selectedLocation: null } : {}),
+        toast: ids.length === 1 ? 'Location deleted' : `${ids.length} locations deleted`,
+      };
     }
     // Live edit of a location's fields (general / shipping / commerce settings).
     case 'SET_LOCATION_FIELD': {
@@ -455,9 +484,7 @@ function reducer(state, action) {
           });
         }
       }
-      const label = a.kind === 'quantity' ? 'Quantity pricing' : 'Base pricing';
-      const toast = a.mode === 'swap' ? `${label} changed` : ids.length > 1 ? `${ids.length} pricings added` : `${label} added`;
-      return { ...state, db, assign: null, toast };
+      return { ...state, db, assign: null, toast: a.mode === 'swap' ? 'Pricing swapped' : 'Pricing assigned' };
     }
     // Remove one pricing from a location (from its page). Inherited pricing is
     // copied into the location's own list first, so only this one goes.
@@ -520,8 +547,9 @@ function reducer(state, action) {
     // ----- Add-company wizard -----
     // Add Shopify companies: pick one or more, add them — pricing is set afterwards.
     // selected: shopifyCompanyIds — each comes with all its locations not in the app yet.
+    // "Automatically add new locations" starts ticked.
     case 'OPEN_ADD_COMPANY':
-      return { ...state, addCompany: { selected: [], search: '', autoAddLocations: false } };
+      return { ...state, addCompany: { selected: [], search: '', autoAddLocations: true } };
     case 'ADD_COMPANY_PATCH':
       return { ...state, addCompany: { ...state.addCompany, ...action.patch } };
     case 'CLOSE_ADD_COMPANY':
@@ -534,8 +562,7 @@ function reducer(state, action) {
       // contact with no location comes with the company). New locations follow the
       // company's pricing until given their own. With auto-add ticked, locations
       // created on the company in Shopify later join it too (SHOPIFY_LOCATION_CREATED);
-      // left unticked, a company that already auto-adds keeps doing so (it's turned
-      // off from its Locations tab).
+      // the choice applies to every picked company, already-added ones included.
       const autoAdd = !!ac.autoAddLocations;
       const added = []; // { id, isNew, n }
       // The first company is added on its own (the picker allows one).
@@ -554,7 +581,7 @@ function reducer(state, action) {
             .map((c) => ({ name: c.name, email: c.email, role: c.role, access: c.access, locations: c.location }));
         if (existing) {
           existing.locations = [...(existing.locations || []), ...picked.map(fromShopifyLocation)];
-          existing.autoAddLocations = !!existing.autoAddLocations || autoAdd;
+          existing.autoAddLocations = autoAdd;
           const known = new Set((existing.contacts || []).map((c) => c.email));
           existing.contacts = [...(existing.contacts || []), ...contactsAt(picked.map((l) => l.name), false).filter((c) => !known.has(c.email))];
           added.push({ id: existing.id, isNew: false, n: picked.length });
@@ -583,17 +610,26 @@ function reducer(state, action) {
         added.push({ id, isNew: true, n: picked.length });
       });
       if (!added.length) return state;
+      // Back on the company list, the added ones first (recentCompanyIds) — with the
+      // tab and search cleared so none is filtered out.
+      const toList = {
+        addCompany: null,
+        view: 'customers',
+        listFilter: 'all',
+        companySearch: '',
+        recentCompanyIds: added.map((a) => a.id),
+      };
       // One company: land on it — a new one on its Pricing tab (the empty states
       // there offer Add base / quantity pricing), an existing one on Locations.
       // Several: back to the list.
       if (added.length === 1) {
         const [a] = added;
         const toast = a.isNew ? 'Company added' : `${a.n} location${a.n === 1 ? '' : 's'} added`;
-        return { ...state, db, addCompany: null, view: 'company', selectedCompany: a.id, companyTab: a.isNew ? 'pricing' : 'locations', toast };
+        return { ...state, db, ...toList, toast };
       }
       const nNew = added.filter((a) => a.isNew).length;
       const toast = nNew === added.length ? `${nNew} companies added` : `${added.length} companies updated`;
-      return { ...state, db, addCompany: null, view: 'customers', toast };
+      return { ...state, db, ...toList, toast };
     }
     case 'SET_AUTO_ADD_LOCATIONS': {
       const db = clone(state.db);
@@ -625,24 +661,27 @@ function reducer(state, action) {
       return { ...state, listFilter: action.filter };
     case 'SET_COMPANY_SEARCH':
       return { ...state, companySearch: action.value };
+    // Picking a sort order ends the "just added first" pinning.
     case 'SET_COMPANY_SORT':
-      return { ...state, companySortField: action.field, companySortDir: action.dir };
+      return { ...state, companySortField: action.field, companySortDir: action.dir, recentCompanyIds: [] };
+    // One company (id) or several at once (ids, the list's bulk Delete).
     case 'DELETE_COMPANY': {
+      const ids = action.ids || [action.id];
       const db = clone(state.db);
-      db.companies = db.companies.filter((c) => c.id !== action.id);
-      db.quotes = (db.quotes || []).filter((q) => q.company !== action.id);
+      db.companies = db.companies.filter((c) => !ids.includes(c.id));
+      db.quotes = (db.quotes || []).filter((q) => !ids.includes(q.company));
       db.limits = (db.limits || []).map((l) => ({
         ...l,
-        companyIds: (l.companyIds || []).filter((id) => id !== action.id),
-        locationKeys: (l.locationKeys || []).filter((k) => !k.startsWith(`${action.id}::`)),
+        companyIds: (l.companyIds || []).filter((id) => !ids.includes(id)),
+        locationKeys: (l.locationKeys || []).filter((k) => !ids.some((id) => k.startsWith(`${id}::`))),
       }));
-      db.agreements = (db.agreements || []).filter((a) => a.companyId !== action.id);
-      const goList = state.selectedCompany === action.id;
+      db.agreements = (db.agreements || []).filter((a) => !ids.includes(a.companyId));
+      const goList = ids.includes(state.selectedCompany);
       return {
         ...state,
         db,
         ...(goList ? { view: 'customers', selectedCompany: db.companies[0]?.id || null } : {}),
-        toast: 'Company deleted',
+        toast: ids.length === 1 ? 'Company deleted' : `${ids.length} companies deleted`,
       };
     }
     // Base pricing pagination
@@ -665,13 +704,23 @@ function reducer(state, action) {
         : action.kind === 'quantity'
         ? newQuantityBuilder()
         : newBaseBuilder();
+      // Editing from a company page: "Who this pricing serves" starts from the
+      // company's locations that get it now (null = all of them).
+      let editorContext = action.context || null;
+      if (action.policy?.id && editorContext?.companyId && !editorContext.locationId) {
+        const c = state.db.companies.find((x) => x.id === editorContext.companyId);
+        const locs = c?.locations || [];
+        const kind = action.policy.priceKind === 'quantity' ? 'quantity' : 'base';
+        const held = locs.filter((l) => locationHolds(c, l, kind, action.policy.id));
+        editorContext = { ...editorContext, locationIds: held.length === locs.length ? null : held.map((l) => l.id) };
+      }
       return {
         ...state,
         builder,
         pricingBuilderTab: 'settings', // always land on Settings when the editor opens
         ruleEdit: null,
         addRuleMenu: false,
-        editorContext: action.context || null,
+        editorContext,
       };
     }
     case 'SET_BUILDER_TAB':
@@ -765,12 +814,17 @@ function reducer(state, action) {
           : null;
       const kind = existing.priceKind === 'quantity' ? 'quantity' : 'base';
       const usage = policyUsageCount({ id: b.id }, db);
-      const usesHere = scopeLoc
-        ? slotIds(scopeLoc, kind).includes(b.id)
-        : scopeCompany
-          ? companySlotArray(scopeCompany, kind).some((e) => e.id === b.id)
-          : false;
-      const sharedElsewhere = usage - (usesHere ? 1 : 0) > 0;
+      // Holders "here": the location, or the company and its locations (from a
+      // company page it can sit on some locations only).
+      const holds = (h) => slotIds(h, kind).includes(b.id);
+      const scopeLocs = scopeCompany && !scopeLoc ? scopeCompany.locations || [] : [];
+      const hereCount = scopeLoc ? (holds(scopeLoc) ? 1 : 0) : scopeCompany ? (holds(scopeCompany) ? 1 : 0) + scopeLocs.filter(holds).length : 0;
+      const sharedElsewhere = usage - hereCount > 0;
+      // From a company page with 2+ locations, "Who this pricing serves" picks which
+      // of them get it (null = all).
+      const pickLocations = scopeLocs.length > 1;
+      const picked = state.editorContext?.locationIds ?? null;
+      const wanted = (l) => !picked || picked.includes(l.id);
       if (scopeCompany && sharedElsewhere && !action.applyToAll) {
         const fork = JSON.parse(JSON.stringify(existing));
         Object.assign(fork, draft, { id: demoPolicyId(db), type: 'Account-specific' });
@@ -782,6 +836,10 @@ function reducer(state, action) {
           const idx = list.findIndex((e) => e.id === existing.id);
           if (idx >= 0) list[idx] = { id: fork.id, priority: list[idx].priority };
           else list.push({ id: fork.id, priority: draft.priority || list.length + 1 });
+        } else if (pickLocations) {
+          // The copy takes the original's place across this company, on the picked locations.
+          [scopeCompany, ...scopeLocs].forEach((h) => removeCompanySlot(h, kind, existing.id));
+          syncCompanyLocations(scopeCompany, kind, fork.id, wanted, draft.priority);
         } else {
           removeCompanySlot(scopeCompany, kind, existing.id);
           addCompanySlot(scopeCompany, kind, fork.id, draft.priority);
@@ -791,6 +849,7 @@ function reducer(state, action) {
       Object.assign(existing, draft, { id: existing.id });
       // Library edit (not scoped to a Company) → sync the assignment choices.
       if (!state.editorContext?.companyId) applyAssignment(db, existing.id, draft);
+      else if (pickLocations) syncCompanyLocations(scopeCompany, kind, existing.id, wanted, draft.priority);
       return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: 'Pricing saved' };
     }
     // ----- Pricing library actions -----

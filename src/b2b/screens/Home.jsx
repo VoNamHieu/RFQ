@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
 import { companyNeedsPrice, kindOf, policyStatus, policyUsageCount } from '../pricing.js';
-import { versionFlags, activeVersion } from '../../shared/versions.js';
+import { versionFlags, withVersion } from '../../shared/versions.js';
 import quotesArt from '../assets/quote-block.webp';
 import { heldOrders, heldReason, HeldOrderActions } from '../components/HeldOrders.jsx';
 import { money } from '../format.js';
@@ -60,7 +60,7 @@ export function Home() {
   const createPricing = () => nav('pricing', { pricingChooser: true });
   const openForm = () => nav('form', { formEntry: hasForm ? 'editor' : 'create' });
   const viewRegistrations = (filter) => { if (filter) dispatch({ type: 'SET_REGISTRATION_FILTER', filter }); nav('registrations'); };
-  const openRfq = () => { window.location.href = activeVersion() === 'latest' ? '/' : `/?v=${activeVersion()}`; };
+  const openRfq = () => { window.location.href = withVersion('/'); };
 
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   const steps = [

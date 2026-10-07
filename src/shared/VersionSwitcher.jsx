@@ -1,30 +1,14 @@
-import React, { useEffect, useState } from 'react';
-import { activeVersion } from './versions.js';
+import React from 'react';
+import { activeVersion, DEFAULT_VERSION, VERSION_LABEL } from './versions.js';
 
-// Version switcher: renders the SAME React app with a different `?v=` so Latest
-// and v1–v4 are all the React app (not the old static snapshots). Changelog still links
-// to the static /versions/ index. `app` is kept for signature compatibility.
+// Version switcher: renders the SAME React app with a different `?v=` — Current
+// (the default, no ?v=) or Upcoming. Changelog links to the static /versions/
+// page. `app` is kept for signature compatibility.
 export function VersionSwitcher({ app }) {
-  const [versions, setVersions] = useState([]);
   const current = activeVersion();
 
-  useEffect(() => {
-    let alive = true;
-    fetch('/versions/manifest.json')
-      .then((r) => r.json())
-      .then((m) => {
-        if (alive) setVersions(m.versions || []);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  // Newest first: Latest, v4, v3, v2, v1 (manifest lists v1→v4 ascending).
   const options = [
-    { label: 'Version: Latest', value: 'latest' },
-    ...versions.slice().reverse().map((v) => ({ label: `Version: ${v.id} · ${v.date}`, value: v.id })),
+    ...Object.entries(VERSION_LABEL).map(([value, name]) => ({ label: `Version: ${name}`, value })),
     { label: 'Changelog ↗', value: 'changelog' },
   ];
 
@@ -34,7 +18,7 @@ export function VersionSwitcher({ app }) {
       return;
     }
     const base = window.location.pathname;
-    window.location.href = val === 'latest' ? base : `${base}?v=${val}`;
+    window.location.href = val === DEFAULT_VERSION ? base : `${base}?v=${val}`;
   };
 
   return (

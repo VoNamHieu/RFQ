@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { useStore } from './store.jsx';
+import { withVersion } from '../shared/versions.js';
 import { Header } from './components/Header.jsx';
 import { Footer } from './components/Footer.jsx';
 import { CartDrawer } from './components/CartDrawer.jsx';
@@ -37,7 +38,7 @@ function AppSwitch() {
     const ref = document.referrer;
     const cameFromApp = ref && ref.includes(window.location.host) && !ref.includes('/storefront');
     if (cameFromApp) window.history.back();
-    else window.location.href = '/b2b';
+    else window.location.href = withVersion('/b2b');
   };
   return (
     <button className="dev-switch" onClick={back} title="Back to the admin app UI">

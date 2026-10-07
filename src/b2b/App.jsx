@@ -20,7 +20,7 @@ import { PriceBoard } from './components/PriceBoard.jsx';
 import { AssignModal } from './components/AssignModal.jsx';
 import { MultiAssignModal } from './components/MultiAssignModal.jsx';
 import { AddCompanyWizard } from './components/AddCompanyWizard.jsx';
-import { versionFlags, activeVersion } from '../shared/versions.js';
+import { versionFlags, withVersion } from '../shared/versions.js';
 import { OrderLimits } from './screens/OrderLimits.jsx';
 import { Agreements } from './screens/Agreements.jsx';
 import { ManualOrders } from './screens/manualOrders/ManualOrders.jsx';
@@ -28,7 +28,6 @@ import { Discounts } from './screens/discounts/Discounts.jsx';
 import { Others } from './screens/others/Others.jsx';
 
 const flags = versionFlags();
-const withV = (path) => (activeVersion() === 'latest' ? path : `${path}?v=${activeVersion()}`);
 
 function CurrentView() {
   const { state } = useStore();
@@ -92,8 +91,8 @@ export function App() {
     {
       title: 'Apps',
       items: [
-        { label: 'Storefront', icon: 'view', url: '#/storefront', onClick: () => { window.location.href = '/storefront'; } },
-        { label: 'O:Request a Quote', icon: 'clipboard', url: '#/rfq-app', onClick: () => { window.location.href = withV('/'); } },
+        { label: 'Storefront', icon: 'view', url: '#/storefront', onClick: () => { window.location.href = withVersion('/storefront'); } },
+        { label: 'O:Request a Quote', icon: 'clipboard', url: '#/rfq-app', onClick: () => { window.location.href = withVersion('/'); } },
         {
           label: 'Wholesale B2B Solution',
           icon: 'store',

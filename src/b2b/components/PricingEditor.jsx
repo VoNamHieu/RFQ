@@ -11,7 +11,7 @@ import { money } from '../format.js';
 import { ActiveDatesCard, ProductScopeCard, VolumeBasisCard, ProductOverridesCard } from './pricingEditorCards.jsx';
 import { PricePreviewDialog } from './PricePreviewDialog.jsx';
 import { AssignmentCard } from './AssignmentCard.jsx';
-import { policyUsageCount, policyUsageDetail, companyBaseEntries, companyQuantityEntries, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, ruleValuesSummary, locationCatalog } from '../pricing.js';
+import { policyUsageCount, policyUsageDetail, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, ruleValuesSummary, locationCatalog } from '../pricing.js';
 
 // Main column + aside side by side once the editor is wide enough (Polaris React
 // InlineGrid columns={{ xs: '1fr', md: '2fr 1fr' }}); two fields side by side
@@ -71,20 +71,20 @@ export function PricingEditor({ asPage = false }) {
       ? (scopeCompany.locations || []).find((l) => l.id === state.editorContext.locationId)
       : null;
   const scopeName = (scopeLoc || scopeCompany)?.name;
-  const usesHere = scopeLoc
-    ? KIND_ORDER.some((k) => slotIds(scopeLoc, k).includes(builder.id))
-    : scopeCompany &&
-      (companyBaseEntries(scopeCompany, state.db.policies).some((e) => e.policy.id === builder.id) ||
-        companyQuantityEntries(scopeCompany, state.db.policies).some((e) => e.policy.id === builder.id));
-  const sharedCount = !isNew ? policyUsageCount({ id: builder.id }, state.db) - (usesHere ? 1 : 0) : 0;
+  // Holders "here": the location, or the company and its locations (from a company
+  // page the pricing can sit on some locations only).
+  const holdsIt = (h) => KIND_ORDER.some((k) => slotIds(h, k).includes(builder.id));
+  const hereCompany = !scopeLoc && scopeCompany && holdsIt(scopeCompany) ? 1 : 0;
+  const hereLocations = scopeLoc ? (holdsIt(scopeLoc) ? 1 : 0) : scopeCompany ? (scopeCompany.locations || []).filter(holdsIt).length : 0;
+  const sharedCount = !isNew ? policyUsageCount({ id: builder.id }, state.db) - hereCompany - hereLocations : 0;
   const sharedElsewhere = !isNew && scopeCompany && sharedCount > 0;
   // Save dialog wording: what else holds it (companies / locations / other), and
   // what "apply to all" covers — "here" is a location or a company.
   const usage = !isNew ? policyUsageDetail({ id: builder.id }, state.db) : null;
   const others = usage
     ? {
-        companies: usage.companies - (usesHere && !scopeLoc ? 1 : 0),
-        locations: usage.locations - (usesHere && scopeLoc ? 1 : 0),
+        companies: usage.companies - hereCompany,
+        locations: usage.locations - hereLocations,
         rest: usage.tags + usage.customers + usage.globals.length,
       }
     : { companies: 0, locations: 0, rest: 0 };
@@ -108,9 +108,10 @@ export function PricingEditor({ asPage = false }) {
         ? 'locations'
         : 'companies';
 
-  // Creating from a company page (2+ locations): which of its locations get it —
-  // all (null) or the picked ones (editorContext.locationIds, seeded from Assign).
-  const showCompanyLocations = isNew && !!scopeCompany && !scopeLoc && (scopeCompany.locations || []).length > 1;
+  // From a company page (2+ locations), creating or editing: which of its locations
+  // get it — all (null) or the picked ones (editorContext.locationIds, seeded from
+  // Assign, or from where an edited pricing sits now).
+  const showCompanyLocations = !!scopeCompany && !scopeLoc && (scopeCompany.locations || []).length > 1;
   const scopeLocationIds = showCompanyLocations ? state.editorContext?.locationIds ?? null : null;
   const noLocationPicked = Array.isArray(scopeLocationIds) && scopeLocationIds.length === 0;
 
@@ -582,8 +583,8 @@ function CatalogPricePreview({ builder, products, targets, onClose }) {
 }
 
 // Settings summary (god-file asideSummary): an at-a-glance recap.
-// "Who this pricing serves" when creating from a company page: which of the
-// company's locations get it (see LocationScopePicker).
+// "Who this pricing serves" from a company page: which of the company's locations
+// get it (see LocationScopePicker).
 function CompanyLocationsCard({ company, locationIds, onChange, footer = null }) {
   return (
     <s-section>

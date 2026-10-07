@@ -9,19 +9,18 @@ import basePricingArt from '../assets/base-pricing-empty.webp';
 
 const PAGE_SIZES = [5, 10, 20, 100];
 
-// Edit / Remove for pricing only some locations get: editing opens it for those
-// locations, removing takes it off those locations only.
+// Edit / Remove for pricing only some locations get: editing opens it with those
+// locations picked under "Who this pricing serves", removing takes it off them only.
 export function LocationOnlyActions({ company, kind, entry }) {
   const { dispatch } = useStore();
   const locs = entry.locations;
-  const one = locs.length === 1 ? locs[0] : null;
   return (
     <s-stack direction="inline" gap="small-400" justifyContent="end" alignItems="center">
       <s-button
         icon="edit"
         variant="tertiary"
         accessibilityLabel="Edit pricing"
-        onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: entry.policy, context: { mode: 'edit', companyId: company.id, ...(one ? { locationId: one.id } : {}) } })}
+        onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: entry.policy, context: { mode: 'edit', companyId: company.id } })}
       />
       <s-button
         icon="x-circle"

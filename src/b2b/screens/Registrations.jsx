@@ -85,7 +85,7 @@ export function Registrations() {
 
   if (all.length === 0) {
     return (
-      <s-page heading="Registrations" inlineSize="large">
+      <s-page heading="Registrations">
         {devTools}
         <s-section>
           {hasForm ? (
@@ -127,7 +127,7 @@ export function Registrations() {
   };
 
   return (
-    <s-page heading="Registrations" inlineSize="large">
+    <s-page heading="Registrations">
       <s-button slot="secondary-actions" onClick={editForm}>
         Edit form
       </s-button>

@@ -441,6 +441,13 @@ body {
   gap: 8px;
 }
 
+/* Unset filter pill: label + disclosure chevron (Polaris FilterPill). */
+.wc-pill-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
 /* ---------- Toast ---------- */
 
 .wc-toast {
@@ -634,6 +641,23 @@ body {
   }
 }
 
+/* ---------- Floating option list (combobox) ---------- */
+/* A native popover in the top layer, positioned from JS under its field. */
+
+.wc-combobox-list {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  border: 0;
+  border-radius: 12px;
+  background: var(--wc-surface);
+  color: var(--wc-text);
+  font: inherit;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
 /* ---------- Small utilities for app-owned wrappers ---------- */
 
 .wc-truncate {
@@ -645,4 +669,73 @@ body {
 
 .wc-nowrap {
   white-space: nowrap;
+}
+
+/* ---------- Table bulk actions (Shopify index-table style) ---------- */
+/* While rows are selected, "N selected" + actions sit in the first text heading
+   (.qs-bulk-bar): zero-width so the column keeps its size, they run over the other
+   headings, which hide meanwhile (.qs-bulk-hidden). As tall as a heading's line
+   (16px) so the row keeps its height; the buttons spill into the cell padding.
+   s-table switches to its list layout (no header row) below 490px wide
+   (window.innerWidth, see polaris.js), so there a copy above the list shows
+   instead (.qs-bulk-list). */
+.qs-bulk-bar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 0;
+  height: 16px;
+  white-space: nowrap;
+}
+.qs-bulk-list {
+  display: none;
+}
+@media (min-width: 490px) {
+  .qs-bulk-hidden {
+    visibility: hidden;
+  }
+}
+@media (max-width: 489px) {
+  .qs-bulk-list {
+    display: block;
+  }
+}
+
+/* ---------- Segmented control ---------- */
+/* Full width, equal halves (s-button-group sizes to its buttons and can't be
+   stretched: its flex row is in its shadow DOM). Looks like its secondary
+   s-press-buttons: white, the pressed one grey and inset. */
+.wc-segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+}
+.wc-segmented__item {
+  min-height: 32px;
+  padding: 6px 12px;
+  background: var(--wc-surface);
+  color: var(--wc-text);
+  font-weight: 550;
+  text-align: center;
+  box-shadow: #b5b5b5 0 -1px 0 0 inset, rgba(0, 0, 0, 0.1) 0 0 0 1px inset, #fff 0 0.5px 0 1.5px inset;
+}
+.wc-segmented__item:first-child {
+  border-radius: var(--wc-radius) 0 0 var(--wc-radius);
+}
+.wc-segmented__item:last-child {
+  border-radius: 0 var(--wc-radius) var(--wc-radius) 0;
+}
+.wc-segmented__item:hover {
+  background: var(--wc-surface-hover);
+}
+.wc-segmented__item[aria-pressed='true'] {
+  background: #ccc;
+  box-shadow: rgba(26, 26, 26, 0.12) -1px 0 1px 0 inset, rgba(26, 26, 26, 0.12) 1px 0 1px 0 inset, rgba(26, 26, 26, 0.2) 0 2px 1px 0 inset;
+}
+.wc-segmented__item:focus-visible {
+  position: relative;
+  outline: 2px solid #005bd3;
+  outline-offset: 1px;
 }

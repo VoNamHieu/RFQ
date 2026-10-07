@@ -1,32 +1,34 @@
 // Version-aware feature flags. The version switcher renders the SAME React app
-// with a different `?v=` (v1..v4 or latest), toggling features — instead of 4
-// separate builds. Flags derived from /versions/manifest.json notes:
-//   - analytics:      app-level Analytics + company Analytics tab (added in Latest)
+// with a different `?v=`, toggling features — instead of separate builds:
+//   - current:  the prototype without Order limits and Agreements. The default
+//               (no ?v=).
+//   - upcoming: everything, Order limits and Agreements included.
+// Screens read features, not versions:
+//   - analytics:      app-level Analytics + company Analytics tab
 //   - priceCrossSync: RFQ "Save prices to B2B" + B2B "Turn into pricing" /
-//                     "Build pricing from closed quotes" (removed in v2)
-//   - multiBase:      multiple base pricings per company w/ priority (v2+); v1 is
-//                     the old single-base + "Default price" 3-tier model
-//   - locationPricing:per-location pricing override (v1 only; inherited elsewhere)
-//   - orderLimits:    Order limits screen + location Order limits card (Latest only)
-//   - agreements:     Agreements screen + company Agreement tab (Latest only)
+//                     "Build pricing from closed quotes"
+//   - multiBase:      multiple base pricings per company w/ priority (off = the
+//                     old single-base + "Default price" 3-tier model)
+//   - locationPricing:per-location pricing override
+//   - orderLimits:    Order limits screen, location Order limits card, held-order
+//                     review, storefront limits (Upcoming only)
+//   - agreements:     Agreements screen, company Agreement tab, storefront
+//                     Agreement card (Upcoming only)
 // crossSyncScope: RFQ "Save quoted prices to B2B" applies at the location the
-// quote came from ('location', Latest/v3) or the whole company ('company', v4).
-// locationPricing: per-location pricing override (Latest/v3/v1); v4 downgraded it
-// to read-only inherited.
+// quote came from ('location') or the whole company ('company').
+export const DEFAULT_VERSION = 'current';
+
 export const VERSION_FLAGS = {
-  latest: { analytics: true, priceCrossSync: true, multiBase: true, locationPricing: true, crossSyncScope: 'location', orderLimits: true, agreements: true },
-  v4: { analytics: true, priceCrossSync: true, multiBase: true, locationPricing: false, crossSyncScope: 'company', orderLimits: false, agreements: false },
-  v3: { analytics: false, priceCrossSync: true, multiBase: true, locationPricing: true, crossSyncScope: 'location', orderLimits: false, agreements: false },
-  v2: { analytics: false, priceCrossSync: false, multiBase: true, locationPricing: false, crossSyncScope: 'company', orderLimits: false, agreements: false },
-  v1: { analytics: false, priceCrossSync: false, multiBase: false, locationPricing: true, crossSyncScope: 'location', orderLimits: false, agreements: false },
+  current: { analytics: true, priceCrossSync: true, multiBase: true, locationPricing: true, crossSyncScope: 'location', orderLimits: false, agreements: false },
+  upcoming: { analytics: true, priceCrossSync: true, multiBase: true, locationPricing: true, crossSyncScope: 'location', orderLimits: true, agreements: true },
 };
 
 export function activeVersion() {
   try {
     const v = new URLSearchParams(window.location.search).get('v');
-    return VERSION_FLAGS[v] ? v : 'latest';
+    return VERSION_FLAGS[v] ? v : DEFAULT_VERSION;
   } catch {
-    return 'latest';
+    return DEFAULT_VERSION;
   }
 }
 
@@ -34,10 +36,13 @@ export function versionFlags() {
   return VERSION_FLAGS[activeVersion()];
 }
 
+// A path in another app of the prototype, keeping the version (the default needs no ?v=).
+export function withVersion(path) {
+  const v = activeVersion();
+  return v === DEFAULT_VERSION ? path : `${path}?v=${v}`;
+}
+
 export const VERSION_LABEL = {
-  latest: 'Latest',
-  v1: 'v1',
-  v2: 'v2',
-  v3: 'v3',
-  v4: 'v4',
+  current: 'Current',
+  upcoming: 'Upcoming',
 };

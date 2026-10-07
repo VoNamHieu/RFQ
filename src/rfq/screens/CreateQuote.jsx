@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import { Modal, useWcId, PageHeader } from '../../shared/wc.jsx';
 import { useStore, handoffCompanyToB2B } from '../store.jsx';
-import { activeVersion } from '../../shared/versions.js';
+import { withVersion } from '../../shared/versions.js';
 import { money, subtotalOf } from '../utils.js';
 import {
   RFQ_CATALOG,
@@ -159,9 +159,7 @@ export function CreateQuote() {
       handoffCompanyToB2B(state, customer.companyKey, customer, { openPricing: true });
       return;
     }
-    const v = activeVersion();
-    const base = v === 'latest' ? '/b2b' : `/b2b?v=${v}`;
-    window.location.href = `${base}#/b2b/pricing`;
+    window.location.href = `${withVersion('/b2b')}#/b2b/pricing`;
   };
 
   const setLines = (next) => dispatch({ type: 'CQ_PATCH', patch: { lines: next } });

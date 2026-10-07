@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useStore } from '../store.jsx';
 import { companyBaseEntries, companyQuantityEntries, companyPricingStatus, companyNeedsPrice } from '../pricing.js';
 import { Modal, IndexFiltersBar, useWcId, wcTone } from '../../shared/wc.jsx';
@@ -25,7 +25,14 @@ export function CompaniesList() {
   const defaults = state.db.defaults;
   const [page, setPage] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  // Row selection (the leading checkbox column) and the ids awaiting bulk-delete confirmation.
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [confirmBulk, setConfirmBulk] = useState(null);
   const tipId = useWcId('company-tip');
+  // A new tab / search shows different rows — don't carry a selection across.
+  useEffect(() => { setSelectedIds([]); }, [state.listFilter, state.companySearch]);
+  // Just added companies are listed first: show the first page.
+  useEffect(() => { setPage(0); }, [state.recentCompanyIds]);
 
   // Pricing held by the company and by any of its locations (a location's own
   // pricing counts too), each listed once.
@@ -60,16 +67,44 @@ export function CompaniesList() {
   };
   list = [...list].sort(by[state.companySortField] || by.name);
   if (state.companySortDir === 'desc') list.reverse();
+  // Companies just added from Shopify come first, in the order they were added.
+  const recent = state.recentCompanyIds || [];
+  if (recent.length) {
+    list = [...recent.map((id) => list.find((c) => c.id === id)).filter(Boolean), ...list.filter((c) => !recent.includes(c.id))];
+  }
 
   const total = list.length;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const current = Math.min(page, pageCount - 1);
   const pageRows = list.slice(current * PAGE_SIZE, current * PAGE_SIZE + PAGE_SIZE);
 
+  // Select all takes every company in the tab / search, across pages.
+  const selected = list.filter((c) => selectedIds.includes(c.id));
+  const allSelected = list.length > 0 && selected.length === list.length;
+  // Checkbox handlers always SET from the checkbox's state (change can fire twice).
+  const selectAll = (on) => setSelectedIds(on ? list.map((c) => c.id) : []);
+  const selectRow = (id, on) =>
+    setSelectedIds((ids) => (on ? (ids.includes(id) ? ids : [...ids, id]) : ids.filter((x) => x !== id)));
+  // Bulk actions, as in Shopify's index tables: while rows are selected the column
+  // headings give way to "N selected" and Delete, so the table doesn't move. In
+  // s-table's list layout (narrow windows) they sit under the filters instead.
+  // See .qs-bulk-bar in wc.css.
+  const bulk = selected.length > 0;
+  const askBulkDelete = () => setConfirmBulk(selected);
+  const heading = (label) => (bulk ? <span className="qs-bulk-hidden">{label}</span> : label);
+  const bulkActions = (
+    <>
+      <s-text fontWeight="semibold">{`${selected.length} selected`}</s-text>
+      <s-button tone="critical" onClick={askBulkDelete}>
+        Delete companies
+      </s-button>
+    </>
+  );
+
   // First-run empty state (no companies at all) — the B2B boundary explainer.
   if (state.db.companies.length === 0) {
     return (
-      <s-page heading="B2B Company" inlineSize="large">
+      <s-page heading="B2B Company">
         <s-section>
           <EmptyBlock
             heading="No companies linked yet"
@@ -87,7 +122,7 @@ export function CompaniesList() {
   const filterIndex = Math.max(0, FILTER_TABS.findIndex((t) => t.id === state.listFilter));
 
   return (
-    <s-page heading="B2B Company" inlineSize="large">
+    <s-page heading="B2B Company">
       <s-button slot="primary-action" variant="primary" onClick={() => dispatch({ type: 'OPEN_ADD_COMPANY' })}>
         Add company
       </s-button>
@@ -117,14 +152,33 @@ export function CompaniesList() {
               const [field, dir] = (val || 'name asc').split(' ');
               dispatch({ type: 'SET_COMPANY_SORT', field, dir });
             }}
-          />
+          >
+            {bulk ? (
+              <div className="qs-bulk-list">
+                <s-stack direction="inline" gap="small-200" alignItems="center">
+                  {bulkActions}
+                </s-stack>
+              </div>
+            ) : null}
+          </IndexFiltersBar>
           <s-table-header-row>
-            <s-table-header listSlot="primary">Company</s-table-header>
-            <s-table-header listSlot="secondary">Pricing status</s-table-header>
-            <s-table-header listSlot="labeled" format="numeric">Locations</s-table-header>
-            <s-table-header listSlot="labeled">Pricing assigned</s-table-header>
-            <s-table-header listSlot="labeled">Main contact</s-table-header>
-            <s-table-header listSlot="inline">Actions</s-table-header>
+            <s-table-header listSlot="inline">
+              <s-checkbox
+                accessibilityLabel={allSelected ? 'Deselect all companies' : 'Select all companies'}
+                checked={allSelected}
+                indeterminate={bulk && !allSelected}
+                disabled={list.length === 0}
+                onChange={(e) => selectAll(e.currentTarget.checked)}
+              />
+            </s-table-header>
+            <s-table-header listSlot="primary">
+              {bulk ? <span className="qs-bulk-bar">{bulkActions}</span> : 'Company'}
+            </s-table-header>
+            <s-table-header listSlot="secondary">{heading('Pricing status')}</s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">{heading('Locations')}</s-table-header>
+            <s-table-header listSlot="labeled">{heading('Pricing assigned')}</s-table-header>
+            <s-table-header listSlot="labeled">{heading('Main contact')}</s-table-header>
+            <s-table-header listSlot="inline">{heading('Actions')}</s-table-header>
           </s-table-header-row>
           <s-table-body>
             {pageRows.map((c) => {
@@ -133,6 +187,13 @@ export function CompaniesList() {
               const linkId = `${tipId}-open-${c.id}`;
               return (
                 <s-table-row key={c.id} clickDelegate={linkId}>
+                  <s-table-cell>
+                    <s-checkbox
+                      accessibilityLabel={`Select ${c.name}`}
+                      checked={selectedIds.includes(c.id)}
+                      onChange={(e) => selectRow(c.id, e.currentTarget.checked)}
+                    />
+                  </s-table-cell>
                   <s-table-cell>
                     <s-link id={linkId} onClick={() => dispatch({ type: 'OPEN_COMPANY', id: c.id })}>
                       {c.name}
@@ -210,6 +271,42 @@ export function CompaniesList() {
             Delete company
           </s-button>
           <s-button slot="secondary-actions" onClick={() => setConfirmDelete(null)}>
+            Cancel
+          </s-button>
+        </Modal>
+      )}
+      {confirmBulk && (
+        <Modal
+          onClose={() => setConfirmBulk(null)}
+          heading={confirmBulk.length === 1 ? `Delete ${confirmBulk[0].name}?` : `Delete ${confirmBulk.length} companies?`}
+        >
+          <s-stack gap="small">
+            <s-paragraph>
+              {confirmBulk.length === 1
+                ? `This removes ${confirmBulk[0].name} from the B2B app. The Shopify company record is not affected.`
+                : 'This removes them from the B2B app. The Shopify company records are not affected.'}
+            </s-paragraph>
+            {confirmBulk.length > 1 ? (
+              <s-unordered-list>
+                {confirmBulk.map((c) => (
+                  <s-list-item key={c.id}>{c.name}</s-list-item>
+                ))}
+              </s-unordered-list>
+            ) : null}
+          </s-stack>
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            tone="critical"
+            onClick={() => {
+              dispatch({ type: 'DELETE_COMPANY', ids: confirmBulk.map((c) => c.id) });
+              setConfirmBulk(null);
+              setSelectedIds([]);
+            }}
+          >
+            {confirmBulk.length === 1 ? 'Delete company' : 'Delete companies'}
+          </s-button>
+          <s-button slot="secondary-actions" onClick={() => setConfirmBulk(null)}>
             Cancel
           </s-button>
         </Modal>
