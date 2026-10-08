@@ -1,8 +1,9 @@
 // Version-aware feature flags. The version switcher renders the SAME React app
 // with a different `?v=`, toggling features — instead of separate builds:
 //   - current:  the prototype without Order limits and Agreements. The default
-//               (no ?v=).
-//   - upcoming: everything, Order limits and Agreements included.
+//               (no ?v=), and the only version on this branch.
+// Upcoming (Order limits and Agreements on) lives on the `upcoming` branch; until it
+// ships, `?v=upcoming` falls back to Current here.
 // Screens read features, not versions:
 //   - analytics:      app-level Analytics + company Analytics tab
 //   - priceCrossSync: RFQ "Save prices to B2B" + B2B "Turn into pricing" /
@@ -20,7 +21,6 @@ export const DEFAULT_VERSION = 'current';
 
 export const VERSION_FLAGS = {
   current: { analytics: true, priceCrossSync: true, multiBase: true, locationPricing: true, crossSyncScope: 'location', orderLimits: false, agreements: false },
-  upcoming: { analytics: true, priceCrossSync: true, multiBase: true, locationPricing: true, crossSyncScope: 'location', orderLimits: true, agreements: true },
 };
 
 export function activeVersion() {
@@ -44,5 +44,4 @@ export function withVersion(path) {
 
 export const VERSION_LABEL = {
   current: 'Current',
-  upcoming: 'Upcoming',
 };
