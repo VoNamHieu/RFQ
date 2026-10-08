@@ -16,7 +16,7 @@ const KINDS = ['base', 'quantity'];
 
 export function nextAgreementNumber(db) {
   const max = (db.agreements || []).reduce((m, a) => Math.max(m, Number(String(a.number).replace(/\D/g, '')) || 0), 300);
-  return `AG-${max + 1}`;
+  return `CT-${max + 1}`;
 }
 
 export function newAgreement(db, company) {
@@ -58,11 +58,17 @@ export function applyAgreement(db, ag) {
     const policy = db.policies.find((p) => p.id === id);
     addPricingToLocations(c, kind, id, policy?.priority, locIds);
   }));
+  // Remember what this adds to each limit, so ending it takes off only that.
+  ag.limitsAdded = {};
   ag.terms.limits.forEach((id) => {
     const l = (db.limits || []).find((x) => x.id === id);
     if (!l) return;
-    if (!locIds) l.companyIds = [...new Set([...(l.companyIds || []), c.id])];
-    else l.locationKeys = [...new Set([...(l.locationKeys || []), ...locIds.map((lid) => limitKey(c.id, lid))])];
+    const added = locIds
+      ? { companyIds: [], locationKeys: locIds.map((lid) => limitKey(c.id, lid)).filter((k) => !(l.locationKeys || []).includes(k)) }
+      : { companyIds: (l.companyIds || []).includes(c.id) ? [] : [c.id], locationKeys: [] };
+    l.companyIds = [...(l.companyIds || []), ...added.companyIds];
+    l.locationKeys = [...(l.locationKeys || []), ...added.locationKeys];
+    ag.limitsAdded[id] = added;
   });
 }
 
@@ -81,12 +87,24 @@ export function unapplyAgreement(db, ag) {
       l.pricing[kind] = (Array.isArray(own) ? own : [{ id: own, priority: 1 }]).filter((e) => ((e && e.id) || e) !== id);
     });
   }));
+  // Only what activating it added: a company or location the limit had before
+  // stays. (An agreement activated before this was tracked takes off all of it.)
   ag.terms.limits.forEach((id) => {
     const l = (db.limits || []).find((x) => x.id === id);
     if (!l) return;
-    if (!locIds) l.companyIds = (l.companyIds || []).filter((x) => x !== c.id);
-    else l.locationKeys = (l.locationKeys || []).filter((k) => !locIds.some((lid) => k === limitKey(c.id, lid)));
+    const added = ag.limitsAdded?.[id] || (locIds ? { companyIds: [], locationKeys: locIds.map((lid) => limitKey(c.id, lid)) } : { companyIds: [c.id], locationKeys: [] });
+    l.companyIds = (l.companyIds || []).filter((x) => !added.companyIds.includes(x));
+    l.locationKeys = (l.locationKeys || []).filter((k) => !added.locationKeys.includes(k));
   });
+}
+
+// The order limits as they'd be after taking `off` off its company and putting
+// `on` on (either can be null) — to check for conflicts before it happens.
+export function limitsAfterAgreement(db, { off = null, on = null }) {
+  const copy = JSON.parse(JSON.stringify({ companies: db.companies, policies: db.policies, limits: db.limits || [] }));
+  if (off) unapplyAgreement(copy, JSON.parse(JSON.stringify(off)));
+  if (on) applyAgreement(copy, JSON.parse(JSON.stringify(on)));
+  return copy.limits;
 }
 
 const nameOf = (list, id) => (list || []).find((x) => x.id === id)?.name || id;

@@ -29,7 +29,7 @@ export function Agreements() {
   const companyOf = (id) => state.db.companies.find((c) => c.id === id);
   // One current agreement per company: only companies without one can get a new one.
   const free = state.db.companies.filter((c) => !currentAgreement(state.db, c.id));
-  const create = { content: 'Create agreement', onAction: () => { setCompanyId(free[0]?.id || ''); setPicking(true); }, disabled: !free.length };
+  const create = { content: 'Create contract', onAction: () => { setCompanyId(free[0]?.id || ''); setPicking(true); }, disabled: !free.length };
   const createButton = (
     <s-button slot="primary-action" variant="primary" disabled={create.disabled} onClick={create.onAction}>
       {create.content}
@@ -51,7 +51,7 @@ export function Agreements() {
               <s-link id={linkId} onClick={() => dispatch({ type: 'OPEN_COMPANY', id: a.companyId, tab: 'agreement' })}>
                 {a.number}
               </s-link>
-              <s-text color="subdued" fontSize="small">{a.name || 'Untitled agreement'}</s-text>
+              <s-text color="subdued" fontSize="small">{a.name || 'Untitled contract'}</s-text>
             </s-stack>
           </s-table-cell>
           <s-table-cell>{company?.name || '—'}</s-table-cell>
@@ -66,12 +66,12 @@ export function Agreements() {
     });
 
   const picker = picking && (
-    <Modal onClose={() => setPicking(false)} heading="Create agreement">
+    <Modal onClose={() => setPicking(false)} heading="Create contract">
       <s-select
         label="Company"
         value={companyId}
         onChange={(e) => setCompanyId(e.currentTarget.value)}
-        details="A company has one current agreement. Companies that already have one aren’t listed."
+        details="A company has one current contract. Companies that already have one aren’t listed."
       >
         {free.map((c) => (
           <s-option key={c.id} value={c.id}>
@@ -95,11 +95,11 @@ export function Agreements() {
 
   if (!all.length) {
     return (
-      <s-page heading="Agreements">
+      <s-page heading="Contracts">
         {createButton}
         <s-section>
-          <EmptyBlock heading="Put each company’s terms in one agreement" action={create.disabled ? undefined : create}>
-            An agreement holds a company’s pricing and order limits. Activating it applies them together, and every change is kept as a version.
+          <EmptyBlock heading="Put each company’s terms in one contract" action={create.disabled ? undefined : create}>
+            A contract holds a company’s pricing and order limits. Activating it applies them together, and every change is kept as a version.
           </EmptyBlock>
         </s-section>
         {picker}
@@ -108,7 +108,7 @@ export function Agreements() {
   }
 
   return (
-    <s-page heading="Agreements">
+    <s-page heading="Contracts">
       {createButton}
       <s-stack gap="base">
         <s-paragraph color="subdued">Each company’s pricing and order limits, applied together.</s-paragraph>
@@ -117,14 +117,14 @@ export function Agreements() {
             <IndexFiltersBar
               slot="filters"
               query={search}
-              queryPlaceholder="Search by agreement or company"
+              queryPlaceholder="Search by contract or company"
               onQueryChange={setSearch}
               tabs={STATUS_TABS.map((t) => ({ id: `ag-${t.id}`, content: t.label }))}
               selected={Math.max(0, STATUS_TABS.findIndex((t) => t.id === status))}
               onSelect={(i) => setStatus(STATUS_TABS[i].id)}
             />
             <s-table-header-row>
-              <s-table-header listSlot="primary">Agreement</s-table-header>
+              <s-table-header listSlot="primary">Contract</s-table-header>
               <s-table-header listSlot="labeled">Company</s-table-header>
               <s-table-header listSlot="labeled">Applies to</s-table-header>
               <s-table-header listSlot="labeled">Terms</s-table-header>
@@ -136,7 +136,7 @@ export function Agreements() {
           {rows.length === 0 ? (
             <s-box padding="base">
               <div style={{ textAlign: 'center' }}>
-                <s-text color="subdued">No agreements match these filters.</s-text>
+                <s-text color="subdued">No contracts match these filters.</s-text>
               </div>
             </s-box>
           ) : null}

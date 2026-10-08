@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
 import { kindOf, scopeLabel } from '../pricing.js';
-import { limitSummary } from '../limits.js';
-import { agreementChanges } from '../agreements.js';
+import { limitSummary, isD2CLimit, newConflicts } from '../limits.js';
+import { LimitConflictList } from './LimitConflictList.jsx';
+import { agreementChanges, limitsAfterAgreement } from '../agreements.js';
 import { PricingCombobox } from './PricingCombobox.jsx';
 import { LocationScopePicker } from './LocationScopePicker.jsx';
 import { Modal, PageHeader } from '../../shared/wc.jsx';
@@ -26,8 +27,9 @@ export function AgreementEditor() {
   const b2b = state.db.policies.filter((p) => p.audienceType !== 'd2c');
   const bases = b2b.filter((p) => kindOf(p) === 'base');
   const quantities = b2b.filter((p) => kindOf(p) === 'quantity');
-  // Store-wide limits already reach every company, so they aren't offered here.
-  const limits = (state.db.limits || []).filter((l) => !l.storeWide);
+  // Store-wide limits already reach every company and D2C ones never reach one, so
+  // they aren't offered here.
+  const limits = (state.db.limits || []).filter((l) => !l.storeWide && !isD2CLimit(l));
 
   const errors = {};
   if (!(draft.name || '').trim()) errors.name = 'Name is required';
@@ -40,13 +42,15 @@ export function AgreementEditor() {
   const goLive = () => (valid ? setConfirm(true) : setTried(true));
   const saveDraft = () => (valid || (draft.name || '').trim() ? dispatch({ type: 'SAVE_AGREEMENT' }) : setTried(true));
   const nextVersion = (saved?.version || 0) + 1;
+  // The order-limit conflicts going live would cause (the live version comes off first).
+  const goLiveConflicts = confirm ? newConflicts(state.db, limitsAfterAgreement(state.db, { off: isActive ? saved : null, on: draft })) : [];
 
   return (
     <>
     <PageHeader
-      heading={saved ? `${draft.number} · ${saved.name}` : `New agreement ${draft.number}`}
+      heading={saved ? `${draft.number} · ${saved.name}` : `New contract ${draft.number}`}
       subtitle={company?.name}
-      backAction={{ content: 'Agreements', onAction: close }}
+      backAction={{ content: 'Contracts', onAction: close }}
       primaryAction={{ content: isActive ? `Save as version ${nextVersion}` : 'Activate', onAction: goLive }}
       secondaryActions={[...(isActive ? [] : [{ content: 'Save draft', onAction: saveDraft }]), { content: 'Cancel', onAction: close }]}
     />
@@ -54,7 +58,7 @@ export function AgreementEditor() {
       <s-stack gap="base">
         <s-section>
           <s-text-field
-            label="Agreement name"
+            label="Contract name"
             required
             value={draft.name}
             onInput={(e) => patch({ name: e.currentTarget.value })}
@@ -138,11 +142,19 @@ export function AgreementEditor() {
 
       {confirm && (
         <Modal onClose={() => setConfirm(false)} heading={isActive ? `Save ${draft.number} as version ${nextVersion}?` : `Activate ${draft.number}?`}>
-          <s-paragraph>
-            {isActive
-              ? `${agreementChanges(saved, draft, state.db)}. ${company?.name} gets the new terms right away.`
-              : `Its pricing and order limits are assigned to ${company?.name} right away.`}
-          </s-paragraph>
+          <s-stack gap="small">
+            <s-paragraph>
+              {isActive
+                ? `${agreementChanges(saved, draft, state.db)}. ${company?.name} gets the new terms right away.`
+                : `Its pricing and order limits are assigned to ${company?.name} right away.`}
+            </s-paragraph>
+            {goLiveConflicts.length ? (
+              <>
+                <s-paragraph>After this, these order limits conflict:</s-paragraph>
+                <LimitConflictList conflicts={goLiveConflicts} />
+              </>
+            ) : null}
+          </s-stack>
           <s-button
             slot="primary-action"
             variant="primary"

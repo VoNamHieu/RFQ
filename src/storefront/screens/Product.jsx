@@ -12,7 +12,7 @@ export function Product() {
   const { state, dispatch } = useStore();
   const product = productBySku(state.currentSku);
   const [variantId, setVariantId] = useState(product?.variants[0]?.id);
-  // A B2B buyer's quantity rule (order limits): start at its minimum, step by its pack size.
+  // The buyer's quantity rule (order limits, B2B or D2C): start at its minimum, step by its pack size.
   const rule = product ? productRuleForSession(product.sku, state.session) : null;
   const step = rule?.increment || 1;
   const startQty = Math.max(rule?.min || 1, step);

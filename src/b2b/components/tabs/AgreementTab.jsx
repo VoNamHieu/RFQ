@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { EmptyBlock } from '../../../shared/EmptyBlock.jsx';
 import { useStore } from '../../store.jsx';
 import { scopeLabel } from '../../pricing.js';
-import { currentAgreement, agreementScopeLabel, agreementTermLines } from '../../agreements.js';
+import { currentAgreement, agreementScopeLabel, agreementTermLines, limitsAfterAgreement } from '../../agreements.js';
+import { newConflicts } from '../../limits.js';
+import { LimitConflictList } from '../LimitConflictList.jsx';
 import { Modal, wcTone } from '../../../shared/wc.jsx';
 
 const STATUS_TONE = { Active: 'success', Draft: undefined, Ended: undefined };
@@ -39,9 +41,11 @@ export function AgreementTab({ company }) {
   const past = (state.db.agreements || []).filter((a) => a.companyId === company.id && a.status === 'Ended');
   const returnTo = { view: 'company', selectedCompany: company.id, companyTab: 'agreement' };
   const edit = () => dispatch({ type: 'OPEN_AGREEMENT_EDITOR', agreementId: ag.id, returnTo });
+  // The order-limit conflicts ending it would leave (its limits can stop covering a clash).
+  const endConflicts = confirmEnd && ag ? newConflicts(state.db, limitsAfterAgreement(state.db, { off: ag })) : [];
 
   const pastCard = past.length ? (
-    <s-section heading="Past agreements">
+    <s-section heading="Past contracts">
       <s-stack gap="small-200">
         {past.map((a) => (
           <Line key={a.id} main={`${a.number} · ${a.name}`} side={`Ended ${fmtDate(a.history?.[0]?.date)} · version ${a.version}`} />
@@ -55,10 +59,10 @@ export function AgreementTab({ company }) {
       <s-stack gap="base">
         <s-section>
           <EmptyBlock
-            heading="No agreement yet"
-            action={{ content: 'Create agreement', onAction: () => dispatch({ type: 'OPEN_AGREEMENT_EDITOR', companyId: company.id, returnTo }) }}
+            heading="No contract yet"
+            action={{ content: 'Create contract', onAction: () => dispatch({ type: 'OPEN_AGREEMENT_EDITOR', companyId: company.id, returnTo }) }}
           >
-            {`Put ${company.name}’s pricing and order limits in one agreement. Activating it applies them together, and every change is kept as a version.`}
+            {`Put ${company.name}’s pricing and order limits in one contract. Activating it applies them together, and every change is kept as a version.`}
           </EmptyBlock>
         </s-section>
         {pastCard}
@@ -77,7 +81,7 @@ export function AgreementTab({ company }) {
           <s-grid gridTemplateColumns="1fr auto" alignItems="start" gap="small">
             <s-stack gap="small-400">
               <s-stack direction="inline" gap="small-200" alignItems="center">
-                <s-heading fontSize="large">{`${ag.number} · ${ag.name || 'Untitled agreement'}`}</s-heading>
+                <s-heading fontSize="large">{`${ag.number} · ${ag.name || 'Untitled contract'}`}</s-heading>
                 <s-badge tone={wcTone(STATUS_TONE[ag.status])}>{ag.status}</s-badge>
               </s-stack>
               <s-paragraph color="subdued">
@@ -89,7 +93,7 @@ export function AgreementTab({ company }) {
             <s-stack direction="inline" gap="small-200">
               {isActive ? (
                 <s-button tone="critical" variant="tertiary" onClick={() => setConfirmEnd(true)}>
-                  End agreement
+                  End contract
                 </s-button>
               ) : (
                 <s-button tone="critical" variant="tertiary" onClick={() => dispatch({ type: 'DELETE_AGREEMENT', id: ag.id })}>
@@ -133,7 +137,15 @@ export function AgreementTab({ company }) {
 
       {confirmEnd && (
         <Modal onClose={() => setConfirmEnd(false)} heading={`End ${ag.number}?`}>
-          <s-paragraph>{`Its pricing and order limits come off ${company.name} right away. Anything assigned outside the agreement stays.`}</s-paragraph>
+          <s-stack gap="small">
+            <s-paragraph>{`Its pricing and order limits come off ${company.name} right away. Anything assigned outside the contract stays.`}</s-paragraph>
+            {endConflicts.length ? (
+              <>
+                <s-paragraph>Without them, these order limits conflict:</s-paragraph>
+                <LimitConflictList conflicts={endConflicts} />
+              </>
+            ) : null}
+          </s-stack>
           <s-button
             slot="primary-action"
             variant="primary"
@@ -143,7 +155,7 @@ export function AgreementTab({ company }) {
               dispatch({ type: 'END_AGREEMENT', id: ag.id });
             }}
           >
-            End agreement
+            End contract
           </s-button>
           <s-button slot="secondary-actions" onClick={() => setConfirmEnd(false)}>
             Cancel

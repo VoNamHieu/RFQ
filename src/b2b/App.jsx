@@ -118,7 +118,7 @@ export function App() {
               : []),
             ...(flags.agreements
               ? [{
-                  label: `Agreements (${(state.db.agreements || []).filter((a) => a.status !== 'Ended').length})`,
+                  label: `Contracts (${(state.db.agreements || []).filter((a) => a.status !== 'Ended').length})`,
                   url: '#/b2b/agreements',
                   matches: state.view === 'agreements',
                   onClick: () => dispatch({ type: 'NAVIGATE', view: 'agreements', patch: { agreementEditor: null } }),

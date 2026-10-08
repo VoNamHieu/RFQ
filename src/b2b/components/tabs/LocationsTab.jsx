@@ -69,9 +69,7 @@ export function LocationsTab({ company }) {
           )}
         </s-table-cell>
         <s-table-cell>{buyers}</s-table-cell>
-        <s-table-cell>
-          <s-badge tone={l.status === 'Deleted' ? 'critical' : 'success'}>{l.status || 'Active'}</s-badge>
-        </s-table-cell>
+        <s-table-cell>{l.status === 'Deleted' ? <s-badge tone="critical">Deleted</s-badge> : null}</s-table-cell>
       </s-table-row>
     );
   });
