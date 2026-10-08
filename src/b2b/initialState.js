@@ -26,6 +26,7 @@ export function makeBaseState() {
     companySearch: '',
     companySortField: 'name', // name | locations | status
     companySortDir: 'asc', // asc | desc
+    recentCompanyIds: [], // just added from Shopify — listed first until a sort is picked
     // Base pricing pagination (spec §5.1)
     basePricingSearch: '',
     basePage: 1,

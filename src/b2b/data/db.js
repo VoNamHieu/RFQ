@@ -33,7 +33,10 @@ const companies = [
       { id: 'l1', name: 'Hanoi', ordering: 'Buys directly', terms: 'Net 30', lastOrder: '2026-07-15', buyers: 2,
         pricing: { base: [{ id: 'p1', priority: 1 }, { id: 'p30', priority: 5 }, { id: 'p8', priority: 2 }, { id: 'p20', priority: 3 }, { id: 'p21', priority: 4 }, { id: 'p22', priority: 5 }, { id: 'p23', priority: 6 }, { id: 'p24', priority: 7 }, { id: 'p25', priority: 8 }, { id: 'p26', priority: 9 }, { id: 'p27', priority: 10 }, { id: 'p28', priority: 11 }, { id: 'p29', priority: 12 }, { id: 'p31', priority: 1 }], quantity: null } },
       // `catalog`: the collection its buyers can buy from (none = every product).
-      { id: 'l2', name: 'Bac Ninh site', ordering: 'You approve first', terms: 'Due on receipt', lastOrder: '2026-06-28', buyers: 1, catalog: 'Contractor assortment' }
+      { id: 'l2', name: 'Bac Ninh site', ordering: 'You approve first', terms: 'Due on receipt', lastOrder: '2026-06-28', buyers: 1, catalog: 'Contractor assortment' },
+      // Demo: deleted in Shopify (so not in the Shopify directory) — the app keeps the
+      // record, marked Deleted, until the merchant deletes it here too.
+      { id: 'l7', name: 'Hai Duong depot', status: 'Deleted', ordering: 'Buys directly', terms: 'Net 30', lastOrder: '2026-03-04', buyers: 0 }
     ],
     contacts: [
       { name: 'John Nguyen', email: 'john@abcconstruction.com', role: 'Location admin', access: 'Buys directly', locations: 'Hanoi' },

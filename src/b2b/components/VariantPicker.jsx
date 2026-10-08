@@ -7,7 +7,9 @@ import { productVariants } from '../pricing.js';
 // table layout (pricingEditorCards.jsx): a [checkbox] · Product (thumbnail + name)
 // · Price grid, products with 2+ variants COLLAPSIBLE via a caret into indented
 // variant sub-rows on a secondary background. Selection is committed on Add; mount
-// it only while open so it resets from `initialSelected` each time.
+// it only while open so it resets from `initialSelected` each time. `heading` and
+// `actionLabel(count)` let other flows reuse it (quantity pricing: Select products).
+const addLabel = (count) => (count ? `Add ${count} variant${count === 1 ? '' : 's'}` : 'Done');
 const PICK_GRID = { display: 'grid', gridTemplateColumns: 'auto minmax(140px, 1fr) 92px', gap: 12, alignItems: 'center' };
 const THUMB = { width: 32, height: 32, borderRadius: 6, background: 'var(--p-color-bg-surface-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' };
 const CARET = { all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', flex: '0 0 auto', width: 20 };
@@ -21,7 +23,7 @@ const SORT_OPTIONS = [
   { label: 'Price: high to low', value: 'price-desc' },
 ];
 
-export function VariantPicker({ products, initialSelected, onCancel, onAdd }) {
+export function VariantPicker({ products, initialSelected, onCancel, onAdd, heading = 'Add products', actionLabel = addLabel }) {
   const [selected, setSelected] = useState(() => new Set(initialSelected));
   const [expanded, setExpanded] = useState(() => new Set());
   const [query, setQuery] = useState('');
@@ -80,7 +82,7 @@ export function VariantPicker({ products, initialSelected, onCancel, onAdd }) {
   const count = selected.size;
 
   return (
-    <Modal onClose={onCancel} heading="Add products" padding="none">
+    <Modal onClose={onCancel} heading={heading} padding="none">
       <s-box padding="base">
         <s-grid gridTemplateColumns="minmax(0, 1fr) 210px" gap="small-200" alignItems="center">
           <s-search-field
@@ -232,7 +234,7 @@ export function VariantPicker({ products, initialSelected, onCancel, onAdd }) {
         )}
       </div>
       <s-button slot="primary-action" variant="primary" onClick={() => onAdd(selected)}>
-        {count ? `Add ${count} variant${count === 1 ? '' : 's'}` : 'Done'}
+        {actionLabel(count)}
       </s-button>
       <s-button slot="secondary-actions" onClick={onCancel}>
         Cancel

@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { AdminFrame } from '../shared/AdminFrame.jsx';
 import { Toast } from '../shared/wc.jsx';
-import { activeVersion } from '../shared/versions.js';
+import { withVersion } from '../shared/versions.js';
 import { useStore } from './store.jsx';
 
-const withV = (path) => (activeVersion() === 'latest' ? path : `${path}?v=${activeVersion()}`);
 import { SubmissionList } from './screens/SubmissionList.jsx';
 import { QuoteDetail } from './screens/QuoteDetail.jsx';
 import { CreateQuote } from './screens/CreateQuote.jsx';
@@ -62,7 +61,7 @@ export function App() {
     {
       title: 'Apps',
       items: [
-        { label: 'Storefront', icon: 'view', url: '#/storefront', onClick: () => { window.location.href = '/storefront'; } },
+        { label: 'Storefront', icon: 'view', url: '#/storefront', onClick: () => { window.location.href = withVersion('/storefront'); } },
         {
           label: 'O:Request a Quote',
           icon: 'clipboard',
@@ -94,7 +93,7 @@ export function App() {
             { label: moreOpen ? 'View less' : 'View more', url: '#/rfq/view-more', matches: false, onClick: () => setMoreOpen((v) => !v) },
           ],
         },
-        { label: 'Wholesale B2B Solution', icon: 'store', onClick: () => { window.location.href = withV('/b2b'); } },
+        { label: 'Wholesale B2B Solution', icon: 'store', onClick: () => { window.location.href = withVersion('/b2b'); } },
       ],
     },
   ];

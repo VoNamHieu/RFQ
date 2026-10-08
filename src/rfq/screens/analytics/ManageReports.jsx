@@ -158,72 +158,75 @@ export function ManageReports({ reports, setReports, onBack, onCreate, onOpenRep
                 setSearch(v);
                 resetPaging();
               }}
-            >
-              {/* Shortcut FilterPill "Created date": once applied it shows the applied label
-                ("Created time: …") with a remove button; "Clear all" only appears when a
-                filter (not the search) is applied. */}
-              <s-stack direction="inline" gap="small-200" alignItems="center">
-                <s-clickable-chip
-                  commandFor={filterPopId}
-                  removable={hasDateFilter}
-                  accessibilityLabel={hasDateFilter ? createdDateFilterLabel(dateFrom, dateTo) : R.dateRangeLabel}
-                  onRemove={() => {
-                    setDateFrom('');
-                    setDateTo('');
-                    resetPaging();
-                  }}
-                >
-                  {hasDateFilter ? createdDateFilterLabel(dateFrom, dateTo) : R.dateRangeLabel}
-                </s-clickable-chip>
-                <s-popover id={filterPopId}>
-                  <s-box padding="base" minInlineSize="260px">
-                    <s-stack gap="small">
-                      <s-date-field
-                        label={R.starting}
-                        value={dateFrom}
-                        onInput={(e) => {
-                          setDateFrom(e.currentTarget.value || '');
-                          resetPaging();
-                        }}
-                        onChange={(e) => {
-                          setDateFrom(e.currentTarget.value || '');
-                          resetPaging();
-                        }}
-                      />
-                      <s-date-field
-                        label={R.ending}
-                        value={dateTo}
-                        onInput={(e) => {
-                          setDateTo(e.currentTarget.value || '');
-                          resetPaging();
-                        }}
-                        onChange={(e) => {
-                          setDateTo(e.currentTarget.value || '');
-                          resetPaging();
-                        }}
-                      />
-                      <div>
-                        <s-button
-                          variant="tertiary"
-                          disabled={!hasDateFilter}
-                          onClick={() => {
-                            setDateFrom('');
-                            setDateTo('');
+              filtersApplied={hasDateFilter}
+              filterControls={
+                <>
+                  {/* Shortcut FilterPill "Created date": once applied it shows the applied label
+                    ("Created time: …") with a remove button; "Clear all" only appears when a
+                    filter (not the search) is applied. */}
+                  <s-clickable-chip
+                    commandFor={filterPopId}
+                    removable={hasDateFilter}
+                    accessibilityLabel={hasDateFilter ? createdDateFilterLabel(dateFrom, dateTo) : R.dateRangeLabel}
+                    onRemove={() => {
+                      setDateFrom('');
+                      setDateTo('');
+                      resetPaging();
+                    }}
+                  >
+                    {hasDateFilter ? createdDateFilterLabel(dateFrom, dateTo) : R.dateRangeLabel}
+                  </s-clickable-chip>
+                  <s-popover id={filterPopId}>
+                    <s-box padding="base" minInlineSize="260px">
+                      <s-stack gap="small">
+                        <s-date-field
+                          label={R.starting}
+                          value={dateFrom}
+                          onInput={(e) => {
+                            setDateFrom(e.currentTarget.value || '');
                             resetPaging();
                           }}
-                        >
-                          {R.clear}
-                        </s-button>
-                      </div>
-                    </s-stack>
-                  </s-box>
-                </s-popover>
-                {hasDateFilter ? (
-                  <s-button variant="tertiary" onClick={clearAllFilters}>
-                    Clear all
-                  </s-button>
-                ) : null}
-              </s-stack>
+                          onChange={(e) => {
+                            setDateFrom(e.currentTarget.value || '');
+                            resetPaging();
+                          }}
+                        />
+                        <s-date-field
+                          label={R.ending}
+                          value={dateTo}
+                          onInput={(e) => {
+                            setDateTo(e.currentTarget.value || '');
+                            resetPaging();
+                          }}
+                          onChange={(e) => {
+                            setDateTo(e.currentTarget.value || '');
+                            resetPaging();
+                          }}
+                        />
+                        <div>
+                          <s-button
+                            variant="tertiary"
+                            disabled={!hasDateFilter}
+                            onClick={() => {
+                              setDateFrom('');
+                              setDateTo('');
+                              resetPaging();
+                            }}
+                          >
+                            {R.clear}
+                          </s-button>
+                        </div>
+                      </s-stack>
+                    </s-box>
+                  </s-popover>
+                  {hasDateFilter ? (
+                    <s-button variant="tertiary" onClick={clearAllFilters}>
+                      Clear all
+                    </s-button>
+                  ) : null}
+                </>
+              }
+            >
               {/* BulkActions: "{n} selected" + the promoted "Delete" (a plain secondary button). */}
               {selectedOnPage.length > 0 ? (
                 <s-stack direction="inline" gap="small-200" alignItems="center">

@@ -68,8 +68,10 @@ function InlineCheckList({ items, selected, onSet, searchable, placeholder, empt
 // The "Select companies" modal: a searchable list of Shopify companies, each with
 // a checkbox, avatar, primary contact + email, and location / contact counts. A
 // ticked company with 2+ locations lists them underneath (all ticked) so the
-// pricing can go to only some; ticking every location is the whole company.
-export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompany, onToggleLocation, onClose }) {
+// pricing can go to only some; ticking every location is the whole company. With
+// `onApplyLaterChange`, a company picked on every location shows a checkbox for
+// whether locations added later get it too (`applyLater`).
+export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompany, onToggleLocation, onClose, applyLater = true, onApplyLaterChange }) {
   const [q, setQ] = useState('');
   const query = q.trim().toLowerCase();
   const shown = query ? companies.filter((c) => `${c.name} ${c.contact} ${c.email}`.toLowerCase().includes(query)) : companies;
@@ -146,6 +148,17 @@ export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompan
             })
           )}
         </s-stack>
+        {onApplyLaterChange && companies.some((c) => c.locs.length && tickedOf(c).length === c.locs.length) && (
+          <>
+            <s-divider />
+            <s-checkbox
+              label="Automatically apply this pricing to locations added later"
+              details="This only applies to companies with “Automatically add new locations” turned on."
+              checked={applyLater}
+              onChange={(e) => onApplyLaterChange(e.currentTarget.checked)}
+            />
+          </>
+        )}
       </s-stack>
       <s-button slot="primary-action" variant="primary" onClick={onClose}>
         Done
@@ -227,38 +240,38 @@ export function AssignmentCard({ builder, patch, db, isNew, footer = null }) {
     ({ companyIds, locationKeys }) => patch({ b2bCompanyIds: companyIds, b2bLocationKeys: locationKeys }),
   );
 
-  // Segmented audience switch (s-button-group sizes to its buttons, so it is no
-  // longer full width). A press button flips itself on click, so the picked side
-  // is forced back to pressed.
+  // Segmented audience switch, full width with equal halves (see .wc-segmented).
   const side = (value, label) => (
-    <s-press-button
-      slot="secondary-actions"
-      pressed={audience === value}
-      onClick={(e) => {
-        e.currentTarget.pressed = true;
-        setSide(value);
-      }}
-    >
+    <button type="button" className="wc-plain-button wc-segmented__item" aria-pressed={audience === value} onClick={() => setSide(value)}>
       {label}
-    </s-press-button>
+    </button>
   );
 
   return (
     <s-section heading="Who this pricing serves">
       <s-stack gap="small">
-        <s-button-group gap="none" accessibilityLabel="Who this pricing serves">
+        <div className="wc-segmented" role="group" aria-label="Who this pricing serves">
           {side('b2b', 'Company-based B2B')}
           {side('d2c', 'D2C Wholesale')}
-        </s-button-group>
+        </div>
 
         {audience === 'b2b' ? (
           <s-stack gap="small-200">
             <s-text color="subdued" fontSize="small">
               Only B2B companies get this pricing. Customers outside a company keep your Shopify prices.
             </s-text>
-            <s-button icon="search" inlineSize="fill" onClick={() => setCompanyModal(true)}>
-              Search companies
-            </s-button>
+            {/* Opens on click / Enter, not on focus: closing the modal hands focus
+                back to this field, which would reopen it. */}
+            <s-search-field
+              label="Search companies"
+              labelAccessibilityVisibility="exclusive"
+              placeholder="Search companies"
+              value=""
+              onClick={() => setCompanyModal(true)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') setCompanyModal(true);
+              }}
+            />
             {selectedCompanies.length ? (
               <s-stack direction="inline" gap="small-300">
                 {selectedCompanies.map((c) => (
@@ -329,6 +342,8 @@ export function AssignmentCard({ builder, patch, db, isNew, footer = null }) {
         onToggleCompany={toggleCompany}
         onToggleLocation={toggleLocation}
         onClose={() => setCompanyModal(false)}
+        applyLater={builder.b2bApplyLater === true}
+        onApplyLaterChange={(on) => patch({ b2bApplyLater: on })}
       />
     </s-section>
   );

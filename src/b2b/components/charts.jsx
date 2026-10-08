@@ -166,7 +166,8 @@ export function RankBars({ rows, empty = 'No data in this filter.' }) {
               {r.sub ? <s-paragraph fontSize="small" color="subdued" lineClamp={1}>{r.sub}</s-paragraph> : null}
             </div>
             <div style={{ flex: '1 1 34%', height: 10, borderRadius: 5, background: TRACK, overflow: 'hidden' }}>
-              <div style={{ width: `${Math.max(2, width)}%`, height: '100%', background: BRAND, borderRadius: 5 }} />
+              {/* A sliver keeps small values visible; zero stays an empty track. */}
+              <div style={{ width: `${width > 0 ? Math.max(2, width) : 0}%`, height: '100%', background: BRAND, borderRadius: 5 }} />
             </div>
             <div style={{ flex: '0 0 auto', textAlign: 'right', minWidth: 92 }}>
               <s-text fontSize="small" fontWeight="semibold">{r.valueLabel}</s-text>

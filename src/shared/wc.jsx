@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useLayoutEffect, useRef } from 'react';
+import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
 // Small React helpers around Polaris web components (s-*) for the cases the
 // components don't cover declaratively: a modal driven by React state, ids for
@@ -166,11 +166,23 @@ export function Tabs({ tabs, selected, onSelect, flush = false }) {
   );
 }
 
-// The search / view tabs / sort bar that sits in an s-table's `filters` slot
-// (Polaris React IndexFilters). Pass `slot="filters"` when it is a direct child
-// of s-table. Extra filter controls (s-select …) go in `children`.
+// Polaris React IndexFilters for an s-table's `filters` slot (pass slot="filters"
+// when it is a direct child of s-table). Like IndexFilters it has two modes:
+//   default   — view tabs, a search-and-filter button and the sort button;
+//   filtering — the search field with Cancel, plus the filter row.
+// Filters are shortcut pills by default, like Polaris FilterPill: "Status ⌄"
+// until set, "Status: Active ×" once set; either opens a popover with the
+// choices and Clear. Filters with `shortcut: false` sit behind "Add filter +".
+// It opens in filtering mode when a search or filter is already applied.
 //   tabs: [{ id, content }] | strings, selected: index, onSelect(index)
 //   sortOptions: [{ label, value, directionLabel }], sortSelected: value, onSort(value)
+//   filters: [{ key, label, choices: [{ label, value }], value, defaultValue, shortcut }]
+//            — applied while value !== defaultValue; the defaultValue choice
+//              (e.g. "All types") isn't listed, Clear / × go back to it
+//   onFilterChange(key, value), onClearAll(), onCancel() (default: clear the search)
+//   filterControls — custom filter pills (e.g. a date range) for the filter row;
+//                    filtersApplied — true while one of them is in use
+// `children` (bulk actions) render under the bar in both modes.
 export function IndexFiltersBar({
   slot,
   query = '',
@@ -182,45 +194,186 @@ export function IndexFiltersBar({
   sortOptions,
   sortSelected,
   onSort,
+  filters = [],
+  onFilterChange,
+  onClearAll,
+  onCancel,
+  filterControls,
+  filtersApplied = false,
   children,
 }) {
-  const sortId = useWcId('sort');
+  const id = useWcId('filters');
+  const sortId = `${id}-sort`;
+  const addId = `${id}-add`;
   const hasSort = sortOptions && sortOptions.length > 0;
+  const applied = filters.filter((f) => f.value !== f.defaultValue);
+  const [filtering, setFiltering] = useState(() => !!query || applied.length > 0 || filtersApplied);
+  const hasFilters = filters.length > 0 || !!filterControls;
+  // The "Add filter" popover first lists the filters, then the picked one's choices.
+  const [adding, setAdding] = useState(null);
+  const searchRef = useRef(null);
+
+  useEffect(() => {
+    if (filtering) searchRef.current?.focus?.();
+  }, [filtering]);
+
+  const choiceLabel = (f, v) => f.choices.find((c) => c.value === v)?.label ?? v;
+
+  const sortButton = hasSort ? (
+    <>
+      <s-button icon="sort" commandFor={sortId} accessibilityLabel="Sort the results" />
+      <s-popover id={sortId}>
+        <s-box padding="small">
+          <s-choice-list
+            label="Sort by"
+            name={sortId}
+            onChange={(e) => {
+              const next = e.currentTarget.values?.[0];
+              if (next && next !== sortSelected) onSort?.(next);
+            }}
+          >
+            {sortOptions.map((o) => (
+              <s-choice key={o.value} value={o.value} selected={o.value === sortSelected}>
+                {o.directionLabel ? `${o.label} · ${o.directionLabel}` : o.label}
+              </s-choice>
+            ))}
+          </s-choice-list>
+        </s-box>
+      </s-popover>
+    </>
+  ) : null;
+
+  // A filter's popover: its choices (without the "all" default) and Clear.
+  const filterPopover = (f, popoverId) => (
+    <s-popover id={popoverId} onHide={() => setAdding(null)}>
+      <s-box padding="small">
+        <s-stack gap="small-200">
+          <s-choice-list
+            label={f.label}
+            labelAccessibilityVisibility="exclusive"
+            name={`${popoverId}-${f.key}`}
+            onChange={(e) => {
+              const next = e.currentTarget.values?.[0];
+              if (next == null || next === f.value) return;
+              onFilterChange?.(f.key, next);
+              setAdding(null);
+            }}
+          >
+            {f.choices
+              .filter((c) => c.value !== f.defaultValue)
+              .map((c) => (
+                <s-choice key={c.value} value={c.value} selected={c.value === f.value}>
+                  {c.label}
+                </s-choice>
+              ))}
+          </s-choice-list>
+          <div>
+            <s-button
+              variant="tertiary"
+              disabled={f.value === f.defaultValue}
+              onClick={() => onFilterChange?.(f.key, f.defaultValue)}
+            >
+              Clear
+            </s-button>
+          </div>
+        </s-stack>
+      </s-box>
+    </s-popover>
+  );
+
+  // Non-shortcut filters that aren't applied yet go in the "Add filter" menu.
+  const addable = filters.filter((f) => f.shortcut === false && f.value === f.defaultValue && adding !== f.key);
+
   return (
     <div slot={slot} className="wc-index-filters">
-      {tabs && tabs.length > 0 ? <Tabs tabs={tabs} selected={selected} onSelect={onSelect} flush /> : null}
-      <s-grid gridTemplateColumns={hasSort ? '1fr auto' : '1fr'} gap="small-200" alignItems="center">
-        <s-search-field
-          label="Search"
-          labelAccessibilityVisibility="exclusive"
-          placeholder={queryPlaceholder}
-          value={query}
-          onInput={(e) => onQueryChange?.(e.currentTarget.value)}
-        />
-        {hasSort ? (
-          <>
-            <s-button icon="sort" commandFor={sortId} accessibilityLabel="Sort" />
-            <s-popover id={sortId}>
-              <s-box padding="small">
-                <s-choice-list
-                  label="Sort by"
-                  name={sortId}
-                  onChange={(e) => {
-                    const next = e.currentTarget.values?.[0];
-                    if (next && next !== sortSelected) onSort?.(next);
-                  }}
-                >
-                  {sortOptions.map((o) => (
-                    <s-choice key={o.value} value={o.value} selected={o.value === sortSelected}>
-                      {o.directionLabel ? `${o.label} · ${o.directionLabel}` : o.label}
-                    </s-choice>
-                  ))}
-                </s-choice-list>
-              </s-box>
-            </s-popover>
-          </>
-        ) : null}
-      </s-grid>
+      {filtering ? (
+        <s-grid gridTemplateColumns={hasSort ? '1fr auto auto' : '1fr auto'} gap="small-200" alignItems="center">
+          <s-search-field
+            ref={searchRef}
+            label="Search"
+            labelAccessibilityVisibility="exclusive"
+            placeholder={queryPlaceholder}
+            value={query}
+            onInput={(e) => onQueryChange?.(e.currentTarget.value)}
+          />
+          <s-button
+            variant="tertiary"
+            onClick={() => {
+              if (onCancel) onCancel();
+              else onQueryChange?.('');
+              setFiltering(false);
+            }}
+          >
+            Cancel
+          </s-button>
+          {sortButton}
+        </s-grid>
+      ) : (
+        <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
+          {tabs && tabs.length > 0 ? <Tabs tabs={tabs} selected={selected} onSelect={onSelect} flush /> : <span />}
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            <s-button accessibilityLabel="Search and filter results" onClick={() => setFiltering(true)}>
+              <s-icon type="search" />
+              {hasFilters ? <s-icon type="filter" /> : null}
+            </s-button>
+            {sortButton}
+          </s-stack>
+        </s-grid>
+      )}
+
+      {hasFilters && (filtering || applied.length > 0 || filtersApplied) ? (
+        <s-stack direction="inline" gap="small-200" alignItems="center">
+          {filterControls}
+          {filters.map((f) => {
+            const isApplied = f.value !== f.defaultValue;
+            // A non-shortcut filter only shows once applied (or while being added).
+            if (f.shortcut === false && !isApplied && adding !== f.key) return null;
+            const pillId = `${id}-pill-${f.key}`;
+            return (
+              <React.Fragment key={f.key}>
+                {isApplied ? (
+                  <s-clickable-chip
+                    commandFor={pillId}
+                    removable
+                    accessibilityLabel={`${f.label}: ${choiceLabel(f, f.value)}`}
+                    onRemove={() => onFilterChange?.(f.key, f.defaultValue)}
+                  >
+                    {`${f.label}: ${choiceLabel(f, f.value)}`}
+                  </s-clickable-chip>
+                ) : (
+                  <s-clickable-chip commandFor={pillId} accessibilityLabel={f.label}>
+                    <span className="wc-pill-label">
+                      {f.label}
+                      <s-icon type="chevron-down" size="small" />
+                    </span>
+                  </s-clickable-chip>
+                )}
+                {filterPopover(f, pillId)}
+              </React.Fragment>
+            );
+          })}
+          {addable.length > 0 ? (
+            <>
+              <s-button variant="tertiary" icon="plus" commandFor={addId}>
+                Add filter
+              </s-button>
+              <s-menu id={addId} accessibilityLabel="Add filter">
+                {addable.map((f) => (
+                  <s-button key={f.key} onClick={() => setAdding(f.key)}>
+                    {f.label}
+                  </s-button>
+                ))}
+              </s-menu>
+            </>
+          ) : null}
+          {applied.length > 0 && onClearAll ? (
+            <s-button variant="tertiary" onClick={onClearAll}>
+              Clear all
+            </s-button>
+          ) : null}
+        </s-stack>
+      ) : null}
+
       {children}
     </div>
   );

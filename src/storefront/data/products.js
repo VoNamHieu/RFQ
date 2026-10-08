@@ -5,6 +5,7 @@
 // SKU, or the handle when the store has none. `list` is the D2C price.
 import storeCatalog from './shopifyProducts.json';
 import { newLimit, productRuleFor, cartProblems, limitLevel, limitSummary } from '../../b2b/limits.js';
+import { versionFlags } from '../../shared/versions.js';
 import { money } from '../utils.js';
 
 // A soft, always-rendering placeholder image per product (Dawn ships gray
@@ -75,12 +76,14 @@ const STORE_LIMITS = {
   ],
 };
 
-// Order limits only reach buyers signed in to a company location.
+// Order limits only reach buyers signed in to a company location — and only in
+// the version that has them (Upcoming).
 const atLocation = (session) => !!(session?.companyKey && session.locationId);
+const limitsReach = (session) => versionFlags().orderLimits && atLocation(session);
 
 // The quantity rule on a product for the signed-in buyer, or null.
 export function productRuleForSession(sku, session) {
-  return atLocation(session) ? productRuleFor(STORE_LIMITS, session.companyKey, session.locationId, sku) : null;
+  return limitsReach(session) ? productRuleFor(STORE_LIMITS, session.companyKey, session.locationId, sku) : null;
 }
 
 // ── Agreement ───────────────────────────────────────────────────────────────
@@ -90,7 +93,7 @@ export function productRuleForSession(sku, session) {
 const STORE_AGREEMENT = { number: 'AG-412', name: '2026 trade terms', version: 2, since: 'Jan 5, 2026' };
 
 export function agreementForSession(session) {
-  if (!atLocation(session)) return null;
+  if (!versionFlags().agreements || !atLocation(session)) return null;
   const list = B2B_PRICE_LISTS[session.companyKey];
   const limits = STORE_LIMITS.limits.filter((l) => l.status === 'Active' && ['company', 'location'].includes(limitLevel(l, session.companyKey, session.locationId)));
   return {
@@ -103,7 +106,7 @@ export function agreementForSession(session) {
 
 // What's wrong with the cart for the signed-in buyer (see cartProblems).
 export function cartProblemsForSession(lines, subtotal, session) {
-  return atLocation(session) ? cartProblems(STORE_LIMITS, session.companyKey, session.locationId, lines, subtotal) : [];
+  return limitsReach(session) ? cartProblems(STORE_LIMITS, session.companyKey, session.locationId, lines, subtotal) : [];
 }
 
 // ── Demo accounts ────────────────────────────────────────────────────────────

@@ -9,7 +9,7 @@ import { CustomItemModal } from '../components/CustomItemModal.jsx';
 import { ProductPickerModal } from '../components/ProductPickerModal.jsx';
 import { SaveToB2B } from '../components/SaveToB2B.jsx';
 import { B2BRelationshipCard, SyncFlowModals, CreateCompanyModal, CompanyCreatedModal } from '../components/B2BRelationship.jsx';
-import { versionFlags, activeVersion } from '../../shared/versions.js';
+import { versionFlags, withVersion } from '../../shared/versions.js';
 import { useWcId, PageHeader } from '../../shared/wc.jsx';
 
 // Whole-store products, normalized for the shared ProductPickerModal (list price).
@@ -121,9 +121,7 @@ function ProductsCard({ quote, lines, setLines, dispatch, showSavePrices, onSave
       handoffCompanyToB2B(state, customer.companyKey, customer, { openPricing: true });
       return;
     }
-    const v = activeVersion();
-    const base = v === 'latest' ? '/b2b' : `/b2b?v=${v}`;
-    window.location.href = `${base}#/b2b/pricing`;
+    window.location.href = `${withVersion('/b2b')}#/b2b/pricing`;
   };
 
   // Apply a picker result: drop unticked lines, then apply picks. An override replaces a

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import { quoteRecords, DEFAULT_QUOTE_ID } from './data/quotes.js';
 import { submissionMeta, SUBMISSION_ORDER, DEFAULT_SUBMISSION_TAB } from './data/submissions.js';
 import { shopifyCompanyDirectory } from './data/companies.js';
-import { activeVersion } from '../shared/versions.js';
+import { withVersion } from '../shared/versions.js';
 import { DEMO_STATE_KEY, HANDOFF_KEY, readJSON, writeJSON } from '../shared/persistence.js';
 
 // The RFQ app was one page toggling `.hidden` on `.app-shell` divs (spec §1/§4).
@@ -191,8 +191,7 @@ export function handoffToB2B(state, quoteId, { pricingTransfer = null, lines = n
   writeJSON(HANDOFF_KEY, payload);
   // Keep the shared demo state fresh so B2B can also rebuild the company on load.
   writeJSON(DEMO_STATE_KEY, serializeDemoState(state));
-  const v = activeVersion();
-  const target = v === 'latest' ? '/b2b' : `/b2b?v=${v}`;
+  const target = withVersion('/b2b');
   try {
     window.location.href = target;
   } catch {
@@ -220,8 +219,7 @@ export function handoffCompanyToB2B(state, companyKey, customer = null, { openPr
   if (!payload.name) return;
   writeJSON(HANDOFF_KEY, payload);
   writeJSON(DEMO_STATE_KEY, serializeDemoState(state));
-  const v = activeVersion();
-  const target = v === 'latest' ? '/b2b' : `/b2b?v=${v}`;
+  const target = withVersion('/b2b');
   try {
     window.location.href = target;
   } catch {

@@ -176,7 +176,7 @@ function EditorStep({ toast, onBack, isNew = false, title: pageTitle = 'Create B
   });
   const setA = (k) => (v) => setAppr((p) => ({ ...p, [k]: v }));
   // Publish form — where the form goes, and each place's progress
-  // (create: 'none' → 'live' on save; product / account: 'none' → 'waiting' → 'live').
+  // (create: 'none' → 'live' on save; product / account: 'none' → 'live' via Add button).
   const [places, setPlaces] = useState(['create']); // any of 'create' | 'product' | 'account'
   const [status, setStatus] = useState({ create: 'none', product: 'none', account: 'none' });
   // How the form shows on product pages: in a modal, or as a link to a page.
@@ -200,7 +200,7 @@ function EditorStep({ toast, onBack, isNew = false, title: pageTitle = 'Create B
   // compares it with the last saved copy; what is only being LOOKED at (tab,
   // expanded field, preview surface, full-screen preview) stays out — moving
   // around the editor is not an edit. `status` stays out too: it is the publish
-  // PROGRESS (page created, waiting on the theme editor, live), not content —
+  // PROGRESS (not added yet, live), not content —
   // it must not make the form dirty again, and Discard must not undo it.
   const draft = {
     title, fields, slug, approval, afterSubmit, message, redirectUrl, tags, appr,
@@ -619,14 +619,13 @@ function PublishTab({
   // product / customer account) with the app block ready to add.
   //
   // The block renders whatever the app has SAVED, and leaving with unsaved edits would
-  // lose them — so a dirty form asks to save first, then opens the editor. The app can't
-  // see the merchant add and save the block over there either, so the place waits on
-  // their confirmation instead of claiming to be live the moment they leave.
+  // lose them — so a dirty form asks to save first, then opens the editor. Opening it
+  // counts as the block being added (the real app checks the theme for the app block);
+  // a ticked place that isn't added yet gets a warning on save (THEME_WARN).
   const [confirmTheme, setConfirmTheme] = useState(null); // place whose save is being confirmed
-  const openTheme = (place) => { setPlaceStatus(place, 'waiting'); toast('Opening Theme Editor'); };
+  const openTheme = (place) => { setPlaceStatus(place, 'live'); dispatch({ type: 'PUBLISH_REGISTRATION_FORM' }); toast('Opening Theme Editor'); };
   const addToTheme = (place) => (dirty ? setConfirmTheme(place) : openTheme(place));
   const saveAndOpen = () => { onSave({ except: confirmTheme }); openTheme(confirmTheme); setConfirmTheme(null); };
-  const confirmAdded = (place) => { setPlaceStatus(place, 'live'); dispatch({ type: 'PUBLISH_REGISTRATION_FORM' }); toast('Form live'); };
 
   // Product page settings (two options + link fields) collapse behind a chevron
   // that's always there — open it to compare/preview the options before ticking.
@@ -682,7 +681,7 @@ function PublishTab({
   const placeSettings = (place, picked) => (
     <PlaceStep place={place} picked={picked} status={status[place]} ready={ready[place]}
       warn={themeWarn.includes(place)}
-      onAddToTheme={() => addToTheme(place)} onConfirmAdded={() => confirmAdded(place)}
+      onAddToTheme={() => addToTheme(place)}
       onView={() => toast('Opening storefront')}>
       {place === 'create' && (
         // The handle is locked once the page exists on the online store.
@@ -810,7 +809,7 @@ function PreviewEye({ target, onShow }) {
 // One chosen place's progress + next step, nested under its checkbox. `children`
 // holds any per-place settings (e.g. how the form shows on product pages).
 // `picked` = the place is ticked; only then does it get its status + next step.
-function PlaceStep({ place, picked, status, ready, warn, onAddToTheme, onConfirmAdded, onView, children }) {
+function PlaceStep({ place, picked, status, ready, warn, onAddToTheme, onView, children }) {
   const done = status === 'live' ? 'Live' : null;
   return (
     <s-box paddingBlockStart="small-400">
@@ -823,27 +822,11 @@ function PlaceStep({ place, picked, status, ready, warn, onAddToTheme, onConfirm
             <s-text fontWeight="medium">{done}</s-text>
           </s-stack>
         )}
-        {/* The merchant is in the Theme Editor (or came back without finishing): the app
-            can't see the block being added there, so it says what is still to do. */}
-        {picked && status === 'waiting' && (
-          <s-stack gap="small-500">
-            <s-stack direction="inline" gap="small-400" alignItems="center">
-              <s-icon type="clock" tone="caution" />
-              <s-text fontWeight="medium">Waiting for theme editor</s-text>
-            </s-stack>
-            <s-paragraph fontSize="small" color="subdued">Add the block, then save it in the theme editor.</s-paragraph>
-          </s-stack>
-        )}
-        {/* Create page has no step of its own (saving creates it), so it only gets a
-            button once it's live. Product / account pages add an entry button in the theme. */}
-        {picked && (status === 'live' || place !== 'create') && <div data-theme-add={place}><s-stack direction="inline" gap="small-200">
+        {/* Create page has no buttons (saving creates it; it just shows Live). Product /
+            account pages add an entry button in the theme. */}
+        {picked && place !== 'create' && <div data-theme-add={place}><s-stack direction="inline" gap="small-200">
           {status === 'live' ? (
             <s-button onClick={onView}>View storefront</s-button>
-          ) : status === 'waiting' ? (
-            <>
-              <s-button onClick={onConfirmAdded}>I've added it</s-button>
-              <s-button onClick={onAddToTheme}>Open theme again</s-button>
-            </>
           ) : (
             <s-button onClick={onAddToTheme} disabled={!ready}>Add button</s-button>
           )}

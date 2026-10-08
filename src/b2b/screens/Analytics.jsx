@@ -1527,7 +1527,7 @@ export function Analytics({ embeddedCompanyId = null }) {
         <ReportCard
           title="Location performance"
           subtitle="Location contribution in the selected period."
-          help={<s-paragraph>Each of this company's locations, with its sales, share of the company's sales, orders and average order value in the selected period.</s-paragraph>}
+          help="Each of this company's locations, with its sales, share of the company's sales, orders and average order value in the selected period."
         >{companyPerfTable}</ReportCard>
       ) : (
         <TwoColumns>

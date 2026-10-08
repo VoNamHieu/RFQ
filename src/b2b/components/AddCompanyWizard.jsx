@@ -5,11 +5,13 @@ import { shopifyCompanies } from '../data/directory.js';
 
 // Add Shopify companies to B2B — one screen: tick one or more companies, then Add.
 // The very first time (no company in the app yet) it picks just one, which lands
-// on its Pricing tab to set up; after that several can be added at once. Each
-// comes with all its locations, and contacts come with their location. A
-// company added before with only some locations stays listed ("Added") so the
-// rest can be added. "Automatically add new locations" makes locations created
-// on the ticked companies in Shopify later join them too.
+// on its Pricing tab to set up; after that several can be added at once and it
+// ends on the company list, the added ones first. Each comes with all its
+// locations, and contacts come with their
+// location. A company added before with only some locations stays listed
+// ("Added") so the rest can be added. "Automatically add new locations" (ticked
+// by default) makes locations created on the ticked companies in Shopify later
+// join them too.
 
 // Two-letter monogram for the company avatar (e.g. "Watson Co" → "Wa").
 const initialsOf = (name) => {
@@ -169,7 +171,7 @@ export function AddCompanyWizard() {
               ? 'Each company comes with all its locations and their contacts. Set pricing from each company’s page.'
               : chosen[0]?.linked
                 ? `Adds the remaining locations, and their contacts, to ${chosen[0].shp.name}.`
-                : 'The company comes with all its locations and their contacts. You set its pricing next.'}
+                : 'The company comes with all its locations and their contacts.'}
           </s-paragraph>
         </s-stack>
       )}

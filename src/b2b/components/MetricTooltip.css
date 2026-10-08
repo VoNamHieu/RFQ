@@ -1,0 +1,29 @@
+/* MetricTooltip's dark card. s-tooltip and the s-paragraph / s-text inside it draw from
+   Polaris tokens in their shadow roots; custom properties inherit into those, so setting
+   the tokens here restyles only these tooltips. The tokens carry polaris.js's build
+   suffix (-f4125): if a new polaris.js changes it, all of these stop applying together
+   and the tooltip falls back to the plain light one (still readable). */
+s-tooltip.qs-metric-tooltip {
+  --p-color-bg-surface-f4125: #1a1a1a;
+  --p-color-text-f4125: #e3e3e3;
+  --p-color-text-secondary-f4125: #c7c7c7;
+  --p-color-text-info-f4125: #a9c5ff;
+  --p-color-text-success-f4125: #8ad48a;
+  --p-border-radius-element-f4125: 12px;
+  --p-space-100-f4125: 12px; /* box padding: block */
+  --p-space-200-f4125: 12px; /* box padding: inline */
+  /* Paragraphs are spaced apart; the title sits on its description, and the formula
+     (or a description with no formula after it) ends the card. */
+  --s-paragraph-margin-block-end-f4125: 8px;
+}
+s-paragraph.qs-metric-tip__title {
+  --s-global-color-f4125: #fff;
+  --s-paragraph-margin-block-end-f4125: 0;
+}
+s-paragraph.qs-metric-tip__last,
+s-paragraph.qs-metric-tip__formula {
+  --s-paragraph-margin-block-end-f4125: 0;
+}
+s-paragraph.qs-metric-tip__formula {
+  --s-global-font-family-f4125: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
