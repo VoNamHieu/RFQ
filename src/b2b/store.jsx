@@ -51,13 +51,23 @@ function seedAssignment(policy, db) {
   if (policy.audienceType !== 'd2c') {
     const b2bCompanyIds = [];
     const b2bLocationKeys = [];
+    // Companies on every location: held at the company (locations added later get
+    // it) unless each of them only has it on today's locations. Off until picked.
+    let laterFor = 0;
+    let wholeWithLocations = 0;
     (db.companies || []).forEach((c) => {
       const locs = c.locations || [];
       const held = locs.filter((l) => locationHolds(c, l, kind, policy.id));
-      if (locs.length ? held.length === locs.length : slotIds(c, kind).includes(policy.id)) b2bCompanyIds.push(c.id);
-      else held.forEach((l) => b2bLocationKeys.push(locKey(c.id, l.id)));
+      if (locs.length ? held.length === locs.length : slotIds(c, kind).includes(policy.id)) {
+        b2bCompanyIds.push(c.id);
+        if (locs.length) {
+          wholeWithLocations += 1;
+          if (slotIds(c, kind).includes(policy.id)) laterFor += 1;
+        }
+      } else held.forEach((l) => b2bLocationKeys.push(locKey(c.id, l.id)));
     });
-    return { b2bCompanyIds, b2bLocationKeys, customerTarget: 'none', assignmentTargetIds: [] };
+    const b2bApplyLater = wholeWithLocations > 0 && laterFor > 0;
+    return { b2bCompanyIds, b2bLocationKeys, b2bApplyLater, customerTarget: 'none', assignmentTargetIds: [] };
   }
   const tags = (db.tagPricing || []).filter((t) => t.defaultPolicyId === policy.id).map((t) => t.id);
   const none = { b2bCompanyIds: [], b2bLocationKeys: [] };
@@ -68,24 +78,28 @@ function seedAssignment(policy, db) {
   return { ...none, customerTarget: 'none', assignmentTargetIds: [] };
 }
 
-// Make exactly the `wanted` locations of a company (with locations) get a pricing.
-// Only touches a company whose locations actually change, so re-saving an
-// unchanged pick never reshapes where the pricing is stored.
-function syncCompanyLocations(c, kind, policyId, wanted, priority) {
+// Make exactly the `wanted` locations of a company (with locations) get a pricing;
+// with every one wanted, `later` says whether locations added later get it too.
+// Only touches a company whose pick actually changes, so re-saving an unchanged
+// pick never reshapes where the pricing is stored.
+function syncCompanyLocations(c, kind, policyId, wanted, priority, later = true) {
   const locs = c.locations || [];
   const ensure = (list) => {
     if (!list.some((e) => e.id === policyId)) list.push({ id: policyId, priority: priority || list.length + 1 });
   };
-  if (locs.every((l) => wanted(l) === locationHolds(c, l, kind, policyId))) return;
-  if (locs.every(wanted)) {
+  const all = locs.every(wanted);
+  const unchanged = locs.every((l) => wanted(l) === locationHolds(c, l, kind, policyId));
+  if (unchanged && (!all || slotIds(c, kind).includes(policyId) === later)) return;
+  if (all && later) {
     // Every location: the company holds it (locations added later get it too),
     // and so does any location keeping its own list.
     addCompanySlot(c, kind, policyId, priority);
     locs.forEach((l) => hasOwnSlot(l, kind) && ensure(locationSlotArray(c, l, kind)));
     return;
   }
-  // Some locations: each ticked one holds it in its own list (starting from what
-  // it inherited — copied before the company lets go), the company doesn't.
+  // Some locations (or all of today's, not later ones): each ticked one holds it in
+  // its own list (starting from what it inherited — copied before the company lets
+  // go), the company doesn't.
   locs.forEach((l) => wanted(l) && ensure(locationSlotArray(c, l, kind)));
   removeCompanySlot(c, kind, policyId);
   locs.forEach((l) => !wanted(l) && hasOwnSlot(l, kind) && removeCompanySlot(l, kind, policyId));
@@ -127,7 +141,7 @@ function applyAssignment(db, policyId, b) {
         else if (!wantCompany.has(c.id) && holds) removeCompanySlot(c, kind, policyId);
         return;
       }
-      syncCompanyLocations(c, kind, policyId, (l) => wantCompany.has(c.id) || wantLoc.has(locKey(c.id, l.id)), b.priority);
+      syncCompanyLocations(c, kind, policyId, (l) => wantCompany.has(c.id) || wantLoc.has(locKey(c.id, l.id)), b.priority, b.b2bApplyLater === true);
     });
     return;
   }
@@ -438,6 +452,7 @@ function reducer(state, action) {
           swapId: action.swapId || null,
           selectedIds: [],
           applyTo: 'all',
+          applyLater: false, // with all locations: locations added later get it too (off until ticked)
           locationIds: [],
         },
       };
@@ -466,7 +481,7 @@ function reducer(state, action) {
         const locIds = a.applyTo === 'some' ? a.locationIds || [] : null;
         ids.forEach((id) => {
           const pol = db.policies.find((p) => p.id === id);
-          addPricingToLocations(c, kind, id, pol?.priority, locIds);
+          addPricingToLocations(c, kind, id, pol?.priority, locIds, a.applyLater === true);
         });
       } else if (c && ids.length && (!a.locationId || loc)) {
         const list = loc ? locationSlotArray(c, loc, kind) : companySlotArray(c, kind);
@@ -619,9 +634,11 @@ function reducer(state, action) {
         companySearch: '',
         recentCompanyIds: added.map((a) => a.id),
       };
-      // One company: land on it — a new one on its Pricing tab (the empty states
-      // there offer Add base / quantity pricing), an existing one on Locations.
-      // Several: back to the list.
+      // The very first company lands on its Pricing tab to set it up (the empty
+      // states there offer Add base / quantity pricing); after that, the list.
+      if (state.db.companies.length === 0) {
+        return { ...state, db, addCompany: null, view: 'company', selectedCompany: added[0].id, companyTab: 'pricing', toast: 'Company added' };
+      }
       if (added.length === 1) {
         const [a] = added;
         const toast = a.isNew ? 'Company added' : `${a.n} location${a.n === 1 ? '' : 's'} added`;
@@ -712,7 +729,10 @@ function reducer(state, action) {
         const locs = c?.locations || [];
         const kind = action.policy.priceKind === 'quantity' ? 'quantity' : 'base';
         const held = locs.filter((l) => locationHolds(c, l, kind, action.policy.id));
-        editorContext = { ...editorContext, locationIds: held.length === locs.length ? null : held.map((l) => l.id) };
+        const all = held.length === locs.length;
+        // On every location: at the company (locations added later get it) or only on
+        // theirs. Not on all of them yet: off until ticked.
+        editorContext = { ...editorContext, locationIds: all ? null : held.map((l) => l.id), applyLater: all && slotIds(c, kind).includes(action.policy.id) };
       }
       return {
         ...state,
@@ -794,7 +814,7 @@ function reducer(state, action) {
           if (loc) {
             const list = locationSlotArray(c, loc, kind);
             if (!list.some((e) => e.id === id)) list.push({ id, priority: draft.priority || list.length + 1 });
-          } else if (c) addPricingToLocations(c, kind, id, draft.priority, state.editorContext.locationIds);
+          } else if (c) addPricingToLocations(c, kind, id, draft.priority, state.editorContext.locationIds, state.editorContext.applyLater === true);
         } else {
           applyAssignment(db, id, draft);
         }
@@ -820,11 +840,12 @@ function reducer(state, action) {
       const scopeLocs = scopeCompany && !scopeLoc ? scopeCompany.locations || [] : [];
       const hereCount = scopeLoc ? (holds(scopeLoc) ? 1 : 0) : scopeCompany ? (holds(scopeCompany) ? 1 : 0) + scopeLocs.filter(holds).length : 0;
       const sharedElsewhere = usage - hereCount > 0;
-      // From a company page with 2+ locations, "Who this pricing serves" picks which
-      // of them get it (null = all).
-      const pickLocations = scopeLocs.length > 1;
+      // From a company or location page, "Who this pricing serves" picks which of the
+      // company's locations get it (null = all).
+      const pickLocations = scopeLocs.length > 0;
       const picked = state.editorContext?.locationIds ?? null;
       const wanted = (l) => !picked || picked.includes(l.id);
+      const later = state.editorContext?.applyLater === true;
       if (scopeCompany && sharedElsewhere && !action.applyToAll) {
         const fork = JSON.parse(JSON.stringify(existing));
         Object.assign(fork, draft, { id: demoPolicyId(db), type: 'Account-specific' });
@@ -839,7 +860,7 @@ function reducer(state, action) {
         } else if (pickLocations) {
           // The copy takes the original's place across this company, on the picked locations.
           [scopeCompany, ...scopeLocs].forEach((h) => removeCompanySlot(h, kind, existing.id));
-          syncCompanyLocations(scopeCompany, kind, fork.id, wanted, draft.priority);
+          syncCompanyLocations(scopeCompany, kind, fork.id, wanted, draft.priority, later);
         } else {
           removeCompanySlot(scopeCompany, kind, existing.id);
           addCompanySlot(scopeCompany, kind, fork.id, draft.priority);
@@ -849,7 +870,7 @@ function reducer(state, action) {
       Object.assign(existing, draft, { id: existing.id });
       // Library edit (not scoped to a Company) → sync the assignment choices.
       if (!state.editorContext?.companyId) applyAssignment(db, existing.id, draft);
-      else if (pickLocations) syncCompanyLocations(scopeCompany, kind, existing.id, wanted, draft.priority);
+      else if (pickLocations) syncCompanyLocations(scopeCompany, kind, existing.id, wanted, draft.priority, later);
       return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: 'Pricing saved' };
     }
     // ----- Pricing library actions -----

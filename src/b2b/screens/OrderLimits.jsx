@@ -3,7 +3,7 @@ import { useStore } from '../store.jsx';
 import { LIMIT_KINDS, limitSummary, limitTargetsLabel, isLimitAssigned } from '../limits.js';
 import { LimitEditor } from '../components/LimitEditor.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
-import { Modal, IndexFiltersBar, useWcId, PageHeader } from '../../shared/wc.jsx';
+import { Modal, IndexFiltersBar, useWcId } from '../../shared/wc.jsx';
 
 const TYPE_TABS = [
   { id: 'all', label: 'All' },
@@ -12,65 +12,52 @@ const TYPE_TABS = [
   { id: 'review', label: 'Review' },
 ];
 
-// "Create limit" step: pick one of the three kinds, then set it up.
-function LimitTypeChooser({ onBack, onPick }) {
-  return (
-    <>
-    <PageHeader heading="Select limit type" backAction={{ content: 'Order limits', onAction: onBack }} />
-    <s-page>
-      <s-query-container>
-        <s-grid gridTemplateColumns="@container (inline-size > 490px) 1fr 1fr 1fr, 1fr" gap="base">
-          {Object.entries(LIMIT_KINDS).map(([kind, k]) => (
-            <s-section key={kind}>
-              <s-stack gap="small">
-                <s-stack gap="small-300">
-                  <s-heading fontSize="large">{k.label}</s-heading>
-                  <s-paragraph color="subdued">{k.description}</s-paragraph>
-                </s-stack>
-                <s-stack direction="inline">
-                  <s-button onClick={() => onPick(kind)}>Create limit</s-button>
-                </s-stack>
-              </s-stack>
-            </s-section>
-          ))}
-        </s-grid>
-      </s-query-container>
-    </s-page>
-    </>
-  );
-}
-
 // Order limits library: every limit with what it sets and who it applies to.
-// The editor opens as a page here (OPEN_LIMIT_EDITOR).
+// Create limit opens a menu of the three kinds (each with its description, like
+// Add limit on a location page); the editor opens as a page here (OPEN_LIMIT_EDITOR).
 export function OrderLimits() {
   const { state, dispatch } = useStore();
   const [type, setType] = useState('all');
   const [search, setSearch] = useState('');
-  const [chooserOpen, setChooserOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const rowId = useWcId('limit');
+  const createId = useWcId('create-limit');
 
   if (state.limitEditor) return <LimitEditor />;
-  if (chooserOpen) {
-    return (
-      <LimitTypeChooser
-        onBack={() => setChooserOpen(false)}
-        onPick={(kind) => {
-          setChooserOpen(false);
-          dispatch({ type: 'OPEN_LIMIT_EDITOR', kind });
-        }}
-      />
-    );
-  }
 
   const all = state.db.limits || [];
-  const create = { content: 'Create limit', onAction: () => setChooserOpen(true) };
+  const create = { content: 'Create limit', commandFor: createId };
+  // Popover + ActionList with help text: each kind's description stays under its name.
+  const createMenu = (
+    <s-popover id={createId} maxInlineSize="320px">
+      <s-box padding="small-200">
+        <s-stack gap="none">
+          {Object.entries(LIMIT_KINDS).map(([kind, k]) => (
+            <s-clickable
+              key={kind}
+              padding="small-200"
+              borderRadius="base"
+              commandFor={createId}
+              command="--hide"
+              onClick={() => dispatch({ type: 'OPEN_LIMIT_EDITOR', kind })}
+            >
+              <s-paragraph>{k.label}</s-paragraph>
+              <s-paragraph color="subdued" fontSize="small">
+                {k.description}
+              </s-paragraph>
+            </s-clickable>
+          ))}
+        </s-stack>
+      </s-box>
+    </s-popover>
+  );
   if (!all.length) {
     return (
       <s-page heading="Order limits">
-        <s-button slot="primary-action" variant="primary" onClick={create.onAction}>
+        <s-button slot="primary-action" variant="primary" commandFor={createId}>
           {create.content}
         </s-button>
+        {createMenu}
         <s-section>
           <EmptyBlock heading="Set rules for what buyers can order" action={create}>
             Require a minimum order, sell products in case packs, or review large orders before they go through. Apply a limit store-wide or to specific companies and locations.
@@ -88,9 +75,10 @@ export function OrderLimits() {
 
   return (
     <s-page heading="Order limits">
-      <s-button slot="primary-action" variant="primary" onClick={create.onAction}>
+      <s-button slot="primary-action" variant="primary" commandFor={createId}>
         {create.content}
       </s-button>
+      {createMenu}
       <s-stack gap="base">
         <s-paragraph color="subdued">Rules on what B2B buyers can check out, checked in the cart and at checkout.</s-paragraph>
 

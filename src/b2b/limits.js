@@ -1,13 +1,24 @@
 // Order limits: rules on what a B2B buyer can check out. Three kinds:
-//   order   — a minimum / maximum order value and / or total quantity
-//   product — per-product minimum, maximum and increment (case packs); the same
-//             shape as Shopify's native B2B quantity rules, so it can sync there
-//   review  — orders above an amount can't be checked out directly; the buyer
-//             submits them for the merchant's review instead
+//   order   — a minimum / maximum order value and / or total quantity. The value
+//             is the cart subtotal (cart.cost.subtotalAmount: B2B prices, before
+//             tax, shipping and order-level discounts), set in the store currency
+//             and converted with presentmentCurrencyRate for buyers paying in another.
+//   product — minimum, maximum and increment (case packs) on selected products,
+//             checked per variant like Shopify's B2B quantity rules. Kept in the
+//             app, not synced to those: they sit on catalog price lists shared by
+//             every location on the catalog, and a location with several catalogs
+//             takes the cheapest one's — so they can't follow a company / location.
+//   review  — orders above an amount go to the merchant for review instead of
+//             checking out
 // A limit applies store-wide, or to companies (every location, including ones
 // added later) and / or single locations (`companyId::locationId`). In production
-// they're enforced by a Cart and Checkout Validation function (cart, checkout and
-// draft orders), which reads the buyer's company location.
+// order and product limits are a Cart and Checkout Validation function, which reads
+// the buyer's company location: cart, checkout (express too) and draft orders,
+// though merchants can bypass it on a draft; blockOnFailure on, so a failing
+// function blocks checkout. It doesn't run for POS, order edits, the Create Order
+// API or subscriptions. A review threshold isn't a validation error: a Payment
+// Customization function (orderReviewAdd) submits that checkout as a draft for
+// review — B2B orders on Shopify Plus only.
 //
 // When several limits set the same thing for a location, the most specific one
 // wins (location > company > store-wide) — so a key account can get a lower
@@ -18,7 +29,7 @@ import { money } from './format.js';
 export const LIMIT_KINDS = {
   order: { label: 'Order limit', description: 'A minimum or maximum order value or total quantity.' },
   product: { label: 'Product limit', description: 'Minimum, maximum and case-pack quantities on selected products.' },
-  review: { label: 'Review threshold', description: 'Orders above an amount come to you for review instead of checking out.' },
+  review: { label: 'Review threshold', description: 'Orders above an amount come to you for review instead of checking out. Shopify Plus only.' },
 };
 
 export const ORDER_FIELDS = ['minValue', 'maxValue', 'minQty', 'maxQty'];
@@ -187,8 +198,9 @@ export function productRuleFor(db, companyId, locationId, sku) {
 
 // What's wrong with a cart under the limits in effect for a location — what the
 // Cart and Checkout Validation function returns as errors. `lines`: [{ sku, title,
-// qty }]; `subtotal` at the buyer's prices. A 'review' problem doesn't block the
-// order outright: the buyer can send it for review instead of checking out.
+// qty }], one per variant; `subtotal` at the buyer's prices. A 'review' problem
+// isn't a validation error and doesn't block the order: in production a Payment
+// Customization function sends that checkout for review.
 export function cartProblems(db, companyId, locationId, lines, subtotal) {
   const { winner } = resolveLimits(db, companyId, locationId);
   const totalQty = lines.reduce((n, l) => n + l.qty, 0);
@@ -208,9 +220,12 @@ export function cartProblems(db, companyId, locationId, lines, subtotal) {
     const w = winner[`product:${line.sku}`];
     if (!w) return;
     const { min, max, increment } = w.limit;
-    if (min != null && line.qty < min) add('product', w.limit, `${line.title}: order at least ${min}.`);
-    else if (max != null && line.qty > max) add('product', w.limit, `${line.title}: order at most ${max}.`);
-    else if (increment > 1 && line.qty % increment) add('product', w.limit, `${line.title} is sold in packs of ${increment}.`);
+    // Errors show for the whole cart, not on a line — so the merchant's own message
+    // is prefixed with the line it's about.
+    const addLine = (text) => problems.push({ type: 'product', limit: w.limit, message: w.limit.message ? `${line.title}: ${w.limit.message}` : text });
+    if (min != null && line.qty < min) addLine(`${line.title}: order at least ${min}.`);
+    else if (max != null && line.qty > max) addLine(`${line.title}: order at most ${max}.`);
+    else if (increment > 1 && line.qty % increment) addLine(`${line.title} is sold in packs of ${increment}.`);
   });
   const threshold = rule('threshold');
   if (threshold && subtotal > threshold.v) add('review', threshold.limit, `Orders over ${money(threshold.v)} need our approval. Submit your order for review and we’ll confirm it.`);

@@ -95,7 +95,7 @@ export function LimitEditor() {
                   {numberField('maxValue', 'Maximum', { money: true })}
                 </s-grid>
                 <s-paragraph color="subdued" fontSize="small">
-                  The cart subtotal at the buyer’s B2B prices, before tax and shipping.
+                  The cart subtotal at the buyer’s B2B prices, before tax, shipping and order discounts. In your store currency, converted for buyers who pay in another.
                 </s-paragraph>
               </s-stack>
               <s-stack gap="small-200">

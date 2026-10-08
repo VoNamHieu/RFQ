@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useWcId } from '../../shared/wc.jsx';
 import { COLLECTIONS } from '../data/constants.js';
 import { money } from '../format.js';
-import { productVariants, applyAdjustment, locationCatalog } from '../pricing.js';
+import { productVariants, applyAdjustment, locationCatalog, scopeCollections } from '../pricing.js';
 import { VariantPicker } from './VariantPicker.jsx';
 
 // Timezone options mirror the B2B god file's Active dates card.
@@ -73,6 +73,123 @@ export function ActiveDatesCard({ builder, patch }) {
 }
 
 // Which products this pricing covers (all / a collection / specific products).
+const SCOPE_CHOICES = [
+  ['all', 'All products'],
+  ['products', 'Specific products'],
+  ['collection', 'Specific collections'],
+  ['tags', 'Product tags'],
+];
+// Quantity pricing's Products (production's ProductsCard): all products, specific
+// products (Search products opens Select products), specific collections or product
+// tags. The picker works on variants; picking any variant picks its product.
+export function QuantityProductsCard({ builder, patch, products }) {
+  const name = useWcId('qty-products');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const st = builder.scopeType || 'all';
+  const skus = builder.selectedProducts || [];
+  const picked = products.filter((p) => skus.includes(p.sku));
+  const collections = scopeCollections(builder);
+  const tags = [...new Set(products.flatMap((p) => p.tags || []))].sort();
+  const pickedTags = builder.selectedTags || [];
+  const pickVariants = (vids) => {
+    const set = new Set(vids);
+    patch({ selectedProducts: products.filter((p) => productVariants(p).some((v) => set.has(v.id))).map((p) => p.sku) });
+    setPickerOpen(false);
+  };
+  // A nested list's change also reaches the scope list; only its own counts.
+  const ownChange = (fn) => (e) => {
+    if (e.target !== e.currentTarget) return;
+    fn([...(e.currentTarget.values || [])]);
+  };
+  return (
+    <s-section heading="Products">
+      <s-stack gap="small">
+        {/* Each choice's field sits right under it, as in Shopify — so every choice
+            is its own list (s-choice's details slot only shows text); `st` keeps
+            exactly one of them selected. A list keeps its own checked state, so
+            the one that loses the selection is remounted (keyed on it). */}
+        <s-stack gap="none">
+          {SCOPE_CHOICES.map(([value, label]) => (
+            <React.Fragment key={value}>
+              <s-choice-list
+                key={`${value}-${st === value}`}
+                label={label}
+                labelAccessibilityVisibility="exclusive"
+                name={`${name}-${value}`}
+                onChange={ownChange(([v]) => v && patch({ scopeType: v }))}
+              >
+                <s-choice value={value} selected={st === value}>{label}</s-choice>
+              </s-choice-list>
+              {st === value && value === 'products' && (
+                <s-box paddingInlineStart="large-200">
+                  <s-stack gap="small-200">
+                    <s-search-field
+                      label="Search products"
+                      labelAccessibilityVisibility="exclusive"
+                      placeholder="Search products"
+                      value=""
+                      onClick={() => setPickerOpen(true)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') setPickerOpen(true);
+                      }}
+                    />
+                    {picked.length ? (
+                      <s-stack direction="inline" gap="small-300">
+                        {picked.map((p) => (
+                          <s-clickable-chip
+                            key={p.sku}
+                            removable
+                            accessibilityLabel={`Remove ${p.title}`}
+                            onRemove={() => patch({ selectedProducts: skus.filter((x) => x !== p.sku) })}
+                          >
+                            {p.title}
+                          </s-clickable-chip>
+                        ))}
+                      </s-stack>
+                    ) : null}
+                  </s-stack>
+                </s-box>
+              )}
+              {st === value && value === 'collection' && (
+                <s-box paddingInlineStart="large-200">
+                  <s-choice-list multiple label="Collections" labelAccessibilityVisibility="exclusive" name={`${name}-collections`} onChange={ownChange((vals) => patch({ selectedCollections: vals }))}>
+                    {Object.keys(COLLECTIONS).map((c) => (
+                      <s-choice key={c} value={c} selected={collections.includes(c)}>
+                        {c}
+                      </s-choice>
+                    ))}
+                  </s-choice-list>
+                </s-box>
+              )}
+              {st === value && value === 'tags' && (
+                <s-box paddingInlineStart="large-200">
+                  <s-choice-list multiple label="Product tags" labelAccessibilityVisibility="exclusive" name={`${name}-tags`} onChange={ownChange((vals) => patch({ selectedTags: vals }))}>
+                    {tags.map((t) => (
+                      <s-choice key={t} value={t} selected={pickedTags.includes(t)}>
+                        {t}
+                      </s-choice>
+                    ))}
+                  </s-choice-list>
+                </s-box>
+              )}
+            </React.Fragment>
+          ))}
+        </s-stack>
+      </s-stack>
+      {pickerOpen && (
+        <VariantPicker
+          products={products}
+          initialSelected={picked.flatMap((p) => productVariants(p).map((v) => v.id))}
+          heading="Select products"
+          actionLabel={() => 'Select'}
+          onCancel={() => setPickerOpen(false)}
+          onAdd={(sel) => pickVariants([...sel])}
+        />
+      )}
+    </s-section>
+  );
+}
+
 export function ProductScopeCard({ builder, patch, products }) {
   const name = useWcId('scope-products');
   const st = builder.scopeType || 'all';
@@ -169,8 +286,9 @@ const overrideOptPatch = (val) => {
   return { rule, valueType: unit === 'pct' ? 'percentage' : 'amount' };
 };
 const isPctOverride = (o) => o?.rule !== 'set' && o?.valueType === 'percentage';
-const ROW_GRID = { display: 'grid', gridTemplateColumns: 'auto minmax(140px, 1fr) 148px 92px 92px', gap: 12, alignItems: 'center' };
-// Expanded: two more columns after Product — Original price and Price source.
+// Checkbox · Product · Original price · Options · Amount · Buyer pays.
+const ROW_GRID = { display: 'grid', gridTemplateColumns: 'auto minmax(140px, 1fr) 92px 148px 92px 92px', gap: 12, alignItems: 'center' };
+// Expanded: Price source too (after Original price), with wider columns.
 const WIDE_GRID = { ...ROW_GRID, gridTemplateColumns: 'auto minmax(200px, 1fr) 112px 112px 148px 92px 104px' };
 const THUMB = { width: 32, height: 32, borderRadius: 6, background: 'var(--p-color-bg-surface-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' };
 const CARET = { all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', flex: '0 0 auto', width: 20 };
@@ -231,7 +349,7 @@ export function ProductOverridesCard({ builder, patch, products, locations = [] 
   // Full-screen mode: `snapshot` is the overrides when it opened (Close puts them back).
   const [full, setFull] = useState(false);
   const [snapshot, setSnapshot] = useState(null);
-  const [viewKey, setViewKey] = useState('all');
+  const [viewKey, setViewKey] = useState(null);
 
   // variantId → { product, variant }, for prefilling prices from the picker.
   const variantIndex = useMemo(() => {
@@ -298,35 +416,37 @@ export function ProductOverridesCard({ builder, patch, products, locations = [] 
     setPickerOpen(false);
   };
   // The price an override starts from: the catalog's price at the location being
-  // viewed when its price list sets one, else the Shopify price.
+  // viewed when its price list sets one, else the Shopify price. A product in that
+  // location's catalog reads Catalog either way.
   const originOf = (vid, view) => {
     const catalogPrice = view?.prices?.[vid];
     if (catalogPrice != null) return { price: catalogPrice, source: 'Catalog' };
-    return { price: variantIndex[vid]?.variant?.list ?? variantIndex[vid]?.product?.list ?? 0, source: 'Shopify' };
+    const inCatalog = !!view?.location?.catalog && view.skus.includes(variantIndex[vid]?.product?.sku);
+    return { price: variantIndex[vid]?.variant?.list ?? variantIndex[vid]?.product?.list ?? 0, source: inCatalog ? 'Catalog' : 'Shopify' };
   };
-  // Original price + Price source cells (expanded view); a product outside the
-  // viewed location's catalog has neither there.
-  const originCells = (price, source, inCatalog) =>
+  // Original price cell, plus Price source in the expanded view; a product outside
+  // the viewed location's catalog has no price there, and its source says so.
+  const originCells = (price, source, inCatalog, withSource) =>
     inCatalog ? (
       <>
         <div style={END}><s-text>{price}</s-text></div>
-        <div><s-badge tone={source === 'Catalog' ? 'info' : undefined}>{source}</s-badge></div>
+        {withSource && <div><s-badge tone={source === 'Catalog' ? 'info' : undefined}>{source}</s-badge></div>}
       </>
     ) : (
       <>
         <div style={END}><s-text color="subdued">—</s-text></div>
-        <div><s-text color="subdued">—</s-text></div>
+        {withSource && <div><s-badge tone="caution">Not in catalog</s-badge></div>}
       </>
     );
-  // The Options select + Amount input + resolved "Buyer pays" price for one variant
-  // (wide: Original price and Price source first).
+  // Original price, then the Options select + Amount input + resolved "Buyer pays"
+  // price for one variant (wide: Price source after Original price).
   const rowCell = (vid, inCatalog = true, view = null, wide = false) => {
     const o = overrides[vid];
     const origin = originOf(vid, view);
     const final = applyAdjustment(o.rule || 'set', o.valueType || 'amount', o.value, origin.price);
     return (
       <>
-        {wide && originCells(money(origin.price), origin.source, inCatalog)}
+        {originCells(money(origin.price), origin.source, inCatalog, wide)}
         <OverrideOptions value={overrideOptValue(o)} options={OVERRIDE_RULES} onChange={(v) => setField(vid, overrideOptPatch(v))} />
         <OverrideAmount pct={isPctOverride(o)} value={String(o.value ?? '')} onChange={(v) => setField(vid, { value: Number(v) || 0 })} />
         <div style={END}>
@@ -382,7 +502,7 @@ export function ProductOverridesCard({ builder, patch, products, locations = [] 
                 <div style={grid}>
                   <s-checkbox accessibilityLabel="Select all overrides" checked={false} onChange={(e) => setAll(e.currentTarget.checked)} />
                   <s-text fontSize="small" color="subdued" fontWeight="medium">Product</s-text>
-                  {wide && <div style={END}><s-text fontSize="small" color="subdued" fontWeight="medium">Original price</s-text></div>}
+                  <div style={END}><s-text fontSize="small" color="subdued" fontWeight="medium">Original price</s-text></div>
                   {wide && <s-text fontSize="small" color="subdued" fontWeight="medium">Price source</s-text>}
                   <s-text fontSize="small" color="subdued" fontWeight="medium">Options</s-text>
                   <s-text fontSize="small" color="subdued" fontWeight="medium">Amount</s-text>
@@ -413,7 +533,7 @@ export function ProductOverridesCard({ builder, patch, products, locations = [] 
                         <div style={{ minWidth: 0 }}>
                           <s-paragraph lineClamp={1}>{g.product.title}</s-paragraph>
                           <s-paragraph color="subdued" fontSize="small" lineClamp={1}>{v.title || v.id}</s-paragraph>
-                          {notIn(g.product) ? <s-badge tone="caution">Not in catalog</s-badge> : null}
+                          {!wide && notIn(g.product) ? <s-badge tone="caution">Not in catalog</s-badge> : null}
                         </div>
                       </div>
                       {rowCell(v.id, !notIn(g.product), view, wide)}
@@ -467,11 +587,11 @@ export function ProductOverridesCard({ builder, patch, products, locations = [] 
                           <div style={{ minWidth: 0 }}>
                             <s-paragraph lineClamp={1}>{g.product.title}</s-paragraph>
                             <s-paragraph color="subdued" fontSize="small">{`${g.variants.length} variants`}</s-paragraph>
-                            {notIn(g.product) ? <s-badge tone="caution">Not in catalog</s-badge> : null}
+                            {!wide && notIn(g.product) ? <s-badge tone="caution">Not in catalog</s-badge> : null}
                           </div>
                         </div>
                       </button>
-                      {wide && originCells(oLo === oHi ? money(oLo) : `${money(oLo)}–${money(oHi)}`, oSources.length === 1 ? oSources[0] : 'Mixed', !notIn(g.product))}
+                      {originCells(oLo === oHi ? money(oLo) : `${money(oLo)}–${money(oHi)}`, oSources.length === 1 ? oSources[0] : 'Mixed', !notIn(g.product), wide)}
                       <OverrideOptions
                         value={sameRule ? optVals[0] : 'mixed'}
                         options={groupOpts}
@@ -522,10 +642,11 @@ export function ProductOverridesCard({ builder, patch, products, locations = [] 
     );
   };
 
-  // Expanded: the same editor full screen (Shopify's maximize pattern), plus a View
-  // picker to check the overrides at one location — a product outside its catalog
-  // doesn't get its override there. Done keeps the edits; Close puts them back.
-  const openFull = () => { setSnapshot(overrides); setViewKey('all'); setFull(true); };
+  // Expanded: the same editor full screen (Shopify's maximize pattern). Both views
+  // show the overrides at one location, picked next to Add products (the first
+  // until another is picked) — a product outside its catalog doesn't get its
+  // override there. Done keeps the edits; Close puts them back.
+  const openFull = () => { setSnapshot(overrides); setFull(true); };
   const closeFull = (keep) => {
     if (!keep) patch({ variantAdjustments: snapshot || {} });
     setFull(false);
@@ -542,11 +663,25 @@ export function ProductOverridesCard({ builder, patch, products, locations = [] 
     return () => window.removeEventListener('keydown', onKey, true);
   });
   const keyOf = (t) => `${t.company.id}::${t.location.id}`;
-  const target = locations.find((t) => keyOf(t) === viewKey) || null;
+  const target = locations.find((t) => keyOf(t) === viewKey) || locations[0] || null;
   const view = target ? { ...target, ...locationCatalog(target.location, products) } : null;
   const severalCompanies = new Set(locations.map((t) => t.company.id)).size > 1;
-  const outside = view ? groups.filter((g) => !view.skus.includes(g.product.sku)).length : 0;
   const countBadge = allIds.length > 0 ? <s-badge>{`${allIds.length} variant${allIds.length === 1 ? '' : 's'}`}</s-badge> : null;
+  // The location picker; `labelHidden` in the card, where it sits beside Add products.
+  const viewSelect = (labelHidden = false) => (
+    <s-select
+      label="Location"
+      labelAccessibilityVisibility={labelHidden ? 'exclusive' : undefined}
+      value={keyOf(target)}
+      onChange={(e) => setViewKey(e.currentTarget.value)}
+    >
+      {locations.map((t) => (
+        <s-option key={keyOf(t)} value={keyOf(t)}>
+          {severalCompanies ? `${t.location.name} · ${t.company.name}` : t.location.name}
+        </s-option>
+      ))}
+    </s-select>
+  );
 
   return (
     <s-section>
@@ -568,8 +703,33 @@ export function ProductOverridesCard({ builder, patch, products, locations = [] 
           </div>
         </s-grid>
         <s-paragraph color="subdued" fontSize="small">Give specific product variants their own price. Overrides win over rules and the default.</s-paragraph>
-        {searchButton}
-        {table(null)}
+        {locations.length > 0 ? (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ flex: '1 1 auto', minWidth: 0 }}>{searchButton}</div>
+            <div style={{ width: 220, flex: '0 0 auto' }}>{viewSelect(true)}</div>
+          </div>
+        ) : (
+          searchButton
+        )}
+        {groups.length ? (
+          table(view)
+        ) : (
+          <s-box background="subdued" borderRadius="base">
+            <div style={{ padding: '40px 16px' }}>
+              <s-stack gap="small-400" alignItems="center">
+                <s-paragraph fontWeight="semibold">No products to display</s-paragraph>
+                <s-paragraph color="subdued">Add products to set an override price</s-paragraph>
+              </s-stack>
+            </div>
+          </s-box>
+        )}
+        {view && (
+          <s-banner tone="info">
+            <s-paragraph>
+              Price source shows Catalog when the location uses a Shopify catalog. Products that aren’t in the catalog are left blank.
+            </s-paragraph>
+          </s-banner>
+        )}
       </s-stack>
 
       {/* Portalled to <body>: inside the editor page it would sit under the admin
@@ -608,25 +768,13 @@ export function ProductOverridesCard({ builder, patch, products, locations = [] 
               <div style={{ display: 'flex', gap: 12, alignItems: 'end' }}>
                 <div style={{ flex: '1 1 auto', minWidth: 0 }}>{searchButton}</div>
                 {locations.length > 0 && (
-                  <div style={{ width: 320, flex: '0 0 auto' }}>
-                    <s-select label="View" value={target ? viewKey : 'all'} onChange={(e) => setViewKey(e.currentTarget.value)}>
-                      <s-option value="all">All locations</s-option>
-                      {locations.map((t) => (
-                        <s-option key={keyOf(t)} value={keyOf(t)}>
-                          {severalCompanies ? `${t.location.name} · ${t.company.name}` : t.location.name}
-                        </s-option>
-                      ))}
-                    </s-select>
-                  </div>
+                  <div style={{ width: 320, flex: '0 0 auto' }}>{viewSelect()}</div>
                 )}
               </div>
               {view && (
                 <s-banner tone="info">
                   <s-paragraph>
-                    {`${view.location.name}${severalCompanies ? ` (${view.company.name})` : ''} uses the ${view.name} catalog. `}
-                    {outside
-                      ? `${outside} of the products with an override ${outside === 1 ? 'isn’t' : 'aren’t'} in it, so ${outside === 1 ? 'it doesn’t' : 'they don’t'} get the override price there.`
-                      : 'Every product with an override is in it.'}
+                    Price source shows Catalog when the location uses a Shopify catalog. Products that aren’t in the catalog are left blank.
                   </s-paragraph>
                 </s-banner>
               )}

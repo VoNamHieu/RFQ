@@ -8,15 +8,19 @@ import { LocationScopePicker } from './LocationScopePicker.jsx';
 import { versionFlags } from '../../shared/versions.js';
 import { COLLECTIONS } from '../data/constants.js';
 import { money } from '../format.js';
-import { ActiveDatesCard, ProductScopeCard, VolumeBasisCard, ProductOverridesCard } from './pricingEditorCards.jsx';
+import { ActiveDatesCard, ProductScopeCard, QuantityProductsCard, VolumeBasisCard, ProductOverridesCard } from './pricingEditorCards.jsx';
 import { PricePreviewDialog } from './PricePreviewDialog.jsx';
 import { AssignmentCard } from './AssignmentCard.jsx';
-import { policyUsageCount, policyUsageDetail, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, ruleValuesSummary, locationCatalog } from '../pricing.js';
+import { policyUsageCount, policyUsageDetail, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, locationCatalog } from '../pricing.js';
 
 // Main column + aside side by side once the editor is wide enough (Polaris React
 // InlineGrid columns={{ xs: '1fr', md: '2fr 1fr' }}); two fields side by side
 // in a card ({ xs: 1, sm: 2 }).
 const MAIN_ASIDE = '@container (inline-size > 700px) 2fr 1fr, 1fr';
+// Settings summary labels for a D2C pricing's customer target.
+const D2C_TARGET_LABEL = { all: 'All customers', logged_in: 'Logged-in customers', logged_out: 'Non logged-in customers' };
+// "2026-07-28" → "Jul 28, 2026".
+const dayLabel = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 const TWO_UP = '@container (inline-size > 400px) 1fr 1fr, 1fr';
 
 // Pricing editor (spec §2.6). Open whenever state.builder is set. Rendered as an
@@ -108,12 +112,37 @@ export function PricingEditor({ asPage = false }) {
         ? 'locations'
         : 'companies';
 
-  // From a company page (2+ locations), creating or editing: which of its locations
-  // get it — all (null) or the picked ones (editorContext.locationIds, seeded from
-  // Assign, or from where an edited pricing sits now).
-  const showCompanyLocations = !!scopeCompany && !scopeLoc && (scopeCompany.locations || []).length > 1;
+  // From a company or location page, creating or editing: which of the company's
+  // locations get it — all (null) or the picked ones (editorContext.locationIds,
+  // seeded from Assign / the location page, or from where an edited pricing sits now).
+  const showCompanyLocations = !!scopeCompany && !scopeLoc && (scopeCompany.locations || []).length > 0;
   const scopeLocationIds = showCompanyLocations ? state.editorContext?.locationIds ?? null : null;
   const noLocationPicked = Array.isArray(scopeLocationIds) && scopeLocationIds.length === 0;
+
+  // "Assigned to" in the Settings summary: who gets this pricing, as picked here.
+  const assignedTo = (() => {
+    const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+    if (builder.audienceType === 'd2c') {
+      const target = builder.customerTarget || 'none';
+      const n = (builder.assignmentTargetIds || []).length;
+      if (target === 'specific') return n ? count(n, 'customer') : 'Not assigned';
+      if (target === 'tags') return n ? count(n, 'customer tag') : 'Not assigned';
+      return D2C_TARGET_LABEL[target] || 'Not assigned';
+    }
+    if (scopeLoc) return `${scopeLoc.name} · ${scopeCompany.name}`;
+    if (scopeCompany) {
+      if (!scopeLocationIds) return scopeCompany.name;
+      if (!scopeLocationIds.length) return 'Not assigned';
+      const one = scopeLocationIds.length === 1 && (scopeCompany.locations || []).find((l) => l.id === scopeLocationIds[0]);
+      return `${one ? one.name : count(scopeLocationIds.length, 'location')} · ${scopeCompany.name}`;
+    }
+    const companies = (builder.b2bCompanyIds || []).map((id) => state.db.companies.find((c) => c.id === id)).filter(Boolean);
+    const locKeys = builder.b2bLocationKeys || [];
+    const parts = [];
+    if (companies.length) parts.push(companies.length === 1 ? companies[0].name : count(companies.length, 'company', 'companies'));
+    if (locKeys.length) parts.push(count(locKeys.length, 'location'));
+    return parts.length ? parts.join(' · ') : 'Not assigned';
+  })();
 
   // Every location this pricing reaches: the picks in "Who this pricing serves"
   // (library), or the company / location it was opened from. Overrides can be
@@ -162,6 +191,23 @@ export function PricingEditor({ asPage = false }) {
     }
     else dispatch({ type: 'SAVE_EDITOR' });
   };
+
+  // "Who this pricing serves": the library's assignment card, or a company's locations.
+  const whoServes = (
+    <>
+      {showAssignment && <AssignmentCard builder={builder} patch={patch} db={state.db} isNew={isNew} footer={catalogNote} />}
+      {showCompanyLocations && (
+        <CompanyLocationsCard
+          company={scopeCompany}
+          locationIds={scopeLocationIds}
+          onChange={(ids) => dispatch({ type: 'EDITOR_CONTEXT_PATCH', patch: { locationIds: ids } })}
+          applyLater={state.editorContext?.applyLater === true}
+          onApplyLaterChange={(on) => dispatch({ type: 'EDITOR_CONTEXT_PATCH', patch: { applyLater: on } })}
+          footer={catalogNote}
+        />
+      )}
+    </>
+  );
 
   const editorTitle = isNew ? `Create ${isQuantity ? 'quantity' : 'base'} pricing` : `Edit pricing: ${builder.name}`;
   const editorBody = (
@@ -235,21 +281,13 @@ export function PricingEditor({ asPage = false }) {
                     </s-stack>
                   </s-section>
 
-                  {showAssignment && <AssignmentCard builder={builder} patch={patch} db={state.db} isNew={isNew} footer={catalogNote} />}
-                  {/* Who it serves comes before how it prices, in both flows. */}
-                  {showCompanyLocations && (
-                    <CompanyLocationsCard
-                      company={scopeCompany}
-                      locationIds={scopeLocationIds}
-                      onChange={(ids) => dispatch({ type: 'EDITOR_CONTEXT_PATCH', patch: { locationIds: ids } })}
-                      footer={catalogNote}
-                    />
-                  )}
+                  {/* Base pricing: who it serves comes before how it prices. */}
+                  {!isQuantity && whoServes}
 
                   {isQuantity ? (
                     <>
                       <VolumeRangesCard />
-                      <ProductScopeCard builder={builder} patch={patch} products={state.db.products} />
+                      <QuantityProductsCard builder={builder} patch={patch} products={state.db.products} />
                       <VolumeBasisCard builder={builder} patch={patch} />
                     </>
                   ) : (
@@ -265,6 +303,9 @@ export function PricingEditor({ asPage = false }) {
                     </>
                   )}
 
+                  {/* Quantity pricing: who it serves comes after how it prices. */}
+                  {isQuantity && whoServes}
+
                   {/* Scheduling last, matching the god-file editor order. */}
                   <ActiveDatesCard builder={builder} patch={patch} />
                 </>
@@ -276,8 +317,7 @@ export function PricingEditor({ asPage = false }) {
             {/* Aside (god-file builder-side): status, resolution, summary. */}
             <s-stack gap="base">
               <RuleStatusCard builder={builder} patch={patch} />
-              {pricingTab === 'settings' && !isQuantity && <ResolutionCard builder={builder} products={state.db.products} />}
-              <SummaryCard builder={builder} isQuantity={isQuantity} />
+              <SummaryCard builder={builder} isQuantity={isQuantity} assignedTo={assignedTo} products={state.db.products} />
             </s-stack>
           </s-grid>
           </s-query-container>
@@ -426,77 +466,6 @@ function RuleStatusCard({ builder, patch }) {
   );
 }
 
-// The winning layer for a base profile on one product (god-file priceTierFor).
-function tierOf(builder, product) {
-  const bd = policyPriceBreakdown(builder, product);
-  if (!bd) return null;
-  return bd.override != null ? 'override' : bd.rule ? 'rule' : 'default';
-}
-
-// "How the price resolves" (god-file resolutionPreview): for ONE illustrative
-// in-scope product, Shopify price → default adjustment → matching rule → explicit
-// override → what the buyer pays, highlighting the layer that actually wins so a
-// merchant reads "most specific wins" without learning the precedence. Base only.
-function ResolutionCard({ builder, products }) {
-  const [previewOpen, setPreviewOpen] = useState(false);
-  // Prefer a product that exercises a product override, then one matched by a
-  // rule, then any in-scope product — so the card demonstrates the resolution
-  // instead of showing a flat default (god file picks the most-specific example).
-  const inScope = products.filter((p) => policyPriceBreakdown(builder, p)?.inScope);
-  const product =
-    inScope.find((p) => tierOf(builder, p) === 'override') ||
-    inScope.find((p) => tierOf(builder, p) === 'rule') ||
-    inScope[0] ||
-    products[0];
-  const bd = product ? policyPriceBreakdown(builder, product) : null;
-  if (!bd) return null;
-  const tier = bd.override != null ? 'override' : bd.rule ? 'rule' : 'default';
-  const rule = bd.rule ? (builder.conditionalRules || [])[bd.rule.index] : null;
-  const ruleLabel = rule ? `Rule · ${ruleTypeLabel(rule)} · ${ruleValuesSummary(rule)}` : `Rule ${bd.rule?.index + 1}`;
-
-  // The winning row bleeds into the card padding with a sunken background, like
-  // the god file's `margin:0 -8px`; losing rows below the winner dim out.
-  const HILITE = { background: 'var(--p-color-bg-surface-secondary, #f6f6f7)', margin: '0 -8px', padding: '6px 8px', borderRadius: 8 };
-  const Row = ({ label, value, active, dim, strong }) => (
-    <div style={active ? HILITE : undefined}>
-      <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
-        <s-text fontSize="small" color={!active && dim ? 'subdued' : undefined} fontWeight={active ? 'medium' : undefined}>
-          {label}
-        </s-text>
-        <s-text color={active || strong ? undefined : 'subdued'} fontWeight={active || strong ? 'semibold' : undefined}>
-          {value}
-        </s-text>
-      </s-grid>
-    </div>
-  );
-
-  return (
-    <s-section>
-      <s-stack gap="small-200">
-        <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
-          <s-heading>How the price resolves</s-heading>
-          <s-link onClick={() => setPreviewOpen(true)}>Preview all prices</s-link>
-        </s-grid>
-        <s-stack direction="inline" gap="small-300" alignItems="center">
-          <s-text color="subdued" fontSize="small">{product.title}</s-text>
-          <span style={{ fontFamily: 'var(--p-font-family-mono, monospace)', fontSize: 12, color: 'var(--p-color-text-subdued, #6d7175)' }}>
-            {product.sku}
-          </span>
-        </s-stack>
-        <s-stack gap="small-300">
-          <Row label="Shopify price" value={money(bd.shopify)} />
-          <Row label="Default" value={money(bd.defaultPrice)} active={tier === 'default'} dim={tier !== 'default'} />
-          {bd.rule ? <Row label={ruleLabel} value={money(bd.rule.price)} active={tier === 'rule'} dim={tier === 'override'} /> : null}
-          {bd.override != null ? <Row label="Product override" value={money(bd.override)} active={tier === 'override'} /> : null}
-          <s-divider />
-          <Row label="Buyer pays" value={money(bd.final)} strong />
-        </s-stack>
-      </s-stack>
-      {previewOpen && <BuilderPricePreview builder={builder} products={products} onClose={() => setPreviewOpen(false)} />}
-    </s-section>
-  );
-}
-
 // "Preview all prices": every product this base pricing covers, the layer that
 // decides each price, and what the buyer pays — computed from the DRAFT builder, so
 // it reflects unsaved rule/override edits. Same modal as the company page's Preview
@@ -582,10 +551,9 @@ function CatalogPricePreview({ builder, products, targets, onClose }) {
   );
 }
 
-// Settings summary (god-file asideSummary): an at-a-glance recap.
 // "Who this pricing serves" from a company page: which of the company's locations
 // get it (see LocationScopePicker).
-function CompanyLocationsCard({ company, locationIds, onChange, footer = null }) {
+function CompanyLocationsCard({ company, locationIds, onChange, applyLater, onApplyLaterChange, footer = null }) {
   return (
     <s-section>
       <s-stack gap="small">
@@ -597,32 +565,71 @@ function CompanyLocationsCard({ company, locationIds, onChange, footer = null })
             {'’s locations get this pricing.'}
           </s-paragraph>
         </s-stack>
-        <LocationScopePicker company={company} locationIds={locationIds} onChange={onChange} titleHidden />
+        <LocationScopePicker
+          company={company}
+          locationIds={locationIds}
+          onChange={onChange}
+          titleHidden
+          separate
+          applyLater={applyLater}
+          onApplyLaterChange={onApplyLaterChange}
+        />
         {footer}
       </s-stack>
     </s-section>
   );
 }
 
-function SummaryCard({ builder, isQuantity }) {
+// Settings summary (production's SettingsSummaryCard): what this pricing is and
+// who gets it at a glance, then — for base pricing — Preview prices: what buyers
+// pay with these settings, unsaved edits included.
+function SummaryCard({ builder, isQuantity, assignedTo, products }) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const count = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
+  const rules = (builder.conditionalRules || []).length;
+  const overrides = Object.keys(builder.variantAdjustments || {}).length;
+  const ranges = (builder.volumeRanges || []).length;
+  const calculation = isQuantity
+    ? count(ranges, 'quantity range')
+    : [rules ? count(rules, 'rule') : null, overrides ? count(overrides, 'override') : null].filter(Boolean).join(' · ') || 'No rules';
+  const hasEnd = (builder.hasEndDate ?? !!builder.endDate) && !!builder.endDate;
   const items = [
-    ['Type', isQuantity ? 'Quantity pricing' : 'Base pricing'],
-    ['Products', scopeLabel(builder)],
-    ['Priority', String(builder.priority ?? 0)],
-    ['Status', builder.status || 'Active'],
-  ];
+    ['receipt-dollar', 'Type', isQuantity ? 'Quantity pricing' : 'Base pricing'],
+    ['product', 'Products', isQuantity || rules || overrides ? scopeLabel(builder) : 'Shopify prices'],
+    ['discount', 'Calculation', calculation],
+    ['team', 'Serves', builder.audienceType === 'd2c' ? 'D2C Wholesale' : 'Company-based B2B'],
+    ['person', 'Assigned to', assignedTo],
+    ['star', 'Priority', String(builder.priority ?? 0)],
+    ['calendar', 'Start', builder.startDate ? `${dayLabel(builder.startDate)} ${builder.startTime || '12:00 AM'}` : 'Immediately'],
+    hasEnd ? ['calendar', 'End', `${dayLabel(builder.endDate)} ${builder.endTime || '12:00 AM'}`] : null,
+  ].filter(Boolean);
   return (
-    <s-section heading="Settings summary">
-      <s-stack gap="small-300">
-        {items.map(([k, v]) => (
-          <s-stack key={k} direction="inline" gap="small-200" justifyContent="space-between" alignItems="center">
-            <s-text color="subdued" fontSize="small">
-              {k}
-            </s-text>
-            <s-text fontWeight="medium">{v}</s-text>
-          </s-stack>
-        ))}
+    <s-section>
+      <s-stack gap="small">
+        <s-stack direction="inline" gap="small-200" alignItems="center">
+          <s-heading>Settings summary</s-heading>
+          <s-badge tone="info">All markets</s-badge>
+        </s-stack>
+        <s-stack gap="small-300">
+          {items.map(([icon, label, value]) => (
+            <s-grid key={label} gridTemplateColumns="auto 96px minmax(0, 1fr)" gap="small-200" alignItems="center">
+              <s-icon type={icon} color="subdued" />
+              <s-text color="subdued">{`${label}:`}</s-text>
+              <s-text>{value}</s-text>
+            </s-grid>
+          ))}
+        </s-stack>
+        {!isQuantity && (
+          <>
+            <s-divider />
+            <s-paragraph color="subdued">See what buyers pay with these settings.</s-paragraph>
+            <s-button icon="view" inlineSize="fill" onClick={() => setPreviewOpen(true)}>
+              Preview prices
+            </s-button>
+          </>
+        )}
       </s-stack>
+      {previewOpen && <BuilderPricePreview builder={builder} products={products} onClose={() => setPreviewOpen(false)} />}
     </s-section>
   );
 }

@@ -43,9 +43,9 @@ export function LocationDetail() {
   const [ordersPage, setOrdersPage] = useState(0);
   const ids = useWcId('loc');
   if (!company || !location) return null;
-  // Add / edit / change / remove pricing on this location (its own list of that
-  // kind — see locationSlotArray), with the same row actions as the company page.
-  // Edit of a pricing shared elsewhere offers a copy for here.
+  // Add / change / remove pricing on this location (its own list of that kind — see
+  // locationSlotArray), with the same row actions as the company page. Edit opens it
+  // for the company: "Who this pricing serves" ticks the locations that get it.
   const addPricing = (kind) => {
     dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, locationId: location.id, kind, mode: 'add' });
   };
@@ -55,7 +55,7 @@ export function LocationDetail() {
         icon="edit"
         variant="tertiary"
         accessibilityLabel={`Edit ${policy.name}`}
-        onClick={() => dispatch({ type: 'OPEN_EDITOR', policy, context: { mode: 'edit', companyId: company.id, locationId: location.id } })}
+        onClick={() => dispatch({ type: 'OPEN_EDITOR', policy, context: { mode: 'edit', companyId: company.id } })}
       />
       <s-button
         icon="exchange"

@@ -3,7 +3,7 @@
 > Tính năng **Order limits**: rule về những gì buyer B2B được phép check out (giá trị đơn, số lượng, case pack, ngưỡng
 > duyệt đơn), gán store-wide hoặc cho từng company / location. Nhãn UI để nguyên tiếng Anh đúng như trong app.
 >
-> Cập nhật: 05/10/2026 · Branch: `feature/location-pricing-assign` (chưa commit) · Chỉ có ở bản **Latest** (cờ `orderLimits`)
+> Cập nhật: 08/10/2026 · Branch: `feature/current-upcoming-versions` · Chỉ có ở bản **Upcoming** (cờ `orderLimits`)
 
 ---
 
@@ -35,9 +35,9 @@
 
 | Loại | Thiết lập | Ghi chú |
 |---|---|---|
-| **Order limit** | Order value Minimum / Maximum; Order quantity Minimum / Maximum | Giá trị là subtotal theo giá B2B, trước thuế và ship. Số lượng là tổng mọi item trong cart. Để trống = không giới hạn. |
+| **Order limit** | Order value Minimum / Maximum; Order quantity Minimum / Maximum | Giá trị là subtotal của cart (`cart.cost.subtotalAmount`): theo giá B2B, trước thuế, ship và giảm giá cấp đơn. Đặt theo tiền tệ của store; buyer trả bằng tiền tệ khác thì quy đổi theo `presentmentCurrencyRate`. Số lượng là tổng mọi item trong cart. Để trống = không giới hạn. |
 | **Product limit** | Products (All / A collection / Specific products); Minimum, Maximum, Sold in multiples of | Tính theo variant, giống quantity rules của Shopify. Min và max phải là bội của increment. |
-| **Review threshold** | Review orders above $X | Đơn trên ngưỡng không check out được. Buyer gửi đơn cho merchant, đơn về thành draft order để duyệt. |
+| **Review threshold** | Review orders above $X | Đơn trên ngưỡng không check out thẳng được: checkout được gửi thành draft order để merchant duyệt. **Chỉ có trên Shopify Plus** (đơn B2B). |
 
 **Các phần chung của mọi rule:**
 - **Name**: bắt buộc, chỉ merchant thấy.
@@ -60,7 +60,8 @@
 **Order limits (thư viện)**
 - Tab All / Order / Product / Review, tìm theo tên.
 - Cột: Name, Type, Rule (tóm tắt), Applies to, Status, và các nút bật tắt / sửa / xoá.
-- **Create limit** → **Select limit type** (3 thẻ) → editor.
+- **Create limit** mở menu xổ chọn loại (Order limit / Product limit / Review threshold, mỗi loại kèm mô tả) → editor.
+  Giống nút **Add limit** trên trang location.
 - Chưa có rule thì hiện màn trống: "Set rules for what buyers can order".
 
 **Editor**
@@ -116,29 +117,50 @@ Rule mẫu cho Watson Co · Phố Thái Hà (`quatnap.of@gmail.com`):
 - Nút +/− bước theo pack.
 - Vi phạm rule thì hiện hộp cảnh báo, kèm số tiền còn thiếu, ví dụ "Your order must be at least $500 to check out.
   Add $491.50 more.", và khoá **Check out**.
+- Lỗi của Product limit nêu tên dòng hàng, kèm tên variant nếu sản phẩm có nhiều variant, vì lỗi hiện chung cho cả cart.
+  Buyer message do merchant tự viết cũng được ghép tên dòng hàng phía trước.
 - Vượt ngưỡng duyệt thì thay Check out bằng **Submit order for review**, đơn được gửi cho merchant. Demo hiện chỉ báo
   "Order sent for review" và xoá cart.
 
 ## 8. Cách chặn đơn ở bản thật (đề xuất kỹ thuật)
 
-- **Cart and Checkout Validation Function** (`cart.validations.generate.run`).
-  - Đọc được `buyerIdentity.purchasingCompany.location`, cart lines và subtotal.
-  - Báo lỗi ở cart, checkout (kể cả Shop Pay, Apple Pay) và draft order.
-  - App public chạy được trên mọi plan.
-- Rule được ghi vào **metafield** của validation (`validationCreate`) hoặc của company location. Function không gọi
-  mạng được, trừ custom app trên Enterprise.
-- **Product limit** đồng bộ thêm sang quantity rules của Shopify (`quantityRulesAdd` trên price list của catalog), để
-  theme hiện được min / increment trên trang sản phẩm.
-- **Giới hạn:**
-  - Không chạy với Create Order API, order edit, POS hay subscription.
-  - Merchant bỏ qua được validation khi hoàn tất draft order.
-  - Function không có đồng hồ, nên muốn limit theo kỳ (ví dụ mỗi tháng) thì app phải tự đếm.
+**Order limit và Product limit: Cart and Checkout Validation Function** (`cart.validations.generate.run`)
+- Đọc được `buyerIdentity.purchasingCompany.location`, cart lines, `cart.cost.subtotalAmount` và
+  `presentmentCurrencyRate`.
+- Báo lỗi ở cart, checkout (kể cả Shop Pay, Apple Pay) và draft order.
+- App public chạy được trên mọi plan.
+- Bật **`blockOnFailure`**: mặc định function lỗi thì checkout vẫn đi qua.
+- Lỗi chỉ hiện ở mức cả cart, không gắn vào từng dòng, nên câu lỗi phải nêu tên dòng hàng.
+
+**Review threshold: Payment Customization Function** (`orderReviewAdd`)
+- Function thấy subtotal vượt ngưỡng thì gửi checkout thành **draft order chờ duyệt**. Validation Function không làm
+  được việc này, vì lỗi validation luôn chặn hẳn đơn.
+- Chỉ có cho **đơn B2B trên Shopify Plus**. Store không phải Plus chỉ có cách của Shopify là duyệt **mọi** đơn của một
+  location ("Submit all orders as drafts for review"), không chọn theo ngưỡng được.
+
+**Lưu rule:** ghi vào **metafield** của validation (`validationCreate`) hoặc của company location. Function không gọi
+mạng được, trừ custom app trên Enterprise.
+
+**Product limit không đồng bộ sang quantity rules của Shopify:**
+- Quantity rules của Shopify nằm trên price list của **catalog**, dùng chung cho mọi location có catalog đó. Location có
+  nhiều catalog thì Shopify lấy rule của catalog **giá thấp nhất**. Gói không phải Plus còn giới hạn 3 catalog B2B.
+- Nên rule gán theo company / location của app không map 1–1 sang đó được.
+- Trang sản phẩm hiện min / increment bằng **app block** của theme, đọc từ metafield của app.
+- Merchant dùng thêm quantity rules gốc của Shopify thì buyer phải thoả cả hai bên. Nên khuyên chỉ dùng một nơi.
+
+**Giới hạn:**
+- Không chạy với Create Order API, order edit, POS hay subscription.
+- Merchant bỏ qua được validation khi hoàn tất draft order.
+- Function không có đồng hồ, nên muốn limit theo kỳ (ví dụ mỗi tháng) thì app phải tự đếm.
 
 Nguồn chính:
-- shopify.dev/docs/api/functions/2026-10/cart-and-checkout-validation
-- shopify.dev/docs/api/admin-graphql/2026-10/mutations/quantityRulesAdd
+- shopify.dev/docs/api/functions/latest/cart-and-checkout-validation
+- shopify.dev/docs/api/functions/latest/payment-customization
+- shopify.dev/docs/api/admin-graphql/latest/objects/QuantityRule
 - help.shopify.com/en/manual/checkout-settings/checkout-blocks/order-value-limits
 - help.shopify.com/manual/b2b/catalogs/quantity-pricing
+- help.shopify.com/en/manual/b2b/catalogs/creating-catalogs
+- help.shopify.com/en/manual/b2b/draft-orders
 
 ## 9. Việc còn mở
 
@@ -151,3 +173,5 @@ Nguồn chính:
 4. Chưa target được theo **customer tag** hoặc khách D2C wholesale. Pricing thì đã có.
 5. Home mới chỉ có đơn chờ duyệt. **Setup guide** và **Analytics** chưa nhắc tới Order limits (ví dụ số đơn bị chặn).
 6. Chưa có cảnh báo khi một rule store-wide bị **mọi** company thay thế, tức là rule đó không còn tác dụng ở đâu.
+7. Store không phải Plus: **Review threshold** chưa chạy được. Cần quyết định ẩn, khoá, hay chỉ báo "Shopify Plus only"
+   (hiện app mới ghi chữ này trong mô tả loại rule).

@@ -53,7 +53,14 @@ export function CompanyDetail() {
       heading={company.name}
       backAction={{ content: 'Companies', onAction: () => dispatch({ type: 'NAVIGATE', view: 'customers' }) }}
       subtitle={`${company.source ? `From ${company.source}` : 'Active'} · ${locationCount} location${locationCount === 1 ? '' : 's'}`}
-      secondaryActions={[{ content: 'Delete', destructive: true, onAction: () => setConfirmDelete(true) }]}
+      secondaryActions={[
+        // Whether locations created on this company in Shopify join it here automatically.
+        {
+          content: `Auto-add locations: ${company.autoAddLocations ? 'On' : 'Off'}`,
+          onAction: () => dispatch({ type: 'SET_AUTO_ADD_LOCATIONS', companyId: company.id, on: !company.autoAddLocations }),
+        },
+        { content: 'Delete', destructive: true, onAction: () => setConfirmDelete(true) },
+      ]}
     />
     <s-page>
       <s-stack gap="base">

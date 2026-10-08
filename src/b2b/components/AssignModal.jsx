@@ -62,8 +62,10 @@ export function AssignModal() {
       context: {
         mode: isQuantity ? 'add-quantity' : 'add-base',
         companyId: a.companyId,
-        locationId: a.locationId || null,
-        locationIds: someLocations ? pickedLocIds : null,
+        // From a location page it starts on that location ("Who this pricing serves"
+        // in the editor can widen it).
+        locationIds: a.locationId ? [a.locationId] : someLocations ? pickedLocIds : null,
+        applyLater: a.applyLater === true,
       },
     });
   };
@@ -105,6 +107,8 @@ export function AssignModal() {
                 company={company}
                 locationIds={someLocations ? pickedLocIds : null}
                 onChange={(ids) => dispatch({ type: 'ASSIGN_PATCH', patch: { applyTo: ids ? 'some' : 'all', locationIds: ids || [] } })}
+                applyLater={a.applyLater === true}
+                onApplyLaterChange={(on) => dispatch({ type: 'ASSIGN_PATCH', patch: { applyLater: on } })}
               />
             ) : null}
 

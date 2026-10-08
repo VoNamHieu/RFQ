@@ -68,8 +68,10 @@ function InlineCheckList({ items, selected, onSet, searchable, placeholder, empt
 // The "Select companies" modal: a searchable list of Shopify companies, each with
 // a checkbox, avatar, primary contact + email, and location / contact counts. A
 // ticked company with 2+ locations lists them underneath (all ticked) so the
-// pricing can go to only some; ticking every location is the whole company.
-export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompany, onToggleLocation, onClose }) {
+// pricing can go to only some; ticking every location is the whole company. With
+// `onApplyLaterChange`, a company picked on every location shows a checkbox for
+// whether locations added later get it too (`applyLater`).
+export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompany, onToggleLocation, onClose, applyLater = true, onApplyLaterChange }) {
   const [q, setQ] = useState('');
   const query = q.trim().toLowerCase();
   const shown = query ? companies.filter((c) => `${c.name} ${c.contact} ${c.email}`.toLowerCase().includes(query)) : companies;
@@ -146,6 +148,17 @@ export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompan
             })
           )}
         </s-stack>
+        {onApplyLaterChange && companies.some((c) => c.locs.length && tickedOf(c).length === c.locs.length) && (
+          <>
+            <s-divider />
+            <s-checkbox
+              label="Automatically apply this pricing to locations added later"
+              details="This only applies to companies with “Automatically add new locations” turned on."
+              checked={applyLater}
+              onChange={(e) => onApplyLaterChange(e.currentTarget.checked)}
+            />
+          </>
+        )}
       </s-stack>
       <s-button slot="primary-action" variant="primary" onClick={onClose}>
         Done
@@ -329,6 +342,8 @@ export function AssignmentCard({ builder, patch, db, isNew, footer = null }) {
         onToggleCompany={toggleCompany}
         onToggleLocation={toggleLocation}
         onClose={() => setCompanyModal(false)}
+        applyLater={builder.b2bApplyLater === true}
+        onApplyLaterChange={(on) => patch({ b2bApplyLater: on })}
       />
     </s-section>
   );

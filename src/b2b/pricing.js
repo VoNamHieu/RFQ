@@ -152,13 +152,27 @@ export function baseInScope(base, sku) {
   if (st === 'products') return (base.selectedProducts || []).includes(sku);
   return true;
 }
-// Whether a profile prices a SKU at all (a base always does; quantity honors its
-// own product scope). Base pricing narrowing is handled by baseInScope above.
-function inScope(profile, sku) {
-  if (!profile) return false;
+// The collections a pricing is scoped to: its picks (selectedCollections), else
+// its single legacy `collection` when that is a real collection.
+export const scopeCollections = (p) =>
+  Array.isArray(p?.selectedCollections) ? p.selectedCollections : p?.collection && COLLECTIONS[p.collection] ? [p.collection] : [];
+
+// Whether a profile prices a product at all (a base always does; quantity honors
+// its own product scope — all, specific products, collections or product tags).
+// Base pricing narrowing is handled by baseInScope above.
+function inScope(profile, product) {
+  if (!profile || !product) return false;
   if (kindOf(profile) === 'base') return true;
-  if (profile.scopeType === 'all') return true;
-  return (profile.selectedProducts || []).includes(sku);
+  switch (profile.scopeType) {
+    case 'all':
+      return true;
+    case 'collection':
+      return scopeCollections(profile).some((c) => (COLLECTIONS[c] || []).includes(product.sku));
+    case 'tags':
+      return (product.tags || []).some((t) => (profile.selectedTags || []).includes(t));
+    default:
+      return (profile.selectedProducts || []).includes(product.sku);
+  }
 }
 
 const condValues = (c) =>
@@ -216,7 +230,7 @@ export function applyAdjustment(rule, valueType, value, base) {
 // The price + which layer decided it, for one profile (null if out of scope):
 // Product override → Conditional rule → profile-level default.
 function priceForDetail(profile, product, variant) {
-  if (!inScope(profile, product.sku)) return null;
+  if (!inScope(profile, product)) return null;
   const v = variant || defaultVariant(product);
   const base = variantBase(product, v);
   const adj = explicitOn(profile) && v ? (profile.variantAdjustments || {})[v.id] : null;
@@ -256,7 +270,7 @@ export function policyPriceBreakdown(profile, product, variant) {
   const adj = explicitOn(profile) && v ? (profile.variantAdjustments || {})[v.id] : null;
   const override = adj && adj.rule ? applyAdjustment(adj.rule, adj.valueType || 'percentage', adj.value, base) : null;
   const final = override != null ? override : rule ? rule.price : defaultPrice;
-  return { shopify: base, defaultPrice, rule, override, final, inScope: inScope(profile, product.sku), variant: v };
+  return { shopify: base, defaultPrice, rule, override, final, inScope: inScope(profile, product), variant: v };
 }
 
 // Resolve the B2B price a company pays for a product (legacy resolvedPriceFor):
@@ -326,7 +340,14 @@ export const scopeLabel = (p) => {
   if (!p) return 'None';
   const st = p.scopeType || (kindOf(p) === 'base' ? 'all' : 'products');
   if (st === 'all') return 'All products';
-  if (st === 'collection') return p.collection || 'Collection';
+  if (st === 'collection') {
+    const cs = scopeCollections(p);
+    return cs.length === 1 ? cs[0] : cs.length ? `${cs.length} collections` : 'Collection';
+  }
+  if (st === 'tags') {
+    const ts = p.selectedTags || [];
+    return ts.length === 1 ? `Tag: ${ts[0]}` : `${ts.length} product tags`;
+  }
   return `${(p.selectedProducts || []).length} selected products`;
 };
 
@@ -481,12 +502,16 @@ export const scopeTypeLabel = (policy) => {
   switch (policy.scopeType) {
     case 'all':
       return 'All products';
-    case 'collection':
-      return policy.collection || 'Collection';
+    case 'collection': {
+      const cs = scopeCollections(policy);
+      return cs.length === 1 ? cs[0] : cs.length ? `${cs.length} collections` : 'Collection';
+    }
     case 'products':
       return `${(policy.selectedProducts || []).length} products`;
-    case 'tags':
-      return 'Tagged products';
+    case 'tags': {
+      const ts = policy.selectedTags || [];
+      return ts.length === 1 ? `Tag: ${ts[0]}` : `${ts.length} product tags`;
+    }
     default:
       return '';
   }

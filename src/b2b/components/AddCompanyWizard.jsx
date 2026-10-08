@@ -4,9 +4,10 @@ import { useStore } from '../store.jsx';
 import { shopifyCompanies } from '../data/directory.js';
 
 // Add Shopify companies to B2B — one screen: tick one or more companies, then Add.
-// The very first time (no company in the app yet) it picks just one; after that
-// several can be added at once. Either way it ends on the company list, the added
-// ones first. Each comes with all its locations, and contacts come with their
+// The very first time (no company in the app yet) it picks just one, which lands
+// on its Pricing tab to set up; after that several can be added at once and it
+// ends on the company list, the added ones first. Each comes with all its
+// locations, and contacts come with their
 // location. A company added before with only some locations stays listed
 // ("Added") so the rest can be added. "Automatically add new locations" (ticked
 // by default) makes locations created on the ticked companies in Shopify later
