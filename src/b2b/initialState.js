@@ -2,8 +2,8 @@
 // (legacy restoreRfqCompanies + receiveRfqHandoff at b2b/index.html §8190-8262).
 import { dbSeed } from './data/db.js';
 import { registrationSeed } from './data/registrations.js';
-import { DEMO_STATE_KEY, readJSON, consumeHandoff } from '../shared/persistence.js';
-import { normalizeDb, injectRfqCompany, applyQuotePricingTransfer } from './dbHelpers.js';
+import { DEMO_STATE_KEY, readJSON, consumeHandoff, readOrderRequests } from '../shared/persistence.js';
+import { normalizeDb, injectRfqCompany, applyQuotePricingTransfer, injectOrderRequests } from './dbHelpers.js';
 import { syncContractDates } from './agreements.js';
 
 export function makeBaseState() {
@@ -64,6 +64,8 @@ export function buildInitialState() {
   if (demo && demo.b2bCompanies) {
     Object.values(demo.b2bCompanies).forEach((p) => injectRfqCompany(s.db, p));
   }
+  // Order requests buyers sent from the storefront, waiting for review.
+  injectOrderRequests(s.db, readOrderRequests());
   // 2) One-shot handoff: open the specific company just handed over from RFQ.
   const handoff = consumeHandoff();
   if (handoff) {

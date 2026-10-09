@@ -39,6 +39,22 @@ export function removeKeys(...keys) {
   }
 }
 
+// Order limits ↔ storefront. The B2B app publishes its order limits whenever they
+// change, so the storefront checks carts against the same ones (B2B edits reset on
+// its reload, so the storefront follows that too). Going the other way, an order
+// request — a cart over a review threshold the buyer sent instead of checking out —
+// waits here until the B2B app's merchant approves or declines it.
+export const ORDER_LIMITS_KEY = 'qsOrderLimits';
+export const ORDER_REQUESTS_KEY = 'qsOrderRequests';
+export const publishOrderLimits = (limits) => writeJSON(ORDER_LIMITS_KEY, limits);
+export const publishedOrderLimits = () => readJSON(ORDER_LIMITS_KEY);
+export const readOrderRequests = () => readJSON(ORDER_REQUESTS_KEY) || [];
+export const addOrderRequest = (request) => writeJSON(ORDER_REQUESTS_KEY, [...readOrderRequests(), request]);
+export function removeOrderRequests(ids) {
+  const left = readOrderRequests().filter((r) => !ids.includes(r.id));
+  if (left.length !== readOrderRequests().length) writeJSON(ORDER_REQUESTS_KEY, left);
+}
+
 // One-shot read of the RFQ→B2B handoff. Cached at module scope so it is safe to
 // call more than once (React StrictMode double-invokes lazy initializers, and a
 // dev remount would otherwise lose the payload once the key is removed).
@@ -55,7 +71,7 @@ export function consumeHandoff() {
 // "Reset sample data" — clear the shared demo state + any pending handoff and
 // reload back to seed (legacy resetDemoData / the top-bar "Reset data" button).
 export function resetDemo() {
-  removeKeys(DEMO_STATE_KEY, HANDOFF_KEY);
+  removeKeys(DEMO_STATE_KEY, HANDOFF_KEY, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY);
   try {
     window.location.reload();
   } catch {

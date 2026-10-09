@@ -6,6 +6,7 @@ import { ProductScopeCard } from './pricingEditorCards.jsx';
 import { COLLECTIONS } from '../data/constants.js';
 import { SelectCompaniesModal, CustomerTargetsBox, companyPicks } from './AssignmentCard.jsx';
 import { Modal, useWcId, PageHeader } from '../../shared/wc.jsx';
+import { PRODUCTS as STOREFRONT_PRODUCTS } from '../../storefront/data/products.js';
 
 const str = (v) => (v == null ? '' : String(v));
 // Errors that only mean "not filled in yet" wait for a save attempt; the rest
@@ -160,7 +161,8 @@ export function LimitEditor() {
               builder={draft}
               // Switching to a collection picks the first one, as the select shows it.
               patch={(p) => patch(p.scopeType === 'collection' && !draft.collection ? { ...p, collection: Object.keys(COLLECTIONS)[0] } : p)}
-              products={state.db.products}
+              // The storefront's catalog too, so a product limit can be checked there.
+              products={[...state.db.products, ...STOREFRONT_PRODUCTS.filter((p) => !state.db.products.some((x) => x.sku === p.sku))]}
             />
             {errors.products && (
               <s-paragraph tone="critical" id="limit-products">

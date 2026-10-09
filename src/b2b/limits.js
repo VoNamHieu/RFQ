@@ -16,9 +16,11 @@
 // the buyer's company location: cart, checkout (express too) and draft orders,
 // though merchants can bypass it on a draft; blockOnFailure on, so a failing
 // function blocks checkout. It doesn't run for POS, order edits, the Create Order
-// API or subscriptions. A review threshold isn't a validation error: a Payment
-// Customization function (orderReviewAdd) submits that checkout as a draft for
-// review — B2B orders on Shopify Plus only.
+// API or subscriptions. A review threshold works on every plan: the app's theme
+// embed stops the cart going to checkout and lets the buyer reduce the order or
+// send an order request (a draft order for the merchant to review), and the
+// validation function blocks a checkout that gets past it (express buttons, a
+// direct checkout link).
 //
 // Like pricing, a limit is for B2B buyers (audienceType 'b2b', above) or for D2C
 // Wholesale customers outside a company ('d2c'): all, logged-in or non-logged-in
@@ -41,7 +43,7 @@ import { resolveDetail, resolveCustomer, companyForCustomerEmail, policyPriceBre
 export const LIMIT_KINDS = {
   order: { label: 'Order limit', description: 'A minimum or maximum order value or total quantity.' },
   product: { label: 'Product limit', description: 'Minimum, maximum and case-pack quantities on selected products.' },
-  review: { label: 'Review threshold', description: 'Orders above an amount come to you for review instead of checking out. Shopify Plus only.' },
+  review: { label: 'Review threshold', description: 'Orders above an amount come to you for review instead of checking out.' },
 };
 
 export const ORDER_FIELDS = ['minValue', 'maxValue', 'minQty', 'maxQty'];
@@ -147,7 +149,7 @@ export const limitSummary = (l, db) => limitRules(l, db).map((r) => r.text).join
 
 // What buyers see when an order breaks the limit, unless the merchant wrote their own.
 export function defaultLimitMessage(l) {
-  if (l.kind === 'review') return `Orders over ${money(l.threshold || 0)} need our approval. Submit your order for review and we’ll confirm it.`;
+  if (l.kind === 'review') return `Your current limit is ${money(l.threshold || 0)}. Reduce your order or send an order request.`;
   if (l.kind === 'product') {
     if (l.increment > 1) return `This product is sold in packs of ${l.increment}${l.min ? `, minimum ${l.min}` : ''}.`;
     return `You can order ${[l.min && `at least ${l.min}`, l.max && `at most ${l.max}`].filter(Boolean).join(' and ') || 'this product'} per order.`;
@@ -269,8 +271,8 @@ export const productRuleForCustomer = (db, customer, sku) => productRuleWith(db,
 // What's wrong with a cart under the limits in effect for a location (for D2C, a
 // customer) — what the Cart and Checkout Validation function returns as errors.
 // `lines`: [{ sku, title, qty }], one per variant; `subtotal` at the buyer's prices. A 'review' problem
-// isn't a validation error and doesn't block the order: in production a Payment
-// Customization function sends that checkout for review.
+// isn't a validation error and doesn't block the order: the buyer can send it as an
+// order request instead of checking out.
 export const cartProblems = (db, companyId, locationId, lines, subtotal) => cartProblemsWith(db, atLocation(companyId, locationId), lines, subtotal);
 export const cartProblemsForCustomer = (db, customer, lines, subtotal) => cartProblemsWith(db, (l) => customerLimitLevel(l, customer), lines, subtotal);
 function cartProblemsWith(db, levelOf, lines, subtotal) {
@@ -300,7 +302,7 @@ function cartProblemsWith(db, levelOf, lines, subtotal) {
     else if (increment > 1 && line.qty % increment) addLine(`${line.title} is sold in packs of ${increment}.`);
   });
   const threshold = rule('threshold');
-  if (threshold && subtotal > threshold.v) add('review', threshold.limit, `Orders over ${money(threshold.v)} need our approval. Submit your order for review and we’ll confirm it.`);
+  if (threshold && subtotal > threshold.v) add('review', threshold.limit, `Your current limit is ${money(threshold.v)}. Reduce your order or send an order request.`);
   return problems;
 }
 

@@ -610,6 +610,5 @@ h3 { font-size: 1.8rem; }
 .limit-notice { background: #fff4e5; border: 0.1rem solid #f1c48a; color: #6b4300; padding: 1.2rem 1.4rem; font-size: 1.35rem; margin-bottom: 1.6rem; }
 .limit-notice ul { margin: 0; padding-left: 1.8rem; }
 .limit-notice li + li { margin-top: 0.4rem; }
-.limit-notice--review { background: var(--b2b-bg); border-color: #c5d3f6; color: #16204a; }
 .qty-note { font-size: 1.3rem; color: var(--color-muted); margin: 0.8rem 0 2.4rem; }
 .qty-note--error { color: #b42318; }

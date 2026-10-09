@@ -86,14 +86,9 @@ export function Home() {
   const doneCount = steps.filter((s) => s.done).length;
   const setupComplete = doneCount === steps.length;
 
-  // What needs the merchant now — each row one action, most blocking first.
+  // What needs the merchant now — each row one action, most blocking first. Held
+  // orders have their own section below it.
   const attention = [
-    // Buyers are waiting on these, so they go first; each order has its own decision.
-    held.length && {
-      title: `${plural(held.length, 'order', 'orders')} waiting for your review`,
-      meta: 'They’re over a review threshold, so the buyers couldn’t check out. Approving one creates the order.',
-      orders: held,
-    },
     needPrice && {
       title: `${plural(needPrice, 'company needs', 'companies need')} B2B pricing`,
       meta: 'No pricing applies to at least one of their locations.',
@@ -171,16 +166,6 @@ export function Home() {
                       </s-stack>
                       {a.action ? <s-button onClick={a.action.onAction}>{a.action.content}</s-button> : null}
                     </s-grid>
-                    {a.orders ? (
-                      <HeldOrderList
-                        items={a.orders}
-                        db={db}
-                        onOpen={(company, location) =>
-                          location
-                            ? dispatch({ type: 'OPEN_LOCATION', companyId: company.id, locationId: location.id })
-                            : dispatch({ type: 'OPEN_COMPANY', id: company.id, tab: 'orders' })}
-                      />
-                    ) : null}
                   </s-box>
                 </React.Fragment>
               ))}
@@ -189,6 +174,23 @@ export function Home() {
             <s-paragraph color="subdued">You're all caught up. Nothing needs your attention right now.</s-paragraph>
           )}
         </s-section>
+
+        {/* Buyers are waiting on these; each order has its own decision. */}
+        {held.length ? (
+          <s-section heading={`${plural(held.length, 'order', 'orders')} waiting for your review`}>
+            <s-paragraph fontSize="small" color="subdued">
+              They’re over a review threshold, so the buyers couldn’t check out. Approving one creates the order.
+            </s-paragraph>
+            <HeldOrderList
+              items={held}
+              db={db}
+              onOpen={(company, location) =>
+                location
+                  ? dispatch({ type: 'OPEN_LOCATION', companyId: company.id, locationId: location.id })
+                  : dispatch({ type: 'OPEN_COMPANY', id: company.id, tab: 'orders' })}
+            />
+          </s-section>
+        ) : null}
 
         <s-stack gap="small">
           <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="base" alignItems="center">
@@ -262,8 +264,8 @@ export function Home() {
 // Shopify's setup-guide composition: progress "X of Y", collapsible, dismissible,
 // one step open at a time (the first unfinished one by default); a click on a
 // step's title opens it instead.
-// Held orders under their Needs attention row: which company and location, how
-// much, why it's held, and Approve / Decline right there.
+// Held orders in their own section under Needs attention: which company and
+// location, how much, why it's held, and Approve / Decline right there.
 const HELD_SHOWN = 5;
 const shortDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 function HeldOrderList({ items, db, onOpen }) {

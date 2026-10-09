@@ -5,6 +5,7 @@
 import { orderSeed } from './data/db.js';
 import { policyById, policyUsageCount, slotIds } from './pricing.js';
 import { newBaseBuilder } from './builders.js';
+import { money } from './format.js';
 
 export const clone = (obj) =>
   typeof structuredClone === 'function' ? structuredClone(obj) : JSON.parse(JSON.stringify(obj));
@@ -244,4 +245,25 @@ export function applyQuotePricingTransfer(db, companyId, lines, transfer) {
   base.variantAdjustments = { ...(base.variantAdjustments || {}), ...overrides };
   base.explicitEnabled = true;
   return 'Quote prices added';
+}
+
+// Order requests from the storefront (a cart over a review threshold) wait as held
+// orders: draft orders for the merchant to approve or decline. Adds the ones that
+// aren't there yet, numbered after the newest order. Mutates `db`.
+export function injectOrderRequests(db, requests) {
+  const all = (db.companies || []).flatMap((c) => c.orders || []);
+  let next = Math.max(1000, ...all.map((o) => Number(String(o.id).replace(/\D/g, '')) || 0)) + 1;
+  requests.forEach((r) => {
+    const c = (db.companies || []).find((x) => x.id === r.companyId);
+    if (!c || all.some((o) => o.requestId === r.id)) return;
+    const loc = (c.locations || []).find((l) => l.id === r.locationId);
+    const order = {
+      id: `#${next++}`, requestId: r.id, location: loc?.name || '', buyer: r.buyer, date: r.date, amount: r.amount, lines: r.lines.length, po: '',
+      pricing: r.priceList || '', pricingSource: 'Company price', source: 'Storefront order request',
+      status: 'Needs review', shopifyStatus: 'Draft order', reason: `Above the ${money(r.threshold)} review threshold`, heldBy: r.limitId,
+    };
+    c.orders = [order, ...(c.orders || [])];
+    all.push(order);
+  });
+  return db;
 }

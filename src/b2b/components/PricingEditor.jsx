@@ -324,7 +324,7 @@ export function PricingEditor({ asPage = false }) {
             {/* Aside (god-file builder-side): status, resolution, summary. */}
             <s-stack gap="base">
               <RuleStatusCard builder={builder} patch={patch} />
-              <SummaryCard builder={builder} isQuantity={isQuantity} assignedTo={assignedTo} products={state.db.products} />
+              <SummaryCard builder={builder} isQuantity={isQuantity} assignedTo={assignedTo} products={state.db.products} locations={reach} />
             </s-stack>
           </s-grid>
           </s-query-container>
@@ -407,7 +407,7 @@ export function PricingEditor({ asPage = false }) {
         </Modal>
       )}
       {catalogPreview && targets.length > 1 && (
-        <CatalogPricePreview builder={builder} products={state.db.products} targets={targets} onClose={() => setCatalogPreview(false)} />
+        <BuilderPricePreview builder={builder} products={state.db.products} targets={reach} onClose={() => setCatalogPreview(false)} />
       )}
       {asPage ? (
         <>
@@ -473,27 +473,58 @@ function RuleStatusCard({ builder, patch }) {
   );
 }
 
-// "Preview all prices": every product this base pricing covers, the layer that
-// decides each price, and what the buyer pays — computed from the DRAFT builder, so
-// it reflects unsaved rule/override edits. Same modal as the company page's Preview
-// prices (PricePreviewDialog), which reads the saved pricing instead.
-function BuilderPricePreview({ builder, products, onClose }) {
+// "Preview prices": every product this base pricing covers, the layer that decides
+// each price, and what the buyer pays — computed from the DRAFT builder, so it
+// reflects unsaved rule/override edits. With locations it reaches, picked from the
+// toolbar: products outside that location's catalog don't get it ("Not in
+// catalog"). Opened from the Settings summary and from the several-locations note.
+// Same modal as the company page's Preview prices (PricePreviewDialog), which reads
+// the saved pricing instead.
+function BuilderPricePreview({ builder, products, targets = [], onClose }) {
+  const keyOf = (t) => `${t.company.id}::${t.location.id}`;
+  const [key, setKey] = useState(targets.length ? keyOf(targets[0]) : null);
+  const target = targets.find((t) => keyOf(t) === key) || targets[0] || null;
+  const catalog = target ? locationCatalog(target.location, products) : null;
+  const severalCompanies = new Set(targets.map((t) => t.company.id)).size > 1;
   const entries = products
     .map((p) => ({ p, bd: policyPriceBreakdown(builder, p) }))
     .filter(({ bd }) => bd?.inScope)
     .map(({ p, bd }) => {
+      if (catalog && !catalog.skus.includes(p.sku)) return { product: p, shopify: bd.shopify, final: null, decidedBy: 'Not in catalog', highlight: true };
       const layer = bd.override != null ? 'override' : bd.rule ? 'rule' : 'default';
       const rule = bd.rule ? (builder.conditionalRules || [])[bd.rule.index] : null;
       const decidedBy =
         layer === 'override' ? 'Product override' : layer === 'rule' ? `Rule ${bd.rule.index + 1} · ${ruleTypeLabel(rule)}` : 'Default';
       return { product: p, shopify: bd.shopify, final: bd.final, decidedBy, highlight: layer === 'override' };
     });
+  const outside = entries.filter((e) => e.final == null).length;
   return (
     <PricePreviewDialog
       title={`Preview prices · ${builder.name || 'This pricing'}`}
-      description="Every product this pricing covers, with the layer that decides each price. Reflects your unsaved edits."
+      description={
+        target
+          ? `${target.location.name}${severalCompanies ? ` (${target.company.name})` : ''} uses the ${catalog.name} catalog. ${
+              outside
+                ? `${outside} of the products this pricing covers ${outside === 1 ? 'isn’t' : 'aren’t'} in it, so ${outside === 1 ? 'it doesn’t' : 'they don’t'} get this price there.`
+                : 'Every product this pricing covers is in it.'
+            }`
+          : 'Every product this pricing covers, with the layer that decides each price. Reflects your unsaved edits.'
+      }
       entries={entries}
       emptyLabel="This pricing covers no products yet."
+      toolbar={
+        target ? (
+          <div style={{ width: 340, flex: '0 0 auto' }}>
+            <s-select label="Location" value={keyOf(target)} onChange={(e) => setKey(e.currentTarget.value)}>
+              {targets.map((t) => (
+                <s-option key={keyOf(t)} value={keyOf(t)}>
+                  {severalCompanies ? `${t.location.name} · ${t.company.name}` : t.location.name}
+                </s-option>
+              ))}
+            </s-select>
+          </div>
+        ) : undefined
+      }
       onClose={onClose}
     />
   );
@@ -512,49 +543,6 @@ function MultiCatalogNote({ onPreview }) {
         Preview by location
       </s-button>
     </s-banner>
-  );
-}
-
-// What this base pricing (unsaved edits included) gives at one of the locations
-// it reaches, picked from the toolbar. Products outside that location's catalog
-// don't get it — they show "—".
-function CatalogPricePreview({ builder, products, targets, onClose }) {
-  const keyOf = (t) => `${t.company.id}::${t.location.id}`;
-  const [key, setKey] = useState(keyOf(targets[0]));
-  const target = targets.find((t) => keyOf(t) === key) || targets[0];
-  const catalog = locationCatalog(target.location, products);
-  const severalCompanies = new Set(targets.map((t) => t.company.id)).size > 1;
-  const entries = products
-    .map((p) => ({ p, bd: policyPriceBreakdown(builder, p) }))
-    .filter(({ bd }) => bd?.inScope)
-    .map(({ p, bd }) =>
-      catalog.skus.includes(p.sku)
-        ? { product: p, shopify: bd.shopify, final: bd.final, decidedBy: 'This pricing' }
-        : { product: p, shopify: bd.shopify, final: null, decidedBy: 'Not in catalog', highlight: true });
-  const outside = entries.filter((e) => e.final == null).length;
-  return (
-    <PricePreviewDialog
-      title={`Preview prices · ${builder.name || 'This pricing'}`}
-      description={`${target.location.name}${severalCompanies ? ` (${target.company.name})` : ''} uses the ${catalog.name} catalog. ${
-        outside
-          ? `${outside} of the products this pricing covers ${outside === 1 ? 'isn’t' : 'aren’t'} in it, so ${outside === 1 ? 'it doesn’t' : 'they don’t'} get this price there.`
-          : 'Every product this pricing covers is in it.'
-      }`}
-      entries={entries}
-      emptyLabel="This pricing covers no products yet."
-      toolbar={
-        <div style={{ width: 340, flex: '0 0 auto' }}>
-          <s-select label="Location" value={key} onChange={(e) => setKey(e.currentTarget.value)}>
-            {targets.map((t) => (
-              <s-option key={keyOf(t)} value={keyOf(t)}>
-                {severalCompanies ? `${t.location.name} · ${t.company.name}` : t.location.name}
-              </s-option>
-            ))}
-          </s-select>
-        </div>
-      }
-      onClose={onClose}
-    />
   );
 }
 
@@ -590,7 +578,7 @@ function CompanyLocationsCard({ company, locationIds, onChange, applyLater, onAp
 // Settings summary (production's SettingsSummaryCard): what this pricing is and
 // who gets it at a glance, then — for base pricing — Preview prices: what buyers
 // pay with these settings, unsaved edits included.
-function SummaryCard({ builder, isQuantity, assignedTo, products }) {
+function SummaryCard({ builder, isQuantity, assignedTo, products, locations }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const count = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
   const rules = (builder.conditionalRules || []).length;
@@ -636,7 +624,7 @@ function SummaryCard({ builder, isQuantity, assignedTo, products }) {
           </>
         )}
       </s-stack>
-      {previewOpen && <BuilderPricePreview builder={builder} products={products} onClose={() => setPreviewOpen(false)} />}
+      {previewOpen && <BuilderPricePreview builder={builder} products={products} targets={locations} onClose={() => setPreviewOpen(false)} />}
     </s-section>
   );
 }

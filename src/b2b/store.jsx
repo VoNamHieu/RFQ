@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer } from 'react';
+import React, { createContext, useContext, useEffect, useReducer } from 'react';
 import { shopifyCompanies } from './data/directory.js';
 import { policyUsageCount, slotIds, hasOwnSlot } from './pricing.js';
 import { newRule, newBaseBuilder, newQuantityBuilder } from './builders.js';
@@ -16,7 +16,9 @@ import {
   demoPolicyId,
   recomputeBuyers,
   applyQuotePricingTransfer,
+  injectOrderRequests,
 } from './dbHelpers.js';
+import { publishOrderLimits, readOrderRequests, removeOrderRequests, ORDER_REQUESTS_KEY } from '../shared/persistence.js';
 
 // The B2B god file rebuilt #app from a single `state` on every action. Here that
 // is a reducer over a view state machine + the mutable demo db. The db helpers,
@@ -1012,6 +1014,12 @@ function reducer(state, action) {
       const msg = applyQuotePricingTransfer(db, companyId, lines, transfer) || 'Prices unchanged';
       return { ...state, db, buildQuotes: null, toast: msg };
     }
+    // An order request just sent from the storefront (in another tab).
+    case 'SYNC_ORDER_REQUESTS': {
+      const db = clone(state.db);
+      injectOrderRequests(db, action.requests);
+      return { ...state, db };
+    }
     // ----- Orders held by a review threshold (order limits) -----
     // Approving completes the held draft order into a real order; declining cancels
     // it (the buyer is told, and can change the order and submit it again).
@@ -1135,6 +1143,21 @@ const StoreContext = createContext(null);
 
 export function StoreProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, undefined, buildInitialState);
+  // Order limits reach the storefront; order requests come back from it, even
+  // while this tab is open. A request the merchant approved or declined is done,
+  // so it doesn't come back on reload (see persistence.js).
+  useEffect(() => publishOrderLimits(state.db.limits || []), [state.db.limits]);
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key === ORDER_REQUESTS_KEY) dispatch({ type: 'SYNC_ORDER_REQUESTS', requests: readOrderRequests() });
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+  useEffect(() => {
+    const done = state.db.companies.flatMap((c) => c.orders || []).filter((o) => o.requestId && o.status !== 'Needs review');
+    if (done.length) removeOrderRequests(done.map((o) => o.requestId));
+  }, [state.db.companies]);
   return <StoreContext.Provider value={{ state, dispatch }}>{children}</StoreContext.Provider>;
 }
 

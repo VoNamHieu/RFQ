@@ -58,10 +58,10 @@ function reducer(state, action) {
     }
     case 'REMOVE_LINE':
       return { ...state, cart: state.cart.filter((_, i) => i !== action.index) };
-    // Over the review threshold: the cart goes to the merchant as a draft order
-    // instead of checking out (see Order limits in the B2B app).
+    // Over the review threshold: the cart goes to the merchant as an order request
+    // (a draft order) instead of checking out (see Order limits in the B2B app).
     case 'SUBMIT_FOR_REVIEW':
-      return { ...state, cart: [], cartOpen: false, toast: 'Order sent for review' };
+      return { ...state, cart: [], cartOpen: false, toast: 'Order request sent' };
     case 'TOGGLE_CART':
       return { ...state, cartOpen: action.open ?? !state.cartOpen };
     case 'OPEN_QUOTE':

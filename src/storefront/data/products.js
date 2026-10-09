@@ -4,8 +4,10 @@
 // product key the cart, product page and quote requests use: the first variant's
 // SKU, or the handle when the store has none. `list` is the D2C price.
 import storeCatalog from './shopifyProducts.json';
-import { newLimit, productRuleFor, productRuleForCustomer, cartProblems, cartProblemsForCustomer, limitLevel, limitSummary } from '../../b2b/limits.js';
+import { productRuleFor, productRuleForCustomer, cartProblems, cartProblemsForCustomer, limitLevel, limitSummary } from '../../b2b/limits.js';
+import { dbSeed } from '../../b2b/data/db.js';
 import { versionFlags } from '../../shared/versions.js';
+import { publishedOrderLimits } from '../../shared/persistence.js';
 import { money } from '../utils.js';
 
 // A soft, always-rendering placeholder image per product (Dawn ships gray
@@ -59,24 +61,13 @@ export const productBySku = (sku) => PRODUCTS.find((p) => p.sku === sku) || null
 // per-SKU contract prices for its real catalog, so "Distributor Tier 2" is a
 // Shopify-style price list with one percentage adjustment off the list price.
 const TIER2 = { name: 'Distributor Tier 2', percentOff: 15 };
-export const B2B_PRICE_LISTS = { abc: TIER2, watson: TIER2 };
+export const B2B_PRICE_LISTS = { abc: TIER2, c1: TIER2 };
 
 // ── Order limits ────────────────────────────────────────────────────────────
-// The B2B app's order limits as they reach this storefront's demo company (shape
-// and rules: b2b/limits.js — the same checks the validation function runs).
-// Watson Co · Phố Thái Hà gets the store-wide minimum, jersey case packs for the
-// company, and its own review threshold. Signed-in customers outside a company
-// (D2C) get the D2C jersey maximum; guests get no limits.
-const JERSEYS = PRODUCTS.filter((p) => /jersey/i.test(p.title)).map((p) => p.sku);
-const STORE_LIMITS = {
-  products: PRODUCTS,
-  limits: [
-    { ...newLimit('order'), id: 'sl1', name: 'Wholesale minimum', minValue: 500 },
-    { ...newLimit('product'), id: 'sl2', name: 'Jersey case packs', min: 10, increment: 5, selectedProducts: JERSEYS, storeWide: false, companyIds: ['watson'] },
-    { ...newLimit('review'), id: 'sl3', name: 'Watson review', threshold: 5000, storeWide: false, locationKeys: ['watson::thai-ha'] },
-    { ...newLimit('product'), id: 'sl4', name: 'Customer jersey maximum', max: 10, selectedProducts: JERSEYS, audienceType: 'd2c', storeWide: false, customerTarget: 'logged_in' },
-  ],
-};
+// The B2B app's order limits, as it last published them (its sample limits until
+// it has), checked against this store's catalog — the same checks the validation
+// function runs (b2b/limits.js). The B2B buyer is ABC Construction · Hanoi.
+const limitsDb = () => ({ products: PRODUCTS, limits: publishedOrderLimits() || dbSeed.limits });
 
 // A buyer signed in to a company location gets its B2B limits; anyone else the D2C
 // ones (a guest as a non-logged-in customer) — only in the version that has order
@@ -88,25 +79,26 @@ const asCustomer = (session) => (session ? { id: session.id, tags: session.tags 
 export function productRuleForSession(sku, session) {
   if (!versionFlags().orderLimits) return null;
   return atLocation(session)
-    ? productRuleFor(STORE_LIMITS, session.companyKey, session.locationId, sku)
-    : productRuleForCustomer(STORE_LIMITS, asCustomer(session), sku);
+    ? productRuleFor(limitsDb(), session.companyKey, session.locationId, sku)
+    : productRuleForCustomer(limitsDb(), asCustomer(session), sku);
 }
 
 // ── Agreement ───────────────────────────────────────────────────────────────
 // The buyer's agreement as their account shows it (b2b/agreements.js): its
 // pricing (the price list above) and the order limits it sets for their company
 // or location. Store-wide limits apply to every buyer, so they aren't part of it.
-const STORE_AGREEMENT = { number: 'CT-412', name: '2026 trade terms', version: 2, since: 'Jan 5, 2026', until: 'Jan 4, 2027' };
+const STORE_AGREEMENT = { number: 'CT-301', name: '2026 annual terms', version: 2, since: 'Jan 3, 2026', until: 'Aug 20, 2026' };
 
 export function agreementForSession(session) {
   if (!versionFlags().agreements || !atLocation(session)) return null;
   const list = B2B_PRICE_LISTS[session.companyKey];
-  const limits = STORE_LIMITS.limits.filter((l) => l.status === 'Active' && ['company', 'location'].includes(limitLevel(l, session.companyKey, session.locationId)));
+  const db = limitsDb();
+  const limits = db.limits.filter((l) => l.status === 'Active' && ['company', 'location'].includes(limitLevel(l, session.companyKey, session.locationId)));
   return {
     ...STORE_AGREEMENT,
     pricing: list ? `${list.name} · ${list.percentOff}% off list prices` : null,
     // Buyer wording for a review threshold; the rest read the same for both sides.
-    limits: limits.map((l) => (l.kind === 'review' ? `Orders over ${money(l.threshold).replace(/\.00$/, '')} are sent for approval` : limitSummary(l, STORE_LIMITS))),
+    limits: limits.map((l) => (l.kind === 'review' ? `Orders over ${money(l.threshold).replace(/\.00$/, '')} are sent for approval` : limitSummary(l, db))),
   };
 }
 
@@ -114,8 +106,8 @@ export function agreementForSession(session) {
 export function cartProblemsForSession(lines, subtotal, session) {
   if (!versionFlags().orderLimits) return [];
   return atLocation(session)
-    ? cartProblems(STORE_LIMITS, session.companyKey, session.locationId, lines, subtotal)
-    : cartProblemsForCustomer(STORE_LIMITS, asCustomer(session), lines, subtotal);
+    ? cartProblems(limitsDb(), session.companyKey, session.locationId, lines, subtotal)
+    : cartProblemsForCustomer(limitsDb(), asCustomer(session), lines, subtotal);
 }
 
 // ── Demo accounts ────────────────────────────────────────────────────────────
@@ -125,7 +117,8 @@ export function cartProblemsForSession(lines, subtotal, session) {
 //   quotesnap.of@gmail.com — NOT applied. A plain customer: D2C list prices, no
 //     company, no quotes. Profile and B2B Portal show the "Buying for a
 //     business?" apply entry; applying moves this account to "Pending review".
-//   quatnap.of@gmail.com   — APPLIED and approved into Watson Co. Contract
+//   quatnap.of@gmail.com   — APPLIED and approved: John Nguyen at ABC Construction
+//     · Hanoi, as in the B2B app, so its order limits apply. Contract
 //     prices, company purchasing terms, quote history, order → quote request.
 //
 // Any other email signs in as the not-applied buyer.
@@ -148,19 +141,19 @@ export const DEMO_ACCOUNTS = [
   },
   {
     id: 'b2b',
-    devNote: 'Applied and approved — Watson Co, contract prices, quote history',
+    devNote: 'Applied and approved — ABC Construction · Hanoi, contract prices, quote history',
     email: 'quatnap.of@gmail.com',
-    contact: 'Watson James',
-    companyKey: 'watson',
-    companyName: 'Watson Co',
-    role: 'Ordering only',
-    locationLabel: 'Phố Thái Hà',
-    locationId: 'thai-ha',
-    location: 'Phố Thái Hà, Đống Đa, Vietnam',
+    contact: 'John Nguyen',
+    companyKey: 'c1',
+    companyName: 'ABC Construction',
+    role: 'Location admin',
+    locationLabel: 'Hanoi',
+    locationId: 'l1',
+    location: 'Hanoi, Vietnam',
     priceListName: 'Distributor Tier 2',
     marketing: { email: false },
-    shippingAddress: { name: 'Watson Co', line: 'Phố Thái Hà, Đống Đa, Vietnam' },
-    billingAddress: { name: 'Watson Co', line: 'Phố Thái Hà, Đống Đa, Vietnam' },
+    shippingAddress: { name: 'ABC Construction', line: 'Hanoi, Vietnam' },
+    billingAddress: { name: 'ABC Construction', line: 'Hanoi, Vietnam' },
     paymentMethods: [{ brand: 'Visa', last4: '4242', expires: '08/28' }],
     get orders() { return ACCOUNT_ORDERS; },
     get quotes() { return ACCOUNT_QUOTES; },
