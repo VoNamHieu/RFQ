@@ -8,6 +8,22 @@
 // `customerId`); decided rows carry `decidedAt`.
 
 export const registrationSeed = [
+  // Demo (D2C, already a customer): no company name, and the email is Lan Anh Home's —
+  // already a D2C customer — so approving reuses that customer instead of creating one.
+  {
+    id: 'r110', status: 'pending', submittedAt: '2026-09-24', source: 'Registration page',
+    firstName: 'Lan Anh', lastName: 'Nguyen', email: 'purchasing@lananhhome.vn',
+    company: '', country: 'Vietnam', taxId: '',
+    message: 'We already buy from you online. Please confirm our wholesale account for the new season.',
+  },
+  // Demo (D2C, company contact): no company name, but the email is Nguyen Hoa's at
+  // Delta Mechanical — Merge keeps her there, or she leaves it as a D2C customer.
+  {
+    id: 'r111', status: 'pending', submittedAt: '2026-09-25', source: 'Registration page',
+    firstName: 'Hoa', lastName: 'Nguyen', email: 'hoa@deltamechanical.vn',
+    company: '', country: 'Vietnam', taxId: '',
+    message: 'I have left Delta Mechanical and now run my own small shop. I would like to keep buying wholesale for myself.',
+  },
   // Demo (D2C): no company name — approving makes Linh a Shopify customer in no company.
   {
     id: 'r109', status: 'pending', submittedAt: '2026-09-23', source: 'Registration page',

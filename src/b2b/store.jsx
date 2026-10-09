@@ -314,9 +314,11 @@ function reducer(state, action) {
       // Case 1 (same email, same company) is merge or decline only. The page shows
       // those choices instead of Approve, so a match does nothing here.
       const d = registrationDuplicates(db, reg);
-      // D2C: a Shopify customer, no company — unless the email is a company contact (merge or decline).
+      // D2C: a Shopify customer, no company. A company contact becomes one only when the
+      // merchant picks it (createNew) — they leave the company.
       if (isD2CRegistration(reg)) {
-        if (d.blocking) return state;
+        if (d.blocking && !action.createNew) return state;
+        if (d.contactOf) removeContactFrom(db, d.contactOf, reg.email, 'D2C');
         approveAsCustomer(db, reg, d.customer);
         return { ...state, db, toast: 'Registration approved' };
       }

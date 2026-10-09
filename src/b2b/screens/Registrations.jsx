@@ -213,6 +213,7 @@ export function Registrations() {
                       {isD2CRegistration(r) ? <s-text color="subdued">No company · D2C</s-text> : <s-text>{r.company}</s-text>}
                       {dupOf(r)?.kind === 'company' ? <s-badge tone="info">Duplicate</s-badge> : null}
                       {dupOf(r)?.kind === 'contact' || dupOf(r)?.kind === 'same' ? <s-badge tone="info">Existing contact</s-badge> : null}
+                      {isD2CRegistration(r) && dupOf(r)?.kind === 'customer' ? <s-badge tone="info">Existing customer</s-badge> : null}
                     </s-stack>
                   </s-table-cell>
                   <s-table-cell>{r.country || '—'}</s-table-cell>

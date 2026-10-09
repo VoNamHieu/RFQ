@@ -72,8 +72,8 @@ export function RegistrationDetail() {
     ? undefined
     : !dup.blocking
       ? { content: 'Approve', onAction: approve }
-      : choice === 'create' && dup.kind !== 'same' && !d2c
-          ? { content: `Create ${reg.company}`, onAction: () => dispatch({ type: 'APPROVE_REGISTRATION', id: reg.id, createNew: true }) }
+      : choice === 'create' && dup.kind !== 'same'
+          ? { content: d2c ? 'Create D2C customer' : `Create ${reg.company}`, onAction: () => dispatch({ type: 'APPROVE_REGISTRATION', id: reg.id, createNew: true }) }
           : { content: 'Merge', onAction: doMerge };
 
   return (
@@ -205,8 +205,9 @@ export function RegistrationDetail() {
 // A Merge picks the company (when there are two to choose from), location and role.
 function MatchCard({ reg, dup, choice, onChoice, merge, onCompany, onLocation, onRole, actions }) {
   const name = fullName(reg);
-  // Same email and company, or a D2C buyer who's a company contact: merge or decline only.
-  const single = dup.kind === 'same' || isD2CRegistration(reg);
+  // Same email and company: merge or decline only. A D2C buyer who's a company
+  // contact can also leave the company and become a D2C customer.
+  const single = dup.kind === 'same';
   const title =
     dup.kind === 'same'
       ? `${name} is already a contact at ${dup.contactOf.name}`
@@ -262,8 +263,18 @@ function MatchCard({ reg, dup, choice, onChoice, merge, onCompany, onLocation, o
       : `${reg.firstName} joins ${merge.company.name} as a contact. No new company is created.`;
   // Nothing to pick when they're already a contact there and there's one company.
   const showMergeFields = dup.mergeTargets.length > 1 || !merge.current;
-  const other =
-    dup.kind === 'contact'
+  const other = isD2CRegistration(reg)
+    ? {
+        label: 'Create a D2C customer',
+        value: 'create',
+        renderChildren: (on) =>
+          on ? (
+            <s-banner tone="warning">
+              {`${name} is removed from ${dup.contactOf.name} and becomes a D2C customer in Shopify, in no company. An email can only belong to one company.`}
+            </s-banner>
+          ) : null,
+      }
+    : dup.kind === 'contact'
         ? {
             label: `Create ${reg.company}`,
             value: 'create',
