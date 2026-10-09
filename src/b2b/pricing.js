@@ -506,22 +506,19 @@ export function calculationLabel(policy) {
   return [rules ? count(rules, 'rule') : null, overrides ? count(overrides, 'override') : null].filter(Boolean).join(' · ') || 'No rules';
 }
 
-// The segment of products a quantity pricing covers, named rather than counted.
+// The segment of products a quantity pricing covers, as its editor names the
+// choice — not the collections, products or tags themselves.
 export const scopeTypeLabel = (policy) => {
   if (!policy) return '';
   switch (policy.scopeType) {
     case 'all':
       return 'All products';
-    case 'collection': {
-      const cs = scopeCollections(policy);
-      return cs.length ? cs.join(', ') : 'Collection';
-    }
+    case 'collection':
+      return 'Specific collections';
     case 'products':
       return 'Specific products';
-    case 'tags': {
-      const ts = policy.selectedTags || [];
-      return ts.length ? `Tag${ts.length > 1 ? 's' : ''}: ${ts.join(', ')}` : 'Product tags';
-    }
+    case 'tags':
+      return 'Product tags';
     default:
       return '';
   }
