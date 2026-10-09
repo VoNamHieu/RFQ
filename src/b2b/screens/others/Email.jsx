@@ -96,7 +96,7 @@ export function Email({ activeNotificationEditor = null, onOpenEditor, onCloseEd
       setNotifications(savedNotifications);
       setIsConnected(true);
       setConnectedEmail(smtpForm.emailUser.trim());
-      toast('Connected email successfully');
+      toast('Email connected');
     });
   };
 
@@ -171,7 +171,7 @@ export function Email({ activeNotificationEditor = null, onOpenEditor, onCloseEd
     setIsSendingTestEmail(true);
     later(() => {
       setIsSendingTestEmail(false);
-      toast('Test email successfully');
+      toast('Test email sent');
       onSuccess();
     });
   };
@@ -186,7 +186,7 @@ export function Email({ activeNotificationEditor = null, onOpenEditor, onCloseEd
   const handleSaveToggleChanges = () => {
     if (!isNotificationsDirty) return;
     setSavedNotifications(notifications);
-    toast('Saved successfully');
+    toast('Notifications saved');
   };
 
   const handleDiscardToggleChanges = () => setNotifications(savedNotifications);

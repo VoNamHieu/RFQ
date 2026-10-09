@@ -199,20 +199,20 @@ export function findSaveError(forms) {
   const types = ['dtc', 'b2b'];
   for (const type of types) {
     const e = labelError(forms[type]);
-    if (e) return { ...e, type, kind: 'labels', toast: true };
+    if (e) return { ...e, type, kind: 'labels' };
   }
   for (const type of types) {
     if (countryRestrictionInvalid(forms[type].fields_setting.shipping_address.country)) {
-      return { type, kind: 'country', toast: true, tab: 0, step: STEP_2, detail: 'customerInfo' };
+      return { type, kind: 'country', tab: 0, step: STEP_2, detail: 'customerInfo' };
     }
   }
   for (const type of types) {
     const rs = forms[type].request_submit;
-    if (rs.type === 'direct-to-url' && redirectUrlError(rs.redirect_url)) return { type, kind: 'url', toast: false, tab: 1 };
+    if (rs.type === 'direct-to-url' && redirectUrlError(rs.redirect_url)) return { type, kind: 'url', tab: 1 };
   }
   for (const type of types) {
     const e = serverError(forms[type]);
-    if (e) return { ...e, type, kind: 'server', toast: true };
+    if (e) return { ...e, type, kind: 'server' };
   }
   return null;
 }

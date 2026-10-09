@@ -145,7 +145,6 @@ export function FormBuilder() {
         if (err.fieldId) patch.openFieldId = err.fieldId;
       }
       setUi(patch);
-      if (err.toast) toast('Invalid data');
       return;
     }
     const normalized = structuredClone(forms);
@@ -157,7 +156,7 @@ export function FormBuilder() {
     setForms(normalized);
     setSavedJson(JSON.stringify(normalized));
     setUi({ errors: NO_ERRORS });
-    toast('Updated settings');
+    toast('Settings updated');
   };
 
   // handleDiscardChanges

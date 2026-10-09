@@ -14,7 +14,7 @@ import { Tabs, Modal, PageHeader } from '../../shared/wc.jsx';
 
 const TABS = [
   { id: 'pricing', label: 'Pricing' },
-  ...(versionFlags().agreements ? [{ id: 'agreement', label: 'Agreement' }] : []),
+  ...(versionFlags().agreements ? [{ id: 'agreement', label: 'Contract' }] : []),
   ...(versionFlags().analytics ? [{ id: 'analytics', label: 'Analytics' }] : []),
   { id: 'quotes', label: 'Quotes' },
   { id: 'orders', label: 'Orders' },

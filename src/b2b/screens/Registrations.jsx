@@ -4,7 +4,7 @@ import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import { Modal, IndexFiltersBar, useWcId, wcTone } from '../../shared/wc.jsx';
 import registrationArt from '../assets/registration-empty.webp';
 import noRequestArt from '../assets/no-request.webp';
-import { REG_STATUS, fullName, fmtDate, registrationDuplicates } from '../registrations.js';
+import { REG_STATUS, fullName, fmtDate, registrationDuplicates, isD2CRegistration } from '../registrations.js';
 
 // Wholesale B2B → Registrations: what buyers submitted through the storefront
 // registration form, waiting for the merchant to review. Opening a row leads to
@@ -128,11 +128,11 @@ export function Registrations() {
 
   return (
     <s-page heading="Registrations">
-      <s-button slot="secondary-actions" onClick={editForm}>
-        Edit form
+      <s-button slot="secondary-actions" onClick={formAction.onAction}>
+        {formAction.content}
       </s-button>
       <s-box paddingBlockEnd="small">
-        <s-paragraph color="subdued">Buyers who applied for B2B access through your registration form</s-paragraph>
+        <s-paragraph color="subdued">Buyers who applied through your registration form</s-paragraph>
       </s-box>
       {devTools}
       <s-section padding="none">
@@ -210,7 +210,7 @@ export function Registrations() {
                         Info tone — it's something the app found, not an error, and yellow would blur
                         into the Pending review status badge on the same row. */}
                     <s-stack direction="inline" gap="small-300" alignItems="center">
-                      <s-text>{r.company}</s-text>
+                      {isD2CRegistration(r) ? <s-text color="subdued">No company · D2C</s-text> : <s-text>{r.company}</s-text>}
                       {dupOf(r)?.kind === 'company' ? <s-badge tone="info">Duplicate</s-badge> : null}
                       {dupOf(r)?.kind === 'contact' || dupOf(r)?.kind === 'same' ? <s-badge tone="info">Existing contact</s-badge> : null}
                     </s-stack>
@@ -228,12 +228,14 @@ export function Registrations() {
                     ) : (
                       <s-text fontSize="small" color="subdued">
                         {r.status !== 'pending'
-                          ? '—'
+                          ? r.customerId ? 'D2C customer' : '—'
                           : dupOf(r)?.kind === 'company'
                             ? `Matches ${dupOf(r).company.name}`
                             : dupOf(r)?.kind === 'contact' || dupOf(r)?.kind === 'same'
                               ? `Contact at ${dupOf(r).contactOf.name}`
-                              : 'New company'}
+                              : isD2CRegistration(r)
+                                ? dupOf(r)?.customer ? 'Existing customer' : 'New customer'
+                                : 'New company'}
                       </s-text>
                     )}
                   </s-table-cell>
@@ -273,11 +275,18 @@ export function Registrations() {
 function ConfirmBulk({ kind, regs, duplicates = 0, onConfirm, onClose }) {
   const n = regs.length;
   const noun = n === 1 ? 'registration' : `${n} registrations`;
+  // Buyers with a company name get a new company; D2C buyers (none) become customers.
+  const d2c = regs.filter(isD2CRegistration).length;
+  const approveBody = !d2c
+    ? 'A new company is created for each buyer. You can set up pricing afterwards.'
+    : d2c === n
+      ? `${n === 1 ? 'The buyer becomes a' : 'Each buyer becomes a'} D2C customer in Shopify, in no company.`
+      : 'Buyers with a company name get a new company; the others become D2C customers in Shopify, in no company.';
   const copy = {
     approve: {
       title: `Approve ${noun}?`,
       action: 'Approve',
-      body: `A new company is created for each buyer. You can set up pricing afterwards.${
+      body: `${approveBody}${
         duplicates ? ` ${duplicates} ${duplicates === 1 ? 'registration matches' : 'registrations match'} an existing company or contact and ${duplicates === 1 ? 'is' : 'are'} skipped — open ${duplicates === 1 ? 'it' : 'them'} to resolve.` : ''
       }`,
     },
@@ -289,7 +298,7 @@ function ConfirmBulk({ kind, regs, duplicates = 0, onConfirm, onClose }) {
     delete: {
       title: `Delete ${noun}?`,
       action: 'Delete',
-      body: 'This removes the submissions from Registrations. Companies already created from approved registrations are kept.',
+      body: 'This removes the submissions from Registrations. Companies and customers already created from approved registrations are kept.',
     },
   }[kind];
   return (
@@ -299,7 +308,7 @@ function ConfirmBulk({ kind, regs, duplicates = 0, onConfirm, onClose }) {
         <s-unordered-list>
           {regs.map((r) => (
             <s-list-item key={r.id}>
-              {fullName(r)} · {r.company}
+              {fullName(r)} · {isD2CRegistration(r) ? 'D2C' : r.company}
             </s-list-item>
           ))}
         </s-unordered-list>

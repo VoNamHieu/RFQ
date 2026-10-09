@@ -168,7 +168,7 @@ function EmailConnection({ account, onAccountChange }) {
     timer.current = setTimeout(() => {
       onAccountChange(connectedAccount);
       setStep(2);
-      toast('Test email sent!');
+      toast('Test email sent');
     }, 1200);
   };
 
@@ -325,7 +325,7 @@ function EmailConnection({ account, onAccountChange }) {
             setConfirmDisconnect(false);
             onAccountChange(null);
             choose('gmail_api');
-            toast('Email disconnected!');
+            toast('Email disconnected');
           }}
         >
           Disconnect

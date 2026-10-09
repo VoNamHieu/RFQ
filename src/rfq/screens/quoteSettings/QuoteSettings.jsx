@@ -175,7 +175,7 @@ export function QuoteSettings() {
     cache.saved = next;
     setTouched(false);
     setErrors({});
-    toast('Settings saved!');
+    toast('Settings saved');
   };
   const discard = () => resetDraft(tab.group, mode);
 

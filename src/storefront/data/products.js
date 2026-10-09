@@ -4,7 +4,7 @@
 // product key the cart, product page and quote requests use: the first variant's
 // SKU, or the handle when the store has none. `list` is the D2C price.
 import storeCatalog from './shopifyProducts.json';
-import { newLimit, productRuleFor, cartProblems, limitLevel, limitSummary } from '../../b2b/limits.js';
+import { newLimit, productRuleFor, productRuleForCustomer, cartProblems, cartProblemsForCustomer, limitLevel, limitSummary } from '../../b2b/limits.js';
 import { versionFlags } from '../../shared/versions.js';
 import { money } from '../utils.js';
 
@@ -65,7 +65,8 @@ export const B2B_PRICE_LISTS = { abc: TIER2, watson: TIER2 };
 // The B2B app's order limits as they reach this storefront's demo company (shape
 // and rules: b2b/limits.js — the same checks the validation function runs).
 // Watson Co · Phố Thái Hà gets the store-wide minimum, jersey case packs for the
-// company, and its own review threshold.
+// company, and its own review threshold. Signed-in customers outside a company
+// (D2C) get the D2C jersey maximum; guests get no limits.
 const JERSEYS = PRODUCTS.filter((p) => /jersey/i.test(p.title)).map((p) => p.sku);
 const STORE_LIMITS = {
   products: PRODUCTS,
@@ -73,24 +74,29 @@ const STORE_LIMITS = {
     { ...newLimit('order'), id: 'sl1', name: 'Wholesale minimum', minValue: 500 },
     { ...newLimit('product'), id: 'sl2', name: 'Jersey case packs', min: 10, increment: 5, selectedProducts: JERSEYS, storeWide: false, companyIds: ['watson'] },
     { ...newLimit('review'), id: 'sl3', name: 'Watson review', threshold: 5000, storeWide: false, locationKeys: ['watson::thai-ha'] },
+    { ...newLimit('product'), id: 'sl4', name: 'Customer jersey maximum', max: 10, selectedProducts: JERSEYS, audienceType: 'd2c', storeWide: false, customerTarget: 'logged_in' },
   ],
 };
 
-// Order limits only reach buyers signed in to a company location — and only in
-// the version that has them (Upcoming).
+// A buyer signed in to a company location gets its B2B limits; anyone else the D2C
+// ones (a guest as a non-logged-in customer) — only in the version that has order
+// limits (Upcoming).
 const atLocation = (session) => !!(session?.companyKey && session.locationId);
-const limitsReach = (session) => versionFlags().orderLimits && atLocation(session);
+const asCustomer = (session) => (session ? { id: session.id, tags: session.tags || [] } : null);
 
-// The quantity rule on a product for the signed-in buyer, or null.
+// The quantity rule on a product for the buyer, or null.
 export function productRuleForSession(sku, session) {
-  return limitsReach(session) ? productRuleFor(STORE_LIMITS, session.companyKey, session.locationId, sku) : null;
+  if (!versionFlags().orderLimits) return null;
+  return atLocation(session)
+    ? productRuleFor(STORE_LIMITS, session.companyKey, session.locationId, sku)
+    : productRuleForCustomer(STORE_LIMITS, asCustomer(session), sku);
 }
 
 // ── Agreement ───────────────────────────────────────────────────────────────
 // The buyer's agreement as their account shows it (b2b/agreements.js): its
 // pricing (the price list above) and the order limits it sets for their company
 // or location. Store-wide limits apply to every buyer, so they aren't part of it.
-const STORE_AGREEMENT = { number: 'AG-412', name: '2026 trade terms', version: 2, since: 'Jan 5, 2026' };
+const STORE_AGREEMENT = { number: 'CT-412', name: '2026 trade terms', version: 2, since: 'Jan 5, 2026', until: 'Jan 4, 2027' };
 
 export function agreementForSession(session) {
   if (!versionFlags().agreements || !atLocation(session)) return null;
@@ -104,9 +110,12 @@ export function agreementForSession(session) {
   };
 }
 
-// What's wrong with the cart for the signed-in buyer (see cartProblems).
+// What's wrong with the cart for the buyer (see cartProblems).
 export function cartProblemsForSession(lines, subtotal, session) {
-  return limitsReach(session) ? cartProblems(STORE_LIMITS, session.companyKey, session.locationId, lines, subtotal) : [];
+  if (!versionFlags().orderLimits) return [];
+  return atLocation(session)
+    ? cartProblems(STORE_LIMITS, session.companyKey, session.locationId, lines, subtotal)
+    : cartProblemsForCustomer(STORE_LIMITS, asCustomer(session), lines, subtotal);
 }
 
 // ── Demo accounts ────────────────────────────────────────────────────────────

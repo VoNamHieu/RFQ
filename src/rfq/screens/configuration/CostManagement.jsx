@@ -227,7 +227,7 @@ function DiscountSetting({ list, onListChange }) {
             onListChange(list.filter((d) => !deleteIds.includes(d.id)));
             setSelection((cur) => cur.filter((x) => !deleteIds.includes(x)));
             setDeleteIds(null);
-            toast('Deleted');
+            toast(deleteIds.length === 1 ? 'Discount deleted' : `${deleteIds.length} discounts deleted`);
           }}
         >
           Delete

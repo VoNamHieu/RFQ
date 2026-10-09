@@ -739,3 +739,17 @@ body {
   outline: 2px solid #005bd3;
   outline-offset: 1px;
 }
+
+/* A bar pinned to the bottom of an s-modal's scrolling body (over the content
+   that scrolls under it), edge to edge across the body's 16px padding. The
+   negative bottom margin cancels that padding so the bar doesn't lift off the
+   bottom at the end of the scroll. */
+.qs-modal-pinned-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin: 0 -16px -16px;
+  padding: 16px;
+  background: var(--p-color-bg-surface, #fff);
+  border-top: 1px solid var(--p-color-border-secondary, #ebebeb);
+}

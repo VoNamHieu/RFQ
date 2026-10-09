@@ -91,7 +91,7 @@ export function PricingPlan() {
       setDowngradeOpen(false);
       setLoadingCharge(false);
       if (planId === ID_FREE_PLAN) {
-        dispatch({ type: 'TOAST', message: planId < subscription.planId ? 'Downgrade plan successfully!' : 'Upgrade plan successfully!' });
+        dispatch({ type: 'TOAST', message: planId < subscription.planId ? 'Plan downgraded' : 'Plan upgraded' });
         dispatch({ type: 'NAVIGATE', view: 'submissionList' });
         return;
       }

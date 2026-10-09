@@ -389,7 +389,7 @@ export function LocationDetail() {
                   {cardHeader('General', <s-button icon="edit" onClick={() => setEditGeneral(true)} accessibilityLabel="Edit general" />)}
                   <Kv label="Name" value={location.name} />
                   <Kv label="Location ID" value={location.externalId || 'Not set'} />
-                  <Kv label="Status" value={<s-badge tone={location.status === 'Deleted' ? 'critical' : 'success'}>{location.status || 'Active'}</s-badge>} />
+                  {location.status === 'Deleted' && <Kv label="Status" value={<s-badge tone="critical">Deleted</s-badge>} />}
                   <s-divider />
                   {cardHeader('Shipping address', <s-button onClick={() => setEditShipping(true)}>{shipPreview.length ? 'Edit' : 'Add'}</s-button>)}
                   {shipPreview.length ? (

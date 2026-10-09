@@ -7,6 +7,10 @@ export const REG_STATUS = {
 };
 
 export const fullName = (r) => `${r.firstName} ${r.lastName}`.trim();
+// No company name: a D2C buyer — approving makes them a Shopify customer, in no company.
+export const isD2CRegistration = (r) => !(r.company || '').trim();
+// What a registration is called in headings and lists: its company, or the buyer.
+export const registrationLabel = (r) => (isD2CRegistration(r) ? fullName(r) : r.company);
 
 export function fmtDate(iso) {
   if (!iso) return '—';
@@ -31,12 +35,15 @@ export const pendingCount =(db) => (db.registrations || []).filter((r) => r.stat
 //   'company'  — 3. a Company with the same name, different email: Merge into it,
 //                   or create a new Company anyway (Shopify allows duplicate names).
 //   'customer' — the email is a Shopify customer only: Approve reuses it.
+// A D2C registration (no company name) only has 'contact' (Merge into that Company
+// or Decline — it can't become a D2C customer while it's a company contact) and
+// 'customer'.
 // `mergeTargets` are the Companies a Merge can go into: the email's Company first, then
 // every Company with the same name (Shopify allows several — the merchant picks one).
 export function registrationDuplicates(db, reg) {
   const email = (reg.email || '').trim().toLowerCase();
   const name = (reg.company || '').trim().toLowerCase();
-  const sameName = (db.companies || []).filter((c) => (c.name || '').trim().toLowerCase() === name);
+  const sameName = name ? (db.companies || []).filter((c) => (c.name || '').trim().toLowerCase() === name) : [];
   const company = sameName[0] || null;
   const contactOf =
     (db.companies || []).find((c) => (c.contacts || []).some((ct) => (ct.email || '').trim().toLowerCase() === email)) || null;

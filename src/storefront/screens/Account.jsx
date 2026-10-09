@@ -183,10 +183,10 @@ function Portal({ session, company, application, go, dispatch }) {
       {company && agreement && (
         <section className="acct-panel">
           <div className="acct-panel-head">
-            <h3>Agreement</h3>
+            <h3>Contract</h3>
             <span className="badge badge--green">Active</span>
           </div>
-          <p className="muted">{`${agreement.number} · ${agreement.name} · version ${agreement.version} · since ${agreement.since}`}</p>
+          <p className="muted">{`${agreement.number} · ${agreement.name} · version ${agreement.version} · ${agreement.since} – ${agreement.until}`}</p>
           <div className="acct-terms">
             {agreement.pricing && (
               <div className="acct-term">

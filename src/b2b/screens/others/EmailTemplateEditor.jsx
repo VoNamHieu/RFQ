@@ -40,9 +40,9 @@ export function EmailTemplateEditor({
   const handleCopyDynamicValue = async (value) => {
     try {
       await navigator.clipboard.writeText(value);
-      toast('Copied to clipboard');
+      toast('Dynamic value copied');
     } catch {
-      toast('Cannot copy value');
+      toast('Copy failed');
     }
   };
 

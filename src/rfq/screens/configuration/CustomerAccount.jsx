@@ -101,7 +101,7 @@ export function CustomerAccount({ conditions, onConditionsSave, translations, on
     onTranslationsSave(nextTranslations);
     setCurrent(clone(nextConditions));
     setCurrentTranslations(clone(nextTranslations));
-    toast('Update successfully!');
+    toast('Settings updated');
   };
 
   return (
@@ -287,7 +287,7 @@ function PermissionSettings({ saved, current, setCurrent, commit, page, setPage,
                           const status = e.currentTarget.checked ? 1 : 0;
                           if (status === Number(saved.find((x) => x.id === c.id)?.status)) return;
                           commit(applyConditionStatus(saved, c.id, status));
-                          toast('Settings saved!');
+                          toast('Settings saved');
                         }}
                       />
                     </s-table-cell>
@@ -328,7 +328,7 @@ function PermissionSettings({ saved, current, setCurrent, commit, page, setPage,
           onClick={() => {
             commit(saved.filter((c) => c.id !== deleteId));
             setDeleteId(null);
-            toast('Deleted');
+            toast('Condition deleted');
           }}
         >
           Delete
@@ -355,7 +355,7 @@ function CreateConditionPage({ existing, onCancel, onCreated }) {
     const created = { ...trimDeep(value), id: nextId, status: value.status ? 1 : 0 };
     const list = [...existing, { ...created, status: 0 }];
     onCreated(created.status ? applyConditionStatus(list, nextId, 1) : list);
-    toast('Settings saved!');
+    toast('Settings saved');
   };
 
   return (

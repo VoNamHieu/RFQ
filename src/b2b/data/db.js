@@ -86,7 +86,7 @@ const companies = [
     exceptions: [{ id: '#1046', reason: 'The negotiated price expired and no other price applies', location: 'Hanoi', amount: 3184, status: 'Blocked' }],
     activity: [
       { when: 'Jul 14', what: 'Order #1046 blocked at checkout' },
-      { when: 'Jul 01', what: 'AG-274 expired, negotiated price stopped applying' },
+      { when: 'Jul 01', what: 'CT-274 expired, negotiated price stopped applying' },
       { when: 'Jul 01', what: 'Ordering switched to quote only; the account stays active' }
     ]
   },
@@ -390,22 +390,23 @@ const limits = [
     scopeType: 'products', collection: '', selectedProducts: [], storeWide: true, companyIds: [], locationKeys: [], message: '' },
 ];
 
-// Agreements (see agreements.js). ABC's AG-301 is live and its terms are the ones
+// Agreements (see agreements.js). ABC's CT-301 is live and its terms are the ones
 // assigned above (p1, p8, p30, p6, ol3) — the rest of ABC's pricing is outside it.
-// Vinh Phat's AG-305 is a draft; Song Hong's AG-274 ended (see its activity).
+// It ends Aug 20, 2026 — within the renewal reminder. Vinh Phat's CT-305 is a
+// draft for 2027; Song Hong's CT-274 expired (see its activity).
 const agreements = [
-  { id: 'ag1', number: 'AG-301', name: '2026 annual terms', companyId: 'c1', locationIds: null, status: 'Active', version: 2,
+  { id: 'ag1', number: 'CT-301', name: '2026 annual terms', companyId: 'c1', locationIds: null, status: 'Active', version: 2, startDate: '2026-01-03', endDate: '2026-08-20',
     terms: { base: ['p1', 'p8', 'p30'], quantity: ['p6'], limits: ['ol3'] },
     history: [
       { version: 2, date: '2026-07-12', note: 'Added VLV-40 Contract Price' },
       { version: 1, date: '2026-01-03', note: 'Activated, from accepted quote Q-0982' },
     ] },
-  { id: 'ag2', number: 'AG-305', name: '2027 distributor terms', companyId: 'c2', locationIds: null, status: 'Draft', version: 0,
+  { id: 'ag2', number: 'CT-305', name: '2027 distributor terms', companyId: 'c2', locationIds: null, status: 'Draft', version: 0, startDate: '2027-01-01', endDate: '2027-12-31',
     terms: { base: ['p1'], quantity: [], limits: ['ol2', 'ol3'] }, history: [] },
-  { id: 'ag3', number: 'AG-274', name: '2025–26 negotiated terms', companyId: 'c4', locationIds: null, status: 'Ended', version: 1,
+  { id: 'ag3', number: 'CT-274', name: '2025–26 negotiated terms', companyId: 'c4', locationIds: null, status: 'Expired', version: 1, startDate: '2025-07-01', endDate: '2026-06-30',
     terms: { base: ['p8'], quantity: [], limits: [] },
     history: [
-      { version: 1, date: '2026-07-01', note: 'Ended' },
+      { version: 1, date: '2026-07-01', note: 'Expired' },
       { version: 1, date: '2025-07-01', note: 'Activated' },
     ] },
 ];

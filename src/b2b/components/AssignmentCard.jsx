@@ -69,8 +69,8 @@ function InlineCheckList({ items, selected, onSet, searchable, placeholder, empt
 // a checkbox, avatar, primary contact + email, and location / contact counts. A
 // ticked company with 2+ locations lists them underneath (all ticked) so the
 // pricing can go to only some; ticking every location is the whole company. With
-// `onApplyLaterChange`, a company picked on every location shows a checkbox for
-// whether locations added later get it too (`applyLater`).
+// `onApplyLaterChange`, a checkbox says whether locations added later get it too
+// (`applyLater`) at the companies picked.
 export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompany, onToggleLocation, onClose, applyLater = true, onApplyLaterChange }) {
   const [q, setQ] = useState('');
   const query = q.trim().toLowerCase();
@@ -148,16 +148,16 @@ export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompan
             })
           )}
         </s-stack>
-        {onApplyLaterChange && companies.some((c) => c.locs.length && tickedOf(c).length === c.locs.length) && (
-          <>
-            <s-divider />
+        {onApplyLaterChange && (
+          // Pinned to the bottom of the modal, always in view; the list scrolls under it.
+          <div className="qs-modal-pinned-foot">
             <s-checkbox
               label="Automatically apply this pricing to locations added later"
               details="This only applies to companies with “Automatically add new locations” turned on."
               checked={applyLater}
               onChange={(e) => onApplyLaterChange(e.currentTarget.checked)}
             />
-          </>
+          </div>
         )}
       </s-stack>
       <s-button slot="primary-action" variant="primary" onClick={onClose}>
@@ -212,6 +212,59 @@ export function companyPicks(db, companyIds, locationKeys, onChange) {
   return { companies, tickedOf, setTicked, toggleCompany, toggleLocation, selectedCompanies, tagLabel };
 }
 
+// The D2C "Customers" box: all / logged-in / non-logged-in customers, or specific
+// customers or customer tags picked from a list. Shared by the pricing and order
+// limit editors; `onSetId(id, on)` ticks or unticks one customer or tag.
+export function CustomerTargetsBox({ db, target, ids, onTarget, onSetId, name = 'assignment-customer-target' }) {
+  const customers = (db.customers || []).map((cu) => ({ id: cu.id, title: cu.name, subtitle: cu.email }));
+  const tags = (db.tagPricing || []).map((t) => ({ id: t.id, title: t.name }));
+  return (
+    <s-box border="base" borderRadius="base" padding="base">
+      <s-stack gap="small-200">
+        <s-heading>Customers</s-heading>
+        <s-choice-list
+          label="Customers"
+          labelAccessibilityVisibility="exclusive"
+          name={name}
+          onChange={(e) => {
+            if (e.target !== e.currentTarget) return;
+            const next = e.currentTarget.values?.[0];
+            if (next) onTarget(next);
+          }}
+        >
+          {CUSTOMER_TARGETS.map(([val, label]) => (
+            <s-choice key={val} value={val} selected={target === val}>
+              {label}
+            </s-choice>
+          ))}
+        </s-choice-list>
+        {target === 'specific' ? (
+          <s-box paddingInlineStart="large">
+            <InlineCheckList
+              items={customers}
+              selected={ids}
+              onSet={onSetId}
+              searchable
+              placeholder="Search customers"
+              emptyLabel="No customers match that search."
+            />
+          </s-box>
+        ) : null}
+        {target === 'tags' ? (
+          <s-box paddingInlineStart="large">
+            <InlineCheckList
+              items={tags}
+              selected={ids}
+              onSet={onSetId}
+              emptyLabel="No customer tags yet."
+            />
+          </s-box>
+        ) : null}
+      </s-stack>
+    </s-box>
+  );
+}
+
 export function AssignmentCard({ builder, patch, db, isNew, footer = null }) {
   const audience = builder.audienceType === 'd2c' ? 'd2c' : 'b2b';
   const target = builder.customerTarget && builder.customerTarget !== 'none' ? builder.customerTarget : 'all';
@@ -229,9 +282,6 @@ export function AssignmentCard({ builder, patch, db, isNew, footer = null }) {
   };
   const setTarget = (t) =>
     patch({ customerTarget: t, assignmentTargetIds: t === 'specific' || t === 'tags' ? builder.assignmentTargetIds || [] : [] });
-
-  const customers = (db.customers || []).map((cu) => ({ id: cu.id, title: cu.name, subtitle: cu.email }));
-  const tags = (db.tagPricing || []).map((t) => ({ id: t.id, title: t.name }));
 
   const { companies, tickedOf, setTicked, toggleCompany, toggleLocation, selectedCompanies, tagLabel } = companyPicks(
     db,
@@ -288,49 +338,13 @@ export function AssignmentCard({ builder, patch, db, isNew, footer = null }) {
             <s-text color="subdued" fontSize="small">
               B2B buyers are priced through their Company, so they are never covered here.
             </s-text>
-            <s-box border="base" borderRadius="base" padding="base">
-              <s-stack gap="small-200">
-                <s-heading>Customers</s-heading>
-                <s-choice-list
-                  label="Customers"
-                  labelAccessibilityVisibility="exclusive"
-                  name="assignment-customer-target"
-                  onChange={(e) => {
-                    if (e.target !== e.currentTarget) return;
-                    const next = e.currentTarget.values?.[0];
-                    if (next) setTarget(next);
-                  }}
-                >
-                  {CUSTOMER_TARGETS.map(([val, label]) => (
-                    <s-choice key={val} value={val} selected={target === val}>
-                      {label}
-                    </s-choice>
-                  ))}
-                </s-choice-list>
-                {target === 'specific' ? (
-                  <s-box paddingInlineStart="large">
-                    <InlineCheckList
-                      items={customers}
-                      selected={builder.assignmentTargetIds || []}
-                      onSet={(id, on) => setId('assignmentTargetIds', id, on)}
-                      searchable
-                      placeholder="Search customers"
-                      emptyLabel="No customers match that search."
-                    />
-                  </s-box>
-                ) : null}
-                {target === 'tags' ? (
-                  <s-box paddingInlineStart="large">
-                    <InlineCheckList
-                      items={tags}
-                      selected={builder.assignmentTargetIds || []}
-                      onSet={(id, on) => setId('assignmentTargetIds', id, on)}
-                      emptyLabel="No customer tags yet."
-                    />
-                  </s-box>
-                ) : null}
-              </s-stack>
-            </s-box>
+            <CustomerTargetsBox
+              db={db}
+              target={target}
+              ids={builder.assignmentTargetIds || []}
+              onTarget={setTarget}
+              onSetId={(id, on) => setId('assignmentTargetIds', id, on)}
+            />
           </s-stack>
         )}
       </s-stack>

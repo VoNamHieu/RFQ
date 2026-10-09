@@ -162,7 +162,7 @@ export function MembersSection({
           onClick={() => {
             onMembersChange(members.filter((m) => m.id !== deleteId));
             setDeleteId(null);
-            toast('Member deleted!');
+            toast('Member deleted');
           }}
         >
           Delete

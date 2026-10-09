@@ -1,15 +1,20 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { LIMIT_KINDS, limitSummary, limitTargetsLabel, isLimitAssigned } from '../limits.js';
-import { LimitEditor } from '../components/LimitEditor.jsx';
+import { LIMIT_KINDS, limitSummary, limitTargetsLabel, isLimitAssigned, isD2CLimit, newConflicts } from '../limits.js';
+import { LimitEditor, DeleteLimitConflicts } from '../components/LimitEditor.jsx';
+import { LimitConflictList } from '../components/LimitConflictList.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import { Modal, IndexFiltersBar, useWcId } from '../../shared/wc.jsx';
 
-const TYPE_TABS = [
+// Tabs by who a limit is for, like the Pricing list; the kind is a filter.
+const AUDIENCE = [
   { id: 'all', label: 'All' },
-  { id: 'order', label: 'Order' },
-  { id: 'product', label: 'Product' },
-  { id: 'review', label: 'Review' },
+  { id: 'b2b', label: 'Companies' },
+  { id: 'd2c', label: 'Customers' },
+];
+const TYPE_CHOICES = [
+  { label: 'All types', value: 'all' },
+  ...Object.entries(LIMIT_KINDS).map(([value, k]) => ({ label: k.label, value })),
 ];
 
 // Order limits library: every limit with what it sets and who it applies to.
@@ -17,9 +22,11 @@ const TYPE_TABS = [
 // Add limit on a location page); the editor opens as a page here (OPEN_LIMIT_EDITOR).
 export function OrderLimits() {
   const { state, dispatch } = useStore();
+  const [audience, setAudience] = useState('all');
   const [type, setType] = useState('all');
   const [search, setSearch] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmToggle, setConfirmToggle] = useState(null);
   const rowId = useWcId('limit');
   const createId = useWcId('create-limit');
 
@@ -60,7 +67,7 @@ export function OrderLimits() {
         {createMenu}
         <s-section>
           <EmptyBlock heading="Set rules for what buyers can order" action={create}>
-            Require a minimum order, sell products in case packs, or review large orders before they go through. Apply a limit store-wide or to specific companies and locations.
+            Require a minimum order, sell products in case packs, or review large orders before they go through. Apply a limit to B2B companies and locations, or to D2C wholesale customers.
           </EmptyBlock>
         </s-section>
       </s-page>
@@ -69,9 +76,19 @@ export function OrderLimits() {
 
   const q = search.trim().toLowerCase();
   const limits = all
+    .filter((l) => audience === 'all' || (isD2CLimit(l) ? 'd2c' : 'b2b') === audience)
     .filter((l) => (type === 'all' || l.kind === type) && (!q || l.name.toLowerCase().includes(q)))
     .sort((a, b) => a.name.localeCompare(b.name));
   const edit = (l) => dispatch({ type: 'OPEN_LIMIT_EDITOR', limit: l });
+  // Turning a limit on (or off, when it covered a clash) can make limits conflict:
+  // warn first, as saving does.
+  const toggle = (l) => {
+    const on = l.status !== 'Active';
+    const next = all.map((x) => (x.id === l.id ? { ...x, status: on ? 'Active' : 'Inactive' } : x));
+    const found = newConflicts(state.db, next, on ? l.id : null);
+    if (found.length) setConfirmToggle({ limit: l, on, conflicts: found });
+    else dispatch({ type: 'TOGGLE_LIMIT_STATUS', id: l.id });
+  };
 
   return (
     <s-page heading="Order limits">
@@ -80,7 +97,7 @@ export function OrderLimits() {
       </s-button>
       {createMenu}
       <s-stack gap="base">
-        <s-paragraph color="subdued">Rules on what B2B buyers can check out, checked in the cart and at checkout.</s-paragraph>
+        <s-paragraph color="subdued">Rules on what B2B buyers and D2C wholesale customers can check out, checked in the cart and at checkout.</s-paragraph>
 
         <s-section padding="none">
           <s-table>
@@ -89,9 +106,12 @@ export function OrderLimits() {
               query={search}
               queryPlaceholder="Search limits by name"
               onQueryChange={setSearch}
-              tabs={TYPE_TABS.map((t) => ({ id: `type-${t.id}`, content: t.label }))}
-              selected={Math.max(0, TYPE_TABS.findIndex((t) => t.id === type))}
-              onSelect={(i) => setType(TYPE_TABS[i].id)}
+              tabs={AUDIENCE.map((a) => ({ id: `aud-${a.id}`, content: a.label }))}
+              selected={Math.max(0, AUDIENCE.findIndex((a) => a.id === audience))}
+              onSelect={(i) => setAudience(AUDIENCE[i].id)}
+              filters={[{ key: 'kind', label: 'Limit type', choices: TYPE_CHOICES, value: type, defaultValue: 'all' }]}
+              onFilterChange={(key, v) => setType(v)}
+              onClearAll={() => setType('all')}
             />
             <s-table-header-row>
               <s-table-header listSlot="primary">Name</s-table-header>
@@ -135,7 +155,7 @@ export function OrderLimits() {
                           interestFor={`${id}-toggle-tip`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            dispatch({ type: 'TOGGLE_LIMIT_STATUS', id: l.id });
+                            toggle(l);
                           }}
                         />
                         <s-tooltip id={`${id}-toggle-tip`}>{isOff ? 'Turn on' : 'Turn off'}</s-tooltip>
@@ -181,9 +201,12 @@ export function OrderLimits() {
 
       {confirmDelete && (
         <Modal onClose={() => setConfirmDelete(null)} heading={`Delete ${confirmDelete.name}?`}>
-          <s-paragraph>
-            Buyers it applies to ({limitTargetsLabel(confirmDelete, state.db)}) can check out without it right away. This can’t be undone.
-          </s-paragraph>
+          <s-stack gap="small">
+            <s-paragraph>
+              Buyers it applies to ({limitTargetsLabel(confirmDelete, state.db)}) can check out without it right away. This can’t be undone.
+            </s-paragraph>
+            <DeleteLimitConflicts db={state.db} id={confirmDelete.id} />
+          </s-stack>
           <s-button
             slot="primary-action"
             variant="primary"
@@ -196,6 +219,28 @@ export function OrderLimits() {
             Delete limit
           </s-button>
           <s-button slot="secondary-actions" onClick={() => setConfirmDelete(null)}>
+            Cancel
+          </s-button>
+        </Modal>
+      )}
+
+      {confirmToggle && (
+        <Modal onClose={() => setConfirmToggle(null)} heading={`${confirmToggle.on ? 'Turn on' : 'Turn off'} ${confirmToggle.limit.name}?`}>
+          <s-stack gap="small">
+            <s-paragraph>{confirmToggle.on ? 'Where these limits apply together:' : 'Without it, these limits conflict:'}</s-paragraph>
+            <LimitConflictList conflicts={confirmToggle.conflicts} />
+          </s-stack>
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            onClick={() => {
+              dispatch({ type: 'TOGGLE_LIMIT_STATUS', id: confirmToggle.limit.id });
+              setConfirmToggle(null);
+            }}
+          >
+            {confirmToggle.on ? 'Turn on anyway' : 'Turn off anyway'}
+          </s-button>
+          <s-button slot="secondary-actions" onClick={() => setConfirmToggle(null)}>
             Cancel
           </s-button>
         </Modal>
