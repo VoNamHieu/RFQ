@@ -149,15 +149,15 @@ export function Discounts() {
     toggleTimer.current = setTimeout(() => {
       setItems((prev) => prev.map((i) => (i.id === id ? { ...i, status: next } : i)));
       setTogglingId(null);
-      toast(next === 'on' ? 'Turned on' : 'Turned off');
+      toast(next === 'on' ? 'Discount turned on' : 'Discount turned off');
     }, 450);
   };
   const handleCopyCode = async (code) => {
     try {
       await navigator.clipboard.writeText(code);
-      toast('Copied');
+      toast('Code copied');
     } catch {
-      toast('Something went wrong');
+      toast('Copy failed');
     }
   };
   const onDeleteClick = (id) => {

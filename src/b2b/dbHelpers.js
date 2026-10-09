@@ -72,6 +72,8 @@ export function locationSlotArray(c, l, kind) {
 // locations added later inherit, plus any location keeping its own list) or only
 // some (each one's own list). Picking every location counts as all. `later` false:
 // all of today's locations but not ones added later — each gets it in its own list.
+// Some with `later`: locations added later get it too, so the company holds it and
+// each location not picked keeps its own list without it.
 export function addPricingToLocations(c, kind, policyId, priority, locationIds, later = true) {
   const locs = c.locations || [];
   const ensure = (list) => {
@@ -85,6 +87,11 @@ export function addPricingToLocations(c, kind, policyId, priority, locationIds, 
   }
   const ids = some ? locationIds : locs.map((l) => l.id);
   locs.filter((l) => ids.includes(l.id)).forEach((l) => ensure(locationSlotArray(c, l, kind)));
+  if (some && later) {
+    // Copied before the company gets it, so the ones not picked don't.
+    locs.filter((l) => !ids.includes(l.id)).forEach((l) => locationSlotArray(c, l, kind));
+    addCompanySlot(c, kind, policyId, priority);
+  }
 }
 export const companyBaseArray = (c) => companySlotArray(c, 'base');
 export const addCompanyBase = (c, policyId, priority) => addCompanySlot(c, 'base', policyId, priority);

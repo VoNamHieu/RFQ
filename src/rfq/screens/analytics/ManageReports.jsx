@@ -138,7 +138,7 @@ export function ManageReports({ reports, setReports, onBack, onCreate, onOpenRep
     setReports((list) => list.filter((r) => !idsToDelete.includes(r.id)));
     // Both the row delete and the bulk delete clear the selection (clearSelection()).
     setSelected([]);
-    toast(R.deleteSuccess);
+    toast(R.deleteSuccess(idsToDelete.length));
   };
 
   const filterPopId = `${ids}-date`;

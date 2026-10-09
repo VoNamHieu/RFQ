@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useStore } from '../store.jsx';
 import { SaveBar, Tabs, Modal, useWcId, PageHeader } from '../../shared/wc.jsx';
 import {
-  BUILTIN_FIELDS, BUILTIN_ORDER, TEMPLATE_FIELDS, DEFAULT_FORM, writeRegistrationForm, readRegistrationForm,
+  BUILTIN_FIELDS, BUILTIN_ORDER, TEMPLATE_FIELDS, DEFAULT_FORM, writeRegistrationForm, readRegistrationForm, deleteRegistrationForm,
   canRequire, isLocked, isRequired, canRemove, headingLabel, choicesFor,
 } from '../../shared/registrationForm.js';
 // The storefront's own Dawn icons, so the page preview matches the real store.
@@ -155,6 +155,10 @@ function EditorStep({ toast, onBack, isNew = false, title: pageTitle = 'Create B
   // Which surface the full-screen preview shows, or null when it is closed. The card's
   // "Desktop" button opens the surface on screen; "Preview form" opens the one picked there.
   const [fullPreview, setFullPreview] = useState(null);
+  // A product / account page preview needs the app block in the theme first; until
+  // its Add button is used, picking it shows a notice instead (the theme place).
+  const [blockMissing, setBlockMissing] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   // Form — a new form starts from the template; "Edit form" opens the saved one, the
   // same config the storefront renders and the review screen reads.
   const [saved0] = useState(() => (isNew ? null : readRegistrationForm()));
@@ -248,6 +252,11 @@ function EditorStep({ toast, onBack, isNew = false, title: pageTitle = 'Create B
     ...(places.includes('product') ? [productMode === 'link' ? 'product-link' : 'product-modal'] : []),
     ...(places.includes('account') ? ['account'] : []),
   ];
+  const openPreview = (t) => {
+    const place = t === 'account' ? 'account' : t.startsWith('product') ? 'product' : null;
+    if (place && status[place] !== 'live') setBlockMissing(place);
+    else setFullPreview(t);
+  };
   const discard = () => {
     const s = JSON.parse(savedJson ?? initialJson); // never saved → back to the template
     setTitle(s.title); setFields(s.fields); setSlug(s.slug);
@@ -299,10 +308,13 @@ function EditorStep({ toast, onBack, isNew = false, title: pageTitle = 'Create B
         heading={pageTitle}
         backAction={{ content: 'Back', onAction: onBack }}
         titleMetadata={badge}
-        secondaryActions={[{ content: off ? 'Turn form on' : 'Turn form off', onAction: () => dispatch({ type: 'SET_REGISTRATION_FORM_OFF', off: !off }) }]}
+        secondaryActions={[
+          ...(isNew ? [] : [{ content: 'Delete form', destructive: true, onAction: () => setConfirmDelete(true) }]),
+          { content: off ? 'Turn form on' : 'Turn form off', onAction: () => dispatch({ type: 'SET_REGISTRATION_FORM_OFF', off: !off }) },
+        ]}
         actionGroups={
           saved
-            ? [{ title: 'Preview form', actions: previewTargets.map((t) => ({ content: PREVIEW_PLACE[t], onAction: () => setFullPreview(t) })) }]
+            ? [{ title: 'Preview form', actions: previewTargets.map((t) => ({ content: PREVIEW_PLACE[t], onAction: () => openPreview(t) })) }]
             : []
         }
       />
@@ -356,6 +368,35 @@ function EditorStep({ toast, onBack, isNew = false, title: pageTitle = 'Create B
           </s-query-container>
         </s-stack>
         {fullPreview && <DesktopPreview {...preview} on={fullPreview} onClose={() => setFullPreview(null)} />}
+        {confirmDelete && (
+          <Modal onClose={() => setConfirmDelete(false)} heading="Delete registration form?">
+            <s-paragraph>Buyers can’t apply anymore, and the form comes off every page it’s on. Registrations already submitted stay. This can’t be undone.</s-paragraph>
+            <s-button
+              slot="primary-action"
+              variant="primary"
+              tone="critical"
+              onClick={() => {
+                deleteRegistrationForm();
+                dispatch({ type: 'DELETE_REGISTRATION_FORM' });
+              }}
+            >
+              Delete form
+            </s-button>
+            <s-button slot="secondary-actions" onClick={() => setConfirmDelete(false)}>
+              Cancel
+            </s-button>
+          </Modal>
+        )}
+        {blockMissing && (
+          <Modal onClose={() => setBlockMissing(null)} heading={`Can’t preview on the ${blockMissing === 'account' ? 'account' : 'product'} page yet`}>
+            <s-paragraph>
+              {`The app block isn’t on your ${blockMissing === 'account' ? 'customer account page' : 'product pages'} yet, so there’s nothing to preview there. Click Add button under ${PLACE_LABEL[blockMissing]} on the Publish form tab to add it in your theme, then preview again.`}
+            </s-paragraph>
+            <s-button slot="secondary-actions" onClick={() => setBlockMissing(null)}>
+              Close
+            </s-button>
+          </Modal>
+        )}
       </s-page>
     </>
   );
@@ -858,8 +899,8 @@ function IdChip({ id, onCopy }) {
 }
 
 // Every row's label is editable (the submit row's is the button text on the storefront).
-// Required follows the shared field rules: inputs only, and locked on the fields the
-// review needs (email, company) — those, and the submit button, can't be removed.
+// Required follows the shared field rules: inputs only, and locked on the field the
+// review needs (email) — it, and the submit button, can't be removed.
 function FieldRow({ field, first, expanded, onToggle, onChange, onRemove }) {
   const tipId = useWcId('field-lock');
   const locked = isLocked(field);

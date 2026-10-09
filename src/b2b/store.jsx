@@ -4,8 +4,8 @@ import { policyUsageCount, slotIds, hasOwnSlot } from './pricing.js';
 import { newRule, newBaseBuilder, newQuantityBuilder } from './builders.js';
 import { buildInitialState } from './initialState.js';
 import { newLimit, normalizeLimit } from './limits.js';
-import { newAgreement, applyAgreement, unapplyAgreement, agreementChanges } from './agreements.js';
-import { todayISO, registrationDuplicates } from './registrations.js';
+import { newAgreement, applyAgreement, unapplyAgreement, agreementChanges, isLive, liveStatus, fmtDay } from './agreements.js';
+import { todayISO, registrationDuplicates, isD2CRegistration } from './registrations.js';
 import {
   clone,
   companySlotArray,
@@ -51,22 +51,17 @@ function seedAssignment(policy, db) {
   if (policy.audienceType !== 'd2c') {
     const b2bCompanyIds = [];
     const b2bLocationKeys = [];
-    // Companies on every location: held at the company (locations added later get
-    // it) unless each of them only has it on today's locations. Off until picked.
+    // Locations added later get it when a company with locations holds it itself
+    // (on all its locations or some). Off until picked.
     let laterFor = 0;
-    let wholeWithLocations = 0;
     (db.companies || []).forEach((c) => {
       const locs = c.locations || [];
       const held = locs.filter((l) => locationHolds(c, l, kind, policy.id));
-      if (locs.length ? held.length === locs.length : slotIds(c, kind).includes(policy.id)) {
-        b2bCompanyIds.push(c.id);
-        if (locs.length) {
-          wholeWithLocations += 1;
-          if (slotIds(c, kind).includes(policy.id)) laterFor += 1;
-        }
-      } else held.forEach((l) => b2bLocationKeys.push(locKey(c.id, l.id)));
+      if (locs.length && slotIds(c, kind).includes(policy.id)) laterFor += 1;
+      if (locs.length ? held.length === locs.length : slotIds(c, kind).includes(policy.id)) b2bCompanyIds.push(c.id);
+      else held.forEach((l) => b2bLocationKeys.push(locKey(c.id, l.id)));
     });
-    const b2bApplyLater = wholeWithLocations > 0 && laterFor > 0;
+    const b2bApplyLater = laterFor > 0;
     return { b2bCompanyIds, b2bLocationKeys, b2bApplyLater, customerTarget: 'none', assignmentTargetIds: [] };
   }
   const tags = (db.tagPricing || []).filter((t) => t.defaultPolicyId === policy.id).map((t) => t.id);
@@ -79,7 +74,7 @@ function seedAssignment(policy, db) {
 }
 
 // Make exactly the `wanted` locations of a company (with locations) get a pricing;
-// with every one wanted, `later` says whether locations added later get it too.
+// with any wanted, `later` says whether locations added later get it too.
 // Only touches a company whose pick actually changes, so re-saving an unchanged
 // pick never reshapes where the pricing is stored.
 function syncCompanyLocations(c, kind, policyId, wanted, priority, later = true) {
@@ -88,9 +83,10 @@ function syncCompanyLocations(c, kind, policyId, wanted, priority, later = true)
     if (!list.some((e) => e.id === policyId)) list.push({ id: policyId, priority: priority || list.length + 1 });
   };
   const all = locs.every(wanted);
+  const atCompany = later && locs.some(wanted);
   const unchanged = locs.every((l) => wanted(l) === locationHolds(c, l, kind, policyId));
-  if (unchanged && (!all || slotIds(c, kind).includes(policyId) === later)) return;
-  if (all && later) {
+  if (unchanged && slotIds(c, kind).includes(policyId) === atCompany) return;
+  if (all && atCompany) {
     // Every location: the company holds it (locations added later get it too),
     // and so does any location keeping its own list.
     addCompanySlot(c, kind, policyId, priority);
@@ -101,6 +97,17 @@ function syncCompanyLocations(c, kind, policyId, wanted, priority, later = true)
   // its own list (starting from what it inherited — copied before the company lets
   // go), the company doesn't.
   locs.forEach((l) => wanted(l) && ensure(locationSlotArray(c, l, kind)));
+  if (atCompany) {
+    // Some, and locations added later: the company holds it, and each unticked one
+    // keeps its own list without it.
+    locs.forEach((l) => {
+      if (wanted(l)) return;
+      locationSlotArray(c, l, kind);
+      removeCompanySlot(l, kind, policyId);
+    });
+    addCompanySlot(c, kind, policyId, priority);
+    return;
+  }
   removeCompanySlot(c, kind, policyId);
   locs.forEach((l) => !wanted(l) && hasOwnSlot(l, kind) && removeCompanySlot(l, kind, policyId));
 }
@@ -161,7 +168,8 @@ function applyAssignment(db, policyId, b) {
   else if (db.defaults.wholesalePolicyId === policyId) db.defaults.wholesalePolicyId = null;
 }
 
-// Approve = activate the buyer as the main contact of a new Company. Duplicates are
+// Approve = activate the buyer as the main contact of a new Company (a D2C
+// registration becomes a customer instead — see approveAsCustomer). Duplicates are
 // resolved first (see registrationDuplicates / joinRegistration). Mutates `db`.
 function approveRegistration(db, reg) {
   const name = `${reg.firstName} ${reg.lastName}`.trim();
@@ -242,6 +250,20 @@ function approveReusingCustomer(db, reg, customer) {
   reg.linkedCustomerId = customer ? customer.id : null;
 }
 
+// A D2C registration (no company name): the buyer becomes a Shopify customer in no
+// company — an existing customer with the email is reused (never a second one).
+// Mutates `db`.
+function approveAsCustomer(db, reg, customer) {
+  let cu = customer;
+  if (!cu) {
+    let n = (db.customers || []).length + 1;
+    while ((db.customers || []).some((c) => c.id === `w${n}`)) n += 1;
+    cu = { id: `w${n}`, name: `${reg.firstName} ${reg.lastName}`.trim(), email: reg.email, status: 'Active', source: 'Registration form', tags: [], policyId: null, lastOrder: '—', orders: 0 };
+    db.customers = [...(db.customers || []), cu];
+  }
+  Object.assign(reg, { status: 'approved', decidedAt: todayISO(), customerId: cu.id, linkedCustomerId: customer ? customer.id : null });
+}
+
 function reducer(state, action) {
   switch (action.type) {
     case 'NAVIGATE':
@@ -259,6 +281,17 @@ function reducer(state, action) {
       return { ...state, db: { ...state.db, registrationFormPublished: true } };
     // "Turn form off" in the builder: buyers can't apply until it's turned back on. Where
     // it's published is kept, so turning it on goes straight back to Live (or Draft).
+    // Deleting the form: buyers can no longer apply and it comes off every place; the
+    // submissions stay. A new form starts from the template (its saved config is cleared
+    // by the builder). Back to the registrations list.
+    case 'DELETE_REGISTRATION_FORM':
+      return {
+        ...state,
+        db: { ...state.db, hasRegistrationForm: false, registrationFormPublished: false, registrationFormOff: false },
+        view: 'registrations',
+        formEntry: null,
+        toast: 'Form deleted',
+      };
     case 'SET_REGISTRATION_FORM_OFF':
       return { ...state, db: { ...state.db, registrationFormOff: action.off }, toast: action.off ? 'Form turned off' : 'Form turned on' };
     case 'SET_HOME_GUIDE':
@@ -278,19 +311,22 @@ function reducer(state, action) {
       if (!reg || reg.status !== 'pending') return state;
       // Matches need the merchant's choice: a new Company is created only when they
       // pick it (case 2 — the contact moves there; case 3 — same name allowed).
-      // Case 1 (same email, same company) is merge or decline only.
+      // Case 1 (same email, same company) is merge or decline only. The page shows
+      // those choices instead of Approve, so a match does nothing here.
       const d = registrationDuplicates(db, reg);
+      // D2C: a Shopify customer, no company — unless the email is a company contact (merge or decline).
+      if (isD2CRegistration(reg)) {
+        if (d.blocking) return state;
+        approveAsCustomer(db, reg, d.customer);
+        return { ...state, db, toast: 'Registration approved' };
+      }
       if (d.kind === 'same' || ((d.kind === 'contact' || d.kind === 'company') && !action.createNew)) {
-        return { ...state, toast: 'This registration matches existing records — choose how to handle it' };
+        return state;
       }
       // A contact elsewhere moves to the new Company (an email belongs to one Company).
       if (d.contactOf) removeContactFrom(db, d.contactOf, reg.email, reg.company);
       approveReusingCustomer(db, reg, d.customer);
-      return {
-        ...state,
-        db,
-        toast: d.contactOf ? `Registration approved · ${reg.firstName} moved from ${d.contactOf.name}` : d.customer ? 'Registration approved · existing customer reused' : 'Registration approved',
-      };
+      return { ...state, db, toast: 'Registration approved' };
     }
     // Merge into an existing Company (the email's, or the same-name one) at a location + role.
     case 'MERGE_REGISTRATION': {
@@ -302,31 +338,26 @@ function reducer(state, action) {
       // Joining a different Company than the one they're a contact at moves them.
       const moving = d.contactOf && d.contactOf.id !== action.companyId;
       const targetName = db.companies.find((c) => c.id === action.companyId)?.name;
-      const already = d.contactOf && d.contactOf.id === action.companyId;
       if (moving) removeContactFrom(db, d.contactOf, reg.email, targetName);
-      const target = joinRegistration(db, reg, action.companyId, action.locationId, action.role);
-      const toast = moving ? `Moved to ${target.name} from ${d.contactOf.name}` : already ? `Merged into ${target.name}` : `Added to ${target.name}`;
-      return { ...state, db, toast };
+      joinRegistration(db, reg, action.companyId, action.locationId, action.role);
+      return { ...state, db, toast: 'Registration merged' };
     }
-    // Bulk: each buyer gets a new Company (reusing an existing customer); registrations
+    // Bulk: each buyer gets a new Company (D2C buyers: a customer), reusing an existing customer; registrations
     // matching an existing contact or company name are skipped (open one to choose).
     case 'APPROVE_REGISTRATIONS': {
       const db = clone(state.db);
       const regs = (db.registrations || []).filter((r) => action.ids.includes(r.id) && r.status === 'pending');
       // One by one, so two in the same batch for the same new company don't both create it.
+      // Matches are skipped (the confirm modal says so).
       const ok = [];
-      const dupes = [];
       regs.forEach((reg) => {
         const d = registrationDuplicates(db, reg);
-        if (d.blocking) dupes.push(reg);
-        else {
-          approveReusingCustomer(db, reg, d.customer);
-          ok.push(reg);
-        }
+        if (d.blocking) return;
+        if (isD2CRegistration(reg)) approveAsCustomer(db, reg, d.customer);
+        else approveReusingCustomer(db, reg, d.customer);
+        ok.push(reg);
       });
-      const approved = ok.length === 1 ? '1 registration approved' : `${ok.length} registrations approved`;
-      const skipped = dupes.length ? ` · ${dupes.length} duplicate${dupes.length === 1 ? '' : 's'} to review` : '';
-      return { ...state, db, toast: `${approved}${skipped}` };
+      return { ...state, db, toast: ok.length === 1 ? '1 registration approved' : `${ok.length} registrations approved` };
     }
     case 'DECLINE_REGISTRATIONS': {
       const db = clone(state.db);
@@ -452,7 +483,7 @@ function reducer(state, action) {
           swapId: action.swapId || null,
           selectedIds: [],
           applyTo: 'all',
-          applyLater: false, // with all locations: locations added later get it too (off until ticked)
+          applyLater: false, // locations added later get it too (off until ticked)
           locationIds: [],
         },
       };
@@ -652,7 +683,7 @@ function reducer(state, action) {
       const db = clone(state.db);
       const c = db.companies.find((x) => x.id === action.companyId);
       if (c) c.autoAddLocations = action.on;
-      return { ...state, db, toast: action.on ? 'New Shopify locations will be added' : 'New Shopify locations won\'t be added' };
+      return { ...state, db, toast: action.on ? 'Auto-add turned on' : 'Auto-add turned off' };
     }
     // Prototype: a location is created on a company in Shopify (the
     // company_locations/create webhook). It joins the Shopify directory; if the
@@ -666,13 +697,12 @@ function reducer(state, action) {
       const loc = { id: `${shp.id}_new${created.length + 1}`, name, terms: 'Net 30', ordering: 'Buys directly' };
       const shopifyNewLocations = { ...state.shopifyNewLocations, [shp.id]: [...created, loc] };
       const linked = state.db.companies.find((c) => c.shopifyCompanyId === shp.id || c.name === shp.name);
-      if (!linked) return { ...state, shopifyNewLocations, toast: `${name} created in Shopify` };
-      if (!linked.autoAddLocations) return { ...state, shopifyNewLocations, toast: `${name} created in Shopify — auto-add is off for ${linked.name}` };
+      if (!linked || !linked.autoAddLocations) return { ...state, shopifyNewLocations, toast: 'Location created' };
       const db = clone(state.db);
       const c = db.companies.find((x) => x.id === linked.id);
       c.locations = [...(c.locations || []), fromShopifyLocation(loc)];
       c.activity = [{ when: 'Today', what: `${name} added automatically from Shopify` }, ...(c.activity || [])];
-      return { ...state, db, shopifyNewLocations, toast: `${name} added to ${c.name}` };
+      return { ...state, db, shopifyNewLocations, toast: 'Location added' };
     }
     case 'SET_LIST_FILTER':
       return { ...state, listFilter: action.filter };
@@ -730,9 +760,8 @@ function reducer(state, action) {
         const kind = action.policy.priceKind === 'quantity' ? 'quantity' : 'base';
         const held = locs.filter((l) => locationHolds(c, l, kind, action.policy.id));
         const all = held.length === locs.length;
-        // On every location: at the company (locations added later get it) or only on
-        // theirs. Not on all of them yet: off until ticked.
-        editorContext = { ...editorContext, locationIds: all ? null : held.map((l) => l.id), applyLater: all && slotIds(c, kind).includes(action.policy.id) };
+        // Held at the company: locations added later get it (on all locations or some).
+        editorContext = { ...editorContext, locationIds: all ? null : held.map((l) => l.id), applyLater: slotIds(c, kind).includes(action.policy.id) };
       }
       return {
         ...state,
@@ -795,9 +824,8 @@ function reducer(state, action) {
         conditionalRules: cleanRules,
         explicitEnabled: Object.keys(b.variantAdjustments || {}).length > 0,
       };
-      if (!draft.name || !draft.name.trim()) {
-        return { ...state, toast: 'Name required' };
-      }
+      // The editor shows the error on the Name field.
+      if (!draft.name || !draft.name.trim()) return state;
       const db = clone(state.db);
       const existing = db.policies.find((p) => p.id === b.id);
       if (!existing) {
@@ -965,7 +993,7 @@ function reducer(state, action) {
       // Same engine as the RFQ→B2B handoff: create a scoped base, or merge into
       // the chosen base — forking it first if it is shared with other companies.
       // With a location, it lands in that location's own base list.
-      const msg = applyQuotePricingTransfer(db, companyId, lines, transfer) || 'No prices added';
+      const msg = applyQuotePricingTransfer(db, companyId, lines, transfer) || 'Prices unchanged';
       return { ...state, db, buildQuotes: null, toast: msg };
     }
     // ----- Orders held by a review threshold (order limits) -----
@@ -1004,31 +1032,43 @@ function reducer(state, action) {
       const draft = clone(action.draft || state.agreementEditor.draft);
       draft.name = (draft.name || '').trim();
       const prev = draft.id ? (db.agreements || []).find((a) => a.id === draft.id) : null;
-      const wasActive = prev?.status === 'Active';
-      const goLive = wasActive || !!action.activate;
+      const wasLive = isLive(prev);
+      const goLive = wasLive || !!action.activate;
       if (!draft.id) draft.id = `ag${Date.now()}`;
       if (goLive) {
-        if (wasActive) unapplyAgreement(db, prev);
-        applyAgreement(db, draft);
-        draft.status = 'Active';
+        // Live terms come off first; they go back on if it's (still) in its dates.
+        if (prev?.status === 'Active') unapplyAgreement(db, prev);
+        draft.status = liveStatus(draft);
+        if (draft.status === 'Active') applyAgreement(db, draft);
         draft.version = (prev?.version || 0) + 1;
-        const note = wasActive ? agreementChanges(prev, draft, db) : 'Activated';
+        const note = wasLive ? agreementChanges(prev, draft, db) : draft.status === 'Scheduled' ? `Activated, starts ${fmtDay(draft.startDate)}` : 'Activated';
         draft.history = [{ version: draft.version, date: todayISO(), note }, ...(prev?.history || [])];
       }
       db.agreements = prev ? db.agreements.map((a) => (a.id === draft.id ? draft : a)) : [...(db.agreements || []), draft];
       const returnTo = action.draft ? {} : state.agreementEditor?.returnTo || {};
-      const toast = wasActive ? `Saved as version ${draft.version}` : goLive ? `${draft.number} activated` : 'Draft saved';
+      const toast = wasLive ? `Version ${draft.version} saved` : !goLive ? 'Draft saved' : draft.status === 'Scheduled' ? `${draft.number} scheduled` : `${draft.number} activated`;
       return { ...state, db, ...returnTo, agreementEditor: action.draft ? state.agreementEditor : null, toast };
     }
     // Ending takes the agreement's terms off the company; it stays as history.
     case 'END_AGREEMENT': {
       const db = clone(state.db);
       const ag = (db.agreements || []).find((a) => a.id === action.id);
-      if (!ag || ag.status !== 'Active') return state;
-      unapplyAgreement(db, ag);
+      if (!isLive(ag)) return state;
+      // A scheduled one hasn't been applied yet.
+      if (ag.status === 'Active') unapplyAgreement(db, ag);
       ag.status = 'Ended';
       ag.history = [{ version: ag.version, date: todayISO(), note: 'Ended' }, ...(ag.history || [])];
       return { ...state, db, toast: `${ag.number} ended` };
+    }
+    // Renew: a new end date, same terms, as the next version.
+    case 'RENEW_AGREEMENT': {
+      const db = clone(state.db);
+      const ag = (db.agreements || []).find((a) => a.id === action.id);
+      if (!isLive(ag) || !action.endDate) return state;
+      ag.endDate = action.endDate;
+      ag.version += 1;
+      ag.history = [{ version: ag.version, date: todayISO(), note: `Renewed until ${fmtDay(action.endDate)}` }, ...(ag.history || [])];
+      return { ...state, db, toast: `${ag.number} renewed` };
     }
     case 'DELETE_AGREEMENT':
       return {
@@ -1064,7 +1104,7 @@ function reducer(state, action) {
     case 'TOGGLE_LIMIT_STATUS': {
       const limits = (state.db.limits || []).map((l) => (l.id === action.id ? { ...l, status: l.status === 'Active' ? 'Inactive' : 'Active' } : l));
       const on = limits.find((l) => l.id === action.id)?.status === 'Active';
-      return { ...state, db: { ...state.db, limits }, toast: on ? 'Order limit turned on' : 'Order limit turned off' };
+      return { ...state, db: { ...state.db, limits }, toast: on ? 'Limit turned on' : 'Limit turned off' };
     }
     case 'TOAST':
       return { ...state, toast: action.message };

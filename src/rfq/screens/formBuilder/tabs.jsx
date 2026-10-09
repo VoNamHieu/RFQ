@@ -179,7 +179,7 @@ function MultiLanguage() {
     commit((f) => {
       f.use_multiple_language = !on;
     });
-    toast('Settings saved!');
+    toast('Settings saved');
   };
 
   const setDefault = (checked) => {

@@ -59,7 +59,7 @@ export function ShippingSetting({ saved, onSave }) {
     const next = { ...setting, label: setting.label.trim(), custom_rules: formatRules(setting.custom_rules) };
     setSetting(next);
     onSave(next);
-    toast('Settings saved!');
+    toast('Settings saved');
   };
 
   return (
@@ -358,7 +358,7 @@ export function TaxSetting({ saved, onSave }) {
     }
     setSetting(next);
     onSave(next);
-    toast('Settings saved!');
+    toast('Settings saved');
   };
 
   return (

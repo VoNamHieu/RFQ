@@ -150,7 +150,7 @@ export function Configuration({ section }) {
     };
     setSaved(clone(next));
     setDraft(clone(next));
-    toast('Settings saved!');
+    toast('Settings saved');
   };
 
   const current = LANGUAGES.find((l) => l.key === language) || LANGUAGES[0];

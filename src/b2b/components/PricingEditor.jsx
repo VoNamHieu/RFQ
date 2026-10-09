@@ -35,6 +35,8 @@ export function PricingEditor({ asPage = false }) {
   const [applyAll, setApplyAll] = useState(false);
   // Preview by location, from the several-locations note under "Who this pricing serves".
   const [catalogPreview, setCatalogPreview] = useState(false);
+  // Set by a save with an empty name; the Name field shows the error while it's empty.
+  const [nameMissing, setNameMissing] = useState(false);
   const builder = state.builder;
   const tipId = useWcId('pricing-editor');
   // Overlay mode only: lock body scroll and close on Escape while open.
@@ -181,6 +183,10 @@ export function PricingEditor({ asPage = false }) {
 
   const onSave = () => {
     if (noLocationPicked) return;
+    if (!builder.name?.trim()) {
+      setNameMissing(true);
+      return;
+    }
     if (sideChanged && hadAssignments) {
       setSideConfirm(true);
       return;
@@ -264,6 +270,7 @@ export function PricingEditor({ asPage = false }) {
                         label="Name"
                         required
                         value={builder.name}
+                        error={nameMissing && !builder.name?.trim() ? 'Name is required' : undefined}
                         onInput={(e) => patch({ name: e.currentTarget.value })}
                         maxLength={255}
                         autocomplete="off"

@@ -6,7 +6,7 @@
 //
 // The two live on separate pages (a full reload apart), so the hand-off goes
 // through localStorage — the same trick as the RFQ ↔ B2B demo state.
-import { readJSON, writeJSON } from './persistence.js';
+import { readJSON, writeJSON, removeKeys } from './persistence.js';
 
 export const REGISTRATION_FORM_KEY = 'qsRegistrationForm';
 
@@ -41,9 +41,11 @@ export const BUILTIN_ORDER = BUILTIN_FIELDS.map((f) => f.id);
 //
 // Required only applies to inputs: headings and the submit button never are.
 export const canRequire = (f) => f.kind !== 'heading' && f.kind !== 'submit';
-// Always required and can't be removed: approving an application needs them — the
-// company name names the new Company, the email is its main contact.
-export const LOCKED_FIELDS = ['email', 'company'];
+// Always required and can't be removed: approving an application needs the email —
+// it's the buyer's Shopify customer. Company name is up to the merchant: an
+// application without one is a D2C buyer, approved as a Shopify customer with no
+// company (see isD2CRegistration).
+export const LOCKED_FIELDS = ['email'];
 export const isLocked = (f) => LOCKED_FIELDS.includes(f.id);
 export const isRequired = (f) => isLocked(f) || (canRequire(f) && !!f.required);
 // Every form keeps its submit button and its locked fields.
@@ -105,6 +107,11 @@ export const DEFAULT_FORM = {
 // Written by the B2B form builder when the merchant saves.
 export function writeRegistrationForm(config) {
   writeJSON(REGISTRATION_FORM_KEY, config);
+}
+
+// Deleting the form clears the saved configuration: a new form starts from the template.
+export function deleteRegistrationForm() {
+  removeKeys(REGISTRATION_FORM_KEY);
 }
 
 // Read by the storefront, the review screen and the builder's "Edit form". Falls

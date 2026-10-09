@@ -42,7 +42,7 @@ function DynamicValue({ values }) {
     } catch {
       /* clipboard unavailable — the toast still confirms the pick */
     }
-    toast('Copied');
+    toast('Dynamic value copied');
   };
   return (
     <>

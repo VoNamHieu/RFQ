@@ -26,6 +26,7 @@ import { Agreements } from './screens/Agreements.jsx';
 import { ManualOrders } from './screens/manualOrders/ManualOrders.jsx';
 import { Discounts } from './screens/discounts/Discounts.jsx';
 import { Others } from './screens/others/Others.jsx';
+import { PAST_STATUSES } from './agreements.js';
 
 const flags = versionFlags();
 
@@ -118,7 +119,7 @@ export function App() {
               : []),
             ...(flags.agreements
               ? [{
-                  label: `Contracts (${(state.db.agreements || []).filter((a) => a.status !== 'Ended').length})`,
+                  label: `Contracts (${(state.db.agreements || []).filter((a) => !PAST_STATUSES.includes(a.status)).length})`,
                   url: '#/b2b/agreements',
                   matches: state.view === 'agreements',
                   onClick: () => dispatch({ type: 'NAVIGATE', view: 'agreements', patch: { agreementEditor: null } }),

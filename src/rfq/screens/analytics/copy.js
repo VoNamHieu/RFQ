@@ -117,7 +117,7 @@ export const A = {
     startingDate: 'Starting {{date}}',
     endingDate: 'Ending {{date}}',
     clear: 'Clear',
-    deleteSuccess: 'Report deleted successfully',
+    deleteSuccess: (n) => (n === 1 ? 'Report deleted' : `${n} reports deleted`),
     searchPlaceholder: 'Search reports',
     suggestions: {
       customersNotBought: 'Which customers quoted 3+ times but never bought?',

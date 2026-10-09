@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
 import { companyNeedsPrice } from '../pricing.js';
-import { REG_STATUS, fullName, fmtDate, registrationDuplicates } from '../registrations.js';
+import { REG_STATUS, fullName, fmtDate, registrationDuplicates, isD2CRegistration, registrationLabel } from '../registrations.js';
 import { readRegistrationForm, BUILTIN_FIELDS, withoutOptionalNote } from '../../shared/registrationForm.js';
 import { ROLE_OPTIONS } from '../components/LocationModals.jsx';
 import { Modal, wcTone, PageHeader } from '../../shared/wc.jsx';
@@ -42,6 +42,8 @@ export function RegistrationDetail() {
   }
 
   const name = fullName(reg);
+  const label = registrationLabel(reg);
+  const d2c = isD2CRegistration(reg);
   const status = REG_STATUS[reg.status];
   const pending = reg.status === 'pending';
   const approve = () => dispatch({ type: 'APPROVE_REGISTRATION', id: reg.id });
@@ -70,16 +72,16 @@ export function RegistrationDetail() {
     ? undefined
     : !dup.blocking
       ? { content: 'Approve', onAction: approve }
-      : choice === 'create' && dup.kind !== 'same'
+      : choice === 'create' && dup.kind !== 'same' && !d2c
           ? { content: `Create ${reg.company}`, onAction: () => dispatch({ type: 'APPROVE_REGISTRATION', id: reg.id, createNew: true }) }
           : { content: 'Merge', onAction: doMerge };
 
   return (
     <>
     <PageHeader
-      heading={reg.company}
+      heading={label}
       titleMetadata={<s-badge tone={wcTone(status.tone)}>{status.label}</s-badge>}
-      subtitle={`${name} · submitted ${fmtDate(reg.submittedAt)} from the ${reg.source.toLowerCase()}`}
+      subtitle={`${d2c ? 'D2C · no company' : name} · submitted ${fmtDate(reg.submittedAt)} from the ${reg.source.toLowerCase()}`}
       backAction={{ content: 'Registrations', onAction: back }}
       secondaryActions={[{ content: 'Delete', destructive: true, onAction: () => setConfirm('delete') }]}
     />
@@ -118,6 +120,22 @@ export function RegistrationDetail() {
               onRole={setMergeRole}
               actions={<DecisionActions primary={primary} onDecline={() => setConfirm('decline')} />}
             />
+          ) : pending && d2c ? (
+            <s-section heading="Customer">
+              <s-stack gap="small">
+                <s-paragraph color="subdued">{`No company name, so approving makes ${reg.firstName} a D2C customer in Shopify. No company is created.`}</s-paragraph>
+                <s-stack gap="small-500">
+                  <s-paragraph fontWeight="medium">{name}</s-paragraph>
+                  <s-paragraph fontSize="small" color="subdued">{reg.email}</s-paragraph>
+                </s-stack>
+                {dup.customer ? (
+                  <s-banner tone="info">
+                    {`Uses the existing Shopify customer ${dup.customer.name} (${reg.email}). Their order history is kept.`}
+                  </s-banner>
+                ) : null}
+                <DecisionActions primary={primary} onDecline={() => setConfirm('decline')} />
+              </s-stack>
+            </s-section>
           ) : pending ? (
             <s-section heading="Company">
               <s-stack gap="small">
@@ -151,12 +169,12 @@ export function RegistrationDetail() {
       {confirm && (
         <Modal
           onClose={() => setConfirm(null)}
-          heading={confirm === 'decline' ? `Decline ${reg.company}’s registration?` : `Delete ${reg.company}’s registration?`}
+          heading={confirm === 'decline' ? `Decline ${label}’s registration?` : `Delete ${label}’s registration?`}
         >
           <s-paragraph>
             {confirm === 'decline'
               ? `${name} won’t get B2B access or pricing. The registration moves to Declined.`
-              : `This removes the submission from Registrations.${reg.status === 'approved' ? ' The company it was approved into is kept.' : ''}`}
+              : `This removes the submission from Registrations.${reg.status === 'approved' ? (reg.customerId ? ' The customer it created is kept.' : ' The company it was approved into is kept.') : ''}`}
           </s-paragraph>
           <s-button
             slot="primary-action"
@@ -187,6 +205,8 @@ export function RegistrationDetail() {
 // A Merge picks the company (when there are two to choose from), location and role.
 function MatchCard({ reg, dup, choice, onChoice, merge, onCompany, onLocation, onRole, actions }) {
   const name = fullName(reg);
+  // Same email and company, or a D2C buyer who's a company contact: merge or decline only.
+  const single = dup.kind === 'same' || isD2CRegistration(reg);
   const title =
     dup.kind === 'same'
       ? `${name} is already a contact at ${dup.contactOf.name}`
@@ -272,9 +292,9 @@ function MatchCard({ reg, dup, choice, onChoice, merge, onCompany, onLocation, o
     <s-section heading="Company">
       <s-stack gap="small">
         <s-banner tone="warning" heading={title}>
-          <s-paragraph>{dup.kind === 'same' ? 'Merge it into their company, or decline it.' : 'Choose how to handle this registration.'}</s-paragraph>
+          <s-paragraph>{single ? 'Merge it into their company, or decline it.' : 'Choose how to handle this registration.'}</s-paragraph>
         </s-banner>
-        {dup.kind === 'same' ? (
+        {single ? (
           // One path: merge (or Decline, below).
           <s-stack gap="small-200">
             <s-paragraph>{mergeHelp}</s-paragraph>
@@ -334,6 +354,19 @@ function DecisionActions({ primary, onDecline }) {
 // pricing, if the Company doesn't resolve a price yet.
 function ApprovedCard({ reg }) {
   const { state, dispatch } = useStore();
+  if (reg.customerId) {
+    const customer = (state.db.customers || []).find((c) => c.id === reg.customerId);
+    return (
+      <s-section heading="Customer">
+        <s-stack gap="small-500">
+          <s-paragraph fontWeight="medium">{customer ? customer.name : fullName(reg)}</s-paragraph>
+          <s-text fontSize="small" color="subdued">
+            {customer ? `D2C customer in Shopify, in no company · approved ${fmtDate(reg.decidedAt)}` : `Approved ${fmtDate(reg.decidedAt)}. The customer has since been removed.`}
+          </s-text>
+        </s-stack>
+      </s-section>
+    );
+  }
   const company = state.db.companies.find((c) => c.id === reg.companyId);
   const openCompany = (tab) => dispatch({ type: 'OPEN_COMPANY', id: company.id, tab });
   const needsPrice = company && companyNeedsPrice(company, state.db.policies, state.db.defaults);

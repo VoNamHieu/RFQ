@@ -69,8 +69,8 @@ function InlineCheckList({ items, selected, onSet, searchable, placeholder, empt
 // a checkbox, avatar, primary contact + email, and location / contact counts. A
 // ticked company with 2+ locations lists them underneath (all ticked) so the
 // pricing can go to only some; ticking every location is the whole company. With
-// `onApplyLaterChange`, a company picked on every location shows a checkbox for
-// whether locations added later get it too (`applyLater`).
+// `onApplyLaterChange`, a checkbox says whether locations added later get it too
+// (`applyLater`) at the companies picked.
 export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompany, onToggleLocation, onClose, applyLater = true, onApplyLaterChange }) {
   const [q, setQ] = useState('');
   const query = q.trim().toLowerCase();
@@ -148,16 +148,16 @@ export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompan
             })
           )}
         </s-stack>
-        {onApplyLaterChange && companies.some((c) => c.locs.length && tickedOf(c).length === c.locs.length) && (
-          <>
-            <s-divider />
+        {onApplyLaterChange && (
+          // Pinned to the bottom of the modal, always in view; the list scrolls under it.
+          <div className="qs-modal-pinned-foot">
             <s-checkbox
               label="Automatically apply this pricing to locations added later"
               details="This only applies to companies with “Automatically add new locations” turned on."
               checked={applyLater}
               onChange={(e) => onApplyLaterChange(e.currentTarget.checked)}
             />
-          </>
+          </div>
         )}
       </s-stack>
       <s-button slot="primary-action" variant="primary" onClick={onClose}>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { currentAgreement, agreementScopeLabel, agreementTermCount } from '../agreements.js';
+import { currentAgreement, agreementScopeLabel, agreementTermCount, agreementDatesLabel, expiringSoon, daysUntil, PAST_STATUSES } from '../agreements.js';
 import { AgreementEditor } from '../components/AgreementEditor.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import { Modal, IndexFiltersBar, useWcId, wcTone } from '../../shared/wc.jsx';
@@ -8,10 +8,12 @@ import { Modal, IndexFiltersBar, useWcId, wcTone } from '../../shared/wc.jsx';
 const STATUS_TABS = [
   { id: 'all', label: 'All' },
   { id: 'Active', label: 'Active' },
+  { id: 'Scheduled', label: 'Scheduled' },
   { id: 'Draft', label: 'Draft' },
+  { id: 'Expired', label: 'Expired' },
   { id: 'Ended', label: 'Ended' },
 ];
-const STATUS_TONE = { Active: 'success', Draft: undefined, Ended: undefined };
+const STATUS_TONE = { Active: 'success', Scheduled: 'info', Draft: undefined, Expired: undefined, Ended: undefined };
 
 // Every company's agreement in one list. A row opens the company's Agreement tab;
 // the editor opens as a page here (OPEN_AGREEMENT_EDITOR).
@@ -40,7 +42,7 @@ export function Agreements() {
   const rows = all
     .filter((a) => (status === 'all' || a.status === status)
       && (!q || `${a.number} ${a.name} ${companyOf(a.companyId)?.name || ''}`.toLowerCase().includes(q)))
-    .sort((a, b) => (a.status === 'Ended') - (b.status === 'Ended') || String(a.number).localeCompare(String(b.number)))
+    .sort((a, b) => PAST_STATUSES.includes(a.status) - PAST_STATUSES.includes(b.status) || String(a.number).localeCompare(String(b.number)))
     .map((a) => {
       const company = companyOf(a.companyId);
       const linkId = `${rowId}-${a.id}`;
@@ -56,6 +58,16 @@ export function Agreements() {
           </s-table-cell>
           <s-table-cell>{company?.name || '—'}</s-table-cell>
           <s-table-cell>{company ? agreementScopeLabel(company, a) : '—'}</s-table-cell>
+          <s-table-cell>
+            <s-stack gap="small-500">
+              <s-text>{agreementDatesLabel(a)}</s-text>
+              {expiringSoon(a) ? (
+                <div>
+                  <s-badge tone="warning">{daysUntil(a.endDate) === 0 ? 'Ends today' : `Ends in ${daysUntil(a.endDate)} day${daysUntil(a.endDate) === 1 ? '' : 's'}`}</s-badge>
+                </div>
+              ) : null}
+            </s-stack>
+          </s-table-cell>
           <s-table-cell>{agreementTermCount(a)}</s-table-cell>
           <s-table-cell>{a.version ? `v${a.version}` : '—'}</s-table-cell>
           <s-table-cell>
@@ -127,6 +139,7 @@ export function Agreements() {
               <s-table-header listSlot="primary">Contract</s-table-header>
               <s-table-header listSlot="labeled">Company</s-table-header>
               <s-table-header listSlot="labeled">Applies to</s-table-header>
+              <s-table-header listSlot="labeled">Dates</s-table-header>
               <s-table-header listSlot="labeled">Terms</s-table-header>
               <s-table-header listSlot="labeled">Version</s-table-header>
               <s-table-header listSlot="secondary">Status</s-table-header>

@@ -96,7 +96,7 @@ export function productRuleForSession(sku, session) {
 // The buyer's agreement as their account shows it (b2b/agreements.js): its
 // pricing (the price list above) and the order limits it sets for their company
 // or location. Store-wide limits apply to every buyer, so they aren't part of it.
-const STORE_AGREEMENT = { number: 'CT-412', name: '2026 trade terms', version: 2, since: 'Jan 5, 2026' };
+const STORE_AGREEMENT = { number: 'CT-412', name: '2026 trade terms', version: 2, since: 'Jan 5, 2026', until: 'Jan 4, 2027' };
 
 export function agreementForSession(session) {
   if (!versionFlags().agreements || !atLocation(session)) return null;

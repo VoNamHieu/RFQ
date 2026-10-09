@@ -4,11 +4,11 @@ import { useWcId } from '../../shared/wc.jsx';
 // Which of a company's locations get a pricing: all of them (company pricing —
 // locations added later get it too) or only some. `locationIds` null = all; an
 // array = the picked ones. Ticking every location switches back to All locations.
-// With `onApplyLaterChange`, All locations shows a checkbox for whether locations
-// added later get it too (`applyLater`). `separate` drops the detail line and puts
-// each choice's options right under it: the checkbox under All locations, the
-// location list under Specific locations. Shared by the Assign modal, the pricing
-// editor and the agreement editor.
+// With `onApplyLaterChange`, a checkbox under both choices says whether locations
+// added later get it too (`applyLater`) — only for a company with "Automatically
+// add new locations" on, since only then are locations added later. `separate`
+// drops the detail line and puts the location list right under Specific locations.
+// Shared by the Assign modal, the pricing editor and the agreement editor.
 export function LocationScopePicker({ company, locationIds, onChange, title = 'Apply to', titleHidden = false, applyLater = false, onApplyLaterChange, separate = false }) {
   const name = useWcId('loc-scope');
   const locations = company?.locations || [];
@@ -21,15 +21,12 @@ export function LocationScopePicker({ company, locationIds, onChange, title = 'A
   };
 
   const allDetails = onApplyLaterChange ? 'Company pricing.' : 'Company pricing. Locations added later get it too.';
-  const laterBox = !some && onApplyLaterChange && (
-    <s-box paddingInlineStart="large-200">
-      <s-checkbox
-        label="Automatically apply this pricing to locations added later"
-        details="This only applies to companies with “Automatically add new locations” turned on."
-        checked={applyLater}
-        onChange={(e) => onApplyLaterChange(e.currentTarget.checked)}
-      />
-    </s-box>
+  const laterBox = onApplyLaterChange && company?.autoAddLocations && (
+    <s-checkbox
+      label="Automatically apply this pricing to locations added later"
+      checked={applyLater}
+      onChange={(e) => onApplyLaterChange(e.currentTarget.checked)}
+    />
   );
   // Polaris React rendered this list under the "Specific locations" choice
   // (renderChildren); it follows the choice, indented to match.
@@ -81,9 +78,9 @@ export function LocationScopePicker({ company, locationIds, onChange, title = 'A
     return (
       <s-stack gap="small-200">
         {choice('all', !some, 'All locations')}
-        {laterBox}
         {choice('some', some, 'Specific locations')}
         {locationsBox}
+        {laterBox}
       </s-stack>
     );
   }
@@ -108,8 +105,8 @@ export function LocationScopePicker({ company, locationIds, onChange, title = 'A
           Specific locations
         </s-choice>
       </s-choice-list>
-      {laterBox}
       {locationsBox}
+      {laterBox}
     </s-stack>
   );
 }

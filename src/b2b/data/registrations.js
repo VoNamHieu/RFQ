@@ -3,10 +3,18 @@
 // contact (first/last name, business email) + business (company name, country,
 // Tax/VAT ID) + an optional message. `source` is where the form was placed.
 //
-// status: 'pending' → merchant approves (links to a Company) or declines.
-// Approved rows carry `companyId`; decided rows carry `decidedAt`.
+// status: 'pending' → merchant approves (links to a Company — or, with no company
+// name, a D2C customer) or declines. Approved rows carry `companyId` (D2C:
+// `customerId`); decided rows carry `decidedAt`.
 
 export const registrationSeed = [
+  // Demo (D2C): no company name — approving makes Linh a Shopify customer in no company.
+  {
+    id: 'r109', status: 'pending', submittedAt: '2026-09-23', source: 'Registration page',
+    firstName: 'Linh', lastName: 'Tran', email: 'linh.tran@gmail.com',
+    company: '', country: 'Vietnam', taxId: '',
+    message: 'I buy for my own small café and would like wholesale prices on sealant and filters.',
+  },
   // Demo (case 1): same email, same company — Pham Duc is already an Ordering-only
   // contact at ABC Construction · Bac Ninh site; merging can update his role.
   {

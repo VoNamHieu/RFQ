@@ -4,6 +4,7 @@ import { dbSeed } from './data/db.js';
 import { registrationSeed } from './data/registrations.js';
 import { DEMO_STATE_KEY, readJSON, consumeHandoff } from '../shared/persistence.js';
 import { normalizeDb, injectRfqCompany, applyQuotePricingTransfer } from './dbHelpers.js';
+import { syncContractDates } from './agreements.js';
 
 export function makeBaseState() {
   return {
@@ -50,7 +51,8 @@ export function makeBaseState() {
     emptyBackup: null,
     // The seeded registrations came in through the form, so it already exists. It starts
     // unpublished so Home shows the "form isn't published" warning without any clicks.
-    db: normalizeDb({ ...dbSeed, registrations: registrationSeed, hasRegistrationForm: true, registrationFormPublished: false, rfqAppInstalled: true }),
+    // Contracts start and expire by date (the daily job, run once on load here).
+    db: syncContractDates(normalizeDb({ ...dbSeed, registrations: registrationSeed, hasRegistrationForm: true, registrationFormPublished: false, rfqAppInstalled: true })),
     toast: null,
   };
 }

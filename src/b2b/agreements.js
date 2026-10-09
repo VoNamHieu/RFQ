@@ -1,15 +1,21 @@
-// Agreements: a company's terms — its pricing (base + quantity) and order limits —
-// set up and applied together, like a digital contract. One current agreement per
-// company (Draft or Active), for all its locations or some.
-//   Draft  — being set up; nothing applied yet.
-//   Active — Activate assigns its pricing and limits to the company. Saving an
-//            active agreement applies the change right away as a new version.
-//   Ended  — its terms are taken off the company; it stays as history.
-// No dates in v1: an agreement applies from Activate until it's changed or ended.
+// Contracts (shown as "Contracts"; called agreements in code): a company's terms —
+// its pricing (base + quantity) and order limits — set up and applied together.
+// One current contract per company (Draft, Scheduled or Active), for all its
+// locations or some, from a start date to an optional end date.
+//   Draft     — being set up; nothing applied yet.
+//   Scheduled — activated with a start date still to come; applied on that date.
+//   Active    — its pricing and limits are assigned to the company. Saving an
+//               active contract applies the change right away as a new version.
+//   Expired   — the end date passed: its terms came off and the company is back
+//               on the pricing and limits outside the contract.
+//   Ended     — ended by hand; its terms came off. Expired and Ended stay as history.
+// In production a daily job starts and expires contracts (syncContractDates) and
+// reminds the merchant RENEW_NOTICE_DAYS before the end date; Renew moves the end
+// date and keeps the terms, as a new version. The demo's "today" is TODAY.
 // Pricing and limits stay reusable in their libraries and can still be assigned
-// directly, outside any agreement.
-import { addPricingToLocations, removeCompanySlot } from './dbHelpers.js';
-import { hasOwnSlot } from './pricing.js';
+// directly, outside any contract — ending one takes off only what it added.
+import { addPricingToLocations, removeCompanySlot, companySlotArray } from './dbHelpers.js';
+import { hasOwnSlot, slotIds, TODAY } from './pricing.js';
 import { limitKey, limitSummary } from './limits.js';
 
 const KINDS = ['base', 'quantity'];
@@ -27,15 +33,54 @@ export function newAgreement(db, company) {
     companyId: company.id,
     locationIds: null, // null = all locations (and ones added later); array = only those
     status: 'Draft',
+    startDate: TODAY,
+    endDate: '', // '' = no end date
     version: 0,
     terms: { base: [], quantity: [], limits: [] },
     history: [],
   };
 }
 
-// The company's current agreement (Draft or Active), if any.
+export const PAST_STATUSES = ['Expired', 'Ended'];
+// Activated: Scheduled or Active.
+export const isLive = (ag) => ag?.status === 'Active' || ag?.status === 'Scheduled';
+
+// The company's current contract (Draft, Scheduled or Active), if any.
 export const currentAgreement = (db, companyId) =>
-  (db.agreements || []).find((a) => a.companyId === companyId && a.status !== 'Ended') || null;
+  (db.agreements || []).find((a) => a.companyId === companyId && !PAST_STATUSES.includes(a.status)) || null;
+
+// ── Dates ─────────────────────────────────────────────────────────────────────
+// Dates are YYYY-MM-DD, so string comparison matches date order.
+export const RENEW_NOTICE_DAYS = 30;
+export const fmtDay = (iso) => (iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '');
+export const daysUntil = (iso) => Math.round((new Date(`${iso}T00:00:00`) - new Date(`${TODAY}T00:00:00`)) / 86400000);
+export const addYear = (iso) => `${Number(iso.slice(0, 4)) + 1}${iso.slice(4) === '-02-29' ? '-02-28' : iso.slice(4)}`;
+// What going live gives it: Scheduled while its start date is still to come.
+export const liveStatus = (ag) => (ag.startDate && ag.startDate > TODAY ? 'Scheduled' : 'Active');
+// An active contract ending within RENEW_NOTICE_DAYS: the merchant gets a reminder.
+export const expiringSoon = (ag) => ag?.status === 'Active' && !!ag.endDate && daysUntil(ag.endDate) <= RENEW_NOTICE_DAYS;
+export function agreementDatesLabel(ag) {
+  if (!ag.startDate) return ag.endDate ? `Until ${fmtDay(ag.endDate)}` : 'No dates';
+  return ag.endDate ? `${fmtDay(ag.startDate)} – ${fmtDay(ag.endDate)}` : `From ${fmtDay(ag.startDate)}, no end date`;
+}
+
+// The daily job: start Scheduled contracts whose start date has come, and expire
+// Active ones whose end date has passed (their terms come off). Mutates `db`.
+export function syncContractDates(db) {
+  (db.agreements || []).forEach((ag) => {
+    if (ag.status === 'Scheduled' && liveStatus(ag) === 'Active') {
+      applyAgreement(db, ag);
+      ag.status = 'Active';
+      ag.history = [{ version: ag.version, date: ag.startDate, note: 'Started' }, ...(ag.history || [])];
+    }
+    if (ag.status === 'Active' && ag.endDate && ag.endDate < TODAY) {
+      unapplyAgreement(db, ag);
+      ag.status = 'Expired';
+      ag.history = [{ version: ag.version, date: ag.endDate, note: 'Expired' }, ...(ag.history || [])];
+    }
+  });
+  return db;
+}
 
 // Picking every location counts as all.
 function scopeLocationIds(company, ag) {
@@ -54,9 +99,21 @@ export function applyAgreement(db, ag) {
   const c = db.companies.find((x) => x.id === ag.companyId);
   if (!c) return;
   const locIds = scopeLocationIds(c, ag);
+  // Remember what this adds — to the company's list and to each location's own
+  // list (`created`: the location got its own list for it; `inherited`: it already
+  // had the pricing from the company) — so ending it takes off only that.
+  ag.pricingAdded = { base: {}, quantity: {} };
   KINDS.forEach((kind) => ag.terms[kind].forEach((id) => {
     const policy = db.policies.find((p) => p.id === id);
+    const hadCompany = slotIds(c, kind).includes(id);
+    const hadOwn = Object.fromEntries((c.locations || []).map((l) => [l.id, hasOwnSlot(l, kind) ? slotIds(l, kind).includes(id) : null]));
     addPricingToLocations(c, kind, id, policy?.priority, locIds);
+    ag.pricingAdded[kind][id] = {
+      company: !hadCompany && slotIds(c, kind).includes(id),
+      locations: (c.locations || [])
+        .filter((l) => hadOwn[l.id] !== true && hasOwnSlot(l, kind) && slotIds(l, kind).includes(id))
+        .map((l) => ({ id: l.id, created: hadOwn[l.id] === null, inherited: hadOwn[l.id] === null && hadCompany })),
+    };
   }));
   // Remember what this adds to each limit, so ending it takes off only that.
   ag.limitsAdded = {};
@@ -78,13 +135,26 @@ export function unapplyAgreement(db, ag) {
   if (!c) return;
   const locIds = scopeLocationIds(c, ag);
   const locs = (c.locations || []).filter((l) => !locIds || locIds.includes(l.id));
+  const sameIds = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
   KINDS.forEach((kind) => ag.terms[kind].forEach((id) => {
-    if (!locIds) removeCompanySlot(c, kind, id);
-    // Locations on their own list got it there too; a location that inherits keeps inheriting.
-    locs.forEach((l) => {
-      if (!hasOwnSlot(l, kind)) return;
-      const own = l.pricing[kind];
-      l.pricing[kind] = (Array.isArray(own) ? own : [{ id: own, priority: 1 }]).filter((e) => ((e && e.id) || e) !== id);
+    const added = ag.pricingAdded?.[kind]?.[id];
+    if (!added) {
+      // Activated before this was tracked: take it off the company and every location's own list.
+      if (!locIds) removeCompanySlot(c, kind, id);
+      locs.forEach((l) => {
+        if (!hasOwnSlot(l, kind)) return;
+        const own = l.pricing[kind];
+        l.pricing[kind] = (Array.isArray(own) ? own : [{ id: own, priority: 1 }]).filter((e) => ((e && e.id) || e) !== id);
+      });
+      return;
+    }
+    if (added.company) removeCompanySlot(c, kind, id);
+    added.locations.forEach((a) => {
+      const l = (c.locations || []).find((x) => x.id === a.id);
+      if (!l || !hasOwnSlot(l, kind)) return;
+      const keep = a.inherited ? companySlotArray(l, kind) : companySlotArray(l, kind).filter((e) => e.id !== id);
+      // An own list made only for this goes back to inheriting the company's, if it still matches.
+      l.pricing[kind] = a.created && sameIds(keep.map((e) => e.id), slotIds(c, kind)) ? null : keep;
     });
   }));
   // Only what activating it added: a company or location the limit had before
@@ -124,6 +194,8 @@ export function agreementChanges(prev, next, db) {
   const c = db.companies.find((x) => x.id === next.companyId);
   if (c && agreementScopeLabel(c, prev) !== agreementScopeLabel(c, next)) parts.push(`Now applies to ${agreementScopeLabel(c, next)}`);
   if (prev.name !== next.name) parts.push(`Renamed to ${next.name}`);
+  if ((prev.startDate || '') !== (next.startDate || '')) parts.push(`Now starts ${fmtDay(next.startDate)}`);
+  if ((prev.endDate || '') !== (next.endDate || '')) parts.push(next.endDate ? `Now ends ${fmtDay(next.endDate)}` : 'No end date now');
   return parts.join(' · ') || 'No changes to terms';
 }
 

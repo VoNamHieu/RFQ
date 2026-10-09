@@ -63,7 +63,7 @@ export function LeadScoring({ list, onListChange }) {
     setSelection([]);
     setDeleteTarget(null);
     setBulkDeleting(false);
-    toast('Deleted successfully');
+    toast(ids.length === 1 ? 'Lead score deleted' : `${ids.length} lead scores deleted`);
   };
 
   const toggle = (rid) => {
@@ -73,7 +73,7 @@ export function LeadScoring({ list, onListChange }) {
     toggleTimer.current = setTimeout(() => {
       setTogglingId(null);
       onListChange(list.map((r) => (r.id === rid ? { ...r, is_active: !r.is_active } : r)));
-      toast('Updated successfully');
+      toast('Lead score updated');
     }, 400);
   };
 
