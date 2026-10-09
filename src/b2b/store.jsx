@@ -550,6 +550,20 @@ function reducer(state, action) {
       if (c) removeCompanySlot(c, 'quantity', action.policyId);
       return { ...state, db, toast: 'Quantity pricing removed' };
     }
+    // Whether locations added later get a pricing (the switch on the company's
+    // Pricing tab, with auto-add locations on). Today's locations keep what they have.
+    case 'SET_PRICING_APPLY_LATER': {
+      const db = clone(state.db);
+      const c = db.companies.find((x) => x.id === action.companyId);
+      const locs = c?.locations || [];
+      const holders = locs.filter((l) => locationHolds(c, l, action.kind, action.policyId)).map((l) => l.id);
+      if (!holders.length) return state;
+      const priority = [c, ...locs]
+        .map((h) => (Array.isArray(h.pricing?.[action.kind]) ? h.pricing[action.kind] : []).find((e) => e.id === action.policyId))
+        .find(Boolean)?.priority;
+      syncCompanyLocations(c, action.kind, action.policyId, (l) => holders.includes(l.id), priority, action.on);
+      return { ...state, db, toast: action.on ? 'Auto-apply turned on' : 'Auto-apply turned off' };
+    }
     // ----- Assign one policy to many targets (companies / customers / tags / global) -----
     case 'OPEN_MULTI_ASSIGN':
       return { ...state, assignMulti: { policyId: action.policyId } };

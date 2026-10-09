@@ -153,11 +153,8 @@ function EditorStep({ toast, onBack, isNew = false, title: pageTitle = 'Create B
   const off = !!state.db.registrationFormOff; // turned off: Off wins over Live / Draft
   const [tab, setTab] = useState('Form');
   // Which surface the full-screen preview shows, or null when it is closed. The card's
-  // "Desktop" button opens the surface on screen; "Preview form" opens the one picked there.
+  // "Desktop" button opens the surface on screen.
   const [fullPreview, setFullPreview] = useState(null);
-  // A product / account page preview needs the app block in the theme first; until
-  // its Add button is used, picking it shows a notice instead (the theme place).
-  const [blockMissing, setBlockMissing] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   // Form — a new form starts from the template; "Edit form" opens the saved one, the
   // same config the storefront renders and the review screen reads.
@@ -241,22 +238,6 @@ function EditorStep({ toast, onBack, isNew = false, title: pageTitle = 'Create B
       setFocusPlace(pending[0]);
     }
   };
-  // Saved → there is a form to look at, so the header offers "Preview form" and lets the
-  // merchant pick which storefront surface to open it on. The choices follow the places
-  // ticked on the Publish tab; with none ticked, the registration page — what the side
-  // preview shows by default — is still previewable. Each choice stands for the real
-  // storefront page, so the product page is ONE item, shown the way it is set (modal / link).
-  const saved = savedJson !== null;
-  const previewTargets = [
-    ...(places.includes('create') || !places.length ? ['page'] : []),
-    ...(places.includes('product') ? [productMode === 'link' ? 'product-link' : 'product-modal'] : []),
-    ...(places.includes('account') ? ['account'] : []),
-  ];
-  const openPreview = (t) => {
-    const place = t === 'account' ? 'account' : t.startsWith('product') ? 'product' : null;
-    if (place && status[place] !== 'live') setBlockMissing(place);
-    else setFullPreview(t);
-  };
   const discard = () => {
     const s = JSON.parse(savedJson ?? initialJson); // never saved → back to the template
     setTitle(s.title); setFields(s.fields); setSlug(s.slug);
@@ -312,11 +293,6 @@ function EditorStep({ toast, onBack, isNew = false, title: pageTitle = 'Create B
           ...(isNew ? [] : [{ content: 'Delete form', destructive: true, onAction: () => setConfirmDelete(true) }]),
           { content: off ? 'Turn form on' : 'Turn form off', onAction: () => dispatch({ type: 'SET_REGISTRATION_FORM_OFF', off: !off }) },
         ]}
-        actionGroups={
-          saved
-            ? [{ title: 'Preview form', actions: previewTargets.map((t) => ({ content: PREVIEW_PLACE[t], onAction: () => openPreview(t) })) }]
-            : []
-        }
       />
       <s-page>
         <s-stack gap="base">
@@ -384,16 +360,6 @@ function EditorStep({ toast, onBack, isNew = false, title: pageTitle = 'Create B
             </s-button>
             <s-button slot="secondary-actions" onClick={() => setConfirmDelete(false)}>
               Cancel
-            </s-button>
-          </Modal>
-        )}
-        {blockMissing && (
-          <Modal onClose={() => setBlockMissing(null)} heading={`Can’t preview on the ${blockMissing === 'account' ? 'account' : 'product'} page yet`}>
-            <s-paragraph>
-              {`The app block isn’t on your ${blockMissing === 'account' ? 'customer account page' : 'product pages'} yet, so there’s nothing to preview there. Click Add button under ${PLACE_LABEL[blockMissing]} on the Publish form tab to add it in your theme, then preview again.`}
-            </s-paragraph>
-            <s-button slot="secondary-actions" onClick={() => setBlockMissing(null)}>
-              Close
             </s-button>
           </Modal>
         )}
@@ -1140,14 +1106,6 @@ const PREVIEW_TITLE = {
   'product-link': 'Preview on product page · Redirect link',
   account: 'Preview on account page',
 };
-// The same surfaces as menu items under the header's "Preview form".
-const PREVIEW_PLACE = {
-  page: 'Registration page',
-  'product-modal': 'Product page',
-  'product-link': 'Product page',
-  account: 'Account page',
-};
-
 // The storefront surface a place renders on, with the form placed in it.
 function StorefrontPreview({ on, desktop, slug, fields, productLink, productLinkText, accountStep, setAccountStep, accountCopy }) {
   // Product previews carry their own mode ('product-modal' / 'product-link'), so

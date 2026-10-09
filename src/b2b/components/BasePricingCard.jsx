@@ -1,6 +1,6 @@
 import React from 'react';
 import { useStore } from '../store.jsx';
-import { companyBaseEntries, locationOnlyEntries, pricingLocationsLabel, policyStatus } from '../pricing.js';
+import { companyBaseEntries, locationOnlyEntries, pricingLocationsLabel, policyStatus, slotIds } from '../pricing.js';
 import { openBuildFromQuotes } from './BuildFromQuotes.jsx';
 import { versionFlags } from '../../shared/versions.js';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
@@ -33,6 +33,24 @@ export function LocationOnlyActions({ company, kind, entry }) {
   );
 }
 
+// With auto-add locations on, a switch per pricing: do locations added later get it?
+export function ApplyLaterSwitch({ company, kind, policy }) {
+  const { dispatch } = useStore();
+  const on = slotIds(company, kind).includes(policy.id);
+  return (
+    <s-switch
+      accessibilityLabel={`Apply ${policy.name} to new locations`}
+      checked={on}
+      disabled={!(company.locations || []).length}
+      onChange={(e) => {
+        const next = e.currentTarget.checked;
+        if (next === on) return;
+        dispatch({ type: 'SET_PRICING_APPLY_LATER', companyId: company.id, kind, policyId: policy.id, on: next });
+      }}
+    />
+  );
+}
+
 // Card header: title on the left, a one-line subdued description on the right.
 function CardHeader({ title, description }) {
   return (
@@ -57,6 +75,7 @@ export function BasePricingCard({ company }) {
   // v1: single base pricing per company (no priority list / pagination).
   if (!versionFlags().multiBase) return <SingleBaseCard company={company} />;
 
+  const autoApply = !!company.autoAddLocations;
   const showTools = entries.length > 5;
   const q = showTools ? (state.basePricingSearch || '').trim().toLowerCase() : '';
   const filtered = q ? entries.filter((e) => e.policy.name.toLowerCase().includes(q)) : entries;
@@ -87,6 +106,11 @@ export function BasePricingCard({ company }) {
           <s-text fontWeight="medium">{p.name}</s-text>
         </s-table-cell>
         <s-table-cell>{pricingLocationsLabel(company, 'base', p.id)}</s-table-cell>
+        {autoApply && (
+          <s-table-cell>
+            <ApplyLaterSwitch company={company} kind="base" policy={p} />
+          </s-table-cell>
+        )}
         <s-table-cell>{entry.priority}</s-table-cell>
         <s-table-cell>
           <s-badge tone={wcTone(st.tone)}>{st.label}</s-badge>
@@ -197,6 +221,7 @@ export function BasePricingCard({ company }) {
         <s-table-header-row>
           <s-table-header listSlot="primary">Pricing</s-table-header>
           <s-table-header listSlot="labeled">Location</s-table-header>
+          {autoApply && <s-table-header listSlot="labeled">Auto-apply to new locations</s-table-header>}
           <s-table-header listSlot="labeled">{priorityHeader}</s-table-header>
           <s-table-header listSlot="secondary">Status</s-table-header>
           <s-table-header listSlot="inline">

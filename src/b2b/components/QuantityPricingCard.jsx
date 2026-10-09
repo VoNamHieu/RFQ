@@ -1,7 +1,7 @@
 import React from 'react';
 import { useStore } from '../store.jsx';
 import { companyQuantityEntries, locationOnlyEntries, pricingLocationsLabel, policyStatus, scopeTypeLabel } from '../pricing.js';
-import { LocationOnlyActions } from './BasePricingCard.jsx';
+import { LocationOnlyActions, ApplyLaterSwitch } from './BasePricingCard.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import { wcTone } from '../../shared/wc.jsx';
 import quantityPricingArt from '../assets/quantity-pricing-empty.webp';
@@ -14,6 +14,7 @@ export function QuantityPricingCard({ company }) {
   const entries = [...companyQuantityEntries(company, state.db.policies), ...locationOnlyEntries(company, state.db.policies, 'quantity')].sort((a, b) => a.priority - b.priority);
   const policies = entries.map((e) => e.policy);
   const openAdd = () => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, kind: 'quantity', mode: 'add' });
+  const autoApply = !!company.autoAddLocations;
 
   // No quantity pricing yet — a proper empty state so the Add action is obvious
   // (mirrors the Base pricing card) instead of a "Not set" row with a bare +.
@@ -46,6 +47,7 @@ export function QuantityPricingCard({ company }) {
         <s-table-header-row>
           <s-table-header listSlot="primary">Pricing</s-table-header>
           <s-table-header listSlot="labeled">Location</s-table-header>
+          {autoApply && <s-table-header listSlot="labeled">Auto-apply to new locations</s-table-header>}
           <s-table-header listSlot="labeled">Products</s-table-header>
           <s-table-header listSlot="secondary">Status</s-table-header>
           <s-table-header listSlot="inline">
@@ -62,6 +64,11 @@ export function QuantityPricingCard({ company }) {
                   <s-text fontWeight="medium">{policy.name}</s-text>
                 </s-table-cell>
                 <s-table-cell>{pricingLocationsLabel(company, 'quantity', policy.id)}</s-table-cell>
+                {autoApply && (
+                  <s-table-cell>
+                    <ApplyLaterSwitch company={company} kind="quantity" policy={policy} />
+                  </s-table-cell>
+                )}
                 <s-table-cell>
                   <s-text color="subdued">{scopeTypeLabel(policy)}</s-text>
                 </s-table-cell>
