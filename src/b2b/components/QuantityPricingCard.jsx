@@ -81,7 +81,6 @@ export function QuantityPricingCard({ company }) {
                   ) : (
                     <s-stack direction="inline" gap="small-400" justifyContent="end" alignItems="center">
                       <s-button icon="edit" variant="tertiary" accessibilityLabel="Edit pricing" onClick={() => dispatch({ type: 'OPEN_EDITOR', policy, context: { mode: 'edit', companyId: company.id } })} />
-                      <s-button icon="exchange" variant="tertiary" accessibilityLabel="Change pricing" onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, kind: 'quantity', mode: 'swap', swapId: policy.id })} />
                       <s-button icon="x-circle" variant="tertiary" tone="critical" accessibilityLabel="Remove" onClick={() => dispatch({ type: 'REMOVE_COMPANY_QUANTITY', companyId: company.id, policyId: policy.id })} />
                     </s-stack>
                   )}

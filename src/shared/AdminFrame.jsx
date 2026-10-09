@@ -8,7 +8,7 @@ import { VersionSwitcher } from './VersionSwitcher.jsx';
 // disabled, onClick, subNavigationItems}] }] so each app (RFQ / B2B) supplies
 // its own nav; `icon` is a Polaris icon name (e.g. 'home'). `app`
 // ('rfq'|'b2b') adds the version switcher to the top bar.
-export function AdminFrame({ sections, children, searchPlaceholder = 'Search', app }) {
+export function AdminFrame({ sections, children, searchPlaceholder = 'Search', app, bare = false }) {
   const [navOpen, setNavOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
@@ -32,6 +32,15 @@ export function AdminFrame({ sections, children, searchPlaceholder = 'Search', a
     setNavOpen(false);
     onClick?.();
   };
+
+  // Embedded (docked in the storefront): the page alone, no top bar or nav.
+  if (bare) {
+    return (
+      <div className="wc-frame">
+        <main className="wc-main wc-main--bare">{children}</main>
+      </div>
+    );
+  }
 
   return (
     <div className="wc-frame" data-nav-open={navOpen}>

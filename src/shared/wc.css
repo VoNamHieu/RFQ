@@ -333,6 +333,12 @@ body {
   padding-left: var(--wc-nav-w);
 }
 
+/* Embedded (docked in the storefront): no top bar or nav to make room for. */
+.wc-main.wc-main--bare {
+  padding-top: 0;
+  padding-left: 0;
+}
+
 .wc-nav-backdrop {
   display: none;
 }

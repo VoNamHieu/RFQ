@@ -497,6 +497,16 @@ export function ruleAdjustmentLabel(rule) {
   return rule.rule === 'increase' ? `+${unit}` : `${unit} off`;
 }
 
+// What a base pricing is made of, as the editor's Settings summary says it:
+// "2 rules · 3 overrides", or "No rules".
+export function calculationLabel(policy) {
+  const count = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
+  const rules = (policy.conditionalRules || []).length;
+  const overrides = Object.keys(policy.variantAdjustments || {}).length;
+  return [rules ? count(rules, 'rule') : null, overrides ? count(overrides, 'override') : null].filter(Boolean).join(' · ') || 'No rules';
+}
+
+// The segment of products a quantity pricing covers, named rather than counted.
 export const scopeTypeLabel = (policy) => {
   if (!policy) return '';
   switch (policy.scopeType) {
@@ -504,13 +514,13 @@ export const scopeTypeLabel = (policy) => {
       return 'All products';
     case 'collection': {
       const cs = scopeCollections(policy);
-      return cs.length === 1 ? cs[0] : cs.length ? `${cs.length} collections` : 'Collection';
+      return cs.length ? cs.join(', ') : 'Collection';
     }
     case 'products':
-      return `${(policy.selectedProducts || []).length} products`;
+      return 'Specific products';
     case 'tags': {
       const ts = policy.selectedTags || [];
-      return ts.length === 1 ? `Tag: ${ts[0]}` : `${ts.length} product tags`;
+      return ts.length ? `Tag${ts.length > 1 ? 's' : ''}: ${ts.join(', ')}` : 'Product tags';
     }
     default:
       return '';

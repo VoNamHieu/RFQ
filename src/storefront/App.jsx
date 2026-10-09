@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useStore } from './store.jsx';
-import { withVersion } from '../shared/versions.js';
+import { withVersion, versionFlags, activeVersion, DEFAULT_VERSION } from '../shared/versions.js';
 import { Header } from './components/Header.jsx';
 import { Footer } from './components/Footer.jsx';
 import { CartDrawer } from './components/CartDrawer.jsx';
@@ -47,6 +47,41 @@ function AppSwitch() {
   );
 }
 
+// Prototype-only: the B2B app's Order limits screen docked over the storefront
+// (Upcoming, where order limits exist). A change there saves the limits the cart
+// checks against, so it shows here right away. Opened once, the app stays loaded
+// while the dock is hidden, so its open editor isn't lost.
+function adminUrl() {
+  const dev = window.location.pathname.startsWith('/src/');
+  const params = new URLSearchParams({ embed: 'limits' });
+  if (activeVersion() !== DEFAULT_VERSION) params.set('v', activeVersion());
+  return `${dev ? '/src/b2b/index.html' : '/b2b/'}?${params}`;
+}
+function AdminDock() {
+  const { state } = useStore();
+  const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  if (!versionFlags().orderLimits) return null;
+  return (
+    <>
+      {!open && (
+        <button className="dev-switch dev-switch--end" onClick={() => { setOpen(true); setLoaded(true); }} title="Edit order limits in the B2B app">
+          Order limits
+        </button>
+      )}
+      {loaded && (
+        <div className={`admin-dock${state.cartOpen ? ' admin-dock--beside-cart' : ''}`} hidden={!open}>
+          <div className="admin-dock__head">
+            <span>Order limits · B2B app</span>
+            <button className="admin-dock__close" aria-label="Close" onClick={() => setOpen(false)}>✕</button>
+          </div>
+          <iframe title="Order limits" src={adminUrl()} />
+        </div>
+      )}
+    </>
+  );
+}
+
 export function App() {
   const { state } = useStore();
   // Scroll to top on page change (a router would do this for us).
@@ -86,6 +121,7 @@ export function App() {
       <QuoteRequestModal />
       <Toast />
       <AppSwitch />
+      <AdminDock />
     </>
   );
 }

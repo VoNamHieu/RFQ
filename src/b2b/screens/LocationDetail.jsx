@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { locationPricingEntries, scopeLabel, policyStatus } from '../pricing.js';
+import { locationPricingEntries, calculationLabel, scopeTypeLabel, policyStatus } from '../pricing.js';
 import { money } from '../format.js';
 
 import { AssignBuyerModal, GeneralModal, ShippingModal, PAYMENT_TERM_OPTIONS, TAX_SETTINGS, COUNTRY_NAMES } from '../components/LocationModals.jsx';
@@ -43,7 +43,7 @@ export function LocationDetail() {
   const [ordersPage, setOrdersPage] = useState(0);
   const ids = useWcId('loc');
   if (!company || !location) return null;
-  // Add / change / remove pricing on this location (its own list of that kind — see
+  // Add / edit / remove pricing on this location (its own list of that kind — see
   // locationSlotArray), with the same row actions as the company page. Edit opens it
   // for the company: "Who this pricing serves" ticks the locations that get it.
   const addPricing = (kind) => {
@@ -56,12 +56,6 @@ export function LocationDetail() {
         variant="tertiary"
         accessibilityLabel={`Edit ${policy.name}`}
         onClick={() => dispatch({ type: 'OPEN_EDITOR', policy, context: { mode: 'edit', companyId: company.id } })}
-      />
-      <s-button
-        icon="exchange"
-        variant="tertiary"
-        accessibilityLabel={`Change ${policy.name}`}
-        onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, locationId: location.id, kind, mode: 'swap', swapId: policy.id })}
       />
       <s-button
         icon="x-circle"
@@ -112,7 +106,8 @@ export function LocationDetail() {
             ) : null}
           </s-stack>
         </s-table-cell>
-        <s-table-cell>{scopeLabel(e.policy)}</s-table-cell>
+        {/* Base: what it's made of; quantity: the products it covers. */}
+        <s-table-cell>{kind === 'quantity' ? scopeTypeLabel(e.policy) : calculationLabel(e.policy)}</s-table-cell>
         <s-table-cell>
           <s-badge tone={wcTone(status.tone)}>{status.label}</s-badge>
         </s-table-cell>
@@ -237,7 +232,7 @@ export function LocationDetail() {
                 <s-table>
                   <s-table-header-row>
                     <s-table-header listSlot="primary">Pricing</s-table-header>
-                    <s-table-header listSlot="labeled">Products</s-table-header>
+                    <s-table-header listSlot="labeled">{pricingKind === 'quantity' ? 'Products' : 'Assignments'}</s-table-header>
                     <s-table-header listSlot="secondary">Status</s-table-header>
                     <s-table-header listSlot="inline"><s-text accessibilityVisibility="exclusive">Actions</s-text></s-table-header>
                   </s-table-header-row>

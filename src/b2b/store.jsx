@@ -18,7 +18,7 @@ import {
   applyQuotePricingTransfer,
   injectOrderRequests,
 } from './dbHelpers.js';
-import { publishOrderLimits, readOrderRequests, removeOrderRequests, ORDER_REQUESTS_KEY } from '../shared/persistence.js';
+import { publishOrderLimits, publishedOrderLimits, readOrderRequests, removeOrderRequests, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY } from '../shared/persistence.js';
 
 // The B2B god file rebuilt #app from a single `state` on every action. Here that
 // is a reducer over a view state machine + the mutable demo db. The db helpers,
@@ -1014,6 +1014,10 @@ function reducer(state, action) {
       const msg = applyQuotePricingTransfer(db, companyId, lines, transfer) || 'Prices unchanged';
       return { ...state, db, buildQuotes: null, toast: msg };
     }
+    // Order limits changed in another window (the full app, or the one docked in
+    // the storefront).
+    case 'SYNC_LIMITS':
+      return { ...state, db: { ...state.db, limits: action.limits } };
     // An order request just sent from the storefront (in another tab).
     case 'SYNC_ORDER_REQUESTS': {
       const db = clone(state.db);
@@ -1143,13 +1147,17 @@ const StoreContext = createContext(null);
 
 export function StoreProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, undefined, buildInitialState);
-  // Order limits reach the storefront; order requests come back from it, even
-  // while this tab is open. A request the merchant approved or declined is done,
-  // so it doesn't come back on reload (see persistence.js).
-  useEffect(() => publishOrderLimits(state.db.limits || []), [state.db.limits]);
+  // Order limits reach the storefront (and other windows of this app); order
+  // requests come back from it, even while this tab is open. A request the
+  // merchant approved or declined is done, so it doesn't come back on reload (see
+  // persistence.js). The sample-data-hidden state isn't saved.
+  useEffect(() => {
+    if (!state.emptyMode) publishOrderLimits(state.db.limits || []);
+  }, [state.db.limits, state.emptyMode]);
   useEffect(() => {
     const onStorage = (e) => {
       if (e.key === ORDER_REQUESTS_KEY) dispatch({ type: 'SYNC_ORDER_REQUESTS', requests: readOrderRequests() });
+      if (e.key === ORDER_LIMITS_KEY && Array.isArray(publishedOrderLimits())) dispatch({ type: 'SYNC_LIMITS', limits: publishedOrderLimits() });
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);

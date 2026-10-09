@@ -42,9 +42,12 @@ export function LocationsTab({ company }) {
         </s-table-cell>
         <s-table-cell>
           <s-stack gap="small-500">
-            <s-link id={linkId} onClick={() => dispatch({ type: 'OPEN_LOCATION', companyId: company.id, locationId: l.id })}>
-              {l.name}
-            </s-link>
+            <s-stack direction="inline" gap="small-300" alignItems="center">
+              <s-link id={linkId} onClick={() => dispatch({ type: 'OPEN_LOCATION', companyId: company.id, locationId: l.id })}>
+                {l.name}
+              </s-link>
+              {l.status === 'Deleted' ? <s-badge tone="critical">Deleted</s-badge> : null}
+            </s-stack>
             {l.address ? (
               <s-text color="subdued" fontSize="small">
                 {l.address}
@@ -69,7 +72,6 @@ export function LocationsTab({ company }) {
           )}
         </s-table-cell>
         <s-table-cell>{buyers}</s-table-cell>
-        <s-table-cell>{l.status === 'Deleted' ? <s-badge tone="critical">Deleted</s-badge> : null}</s-table-cell>
       </s-table-row>
     );
   });
@@ -125,7 +127,6 @@ export function LocationsTab({ company }) {
           <s-table-header listSlot="labeled" format="numeric">
             {heading('Buyers')}
           </s-table-header>
-          <s-table-header listSlot="secondary">{heading('Status')}</s-table-header>
         </s-table-header-row>
         <s-table-body>{rows}</s-table-body>
       </s-table>

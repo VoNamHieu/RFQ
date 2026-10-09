@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useReducer } from 'react';
+import React, { createContext, useContext, useEffect, useReducer } from 'react';
 import { accountForEmail, productBySku, b2bPriceFor } from './data/products.js';
+import { ORDER_LIMITS_KEY } from '../shared/persistence.js';
 
 // Storefront state machine. Deliberately small — three pages (home / product /
 // account) plus the cross-cutting bits a Dawn storefront needs: a cart, a
@@ -105,6 +106,10 @@ function reducer(state, action) {
         b2bApplications: [action.application, ...state.b2bApplications],
         toast: 'Application submitted',
       };
+    // The B2B app saved its order limits (e.g. from the docked Order limits screen):
+    // re-render so the cart and product page check against them.
+    case 'LIMITS_CHANGED':
+      return { ...state, limitsVersion: (state.limitsVersion || 0) + 1 };
     case 'TOAST':
       return { ...state, toast: action.message };
     case 'CLEAR_TOAST':
@@ -127,6 +132,11 @@ const StoreContext = createContext(null);
 
 export function StoreProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
+  useEffect(() => {
+    const onStorage = (e) => e.key === ORDER_LIMITS_KEY && dispatch({ type: 'LIMITS_CHANGED' });
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
   return <StoreContext.Provider value={{ state, dispatch }}>{children}</StoreContext.Provider>;
 }
 

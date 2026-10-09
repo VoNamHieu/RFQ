@@ -2,9 +2,20 @@
 // (legacy restoreRfqCompanies + receiveRfqHandoff at b2b/index.html §8190-8262).
 import { dbSeed } from './data/db.js';
 import { registrationSeed } from './data/registrations.js';
-import { DEMO_STATE_KEY, readJSON, consumeHandoff, readOrderRequests } from '../shared/persistence.js';
+import { DEMO_STATE_KEY, readJSON, consumeHandoff, readOrderRequests, publishedOrderLimits } from '../shared/persistence.js';
+import { versionFlags } from '../shared/versions.js';
 import { normalizeDb, injectRfqCompany, applyQuotePricingTransfer, injectOrderRequests } from './dbHelpers.js';
 import { syncContractDates } from './agreements.js';
+
+// Prototype: the storefront docks this app's Order limits screen (?embed=limits),
+// without the admin frame, so a limit change shows in its cart right away.
+export const EMBEDDED = (() => {
+  try {
+    return new URLSearchParams(window.location.search).get('embed');
+  } catch {
+    return null;
+  }
+})();
 
 export function makeBaseState() {
   return {
@@ -64,8 +75,12 @@ export function buildInitialState() {
   if (demo && demo.b2bCompanies) {
     Object.values(demo.b2bCompanies).forEach((p) => injectRfqCompany(s.db, p));
   }
-  // Order requests buyers sent from the storefront, waiting for review.
+  // Order limits as last saved (they're shared with the storefront), and order
+  // requests buyers sent from it, waiting for review.
+  const limits = publishedOrderLimits();
+  if (Array.isArray(limits)) s.db.limits = limits;
   injectOrderRequests(s.db, readOrderRequests());
+  if (EMBEDDED === 'limits' && versionFlags().orderLimits) s.view = 'limits';
   // 2) One-shot handoff: open the specific company just handed over from RFQ.
   const handoff = consumeHandoff();
   if (handoff) {

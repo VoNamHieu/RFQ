@@ -309,6 +309,25 @@ h3 { font-size: 1.8rem; }
   opacity: 0.9; transition: opacity 0.15s ease, transform 0.15s ease;
 }
 .dev-switch:hover { opacity: 1; transform: translateY(-0.1rem); }
+.dev-switch--end { left: auto; right: 1.6rem; }
+
+/* Prototype-only: the B2B app's Order limits screen docked bottom-right, beside the
+   cart drawer while it's open so both stay in view. */
+.admin-dock {
+  position: fixed; right: 1.6rem; bottom: 1.6rem; z-index: 250;
+  width: min(72rem, calc(100vw - 3.2rem)); height: min(60rem, calc(100vh - 3.2rem));
+  display: flex; flex-direction: column; overflow: hidden;
+  background: #fff; border-radius: 1.2rem; box-shadow: 0 0.8rem 3.2rem rgba(0, 0, 0, 0.28);
+}
+.admin-dock[hidden] { display: none; }
+.admin-dock--beside-cart { right: calc(min(40rem, 92vw) + 1.6rem); width: min(72rem, calc(100vw - min(40rem, 92vw) - 3.2rem)); }
+.admin-dock__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: 0.8rem 1.2rem 0.8rem 1.6rem; background: #1a1a1a; color: #fff;
+  font-size: 1.35rem; font-weight: 600; font-family: var(--font);
+}
+.admin-dock__close { background: none; border: none; color: #fff; font-size: 1.6rem; cursor: pointer; padding: 0.2rem 0.6rem; }
+.admin-dock iframe { flex: 1; width: 100%; border: 0; }
 
 /* ── Toast ────────────────────────────────────────────────────────────────── */
 .toast {

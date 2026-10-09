@@ -127,12 +127,6 @@ export function BasePricingCard({ company }) {
                 onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: p, context: { mode: 'edit', companyId: company.id } })}
               />
               <s-button
-                icon="exchange"
-                variant="tertiary"
-                accessibilityLabel="Change to another base pricing"
-                onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'swap', swapId: p.id })}
-              />
-              <s-button
                 icon="x-circle"
                 variant="tertiary"
                 tone="critical"
@@ -311,7 +305,6 @@ function SingleBaseCard({ company }) {
                 {primary ? (
                   <>
                     <s-button icon="edit" variant="tertiary" accessibilityLabel="Edit pricing" onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: primary.policy, context: { mode: 'edit', companyId: company.id } })} />
-                    <s-button icon="exchange" variant="tertiary" accessibilityLabel="Change base pricing" onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'swap', swapId: primary.policy.id })} />
                     <s-button icon="x-circle" variant="tertiary" tone="critical" accessibilityLabel="Remove" onClick={() => dispatch({ type: 'REMOVE_COMPANY_BASE', companyId: company.id, policyId: primary.policy.id })} />
                   </>
                 ) : (
