@@ -2,12 +2,22 @@
 // form (Wholesale B2B → Registrations). Fields mirror the form's default set:
 // contact (first/last name, business email) + business (company name, country,
 // Tax/VAT ID) + an optional message. `source` is where the form was placed.
+// `marketing: true` = ticked "Subscribe to our marketing emails".
 //
 // status: 'pending' → merchant approves (links to a Company — or, with no company
 // name, a D2C customer) or declines. Approved rows carry `companyId` (D2C:
 // `customerId`); decided rows carry `decidedAt`.
 
 export const registrationSeed = [
+  // Demo (email marketing): Minh ticked "Subscribe to our marketing emails" — the review
+  // shows "Email marketing: Subscribed".
+  {
+    id: 'r112', status: 'pending', submittedAt: '2026-09-26', source: 'Registration page',
+    firstName: 'Minh', lastName: 'Vu', email: 'minh@hanoikitchen.vn',
+    company: 'Hanoi Kitchen Supply', country: 'Vietnam', taxId: 'VN0105566778',
+    message: 'Restaurant equipment supplier in Hanoi, buying stainless fittings for kitchen installs.',
+    marketing: true,
+  },
   // Demo (D2C, already a customer): no company name, and the email is Lan Anh Home's —
   // already a D2C customer — so approving reuses that customer instead of creating one.
   {
@@ -58,6 +68,7 @@ export const registrationSeed = [
     firstName: 'Tuan', lastName: 'Hoang', email: 'tuan@saigonbuildmart.vn',
     company: 'Saigon Build Mart', country: 'Vietnam', taxId: 'VN0312456789',
     message: 'Hardware retailer with 3 stores in Ho Chi Minh City. Looking for trade pricing on sealants and hoses.',
+    marketing: true,
   },
   {
     id: 'r104', status: 'pending', submittedAt: '2026-09-18', source: 'Product page',
@@ -70,6 +81,7 @@ export const registrationSeed = [
     firstName: 'Kenji', lastName: 'Sato', email: 'k.sato@pacifichvac.jp',
     company: 'Pacific HVAC Supply', country: 'Japan', taxId: 'T1234567890123',
     message: 'Distributor in Osaka evaluating 40 mm ball valves for a Q4 project, around 600 units.',
+    marketing: true,
   },
   {
     id: 'r102', status: 'declined', submittedAt: '2026-09-10', decidedAt: '2026-09-11', source: 'Product page',

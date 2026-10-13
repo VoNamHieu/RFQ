@@ -94,7 +94,11 @@ export function RegistrationDetail() {
                 <React.Fragment key={sec.key}>
                   {i > 0 && <s-divider />}
                   <Section title={sec.title}>
-                    {sec.fields.map((f) => (f.kind === 'textarea' ? (
+                    {sec.fields.map((f) => (f.id === 'marketing' ? (
+                      <Row key={f.id} label="Email marketing">
+                        <s-badge tone="success" icon="email">Subscribed</s-badge>
+                      </Row>
+                    ) : f.kind === 'textarea' ? (
                       <s-stack key={f.id} gap="small-400">
                         {sec.fields.length > 1 && <s-text color="subdued">{f.label}</s-text>}
                         <s-paragraph color={answerOf(reg, f) ? undefined : 'subdued'}>{answerOf(reg, f) || 'No answer'}</s-paragraph>
@@ -414,9 +418,11 @@ function ApprovedCard({ reg }) {
 // The application laid out by the saved registration form — the same config the
 // storefront renders — so whatever the merchant put on the form (phone, address,
 // custom fields) is what gets reviewed. Headings become sections; answers to
-// fields since taken off the form are kept under "Other answers".
+// fields since taken off the form are kept under "Other answers". Email marketing
+// shows whenever the buyer ticked it, on the form or not, right under their email.
 function applicationSections(reg) {
-  const fields = readRegistrationForm().fields.filter((f) => f.kind !== 'submit' && f.kind !== 'password');
+  const subscribed = answerOf(reg, { id: 'marketing' }) === 'Yes';
+  const fields = readRegistrationForm().fields.filter((f) => f.kind !== 'submit' && f.kind !== 'password' && f.id !== 'marketing');
   const sections = [];
   fields.forEach((f) => {
     if (f.kind === 'heading') {
@@ -426,9 +432,15 @@ function applicationSections(reg) {
       sections[sections.length - 1].fields.push(f);
     }
   });
+  if (subscribed) {
+    if (!sections.length) sections.push({ key: 'top', title: null, fields: [] });
+    const sec = sections.find((s) => s.fields.some((f) => f.id === 'email')) || sections[sections.length - 1];
+    const at = sec.fields.findIndex((f) => f.id === 'email');
+    sec.fields.splice(at === -1 ? sec.fields.length : at + 1, 0, { id: 'marketing', kind: 'checkbox' });
+  }
   const onForm = new Set(fields.map((f) => f.id));
   const extra = BUILTIN_FIELDS.filter((f) => !['heading', 'submit', 'password'].includes(f.kind)
-    && !onForm.has(f.id) && answerOf(reg, f));
+    && f.id !== 'marketing' && !onForm.has(f.id) && answerOf(reg, f));
   if (extra.length) sections.push({ key: 'other', title: 'Other answers', fields: extra });
   return sections.filter((sec) => sec.fields.length);
 }
@@ -454,12 +466,12 @@ function Section({ title, children }) {
   );
 }
 
-function Row({ label, value }) {
+function Row({ label, value, children }) {
   return (
     <s-grid gridTemplateColumns="160px minmax(0, 1fr)" gap="small-200">
       <s-text color="subdued">{label}</s-text>
       <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-        <s-text color={value ? undefined : 'subdued'}>{value || '—'}</s-text>
+        {children || <s-text color={value ? undefined : 'subdued'}>{value || '—'}</s-text>}
       </div>
     </s-grid>
   );
