@@ -66,6 +66,8 @@ export function pricingLocationsLabel(company, kind, policyId) {
   const locs = company.locations || [];
   if (!locs.length) return slotIds(company, kind).includes(policyId) ? 'All locations' : 'No locations';
   const got = locs.filter((l) => (hasOwnSlot(l, kind) ? slotIds(l, kind) : slotIds(company, kind)).includes(policyId));
+  // Held only by locations deleted in Shopify: no location left.
+  if (got.length && !slotIds(company, kind).includes(policyId) && got.every((l) => l.status === 'Deleted')) return 'No locations';
   if (got.length === locs.length) return 'All locations';
   if (!got.length) return 'No locations';
   const names = got.map((l) => l.name);
@@ -390,11 +392,12 @@ export function resolveCustomer(db, customer) {
 
 // ── Status (derived) ─────────────────────────────────────────────────────────
 // Read order = decisiveness: turned off, then nobody assigned, then dated window.
-// (Pass `db` to apply the "nobody assigned ⇒ Inactive" rule.)
+// (Pass `db` to apply the "nobody assigned ⇒ Inactive" rule; a location deleted in
+// Shopify doesn't count as assigned.)
 export function policyStatus(policy, db) {
   if (!policy) return { label: 'Not set', tone: undefined };
   if (policy.status === 'Inactive') return { label: 'Inactive', tone: undefined };
-  if (db && policyUsageCount(policy, db) === 0) return { label: 'Inactive', tone: undefined };
+  if (db && policyUsageDetail(policy, db).live === 0) return { label: 'Inactive', tone: undefined };
   if (policy.startDate && policy.startDate > TODAY) {
     return { label: 'Scheduled', tone: 'info' };
   }
@@ -405,14 +408,17 @@ export const canToggleStatus = (policy, db) => !!(policy && policyUsageCount(pol
 // ── Usage (derived from assignments, never stored) ───────────────────────────
 export function policyUsageDetail(policy, db) {
   const id = policy && policy.id;
-  if (!id) return { companies: 0, locations: 0, tags: 0, customers: 0, globals: [], count: 0 };
+  if (!id) return { companies: 0, locations: 0, tags: 0, customers: 0, globals: [], count: 0, live: 0 };
   let companies = 0;
   let locations = 0;
+  let deleted = 0; // of those locations, the ones deleted in Shopify
   const holds = (holder) => KIND_ORDER.some((k) => slotIds(holder, k).includes(id));
   (db.companies || []).forEach((c) => {
     if (holds(c)) companies += 1;
     (c.locations || []).forEach((l) => {
-      if (holds(l)) locations += 1;
+      if (!holds(l)) return;
+      locations += 1;
+      if (l.status === 'Deleted') deleted += 1;
     });
   });
   const tags = (db.tagPricing || []).filter((t) => t.defaultPolicyId === id).length;
@@ -420,7 +426,9 @@ export function policyUsageDetail(policy, db) {
   const globals = [];
   if (db.defaults && db.defaults.b2bPolicyId === id) globals.push('All Companies');
   if (db.defaults && db.defaults.wholesalePolicyId === id) globals.push('All customers');
-  return { companies, locations, tags, customers, globals, count: companies + locations + tags + customers + globals.length };
+  const count = companies + locations + tags + customers + globals.length;
+  // `live`: holders still in use — a location deleted in Shopify doesn't count.
+  return { companies, locations, tags, customers, globals, count, live: count - deleted };
 }
 export function policyUsageCount(policy, db) {
   return policyUsageDetail(policy, db).count;

@@ -121,7 +121,7 @@ export function BasePricingCard({ company }) {
 
   const rows = pageEntries.map((entry) => {
     const p = entry.policy;
-    const st = policyStatus(p);
+    const st = policyStatus(p, state.db);
     const locs = entry.locations;
     const ag = contractOf(entry);
     return (
