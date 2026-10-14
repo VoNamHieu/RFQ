@@ -1,11 +1,14 @@
 import React from 'react';
+import { useWcId } from './wc.jsx';
 
 // A centered empty state: heading / text / actions, with optional art.
 //
 // `image` (optional) is a bundled illustration URL — pass one to show art above
 // the heading. It renders nothing when omitted, so text-only empty states have
 // no image placeholder. `action.commandFor` lets the button open a popover menu.
+// `action.disabled` turns the button off; `action.tooltip` says why on hover.
 export function EmptyBlock({ heading, children, action, secondaryAction, image, imageAlt }) {
+  const tipId = useWcId('empty-action');
   return (
     <s-box padding="large-300">
       <s-stack gap="small-200" alignItems="center">
@@ -31,10 +34,17 @@ export function EmptyBlock({ heading, children, action, secondaryAction, image, 
           <s-box paddingBlockStart="small-200">
             <s-stack direction="inline" gap="small-200" justifyContent="center">
               {action ? (
-                <s-button variant="primary" commandFor={action.commandFor} onClick={action.onAction}>
+                <s-button
+                  variant="primary"
+                  commandFor={action.commandFor}
+                  disabled={action.disabled}
+                  interestFor={action.tooltip ? tipId : undefined}
+                  onClick={action.onAction}
+                >
                   {action.content}
                 </s-button>
               ) : null}
+              {action?.tooltip ? <s-tooltip id={tipId}>{action.tooltip}</s-tooltip> : null}
               {secondaryAction ? <s-button onClick={secondaryAction.onAction}>{secondaryAction.content}</s-button> : null}
             </s-stack>
           </s-box>

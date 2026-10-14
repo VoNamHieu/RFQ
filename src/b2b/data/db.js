@@ -99,6 +99,20 @@ const companies = [
     contacts: [{ name: 'Le Van Tam', email: 'tam@deltamech-dn.vn', role: 'Location admin', access: 'Buys directly', locations: 'Da Nang workshop' }],
     quotes: [], exceptions: [],
     activity: [{ when: 'Aug 04', what: 'Created by the merchant for the Da Nang workshop' }]
+  },
+  // Demo: several locations but no contacts yet in Shopify — no main contact, and no
+  // buyer at any location.
+  {
+    id: 'c6', name: 'Phu My Construction', mainContact: '', source: 'Merchant created',
+    pricing: { base: 'p1', quantity: null }, revenue: 0,
+    locations: [
+      { id: 'l8', name: 'Thu Duc site', ordering: 'Buys directly', terms: 'Net 30', lastOrder: null, buyers: 0 },
+      { id: 'l9', name: 'Binh Duong depot', ordering: 'Buys directly', terms: 'Net 30', lastOrder: null, buyers: 0 },
+      { id: 'l10', name: 'Dong Nai warehouse', ordering: 'You approve first', terms: 'Due on receipt', lastOrder: null, buyers: 0 }
+    ],
+    contacts: [],
+    quotes: [], exceptions: [],
+    activity: [{ when: 'Aug 06', what: 'Added from Shopify with 3 locations' }]
   }
 ];
 

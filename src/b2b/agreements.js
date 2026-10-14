@@ -337,6 +337,14 @@ export function newlyBroken(prev, next) {
 // Contracts, so nothing outside them shows or locks for one.
 export const contractsHolding = (db, id) =>
   versionFlags().agreements ? (db.agreements || []).filter((a) => isLive(a) && termIds(a).includes(id)) : [];
+// The pricing an Active contract gives all of a company's locations (and ones added
+// later): a location deletion leaves it with the company (narrowPricingToLocations).
+export const companyWideContractPricing = (db, company) =>
+  versionFlags().agreements
+    ? (db.agreements || [])
+        .filter((a) => a.status === 'Active' && a.companyId === company.id && !a.locationIds)
+        .flatMap((a) => KINDS.flatMap((k) => a.terms[k]))
+    : [];
 // The Active contract giving a company — or one of its locations — a pricing or limit.
 export function contractGiving(db, company, id, locationId = null) {
   if (!versionFlags().agreements) return null;

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useStore } from '../store.jsx';
 import { companyQuantityEntries, locationOnlyEntries, pricingLocationsLabel, policyStatus, scopeTypeLabel } from '../pricing.js';
-import { LocationOnlyActions, ApplyLaterSwitch, PricingName } from './BasePricingCard.jsx';
+import { LocationOnlyActions, ApplyLaterSwitch, PricingName, noLocationTip } from './BasePricingCard.jsx';
 import { contractGiving, lockedTip } from '../agreements.js';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import { wcTone, useWcId } from '../../shared/wc.jsx';
@@ -16,6 +16,7 @@ export function QuantityPricingCard({ company }) {
   const entries = [...companyQuantityEntries(company, state.db.policies), ...locationOnlyEntries(company, state.db.policies, 'quantity')].sort((a, b) => a.priority - b.priority);
   const policies = entries.map((e) => e.policy);
   const openAdd = () => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, kind: 'quantity', mode: 'add' });
+  const addTip = noLocationTip(company);
   const autoApply = !!company.autoAddLocations;
 
   // No quantity pricing yet — a proper empty state so the Add action is obvious
@@ -27,7 +28,7 @@ export function QuantityPricingCard({ company }) {
           image={quantityPricingArt}
           imageAlt="Growing box stacks with the unit price dropping from $10 to $9 to $8"
           heading="No quantity pricing yet"
-          action={{ content: 'Add quantity pricing', onAction: openAdd }}
+          action={{ content: 'Add quantity pricing', onAction: openAdd, disabled: !!addTip, tooltip: addTip }}
         >
           Add a quantity pricing to give buyers a discount as the order quantity grows.
         </EmptyBlock>
@@ -106,9 +107,10 @@ export function QuantityPricingCard({ company }) {
         </s-table-body>
       </s-table>
       <s-box padding="small">
-        <s-button icon="plus" onClick={openAdd}>
+        <s-button icon="plus" disabled={!!addTip} interestFor={addTip ? `${tipId}-add` : undefined} onClick={openAdd}>
           Add quantity pricing
         </s-button>
+        {addTip ? <s-tooltip id={`${tipId}-add`}>{addTip}</s-tooltip> : null}
       </s-box>
     </s-section>
   );

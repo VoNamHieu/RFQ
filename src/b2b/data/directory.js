@@ -67,6 +67,14 @@ export const shopifyCompanyDirectory = [
       { name: 'Ngoc Anh', email: 'procurement@lotushotels.vn', role: 'Location admin', access: 'You approve first', location: 'Head office' },
       { name: 'Phan Yen', email: 'yen@lotushotels.vn', role: 'Ordering only', access: 'Buys directly', location: 'Hoi An property' }
     ]
+  },
+  // Demo: several locations, no contacts yet (so no main contact and no buyers).
+  {
+    id: 'shp_c9', name: 'Phu My Construction', status: 'Active', locations: [
+      { id: 'shp_l16', name: 'Thu Duc site', terms: 'Net 30', ordering: 'Buys directly' },
+      { id: 'shp_l17', name: 'Binh Duong depot', terms: 'Net 30', ordering: 'Buys directly' },
+      { id: 'shp_l18', name: 'Dong Nai warehouse', terms: 'Due on receipt', ordering: 'You approve first' }
+    ], contacts: []
   }
 ];
 

@@ -59,6 +59,12 @@ export function companyBaseEntries(company, policies) {
 export function companyQuantityEntries(company, policies) {
   return slotEntries(company, policies, 'quantity');
 }
+// A pricing a location deletion narrowed to the locations left (see
+// narrowPricingToLocations): it reads as Specific locations, even while every
+// location left has it, until it's given to all locations again.
+export const narrowedToLocations = (company, kind, policyId) =>
+  (company.specificPricing || []).includes(policyId) && !slotIds(company, kind).includes(policyId);
+
 // Which of a company's locations get a pricing: a location on its own list
 // checks that list, the rest follow the company's. 'All locations' when every
 // one does (or the company has none and holds it), else their names.
@@ -68,9 +74,11 @@ export function pricingLocationsLabel(company, kind, policyId) {
   const got = locs.filter((l) => (hasOwnSlot(l, kind) ? slotIds(l, kind) : slotIds(company, kind)).includes(policyId));
   // Held only by locations deleted in Shopify: no location left.
   if (got.length && !slotIds(company, kind).includes(policyId) && got.every((l) => l.status === 'Deleted')) return 'No locations';
-  if (got.length === locs.length) return 'All locations';
+  const narrowed = narrowedToLocations(company, kind, policyId);
+  if (got.length === locs.length && !narrowed) return 'All locations';
   if (!got.length) return 'No locations';
-  const names = got.map((l) => l.name);
+  // Narrowed: the locations left, so not the ones deleted in Shopify.
+  const names = (narrowed ? got.filter((l) => l.status !== 'Deleted') : got).map((l) => l.name);
   return names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ');
 }
 
@@ -355,8 +363,9 @@ export const scopeLabel = (p) => {
 
 // A company "needs a price" if any of its locations fails to resolve a profile —
 // considering location overrides, active/dated validity, and the global default.
+// A location deleted in Shopify is gone, so it needs none.
 export function companyNeedsPrice(company, policies, defaults) {
-  const locs = company.locations || [];
+  const locs = (company.locations || []).filter((l) => l.status !== 'Deleted');
   if (!locs.length) return !resolvePricing(company, null, policies, defaults).profile;
   return locs.some((l) => !resolvePricing(company, l, policies, defaults).profile);
 }

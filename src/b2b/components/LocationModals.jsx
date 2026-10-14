@@ -19,6 +19,8 @@ export function AssignBuyerModal({ company, location, onClose }) {
   const [email, setEmail] = useState(candidates[0]?.email || '');
   const [role, setRole] = useState('Ordering only');
   const current = candidates.find((x) => x.email === email);
+  // No contacts at all: they're added in Shopify, so this opens the location there.
+  const noContacts = !(company.contacts || []).length;
   return (
     <Modal onClose={onClose} heading={`Assign a buyer to ${location.name}`}>
       {candidates.length ? (
@@ -43,20 +45,35 @@ export function AssignBuyerModal({ company, location, onClose }) {
             ))}
           </s-select>
         </s-stack>
+      ) : noContacts ? (
+        <s-paragraph color="subdued">{`${company.name} has no contacts yet. Add one to ${location.name} in Shopify, then assign them here.`}</s-paragraph>
       ) : (
         <s-paragraph color="subdued">Every contact is already assigned to this location.</s-paragraph>
       )}
-      <s-button
-        slot="primary-action"
-        variant="primary"
-        disabled={!email}
-        onClick={() => {
-          dispatch({ type: 'ASSIGN_BUYER', companyId: company.id, locationId: location.id, email, role });
-          onClose();
-        }}
-      >
-        Assign buyer
-      </s-button>
+      {noContacts ? (
+        <s-button
+          slot="primary-action"
+          variant="primary"
+          onClick={() => {
+            dispatch({ type: 'TOAST', message: `Opens ${location.name} in Shopify` });
+            onClose();
+          }}
+        >
+          Add in Shopify
+        </s-button>
+      ) : (
+        <s-button
+          slot="primary-action"
+          variant="primary"
+          disabled={!email}
+          onClick={() => {
+            dispatch({ type: 'ASSIGN_BUYER', companyId: company.id, locationId: location.id, email, role });
+            onClose();
+          }}
+        >
+          Assign buyer
+        </s-button>
+      )}
       <s-button slot="secondary-actions" onClick={onClose}>
         Cancel
       </s-button>

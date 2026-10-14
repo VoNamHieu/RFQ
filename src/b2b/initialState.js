@@ -5,8 +5,8 @@ import { registrationSeed } from './data/registrations.js';
 import { DEMO_STATE_KEY, readJSON, consumeHandoff, readOrderRequests, publishedOrderLimits } from '../shared/persistence.js';
 import { versionFlags } from '../shared/versions.js';
 import { upgradeLimits } from './limits.js';
-import { normalizeDb, injectRfqCompany, applyQuotePricingTransfer, injectOrderRequests } from './dbHelpers.js';
-import { syncContractDates, seedSnapshots } from './agreements.js';
+import { normalizeDb, injectRfqCompany, applyQuotePricingTransfer, injectOrderRequests, narrowPricingToLocations } from './dbHelpers.js';
+import { syncContractDates, seedSnapshots, companyWideContractPricing } from './agreements.js';
 
 // Prototype: the storefront docks this app's Order limits screen (?embed=limits),
 // without the admin frame, so a limit change shows in its cart right away.
@@ -17,6 +17,16 @@ export const EMBEDDED = (() => {
     return null;
   }
 })();
+
+// A location deleted in Shopify (seeded as Deleted) has narrowed its company's
+// pricing to the locations left, as deleting it here would (see
+// narrowPricingToLocations).
+function narrowForShopifyDeletions(db) {
+  (db.companies || []).forEach((c) => {
+    if ((c.locations || []).some((l) => l.status === 'Deleted')) narrowPricingToLocations(c, companyWideContractPricing(db, c));
+  });
+  return db;
+}
 
 export function makeBaseState() {
   return {
@@ -64,7 +74,9 @@ export function makeBaseState() {
     // The seeded registrations came in through the form, so it already exists. It starts
     // unpublished so Home shows the "form isn't published" warning without any clicks.
     // Contracts start and expire by date (the daily job, run once on load here).
-    db: syncContractDates(seedSnapshots(normalizeDb({ ...dbSeed, registrations: registrationSeed, hasRegistrationForm: true, registrationFormPublished: false, rfqAppInstalled: true }))),
+    db: narrowForShopifyDeletions(
+      syncContractDates(seedSnapshots(normalizeDb({ ...dbSeed, registrations: registrationSeed, hasRegistrationForm: true, registrationFormPublished: false, rfqAppInstalled: true }))),
+    ),
     toast: null,
   };
 }

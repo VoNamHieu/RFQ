@@ -10,6 +10,11 @@ import basePricingArt from '../assets/base-pricing-empty.webp';
 
 const PAGE_SIZES = [5, 10, 20, 100];
 
+// A company with no location (none, or only ones deleted in Shopify) can't be given
+// pricing: its Add pricing buttons are off, with this on hover.
+export const noLocationTip = (company) =>
+  (company.locations || []).some((l) => l.status !== 'Deleted') ? null : 'Add a location to this company first';
+
 // Edit / Remove for pricing only some locations get: editing opens it with those
 // locations picked under "Who this pricing serves", removing takes it off them only.
 export function LocationOnlyActions({ company, kind, entry }) {
@@ -167,12 +172,19 @@ export function BasePricingCard({ company }) {
     );
   });
 
+  const addTip = noLocationTip(company);
   const footerButtons = (
     <s-box padding="small">
       <s-stack direction="inline" gap="small-200">
-        <s-button icon="plus" onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'add' })}>
+        <s-button
+          icon="plus"
+          disabled={!!addTip}
+          interestFor={addTip ? `${tipId}-add` : undefined}
+          onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'add' })}
+        >
           Add base pricing
         </s-button>
+        {addTip ? <s-tooltip id={`${tipId}-add`}>{addTip}</s-tooltip> : null}
         {crossSync && <s-button onClick={buildFromQuotes}>Build pricing from closed quotes</s-button>}
         <s-button variant="tertiary" onClick={() => dispatch({ type: 'OPEN_PRICE_BOARD', companyId: company.id })}>
           Preview prices
@@ -188,7 +200,12 @@ export function BasePricingCard({ company }) {
           image={basePricingArt}
           imageAlt="A price list with a dollar amount on each line, next to boxes and a price tag"
           heading="No base pricing yet"
-          action={{ content: 'Add base pricing', onAction: () => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'add' }) }}
+          action={{
+            content: 'Add base pricing',
+            onAction: () => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'add' }),
+            disabled: !!addTip,
+            tooltip: addTip,
+          }}
           secondaryAction={crossSync ? { content: 'Build pricing from closed quotes', onAction: buildFromQuotes } : undefined}
         >
           Assign a base pricing so buyers get a B2B price. You can add more than one — the lowest priority applies first.

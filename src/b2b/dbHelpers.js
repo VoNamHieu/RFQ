@@ -81,6 +81,7 @@ export function addPricingToLocations(c, kind, policyId, priority, locationIds, 
     if (!list.some((e) => e.id === policyId)) list.push({ id: policyId, priority: priority || list.length + 1 });
   };
   const some = !!(locationIds && locationIds.length && locationIds.length < locs.length);
+  if (!some) markSpecific(c, policyId, false); // given to all locations again
   if (!some && (later || !locs.length)) {
     addCompanySlot(c, kind, policyId, priority);
     locs.forEach((l) => l.pricing && l.pricing[kind] != null && ensure(locationSlotArray(c, l, kind)));
@@ -93,6 +94,34 @@ export function addPricingToLocations(c, kind, policyId, priority, locationIds, 
     locs.filter((l) => !ids.includes(l.id)).forEach((l) => locationSlotArray(c, l, kind));
     addCompanySlot(c, kind, policyId, priority);
   }
+}
+// Mark (or clear) a company's pricing as narrowed to Specific locations — see
+// narrowedToLocations in pricing.js.
+export function markSpecific(c, policyId, on) {
+  const ids = (c.specificPricing || []).filter((id) => id !== policyId);
+  c.specificPricing = on ? [...ids, policyId] : ids;
+}
+// A location deleted (in the app, or in Shopify) turns the company's pricing from
+// All locations into Specific locations — the ones left: what the company held for
+// all its locations (and ones added later) moves to each location's own list, so
+// locations added later no longer get it, and every pricing its locations hold
+// reads as Specific from now on. `keep`: pricing ids that stay with the company
+// (an Active contract gives them company-wide).
+export function narrowPricingToLocations(c, keep = []) {
+  const locs = c.locations || [];
+  const marked = new Set(c.specificPricing || []);
+  ['base', 'quantity'].forEach((kind) => {
+    const moving = slotIds(c, kind).filter((id) => !keep.includes(id));
+    if (moving.length) {
+      // Each location left still following the company starts its own list from it
+      // (keeping what it had), then the company lets go of what's moving. One
+      // deleted in Shopify is gone, so it doesn't keep it.
+      locs.forEach((l) => l.status !== 'Deleted' && locationSlotArray(c, l, kind));
+      c.pricing[kind] = companySlotArray(c, kind).filter((e) => !moving.includes(e.id));
+    }
+    locs.forEach((l) => slotIds(l, kind).forEach((id) => !keep.includes(id) && marked.add(id)));
+  });
+  c.specificPricing = [...marked];
 }
 export const companyBaseArray = (c) => companySlotArray(c, 'base');
 export const addCompanyBase = (c, policyId, priority) => addCompanySlot(c, 'base', policyId, priority);

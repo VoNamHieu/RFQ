@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useReducer } from 'react';
 import { shopifyCompanies } from './data/directory.js';
-import { policyUsageCount, slotIds, hasOwnSlot, TODAY } from './pricing.js';
+import { policyUsageCount, slotIds, hasOwnSlot, narrowedToLocations, TODAY } from './pricing.js';
 import { newRule, newBaseBuilder, newQuantityBuilder } from './builders.js';
 import { buildInitialState } from './initialState.js';
 import { newLimit, normalizeLimit, upgradeLimits, toDraft, warmPriceIndex } from './limits.js';
@@ -20,6 +20,7 @@ import {
   newlyBroken,
   recordTermEdit,
   storefrontContracts,
+  companyWideContractPricing,
 } from './agreements.js';
 import { todayISO, registrationDuplicates, isD2CRegistration } from './registrations.js';
 import {
@@ -33,6 +34,8 @@ import {
   recomputeBuyers,
   applyQuotePricingTransfer,
   injectOrderRequests,
+  markSpecific,
+  narrowPricingToLocations,
 } from './dbHelpers.js';
 import { publishOrderLimits, publishedOrderLimits, publishContracts, readOrderRequests, removeOrderRequests, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, IS_DEMO } from '../shared/persistence.js';
 
@@ -76,7 +79,9 @@ function seedAssignment(policy, db) {
       const locs = c.locations || [];
       const held = locs.filter((l) => locationHolds(c, l, kind, policy.id));
       if (locs.length && slotIds(c, kind).includes(policy.id)) laterFor += 1;
-      if (locs.length ? held.length === locs.length : slotIds(c, kind).includes(policy.id)) b2bCompanyIds.push(c.id);
+      // Narrowed by a location deletion: its locations, even if it's on all of them.
+      const all = held.length === locs.length && !narrowedToLocations(c, kind, policy.id);
+      if (locs.length ? all : slotIds(c, kind).includes(policy.id)) b2bCompanyIds.push(c.id);
       else held.forEach((l) => b2bLocationKeys.push(locKey(c.id, l.id)));
     });
     const b2bApplyLater = laterFor > 0;
@@ -160,6 +165,7 @@ function applyAssignment(db, policyId, b) {
     const wantLoc = new Set(b.b2bLocationKeys || []);
     (db.companies || []).forEach((c) => {
       const locs = c.locations || [];
+      if (wantCompany.has(c.id)) markSpecific(c, policyId, false); // given to all its locations again
       if (!locs.length) {
         const holds = slotIds(c, kind).includes(policyId);
         if (wantCompany.has(c.id) && !holds) addCompanySlot(c, kind, policyId, b.priority);
@@ -460,6 +466,8 @@ function reducer(state, action) {
       const ids = action.locationIds || [];
       const names = (c.locations || []).filter((l) => ids.includes(l.id)).map((l) => l.name);
       c.locations = (c.locations || []).filter((l) => !ids.includes(l.id));
+      // Its pricing goes from All locations to the locations left.
+      if (names.length) narrowPricingToLocations(c, companyWideContractPricing(db, c));
       (c.contacts || []).forEach((ct) => {
         if (names.includes(ct.locations)) ct.locations = '';
       });
@@ -793,7 +801,7 @@ function reducer(state, action) {
         const locs = c?.locations || [];
         const kind = action.policy.priceKind === 'quantity' ? 'quantity' : 'base';
         const held = locs.filter((l) => locationHolds(c, l, kind, action.policy.id));
-        const all = held.length === locs.length;
+        const all = held.length === locs.length && !narrowedToLocations(c, kind, action.policy.id);
         // Held at the company: locations added later get it (on all locations or some).
         editorContext = { ...editorContext, locationIds: all ? null : held.map((l) => l.id), applyLater: slotIds(c, kind).includes(action.policy.id) };
       }
@@ -921,8 +929,11 @@ function reducer(state, action) {
           else list.push({ id: fork.id, priority: draft.priority || list.length + 1 });
         } else if (pickLocations) {
           // The copy takes the original's place across this company, on the picked locations.
+          const narrowed = narrowedToLocations(scopeCompany, kind, existing.id);
           [scopeCompany, ...scopeLocs].forEach((h) => removeCompanySlot(h, kind, existing.id));
           syncCompanyLocations(scopeCompany, kind, fork.id, wanted, draft.priority, later);
+          // Still Specific locations, like the original.
+          if (picked && narrowed) markSpecific(scopeCompany, fork.id, true);
         } else {
           removeCompanySlot(scopeCompany, kind, existing.id);
           addCompanySlot(scopeCompany, kind, fork.id, draft.priority);
@@ -933,7 +944,10 @@ function reducer(state, action) {
       Object.assign(existing, draft, { id: existing.id });
       // Library edit (not scoped to a Company) → sync the assignment choices.
       if (!state.editorContext?.companyId) applyAssignment(db, existing.id, draft);
-      else if (pickLocations) syncCompanyLocations(scopeCompany, kind, existing.id, wanted, draft.priority, later);
+      else if (pickLocations) {
+        syncCompanyLocations(scopeCompany, kind, existing.id, wanted, draft.priority, later);
+        if (!picked) markSpecific(scopeCompany, existing.id, false); // All locations picked
+      }
       // Live contracts holding it get a version with its new terms.
       recordTermEdit(db, before, existing, false);
       return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: 'Pricing saved' };
