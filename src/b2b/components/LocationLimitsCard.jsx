@@ -6,8 +6,9 @@ import { useWcId } from '../../shared/wc.jsx';
 const LEVEL_LABEL = { location: 'This location', company: 'Company', store: 'Store-wide' };
 
 // A location's order limits: every active limit that reaches it (its own, its
-// company's, store-wide), most specific first. A rule that a more specific limit
-// replaces here is struck through and names the limit that wins.
+// company's, store-wide), most specific first, read off the location's record. A
+// setting a more specific limit replaces here is struck through and names the
+// limit that wins; a product rule that lost only some fields lists those.
 export function LocationLimitsCard({ company, location }) {
   const { state, dispatch } = useStore();
   const addId = useWcId('add-limit');
@@ -73,6 +74,14 @@ export function LocationLimitsCard({ company, location }) {
                         <s>{r.text}</s>
                       </s-paragraph>
                       <s-paragraph fontSize="small" color="subdued">{`Replaced here by ${r.replacedBy.name}`}</s-paragraph>
+                    </s-stack>
+                  ) : r.partly?.length ? (
+                    // A product rule other limits won some fields of (each field is taken on its own).
+                    <s-stack key={r.text} gap="none">
+                      <s-paragraph fontSize="small">{r.text}</s-paragraph>
+                      {r.partly.map((p) => (
+                        <s-paragraph key={p.field} fontSize="small" color="subdued">{`${p.label} replaced here by ${p.by?.name || 'another limit'}`}</s-paragraph>
+                      ))}
                     </s-stack>
                   ) : (
                     <s-paragraph key={r.text} fontSize="small">

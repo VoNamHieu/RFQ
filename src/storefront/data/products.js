@@ -4,10 +4,12 @@
 // product key the cart, product page and quote requests use: the first variant's
 // SKU, or the handle when the store has none. `list` is the D2C price.
 import storeCatalog from './shopifyProducts.json';
-import { productRuleFor, productRuleForCustomer, cartProblems, cartProblemsForCustomer, limitLevel, limitSummary } from '../../b2b/limits.js';
+import { productRuleFor, productRuleForCustomer, cartProblems, cartProblemsForCustomer, limitLevel, limitRules, limitState, upgradeLimits, spentSoFar } from '../../b2b/limits.js';
+import { TODAY } from '../../b2b/pricing.js';
 import { dbSeed } from '../../b2b/data/db.js';
 import { versionFlags } from '../../shared/versions.js';
-import { publishedOrderLimits } from '../../shared/persistence.js';
+import { publishedOrderLimits, publishedContracts, readOrderRequests } from '../../shared/persistence.js';
+import { storefrontContracts } from '../../b2b/agreements.js';
 import { money } from '../utils.js';
 
 // A soft, always-rendering placeholder image per product (Dawn ships gray
@@ -67,7 +69,7 @@ export const B2B_PRICE_LISTS = { abc: TIER2, c1: TIER2 };
 // The B2B app's order limits, as it last published them (its sample limits until
 // it has), checked against this store's catalog — the same checks the validation
 // function runs (b2b/limits.js). The B2B buyer is ABC Construction · Hanoi.
-const limitsDb = () => ({ products: PRODUCTS, limits: publishedOrderLimits() || dbSeed.limits });
+const limitsDb = () => ({ products: PRODUCTS, limits: upgradeLimits(publishedOrderLimits() || dbSeed.limits) });
 
 // A buyer signed in to a company location gets its B2B limits; anyone else the D2C
 // ones (a guest as a non-logged-in customer) — only in the version that has order
@@ -84,30 +86,57 @@ export function productRuleForSession(sku, session) {
 }
 
 // ── Agreement ───────────────────────────────────────────────────────────────
-// The buyer's agreement as their account shows it (b2b/agreements.js): its
-// pricing (the price list above) and the order limits it sets for their company
-// or location. Store-wide limits apply to every buyer, so they aren't part of it.
-const STORE_AGREEMENT = { number: 'CT-301', name: '2026 annual terms', version: 2, since: 'Jan 3, 2026', until: 'Aug 20, 2026' };
-
+// The buyer's Active contract as their account shows it: the one the B2B app last
+// published for their company, if it applies at their location (its seed contracts
+// until it has — b2b/agreements.js), with its pricing and the order limits it sets
+// there. Limits outside the contract aren't part of it.
 export function agreementForSession(session) {
   if (!versionFlags().agreements || !atLocation(session)) return null;
-  const list = B2B_PRICE_LISTS[session.companyKey];
+  const contracts = publishedContracts() ?? storefrontContracts(dbSeed);
+  const ag = contracts.find((a) => a.companyId === session.companyKey && (!a.locationIds || a.locationIds.includes(session.locationId)));
+  if (!ag) return null;
   const db = limitsDb();
-  const limits = db.limits.filter((l) => l.status === 'Active' && ['company', 'location'].includes(limitLevel(l, session.companyKey, session.locationId)));
+  const limits = db.limits.filter(
+    (l) => ag.limitIds.includes(l.id) && limitState(l) === 'Active' && ['company', 'location'].includes(limitLevel(l, session.companyKey, session.locationId)),
+  );
   return {
-    ...STORE_AGREEMENT,
-    pricing: list ? `${list.name} · ${list.percentOff}% off list prices` : null,
-    // Buyer wording for a review threshold; the rest read the same for both sides.
-    limits: limits.map((l) => (l.kind === 'review' ? `Orders over ${money(l.threshold).replace(/\.00$/, '')} are sent for approval` : limitSummary(l, db))),
+    number: ag.number,
+    name: ag.name,
+    version: ag.version,
+    dates: ag.dates,
+    pricing: ag.pricing.length ? ag.pricing.join(', ') : null,
+    // Buyer wording for a maximum sent for review; the rest read the same for both sides.
+    limits: limits.map((l) => limitRules(l, db)
+      .map((r) => (r.key?.startsWith('threshold') && r.value != null
+        ? `Orders over ${money(r.value).replace(/\.00$/, '')}${r.key.includes('@') ? ` a ${r.key.split('@')[1]}` : ''} are sent for approval`
+        : r.text))
+      .join(' · ')),
   };
+}
+
+// An account order's date ("Aug 28, 2026") as YYYY-MM-DD.
+const isoDay = (s) => {
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? s : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+// What the buyer ordered so far this week and month, for weekly and monthly
+// maximums: their account's orders, plus order requests waiting for review.
+function spentForSession(session) {
+  if (!session) return {};
+  const orders = (session.orders || []).map((o) => ({ date: isoDay(o.date), amount: o.total, status: o.status }));
+  const requests = atLocation(session)
+    ? readOrderRequests().filter((r) => r.companyId === session.companyKey && r.locationId === session.locationId).map((r) => ({ date: TODAY, amount: r.amount, status: 'Needs review' }))
+    : [];
+  return spentSoFar([...orders, ...requests]);
 }
 
 // What's wrong with the cart for the buyer (see cartProblems).
 export function cartProblemsForSession(lines, subtotal, session) {
   if (!versionFlags().orderLimits) return [];
+  const spent = spentForSession(session);
   return atLocation(session)
-    ? cartProblems(limitsDb(), session.companyKey, session.locationId, lines, subtotal)
-    : cartProblemsForCustomer(limitsDb(), asCustomer(session), lines, subtotal);
+    ? cartProblems(limitsDb(), session.companyKey, session.locationId, lines, subtotal, spent)
+    : cartProblemsForCustomer(limitsDb(), asCustomer(session), lines, subtotal, spent);
 }
 
 // ── Demo accounts ────────────────────────────────────────────────────────────

@@ -48,7 +48,7 @@ export function Home() {
   const dealsClosed = (db.quotes || []).filter((q) => q.status === 'Deal Closed').length;
   // Quotes come from the companion O:Request a Quote app, which may not be installed.
   const rfqInstalled = !!db.rfqAppInstalled;
-  // Orders an order limit's review threshold held back, waiting on the merchant.
+  // Orders an order limit's maximum held back for review, waiting on the merchant.
   const held = flags.orderLimits ? heldOrders(db) : [];
 
   const toast = (m) => dispatch({ type: 'TOAST', message: m });
@@ -179,7 +179,7 @@ export function Home() {
         {held.length ? (
           <s-section heading={`${plural(held.length, 'order', 'orders')} waiting for your review`}>
             <s-paragraph fontSize="small" color="subdued">
-              They’re over a review threshold, so the buyers couldn’t check out. Approving one creates the order.
+              They’re over an order maximum, so the buyers sent them for your review instead of checking out. Approving one creates the order.
             </s-paragraph>
             <HeldOrderList
               items={held}

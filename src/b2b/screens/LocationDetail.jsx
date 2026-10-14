@@ -7,6 +7,8 @@ import { AssignBuyerModal, GeneralModal, ShippingModal, PAYMENT_TERM_OPTIONS, TA
 import { LocationLimitsCard } from '../components/LocationLimitsCard.jsx';
 import { DeleteLocationsModal } from '../components/tabs/LocationsTab.jsx';
 import { isHeld, heldReason, heldFirst, HeldOrderActions } from '../components/HeldOrders.jsx';
+import { PricingName } from '../components/BasePricingCard.jsx';
+import { contractGiving, lockedTip } from '../agreements.js';
 import { versionFlags } from '../../shared/versions.js';
 import { MenuButton, Tip, useWcId, wcTone, PageHeader, Tabs } from '../../shared/wc.jsx';
 
@@ -49,7 +51,8 @@ export function LocationDetail() {
   const addPricing = (kind) => {
     dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, locationId: location.id, kind, mode: 'add' });
   };
-  const pricingActions = (policy, kind) => (
+  // A pricing a live contract gives this location comes off through the contract only.
+  const pricingActions = (policy, kind, ag) => (
     <s-stack direction="inline" gap="small-400" justifyContent="end" alignItems="center">
       <s-button
         icon="edit"
@@ -62,8 +65,11 @@ export function LocationDetail() {
         variant="tertiary"
         tone="critical"
         accessibilityLabel={`Remove ${policy.name}`}
+        disabled={!!ag}
+        interestFor={ag ? `${ids}-lock-${kind}-${policy.id}` : undefined}
         onClick={() => dispatch({ type: 'REMOVE_LOCATION_PRICING', companyId: company.id, locationId: location.id, kind, policyId: policy.id })}
       />
+      {ag ? <s-tooltip id={`${ids}-lock-${kind}-${policy.id}`}>{lockedTip([ag], 'remove')}</s-tooltip> : null}
     </s-stack>
   );
 
@@ -71,7 +77,7 @@ export function LocationDetail() {
   // Scheduled / Inactive ones listed too (with their status), so each can be edited or removed.
   const { bases, quantities } = locationPricingEntries(company, location, policies, { includeInactive: true });
   const buyers = (company.contacts || []).filter((c) => c.locations === location.name);
-  // Orders held by a review threshold sit on top, with Approve / Decline (order limits).
+  // Orders held by an order maximum sent for review sit on top, with Approve / Decline (order limits).
   const reviewOrders = versionFlags().orderLimits;
   const locOrders = (company.orders || [])
     .filter((o) => o.location === location.name)
@@ -96,11 +102,12 @@ export function LocationDetail() {
   // Pricing rows of the picked kind: the location's own, else inherited from the company.
   const pricingRow = (e, kind) => {
     const status = policyStatus(e.policy, state.db);
+    const ag = contractGiving(state.db, company, e.policy.id, location.id);
     return (
       <s-table-row key={`${kind}-${e.policy.id}`}>
         <s-table-cell>
           <s-stack gap="small-500">
-            <s-text>{e.policy.name}</s-text>
+            <PricingName policy={e.policy} contract={ag} />
             {e.source === 'COMPANY' ? (
               <s-text color="subdued" fontSize="small">Inherited from {company.name}</s-text>
             ) : null}
@@ -111,7 +118,7 @@ export function LocationDetail() {
         <s-table-cell>
           <s-badge tone={wcTone(status.tone)}>{status.label}</s-badge>
         </s-table-cell>
-        <s-table-cell>{pricingActions(e.policy, kind)}</s-table-cell>
+        <s-table-cell>{pricingActions(e.policy, kind, ag)}</s-table-cell>
       </s-table-row>
     );
   };
@@ -324,7 +331,7 @@ export function LocationDetail() {
                     <s-button onClick={() => dispatch({ type: 'OPEN_COMPANY', id: company.id, tab: 'orders' })}>View all company orders</s-button>,
                   )}
                 </s-box>
-                {/* Held by a review threshold: the decision sits above the list (this column is too narrow for a row of buttons). */}
+                {/* Held for review: the decision sits above the list (this column is too narrow for a row of buttons). */}
                 {reviewOrders && locOrders.filter(isHeld).map((o) => (
                   <s-box key={o.id} paddingInline="small" paddingBlockEnd="small">
                     <s-banner tone="warning" heading={`Order ${o.id} for ${money(o.amount)} is waiting for your review`}>

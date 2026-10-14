@@ -5,6 +5,7 @@ import { COLLECTIONS } from '../data/constants.js';
 import { money } from '../format.js';
 import { productVariants, applyAdjustment, locationCatalog, scopeCollections } from '../pricing.js';
 import { VariantPicker } from './VariantPicker.jsx';
+import { CollectionPicker } from './CollectionPicker.jsx';
 
 // Timezone options mirror the B2B god file's Active dates card.
 const TIMEZONES = [
@@ -190,47 +191,116 @@ export function QuantityProductsCard({ builder, patch, products }) {
   );
 }
 
-export function ProductScopeCard({ builder, patch, products }) {
-  const name = useWcId('scope-products');
+// Which products: all, a collection or specific ones. Specific products are picked
+// like quantity pricing's: Search products opens Select products, and only the
+// picked ones show (as chips), however big the catalog. ProductScopeCard wraps it
+// in a Products card; a product limit's rules use it as is.
+export function ProductScopeFields({ builder, patch, products }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [collectionPickerOpen, setCollectionPickerOpen] = useState(false);
   const st = builder.scopeType || 'all';
+  // Specific collections are picked the same way (Search collections opens Select collections).
+  const collections = scopeCollections(builder);
   const selected = builder.selectedProducts || [];
+  const picked = products.filter((p) => selected.includes(p.sku));
+  const pickVariants = (vids) => {
+    const set = new Set(vids);
+    patch({ selectedProducts: products.filter((p) => productVariants(p).some((v) => set.has(v.id))).map((p) => p.sku) });
+    setPickerOpen(false);
+  };
   return (
-    <s-section heading="Products">
+    <>
       <s-stack gap="small">
         <s-select label="Applies to" value={st} onChange={(e) => patch({ scopeType: e.currentTarget.value })}>
           <s-option value="all">All products</s-option>
-          <s-option value="collection">A collection</s-option>
+          <s-option value="collection">Specific collections</s-option>
           <s-option value="products">Specific products</s-option>
         </s-select>
         {st === 'collection' && (
-          <s-select
-            label="Collection"
-            value={builder.collection && COLLECTIONS[builder.collection] ? builder.collection : Object.keys(COLLECTIONS)[0]}
-            onChange={(e) => patch({ collection: e.currentTarget.value })}
-          >
-            {Object.keys(COLLECTIONS).map((c) => (
-              <s-option key={c} value={c}>
-                {c}
-              </s-option>
-            ))}
-          </s-select>
+          <s-stack gap="small-200">
+            <s-search-field
+              label="Search collections"
+              labelAccessibilityVisibility="exclusive"
+              placeholder="Search collections"
+              value=""
+              onClick={() => setCollectionPickerOpen(true)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') setCollectionPickerOpen(true);
+              }}
+            />
+            {collections.length ? (
+              <s-stack direction="inline" gap="small-300">
+                {collections.map((c) => (
+                  <s-clickable-chip
+                    key={c}
+                    removable
+                    accessibilityLabel={`Remove ${c}`}
+                    onRemove={() => patch({ selectedCollections: collections.filter((x) => x !== c), collection: '' })}
+                  >
+                    {c}
+                  </s-clickable-chip>
+                ))}
+              </s-stack>
+            ) : null}
+          </s-stack>
         )}
         {st === 'products' && (
-          <s-choice-list
-            multiple
-            label="Products"
-            labelAccessibilityVisibility="exclusive"
-            name={name}
-            onChange={(e) => patch({ selectedProducts: [...(e.currentTarget.values || [])] })}
-          >
-            {products.map((p) => (
-              <s-choice key={p.sku} value={p.sku} selected={selected.includes(p.sku)}>
-                {`${p.title} · ${money(p.list)}`}
-              </s-choice>
-            ))}
-          </s-choice-list>
+          <s-stack gap="small-200">
+            <s-search-field
+              label="Search products"
+              labelAccessibilityVisibility="exclusive"
+              placeholder="Search products"
+              value=""
+              onClick={() => setPickerOpen(true)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') setPickerOpen(true);
+              }}
+            />
+            {picked.length ? (
+              <s-stack direction="inline" gap="small-300">
+                {picked.map((p) => (
+                  <s-clickable-chip
+                    key={p.sku}
+                    removable
+                    accessibilityLabel={`Remove ${p.title}`}
+                    onRemove={() => patch({ selectedProducts: selected.filter((x) => x !== p.sku) })}
+                  >
+                    {p.title}
+                  </s-clickable-chip>
+                ))}
+              </s-stack>
+            ) : null}
+          </s-stack>
         )}
       </s-stack>
+      {pickerOpen && (
+        <VariantPicker
+          products={products}
+          initialSelected={picked.flatMap((p) => productVariants(p).map((v) => v.id))}
+          heading="Select products"
+          actionLabel={() => 'Select'}
+          onCancel={() => setPickerOpen(false)}
+          onAdd={(sel) => pickVariants([...sel])}
+        />
+      )}
+      {collectionPickerOpen && (
+        <CollectionPicker
+          initialSelected={collections}
+          onCancel={() => setCollectionPickerOpen(false)}
+          onSelect={(cs) => {
+            patch({ selectedCollections: cs, collection: '' });
+            setCollectionPickerOpen(false);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+export function ProductScopeCard(props) {
+  return (
+    <s-section heading="Products">
+      <ProductScopeFields {...props} />
     </s-section>
   );
 }

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useStore } from '../store.jsx';
 import { productBySku, b2bPriceFor, productRuleForSession } from '../data/products.js';
 import { Price } from '../components/Price.jsx';
+import { quantityProblem } from '../quantityProblem.js';
 import { QuoteIcon, InfoIcon } from '../components/icons.jsx';
 
 // Product = the theme's main-product section: media gallery + info column
@@ -31,15 +32,9 @@ export function Product() {
   const hasB2B = b2bPriceFor(product.sku, state.session) != null;
   const inStock = !!variant?.available;
 
-  const qtyProblem = !rule
-    ? null
-    : rule.min != null && qty < rule.min
-      ? `Order at least ${rule.min}.`
-      : rule.max != null && qty > rule.max
-        ? `Order at most ${rule.max}.`
-        : qty % step
-          ? `Sold in packs of ${step}.`
-          : null;
+  // The rule counts this variant in the cart too: what's there plus what's being added.
+  const inCart = state.cart.filter((l) => l.sku === product.sku && l.variantId === variant?.id).reduce((n, l) => n + l.qty, 0);
+  const qtyProblem = quantityProblem(rule, qty, inCart);
 
   const addToCart = () => {
     if (!inStock || qtyProblem) return;

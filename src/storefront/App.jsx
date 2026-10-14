@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useStore } from './store.jsx';
+import { IS_DEMO } from '../shared/persistence.js';
 import { withVersion, versionFlags, activeVersion, DEFAULT_VERSION } from '../shared/versions.js';
 import { Header } from './components/Header.jsx';
 import { Footer } from './components/Footer.jsx';
@@ -65,7 +66,11 @@ function AdminDock() {
   return (
     <>
       {!open && (
-        <button className="dev-switch dev-switch--end" onClick={() => { setOpen(true); setLoaded(true); }} title="Edit order limits in the B2B app">
+        <button
+          className={`dev-switch dev-switch--end${state.cartOpen ? ' dev-switch--beside-cart' : ''}`}
+          onClick={() => { setOpen(true); setLoaded(true); }}
+          title="Edit order limits in the B2B app"
+        >
           Order limits
         </button>
       )}
@@ -120,8 +125,9 @@ export function App() {
       <CartDrawer />
       <QuoteRequestModal />
       <Toast />
-      <AppSwitch />
-      <AdminDock />
+      {/* The walkthrough stage shows the admin beside this page itself. */}
+      {!IS_DEMO && <AppSwitch />}
+      {!IS_DEMO && <AdminDock />}
     </>
   );
 }

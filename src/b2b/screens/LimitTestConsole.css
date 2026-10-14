@@ -1,0 +1,96 @@
+/* Order limit test console: a terminal for running a case by its code, above the list of cases. */
+.ltc-terminal {
+  --ltc-bg: #10151d;
+  --ltc-fg: #e3e8ef;
+  --ltc-dim: #8a96a8;
+  --ltc-pass: #6fd391;
+  --ltc-fail: #ff8a80;
+  --ltc-run: #f2c063;
+  background: var(--ltc-bg);
+  color: var(--ltc-fg);
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  display: grid;
+  gap: 10px;
+  cursor: text;
+}
+.ltc-log {
+  max-height: 460px;
+  overflow-y: auto;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.ltc-log:empty {
+  display: none;
+}
+.ltc-entry {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.ltc-cmd {
+  color: var(--ltc-dim);
+}
+.ltc-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.ltc-badge {
+  font-weight: 700;
+}
+.ltc-badge.pass { color: var(--ltc-pass); }
+.ltc-badge.fail { color: var(--ltc-fail); }
+.ltc-badge.run { color: var(--ltc-run); }
+.ltc-time { color: var(--ltc-dim); }
+.ltc-check {
+  display: grid;
+  grid-template-columns: 1.6em minmax(0, 1fr);
+  padding-left: 1em;
+}
+.ltc-check .mark.pass { color: var(--ltc-pass); }
+.ltc-check .mark.fail { color: var(--ltc-fail); }
+.ltc-detail {
+  color: var(--ltc-dim);
+  overflow-wrap: anywhere;
+}
+.ltc-detail b {
+  color: var(--ltc-fg);
+  font-weight: 400;
+}
+.ltc-error { color: var(--ltc-fail); }
+.ltc-prompt {
+  display: grid;
+  grid-template-columns: 1.4em minmax(0, 1fr);
+  align-items: center;
+}
+.ltc-prompt span { color: var(--ltc-pass); font-weight: 700; }
+.ltc-prompt input {
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--ltc-fg);
+  font: inherit;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 0;
+}
+.ltc-prompt input::placeholder { color: var(--ltc-dim); }
+.ltc-terminal:focus-within { box-shadow: 0 0 0 2px #5b8def; }
+.ltc-code {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ltc-group {
+  color: var(--ltc-dim);
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  margin-top: 4px;
+  padding-left: 1em;
+}

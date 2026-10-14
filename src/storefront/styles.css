@@ -310,6 +310,8 @@ h3 { font-size: 1.8rem; }
 }
 .dev-switch:hover { opacity: 1; transform: translateY(-0.1rem); }
 .dev-switch--end { left: auto; right: 1.6rem; }
+/* Clear of the cart drawer's Check out button while the cart is open. */
+.dev-switch--end.dev-switch--beside-cart { right: calc(min(40rem, 92vw) + 1.6rem); }
 
 /* Prototype-only: the B2B app's Order limits screen docked bottom-right, beside the
    cart drawer while it's open so both stay in view. */

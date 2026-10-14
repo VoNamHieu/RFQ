@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useStore } from '../store.jsx';
 import { policyStatus, policyUsage, policyUsageCount } from '../pricing.js';
 import { Modal, IndexFiltersBar, useWcId, wcTone, PageHeader } from '../../shared/wc.jsx';
+import { contractsHolding, lockedTip } from '../agreements.js';
 import basePricingArt from '../assets/base-pricing-empty.webp';
 import quantityPricingArt from '../assets/quantity-pricing-empty.webp';
 
@@ -135,6 +136,8 @@ export function PricingLibrary() {
     const st = policyStatus(p, state.db);
     const isOff = p.status === 'Inactive';
     const id = `${tipId}-${p.id}`;
+    // Live contracts hold it: it can't be turned off or deleted outside them.
+    const held = contractsHolding(state.db, p.id);
     return (
       // A row click opens the editor (delegated to the name link).
       <s-table-row key={p.id} clickDelegate={`${id}-open`}>
@@ -159,13 +162,14 @@ export function PricingLibrary() {
               icon={isOff ? 'toggle-off' : 'toggle-on'}
               variant="tertiary"
               accessibilityLabel={isOff ? 'Turn on' : 'Turn off'}
+              disabled={!isOff && held.length > 0}
               interestFor={`${id}-toggle-tip`}
               onClick={(e) => {
                 e.stopPropagation();
                 dispatch({ type: 'TOGGLE_POLICY_STATUS', id: p.id });
               }}
             />
-            <s-tooltip id={`${id}-toggle-tip`}>{isOff ? 'Turn on' : 'Turn off'}</s-tooltip>
+            <s-tooltip id={`${id}-toggle-tip`}>{isOff ? 'Turn on' : held.length ? lockedTip(held, 'turn off') : 'Turn off'}</s-tooltip>
             <s-button
               icon="edit"
               variant="tertiary"
@@ -182,13 +186,14 @@ export function PricingLibrary() {
               variant="tertiary"
               tone="critical"
               accessibilityLabel="Delete pricing"
+              disabled={held.length > 0}
               interestFor={`${id}-delete-tip`}
               onClick={(e) => {
                 e.stopPropagation();
                 setConfirmDelete(p);
               }}
             />
-            <s-tooltip id={`${id}-delete-tip`}>Delete pricing</s-tooltip>
+            <s-tooltip id={`${id}-delete-tip`}>{held.length ? lockedTip(held, 'delete') : 'Delete pricing'}</s-tooltip>
           </s-stack>
         </s-table-cell>
       </s-table-row>

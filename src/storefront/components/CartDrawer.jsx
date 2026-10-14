@@ -15,7 +15,7 @@ const today = () => {
 // buyer, list price for a guest).
 export function CartDrawer() {
   const { state, dispatch } = useStore();
-  // Check out on a cart over the review threshold: it doesn't go to checkout.
+  // Check out on a cart over a maximum sent for review: it doesn't go to checkout.
   const [overLimit, setOverLimit] = useState(false);
   if (!state.cartOpen) return null;
 
@@ -29,7 +29,7 @@ export function CartDrawer() {
   });
   const subtotal = lines.reduce((s, l) => s + l.price * l.qty, 0);
   // Order limits, as the validation function would report them: anything but a
-  // review problem blocks checkout. Over the review threshold, Check out asks the
+  // review problem blocks checkout. Over a maximum sent for review, Check out asks the
   // buyer to reduce the order or send it as an order request — a draft order the
   // merchant reviews in the B2B app.
   // One line per variant (product limits count each variant on its own), named
@@ -44,7 +44,7 @@ export function CartDrawer() {
     const s = state.session;
     addOrderRequest({
       id: `req-${Date.now()}`, companyId: s.companyKey, locationId: s.locationId, buyer: s.contact, date: today(),
-      amount: subtotal, threshold: review.limit.threshold, limitId: review.limit.id, priceList: s.priceListName,
+      amount: subtotal, threshold: review.value, period: review.period, limitId: review.limit.id, limitName: review.limit.name, priceList: s.priceListName,
       lines: lines.map((l) => ({ sku: l.sku, title: lineTitle(l), qty: l.qty, price: l.price })),
     });
     setOverLimit(false);

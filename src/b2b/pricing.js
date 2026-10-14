@@ -148,7 +148,7 @@ export function baseInScope(base, sku) {
   if (!base) return false;
   const st = base.scopeType;
   if (!st || st === 'all') return true;
-  if (st === 'collection') return (COLLECTIONS[base.collection] || []).includes(sku);
+  if (st === 'collection') return scopeCollections(base).some((c) => (COLLECTIONS[c] || []).includes(sku));
   if (st === 'products') return (base.selectedProducts || []).includes(sku);
   return true;
 }

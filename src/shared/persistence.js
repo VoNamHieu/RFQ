@@ -11,8 +11,14 @@
 //     and reads `rfqHandoffCompany` once to open the company just handed over.
 // (Legacy parity: the B2B app does NOT persist its own edits — only the RFQ app
 // writes the shared state — so B2B-side changes reset on reload, as before.)
-export const DEMO_STATE_KEY = 'rfqB2BDemoState';
-export const HANDOFF_KEY = 'rfqHandoffCompany';
+// Pages opened with ?demo=1 (the order-limit walkthrough's admin and storefront)
+// keep their state under their own keys, so a walkthrough never touches the
+// prototype's own data. `clearDemoState` empties them before a run.
+export const IS_DEMO = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('demo');
+const DEMO_PREFIX = 'demo:';
+const key = (name) => (IS_DEMO ? DEMO_PREFIX + name : name);
+export const DEMO_STATE_KEY = key('rfqB2BDemoState');
+export const HANDOFF_KEY = key('rfqHandoffCompany');
 
 export function readJSON(key) {
   try {
@@ -42,13 +48,25 @@ export function removeKeys(...keys) {
 // Order limits ↔ storefront. The B2B app publishes its order limits whenever they
 // change, so the storefront checks carts against the same ones (B2B edits reset on
 // its reload, so the storefront follows that too). Going the other way, an order
-// request — a cart over a review threshold the buyer sent instead of checking out —
+// request — a cart over an order maximum sent for review the buyer sent instead of checking out —
 // waits here until the B2B app's merchant approves or declines it.
-export const ORDER_LIMITS_KEY = 'qsOrderLimits';
-export const ORDER_REQUESTS_KEY = 'qsOrderRequests';
+export const ORDER_LIMITS_KEY = key('qsOrderLimits');
+export const ORDER_REQUESTS_KEY = key('qsOrderRequests');
+export function clearDemoState() {
+  try {
+    Object.keys(localStorage).filter((k) => k.startsWith(DEMO_PREFIX)).forEach((k) => localStorage.removeItem(k));
+  } catch {
+    /* storage disabled */
+  }
+}
 export const publishOrderLimits = (limits) => writeJSON(ORDER_LIMITS_KEY, limits);
 export const publishedOrderLimits = () => readJSON(ORDER_LIMITS_KEY);
 export const readOrderRequests = () => readJSON(ORDER_REQUESTS_KEY) || [];
+// Contracts ↔ storefront: the B2B app publishes its Active contracts (see
+// storefrontContracts in b2b/agreements.js) for the buyer's account page.
+export const CONTRACTS_KEY = key('qsContracts');
+export const publishContracts = (contracts) => writeJSON(CONTRACTS_KEY, contracts);
+export const publishedContracts = () => readJSON(CONTRACTS_KEY);
 export const addOrderRequest = (request) => writeJSON(ORDER_REQUESTS_KEY, [...readOrderRequests(), request]);
 export function removeOrderRequests(ids) {
   const left = readOrderRequests().filter((r) => !ids.includes(r.id));
@@ -71,7 +89,7 @@ export function consumeHandoff() {
 // "Reset sample data" — clear the shared demo state + any pending handoff and
 // reload back to seed (legacy resetDemoData / the top-bar "Reset data" button).
 export function resetDemo() {
-  removeKeys(DEMO_STATE_KEY, HANDOFF_KEY, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY);
+  removeKeys(DEMO_STATE_KEY, HANDOFF_KEY, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, CONTRACTS_KEY);
   try {
     window.location.reload();
   } catch {

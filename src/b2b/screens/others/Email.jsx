@@ -4,7 +4,10 @@ import { SaveBar } from '../../../shared/wc.jsx';
 import { EmailConnectionCard } from './EmailConnectionCard.jsx';
 import { EmailTemplateEditor } from './EmailTemplateEditor.jsx';
 import { RegistrationNotificationCard } from './RegistrationNotificationCard.jsx';
+import { versionFlags } from '../../../shared/versions.js';
 import {
+  ADMIN_EMAIL_KEYS,
+  CONTRACT_NOTIFICATION_ITEMS,
   DEFAULT_NOTIFICATION_STATE,
   DEMO_EMAIL_SETTINGS,
   DEMO_EMAIL_TEMPLATES,
@@ -13,21 +16,18 @@ import {
 } from './data.js';
 
 // Email section of the Others page (production: features/Email/components/Email):
-// the sender connection card + the registration notification toggles, with a
+// the sender connection card + the registration notification toggles (and, in the
+// version with contracts, the contract ones), with a
 // contextual save bar for unsaved toggle changes. A notification's edit icon
 // opens its template editor in place of the cards (the app keeps it in the
 // ?template=<key> query param of the same page); the page owns that key.
 
-const mapSettingsToNotifications = (settings) => ({
-  allow_auto_response_email: Boolean(settings.allow_auto_response_email),
-  allow_admin_notification_email: Boolean(settings.allow_admin_notification_email),
-  allow_approval_notification_email: Boolean(settings.allow_approval_notification_email),
-  allow_rejection_notification_email: Boolean(settings.allow_rejection_notification_email),
-});
+const mapSettingsToNotifications = (settings) =>
+  Object.fromEntries(Object.keys(DEFAULT_NOTIFICATION_STATE).map((key) => [key, Boolean(settings[key])]));
 
 const looksLikeEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
-// features/Email/schema/emailTemplate.schema.ts (Admin email only).
+// features/Email/schema/emailTemplate.schema.ts (emails to admin only).
 const EMAIL_INVALID_MESSAGE = 'Please enter a valid email address';
 const ADMIN_RECIPIENT_REQUIRED_MESSAGE = 'Admin recipient is required';
 const SINGLE_EMAIL = /^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9-]*\.)+[A-Za-z]{2,}$/;
@@ -38,7 +38,7 @@ const splitEmails = (value) =>
     .filter(Boolean);
 
 function validateEmailTemplateForm(notificationKey, formState) {
-  if (notificationKey !== 'allow_admin_notification_email') return { isValid: true, errors: {} };
+  if (!ADMIN_EMAIL_KEYS.includes(notificationKey)) return { isValid: true, errors: {} };
   const errors = {};
   const admin = (formState.adminRecipient ?? '').trim();
   if (!admin || splitEmails(admin).length === 0) errors.adminRecipient = ADMIN_RECIPIENT_REQUIRED_MESSAGE;
@@ -72,6 +72,7 @@ export function Email({ activeNotificationEditor = null, onOpenEditor, onCloseEd
   const [notifications, setNotifications] = useState(initialNotifications);
   const [savedNotifications, setSavedNotifications] = useState(initialNotifications);
   const [notificationCollapsed, setNotificationCollapsed] = useState(false);
+  const [contractCollapsed, setContractCollapsed] = useState(false);
 
   // Template editor state: the editable copy and what the "server" holds.
   const [notificationTemplateState, setNotificationTemplateState] = useState(cloneTemplates);
@@ -240,6 +241,18 @@ export function Email({ activeNotificationEditor = null, onOpenEditor, onCloseEd
             onToggleNotification={handleToggleNotification}
             onEditNotification={handleEditNotification}
           />
+          {versionFlags().agreements && (
+            <RegistrationNotificationCard
+              heading="Contract notification"
+              notifications={notifications}
+              isConnected={isConnected}
+              collapsed={contractCollapsed}
+              items={CONTRACT_NOTIFICATION_ITEMS}
+              onToggleCollapse={() => setContractCollapsed((prev) => !prev)}
+              onToggleNotification={handleToggleNotification}
+              onEditNotification={handleEditNotification}
+            />
+          )}
         </s-stack>
       )}
     </>

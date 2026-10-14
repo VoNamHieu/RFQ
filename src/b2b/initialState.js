@@ -4,8 +4,9 @@ import { dbSeed } from './data/db.js';
 import { registrationSeed } from './data/registrations.js';
 import { DEMO_STATE_KEY, readJSON, consumeHandoff, readOrderRequests, publishedOrderLimits } from '../shared/persistence.js';
 import { versionFlags } from '../shared/versions.js';
+import { upgradeLimits } from './limits.js';
 import { normalizeDb, injectRfqCompany, applyQuotePricingTransfer, injectOrderRequests } from './dbHelpers.js';
-import { syncContractDates } from './agreements.js';
+import { syncContractDates, seedSnapshots } from './agreements.js';
 
 // Prototype: the storefront docks this app's Order limits screen (?embed=limits),
 // without the admin frame, so a limit change shows in its cart right away.
@@ -63,7 +64,7 @@ export function makeBaseState() {
     // The seeded registrations came in through the form, so it already exists. It starts
     // unpublished so Home shows the "form isn't published" warning without any clicks.
     // Contracts start and expire by date (the daily job, run once on load here).
-    db: syncContractDates(normalizeDb({ ...dbSeed, registrations: registrationSeed, hasRegistrationForm: true, registrationFormPublished: false, rfqAppInstalled: true })),
+    db: syncContractDates(seedSnapshots(normalizeDb({ ...dbSeed, registrations: registrationSeed, hasRegistrationForm: true, registrationFormPublished: false, rfqAppInstalled: true }))),
     toast: null,
   };
 }
@@ -78,7 +79,7 @@ export function buildInitialState() {
   // Order limits as last saved (they're shared with the storefront), and order
   // requests buyers sent from it, waiting for review.
   const limits = publishedOrderLimits();
-  if (Array.isArray(limits)) s.db.limits = limits;
+  if (Array.isArray(limits)) s.db.limits = upgradeLimits(limits);
   injectOrderRequests(s.db, readOrderRequests());
   if (EMBEDDED === 'limits' && versionFlags().orderLimits) s.view = 'limits';
   // 2) One-shot handoff: open the specific company just handed over from RFQ.
@@ -120,6 +121,7 @@ function viewFromHash(hash) {
     '#/b2b/registrations': 'registrations',
     '#/b2b/pricing': 'pricing',
     '#/b2b/order-limits': 'limits',
+    '#/b2b/order-limit-tests': 'limitTests',
     '#/b2b/agreements': 'agreements',
     '#/b2b/company': 'customers',
     '#/b2b/analytics': 'analytics',

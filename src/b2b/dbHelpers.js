@@ -247,7 +247,7 @@ export function applyQuotePricingTransfer(db, companyId, lines, transfer) {
   return 'Quote prices added';
 }
 
-// Order requests from the storefront (a cart over a review threshold) wait as held
+// Order requests from the storefront (a cart over an order maximum sent for review) wait as held
 // orders: draft orders for the merchant to approve or decline. Adds the ones that
 // aren't there yet, numbered after the newest order. Mutates `db`.
 export function injectOrderRequests(db, requests) {
@@ -258,9 +258,10 @@ export function injectOrderRequests(db, requests) {
     if (!c || all.some((o) => o.requestId === r.id)) return;
     const loc = (c.locations || []).find((l) => l.id === r.locationId);
     const order = {
-      id: `#${next++}`, requestId: r.id, location: loc?.name || '', buyer: r.buyer, date: r.date, amount: r.amount, lines: r.lines.length, po: '',
+      id: `#${next++}`, requestId: r.id, location: loc?.name || '', locationId: r.locationId, buyer: r.buyer, date: r.date, amount: r.amount, lines: r.lines.length, po: '',
       pricing: r.priceList || '', pricingSource: 'Company price', source: 'Storefront order request',
-      status: 'Needs review', shopifyStatus: 'Draft order', reason: `Above the ${money(r.threshold)} review threshold`, heldBy: r.limitId,
+      status: 'Needs review', shopifyStatus: 'Draft order', reason: `Above the ${money(r.threshold)} maximum`, heldBy: r.limitId,
+      heldAt: { value: r.threshold, limitId: r.limitId, limitName: r.limitName || '', period: r.period || 'order' }, // what it broke when it was held
     };
     c.orders = [order, ...(c.orders || [])];
     all.push(order);

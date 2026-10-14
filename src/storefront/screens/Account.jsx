@@ -186,7 +186,7 @@ function Portal({ session, company, application, go, dispatch }) {
             <h3>Contract</h3>
             <span className="badge badge--green">Active</span>
           </div>
-          <p className="muted">{`${agreement.number} · ${agreement.name} · version ${agreement.version} · ${agreement.since} – ${agreement.until}`}</p>
+          <p className="muted">{`${agreement.number} · ${agreement.name} · version ${agreement.version} · ${agreement.dates}`}</p>
           <div className="acct-terms">
             {agreement.pricing && (
               <div className="acct-term">

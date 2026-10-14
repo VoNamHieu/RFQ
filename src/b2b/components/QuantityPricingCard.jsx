@@ -1,13 +1,15 @@
 import React from 'react';
 import { useStore } from '../store.jsx';
 import { companyQuantityEntries, locationOnlyEntries, pricingLocationsLabel, policyStatus, scopeTypeLabel } from '../pricing.js';
-import { LocationOnlyActions, ApplyLaterSwitch } from './BasePricingCard.jsx';
+import { LocationOnlyActions, ApplyLaterSwitch, PricingName } from './BasePricingCard.jsx';
+import { contractGiving, lockedTip } from '../agreements.js';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
-import { wcTone } from '../../shared/wc.jsx';
+import { wcTone, useWcId } from '../../shared/wc.jsx';
 import quantityPricingArt from '../assets/quantity-pricing-empty.webp';
 
 export function QuantityPricingCard({ company }) {
   const { state, dispatch } = useStore();
+  const tipId = useWcId('qty-row');
   // A company can hold several quantity pricings (lowest priority applies first).
   // The company's own list plus pricing only some locations get (labelled with them),
   // in priority order — the stable sort keeps the company's own tie-breaks.
@@ -58,10 +60,14 @@ export function QuantityPricingCard({ company }) {
           {entries.map((entry) => {
             const policy = entry.policy;
             const st = policyStatus(policy, state.db);
+            // The live contract giving it (on the company, or on its locations).
+            const ag = entry.locations
+              ? entry.locations.map((l) => contractGiving(state.db, company, policy.id, l.id)).find(Boolean) || null
+              : contractGiving(state.db, company, policy.id);
             return (
               <s-table-row key={policy.id}>
                 <s-table-cell>
-                  <s-text fontWeight="medium">{policy.name}</s-text>
+                  <PricingName policy={policy} contract={ag} />
                 </s-table-cell>
                 <s-table-cell>{pricingLocationsLabel(company, 'quantity', policy.id)}</s-table-cell>
                 {autoApply && (
@@ -81,7 +87,16 @@ export function QuantityPricingCard({ company }) {
                   ) : (
                     <s-stack direction="inline" gap="small-400" justifyContent="end" alignItems="center">
                       <s-button icon="edit" variant="tertiary" accessibilityLabel="Edit pricing" onClick={() => dispatch({ type: 'OPEN_EDITOR', policy, context: { mode: 'edit', companyId: company.id } })} />
-                      <s-button icon="x-circle" variant="tertiary" tone="critical" accessibilityLabel="Remove" onClick={() => dispatch({ type: 'REMOVE_COMPANY_QUANTITY', companyId: company.id, policyId: policy.id })} />
+                      <s-button
+                        icon="x-circle"
+                        variant="tertiary"
+                        tone="critical"
+                        accessibilityLabel="Remove"
+                        disabled={!!ag}
+                        interestFor={ag ? `${tipId}-${policy.id}` : undefined}
+                        onClick={() => dispatch({ type: 'REMOVE_COMPANY_QUANTITY', companyId: company.id, policyId: policy.id })}
+                      />
+                      {ag ? <s-tooltip id={`${tipId}-${policy.id}`}>{lockedTip([ag], 'remove')}</s-tooltip> : null}
                     </s-stack>
                   )}
                 </s-table-cell>

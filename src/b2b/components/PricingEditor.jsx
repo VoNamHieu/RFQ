@@ -12,6 +12,7 @@ import { ActiveDatesCard, ProductScopeCard, QuantityProductsCard, VolumeBasisCar
 import { PricePreviewDialog } from './PricePreviewDialog.jsx';
 import { AssignmentCard } from './AssignmentCard.jsx';
 import { policyUsageCount, policyUsageDetail, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, locationCatalog } from '../pricing.js';
+import { contractsHolding, contractGiving, contractNames, appliesAt, lockedTip } from '../agreements.js';
 
 // Main column + aside side by side once the editor is wide enough (Polaris React
 // InlineGrid columns={{ xs: '1fr', md: '2fr 1fr' }}); two fields side by side
@@ -181,8 +182,29 @@ export function PricingEditor({ asPage = false }) {
       ? companiesAssigned > 0 || savedUsage.globals.includes('All Companies')
       : savedUsage.customers + savedUsage.tags > 0 || savedUsage.globals.includes('All customers');
 
+  // Live contracts holding it: editing what it sets adds a version to them; it must
+  // stay on and keep reaching every location they apply to (changing that goes
+  // through them). `breaks`: the ones these choices would leave without it.
+  const held = isNew ? [] : contractsHolding(state.db, builder.id);
+  const breaks = held.filter((ag) => {
+    if (builder.status === 'Inactive') return true;
+    if (ag.status !== 'Active') return false;
+    if (builder.audienceType === 'd2c') return true;
+    const c = state.db.companies.find((x) => x.id === ag.companyId);
+    if (!c) return false;
+    const locs = (c.locations || []).filter((l) => appliesAt(c, ag, l.id));
+    if (showAssignment) {
+      return !((builder.b2bCompanyIds || []).includes(c.id) || (locs.length && locs.every((l) => (builder.b2bLocationKeys || []).includes(`${c.id}::${l.id}`))));
+    }
+    if (showCompanyLocations && scopeCompany.id === c.id) return !(!scopeLocationIds || locs.every((l) => scopeLocationIds.includes(l.id)));
+    return false;
+  });
+  // Opened from a company or location a live contract gives it to: it can't be swapped
+  // there for a separate copy, so a change applies everywhere it's used.
+  const contractHere = scopeCompany && !isNew ? contractGiving(state.db, scopeCompany, builder.id, scopeLoc?.id || null) : null;
+
   const onSave = () => {
-    if (noLocationPicked) return;
+    if (noLocationPicked || breaks.length) return;
     if (!builder.name?.trim()) {
       setNameMissing(true);
       return;
@@ -218,9 +240,20 @@ export function PricingEditor({ asPage = false }) {
   const editorTitle = isNew ? `Create ${isQuantity ? 'quantity' : 'base'} pricing` : `Edit pricing: ${builder.name}`;
   const editorBody = (
     <s-stack gap="base">
+          {breaks.length ? (
+            <s-banner tone="critical" heading={`Part of ${contractNames(state.db, breaks)}`}>
+              <s-paragraph>It has to stay on and keep reaching every location the contract applies to. To change that, edit the contract.</s-paragraph>
+            </s-banner>
+          ) : held.length ? (
+            <s-banner tone="warning" heading={`Part of ${contractNames(state.db, held)}`}>
+              <s-paragraph>A change to what it sets updates the contract, kept as a new version. To turn it off or delete it, edit the contract.</s-paragraph>
+            </s-banner>
+          ) : null}
           {sharedElsewhere && (
             <s-banner tone="info">
-              {`This pricing is also assigned to ${sharedWith}. Saving will offer to fork a copy for ${scopeName} or apply to all.`}
+              {contractHere
+                ? `This pricing is also assigned to ${sharedWith}. It’s part of ${contractHere.number}, so saving applies to all of them.`
+                : `This pricing is also assigned to ${sharedWith}. Saving will offer to fork a copy for ${scopeName} or apply to all.`}
             </s-banner>
           )}
 
@@ -323,7 +356,7 @@ export function PricingEditor({ asPage = false }) {
 
             {/* Aside (god-file builder-side): status, resolution, summary. */}
             <s-stack gap="base">
-              <RuleStatusCard builder={builder} patch={patch} />
+              <RuleStatusCard builder={builder} patch={patch} held={held} />
               <SummaryCard builder={builder} isQuantity={isQuantity} assignedTo={assignedTo} products={state.db.products} locations={reach} />
             </s-stack>
           </s-grid>
@@ -372,11 +405,18 @@ export function PricingEditor({ asPage = false }) {
       {forkConfirm && (
         <Modal onClose={() => setForkConfirm(false)} heading={`Save changes to ${builder.name}`}>
           <s-stack gap="small">
+            {contractHere ? (
+              <s-paragraph>
+                {`${builder.name} is shared with ${sharedWith}. It’s part of ${contractHere.number}, so it can’t be replaced by a separate copy for ${scopeName}: your changes apply everywhere it’s used (${sharedCount + 1}).`}
+              </s-paragraph>
+            ) : (
             <s-paragraph>
               {`${builder.name} is shared with ${sharedWith}. Save as a separate pricing for `}
               <s-text fontWeight="semibold">{scopeName}</s-text>
               {` — the others keep ${builder.name}.`}
             </s-paragraph>
+            )}
+            {!contractHere && (
             <s-box padding="small" border="base" borderRadius="base">
               <s-checkbox
                 label={allNoun ? `Apply to all ${sharedCount + 1} ${allNoun} instead` : `Apply everywhere it’s used instead (${sharedCount + 1})`}
@@ -389,6 +429,7 @@ export function PricingEditor({ asPage = false }) {
                 onChange={(e) => setApplyAll(e.currentTarget.checked)}
               />
             </s-box>
+            )}
           </s-stack>
           <s-button
             slot="primary-action"
@@ -396,7 +437,7 @@ export function PricingEditor({ asPage = false }) {
             onClick={() => {
               setForkConfirm(false);
               // Unticked: a separate copy for here (the default path forks).
-              dispatch({ type: 'SAVE_EDITOR', applyToAll: applyAll });
+              dispatch({ type: 'SAVE_EDITOR', applyToAll: applyAll || !!contractHere });
             }}
           >
             Save
@@ -414,7 +455,7 @@ export function PricingEditor({ asPage = false }) {
           <PageHeader
             heading={editorTitle}
             backAction={{ content: 'Back', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }}
-            primaryAction={{ content: isNew ? 'Create pricing' : 'Save', onAction: onSave, disabled: noLocationPicked }}
+            primaryAction={{ content: isNew ? 'Create pricing' : 'Save', onAction: onSave, disabled: noLocationPicked || breaks.length > 0 }}
             secondaryActions={[{ content: 'Cancel', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }]}
           />
           <s-page>{editorBody}</s-page>
@@ -456,19 +497,28 @@ export function PricingEditor({ asPage = false }) {
 }
 
 // Rule status (god-file ruleStatusCard), shown in the aside: an on/off toggle.
-function RuleStatusCard({ builder, patch }) {
+// `held`: live contracts holding it — it can't be turned off outside them.
+function RuleStatusCard({ builder, patch, held = [] }) {
   const on = (builder.status || 'Active') !== 'Inactive';
+  const locked = on && held.length > 0;
   return (
     <s-section>
-      <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
-        <s-stack direction="inline" gap="small-200" alignItems="center">
-          <s-heading>Rule status</s-heading>
-          <s-badge tone={on ? 'success' : undefined}>{on ? 'Active' : 'Inactive'}</s-badge>
-        </s-stack>
-        <s-button onClick={() => patch({ status: on ? 'Inactive' : 'Active' })}>
-          {on ? 'Turn off' : 'Turn on'}
-        </s-button>
-      </s-grid>
+      <s-stack gap="small-200">
+        <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            <s-heading>Rule status</s-heading>
+            <s-badge tone={on ? 'success' : undefined}>{on ? 'Active' : 'Inactive'}</s-badge>
+          </s-stack>
+          <s-button disabled={locked} onClick={() => patch({ status: on ? 'Inactive' : 'Active' })}>
+            {on ? 'Turn off' : 'Turn on'}
+          </s-button>
+        </s-grid>
+        {locked && (
+          <s-text color="subdued" fontSize="small">
+            {lockedTip(held, 'turn off')}
+          </s-text>
+        )}
+      </s-stack>
     </s-section>
   );
 }

@@ -23,6 +23,7 @@ import { MultiAssignModal } from './components/MultiAssignModal.jsx';
 import { AddCompanyWizard } from './components/AddCompanyWizard.jsx';
 import { versionFlags, withVersion } from '../shared/versions.js';
 import { OrderLimits } from './screens/OrderLimits.jsx';
+import { LimitTestConsole } from './screens/LimitTestConsole.jsx';
 import { Agreements } from './screens/Agreements.jsx';
 import { ManualOrders } from './screens/manualOrders/ManualOrders.jsx';
 import { Discounts } from './screens/discounts/Discounts.jsx';
@@ -46,6 +47,9 @@ function CurrentView() {
       return <PricingLibrary />;
     case 'limits':
       return flags.orderLimits ? <OrderLimits /> : <CompaniesList />;
+    // Test console for order limits (no nav item: open #/b2b/order-limit-tests).
+    case 'limitTests':
+      return flags.orderLimits ? <LimitTestConsole /> : <CompaniesList />;
     case 'agreements':
       return flags.agreements ? <Agreements /> : <CompaniesList />;
     case 'registrations':
