@@ -1,10 +1,11 @@
 import React from 'react';
 import { useStore } from '../store.jsx';
-import { companyBaseEntries, locationOnlyEntries, pricingLocationsLabel, policyStatus } from '../pricing.js';
+import { companyBaseEntries, locationOnlyEntries, pricingLocationsLabel, policyStatus, slotIds } from '../pricing.js';
 import { openBuildFromQuotes } from './BuildFromQuotes.jsx';
 import { versionFlags } from '../../shared/versions.js';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
-import { Tip, wcTone } from '../../shared/wc.jsx';
+import { Tip, wcTone, useWcId } from '../../shared/wc.jsx';
+import { contractGiving, lockedTip } from '../agreements.js';
 import basePricingArt from '../assets/base-pricing-empty.webp';
 
 const PAGE_SIZES = [5, 10, 20, 100];
@@ -12,8 +13,11 @@ const PAGE_SIZES = [5, 10, 20, 100];
 // Edit / Remove for pricing only some locations get: editing opens it with those
 // locations picked under "Who this pricing serves", removing takes it off them only.
 export function LocationOnlyActions({ company, kind, entry }) {
-  const { dispatch } = useStore();
+  const { state, dispatch } = useStore();
+  const tip = useWcId('loc-only');
   const locs = entry.locations;
+  // A live contract gives it there: it comes off through the contract only.
+  const ag = locs.map((l) => contractGiving(state.db, company, entry.policy.id, l.id)).find(Boolean);
   return (
     <s-stack direction="inline" gap="small-400" justifyContent="end" alignItems="center">
       <s-button
@@ -27,8 +31,39 @@ export function LocationOnlyActions({ company, kind, entry }) {
         variant="tertiary"
         tone="critical"
         accessibilityLabel={`Remove from ${locs.map((l) => l.name).join(', ')}`}
+        disabled={!!ag}
+        interestFor={ag ? tip : undefined}
         onClick={() => locs.forEach((l) => dispatch({ type: 'REMOVE_LOCATION_PRICING', companyId: company.id, locationId: l.id, kind, policyId: entry.policy.id }))}
       />
+      {ag ? <s-tooltip id={tip}>{lockedTip([ag], 'remove')}</s-tooltip> : null}
+    </s-stack>
+  );
+}
+
+// With auto-add locations on, a switch per pricing: do locations added later get it?
+export function ApplyLaterSwitch({ company, kind, policy }) {
+  const { dispatch } = useStore();
+  const on = slotIds(company, kind).includes(policy.id);
+  return (
+    <s-switch
+      accessibilityLabel={`Apply ${policy.name} to new locations`}
+      checked={on}
+      disabled={!(company.locations || []).length}
+      onChange={(e) => {
+        const next = e.currentTarget.checked;
+        if (next === on) return;
+        dispatch({ type: 'SET_PRICING_APPLY_LATER', companyId: company.id, kind, policyId: policy.id, on: next });
+      }}
+    />
+  );
+}
+
+// A pricing's name, with the live contract that gives it, if any.
+export function PricingName({ policy, contract }) {
+  return (
+    <s-stack direction="inline" gap="small-200" alignItems="center">
+      <s-text fontWeight="medium">{policy.name}</s-text>
+      {contract ? <s-badge tone="info">{`Contract ${contract.number}`}</s-badge> : null}
     </s-stack>
   );
 }
@@ -50,13 +85,20 @@ function CardHeader({ title, description }) {
 export function BasePricingCard({ company }) {
   const { state, dispatch } = useStore();
   const policies = state.db.policies;
+  const tipId = useWcId('base-row');
   // The company's own list plus pricing only some locations get (labelled with them),
   // in priority order — the stable sort keeps the company's own tie-breaks.
   const entries = [...companyBaseEntries(company, policies), ...locationOnlyEntries(company, policies, 'base')].sort((a, b) => a.priority - b.priority);
+  // The live contract giving a row's pricing (on the company, or on its locations).
+  const contractOf = (entry) =>
+    entry.locations
+      ? entry.locations.map((l) => contractGiving(state.db, company, entry.policy.id, l.id)).find(Boolean) || null
+      : contractGiving(state.db, company, entry.policy.id);
 
   // v1: single base pricing per company (no priority list / pagination).
   if (!versionFlags().multiBase) return <SingleBaseCard company={company} />;
 
+  const autoApply = !!company.autoAddLocations;
   const showTools = entries.length > 5;
   const q = showTools ? (state.basePricingSearch || '').trim().toLowerCase() : '';
   const filtered = q ? entries.filter((e) => e.policy.name.toLowerCase().includes(q)) : entries;
@@ -81,12 +123,18 @@ export function BasePricingCard({ company }) {
     const p = entry.policy;
     const st = policyStatus(p);
     const locs = entry.locations;
+    const ag = contractOf(entry);
     return (
       <s-table-row key={p.id}>
         <s-table-cell>
-          <s-text fontWeight="medium">{p.name}</s-text>
+          <PricingName policy={p} contract={ag} />
         </s-table-cell>
         <s-table-cell>{pricingLocationsLabel(company, 'base', p.id)}</s-table-cell>
+        {autoApply && (
+          <s-table-cell>
+            <ApplyLaterSwitch company={company} kind="base" policy={p} />
+          </s-table-cell>
+        )}
         <s-table-cell>{entry.priority}</s-table-cell>
         <s-table-cell>
           <s-badge tone={wcTone(st.tone)}>{st.label}</s-badge>
@@ -103,18 +151,15 @@ export function BasePricingCard({ company }) {
                 onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: p, context: { mode: 'edit', companyId: company.id } })}
               />
               <s-button
-                icon="exchange"
-                variant="tertiary"
-                accessibilityLabel="Change to another base pricing"
-                onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'swap', swapId: p.id })}
-              />
-              <s-button
                 icon="x-circle"
                 variant="tertiary"
                 tone="critical"
                 accessibilityLabel="Remove this base pricing"
+                disabled={!!ag}
+                interestFor={ag ? `${tipId}-${p.id}` : undefined}
                 onClick={() => dispatch({ type: 'REMOVE_COMPANY_BASE', companyId: company.id, policyId: p.id })}
               />
+              {ag ? <s-tooltip id={`${tipId}-${p.id}`}>{lockedTip([ag], 'remove')}</s-tooltip> : null}
             </s-stack>
           )}
         </s-table-cell>
@@ -197,6 +242,7 @@ export function BasePricingCard({ company }) {
         <s-table-header-row>
           <s-table-header listSlot="primary">Pricing</s-table-header>
           <s-table-header listSlot="labeled">Location</s-table-header>
+          {autoApply && <s-table-header listSlot="labeled">Auto-apply to new locations</s-table-header>}
           <s-table-header listSlot="labeled">{priorityHeader}</s-table-header>
           <s-table-header listSlot="secondary">Status</s-table-header>
           <s-table-header listSlot="inline">
@@ -286,7 +332,6 @@ function SingleBaseCard({ company }) {
                 {primary ? (
                   <>
                     <s-button icon="edit" variant="tertiary" accessibilityLabel="Edit pricing" onClick={() => dispatch({ type: 'OPEN_EDITOR', policy: primary.policy, context: { mode: 'edit', companyId: company.id } })} />
-                    <s-button icon="exchange" variant="tertiary" accessibilityLabel="Change base pricing" onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, mode: 'swap', swapId: primary.policy.id })} />
                     <s-button icon="x-circle" variant="tertiary" tone="critical" accessibilityLabel="Remove" onClick={() => dispatch({ type: 'REMOVE_COMPANY_BASE', companyId: company.id, policyId: primary.policy.id })} />
                   </>
                 ) : (

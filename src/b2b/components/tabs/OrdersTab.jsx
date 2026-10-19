@@ -21,7 +21,7 @@ const orderTone = (s) => wcTone(STATUS_TONE[s]); // neutral tone for unmapped st
 export function OrdersTab({ company }) {
   const { state } = useStore();
   const [loc, setLoc] = useState('all');
-  // Orders held by a review threshold sit on top, with Approve / Decline (order limits).
+  // Orders held by an order maximum sent for review sit on top, with Approve / Decline (order limits).
   const reviewOrders = versionFlags().orderLimits;
   const allOrders = company.orders || [];
   const orders = (loc === 'all' ? allOrders : allOrders.filter((o) => o.location === loc))
@@ -50,6 +50,11 @@ export function OrdersTab({ company }) {
           {reviewOrders && isHeld(o) ? (
             <s-text tone="caution" fontSize="small">
               {heldReason(o, state.db)}
+            </s-text>
+          ) : null}
+          {o.declineMessage ? (
+            <s-text color="subdued" fontSize="small">
+              {`Your message to the buyer: “${o.declineMessage}”`}
             </s-text>
           ) : null}
         </s-stack>

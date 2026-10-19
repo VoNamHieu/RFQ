@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
 import { kindOf, scopeLabel } from '../pricing.js';
-import { limitSummary, isD2CLimit, newConflicts } from '../limits.js';
-import { LimitConflictList } from './LimitConflictList.jsx';
-import { agreementChanges, limitsAfterAgreement, isLive, liveStatus, fmtDay } from '../agreements.js';
+import { limitSummary, isD2CLimit, overlapsOf } from '../limits.js';
+import { overlapMessage } from './LimitOverlapList.jsx';
+import { withCatalog } from './LimitEditor.jsx';
+import { agreementChanges, limitsAfterAgreement, isLive, liveStatus, fmtDay, addDay, activeAgreement, sameAgreement, termWarnings } from '../agreements.js';
 import { TODAY } from '../pricing.js';
 import { PricingCombobox } from './PricingCombobox.jsx';
 import { LocationScopePicker } from './LocationScopePicker.jsx';
@@ -13,6 +14,8 @@ import { Modal, PageHeader } from '../../shared/wc.jsx';
 // (OPEN_AGREEMENT_EDITOR). Terms are picked from the Pricing and Order limits
 // libraries; who gets them is all of the company's locations or some. A draft is
 // activated here; an active agreement saves as its next version, applied at once.
+// Beside the company's Active contract, a draft is the next one: it replaces the
+// Active one when it starts.
 export function AgreementEditor() {
   const { state, dispatch } = useStore();
   const draft = state.agreementEditor.draft;
@@ -22,6 +25,10 @@ export function AgreementEditor() {
   const live = isLive(saved);
   const started = saved?.status === 'Active';
   const startsLater = liveStatus(draft) === 'Scheduled';
+  // The company's Active contract this one replaces when it starts, if it's the next
+  // one (unless that one has ended by then).
+  const active = activeAgreement(state.db, draft.companyId);
+  const replacing = active && active.id !== draft.id && (!active.endDate || !draft.startDate || draft.startDate <= addDay(active.endDate)) ? active : null;
   const [tried, setTried] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const patch = (p) => dispatch({ type: 'AGREEMENT_EDITOR_PATCH', patch: p });
@@ -40,6 +47,7 @@ export function AgreementEditor() {
   if (!draft.terms.base.length && !draft.terms.quantity.length && !draft.terms.limits.length) errors.terms = 'Add at least one pricing or order limit';
   if (Array.isArray(draft.locationIds) && !draft.locationIds.length) errors.scope = 'Pick at least one location';
   if (!draft.startDate) errors.startDate = 'Choose a start date';
+  else if (!started && draft.startDate < TODAY) errors.startDate = 'Can’t be before today';
   if (draft.endDate && draft.startDate && draft.endDate < draft.startDate) errors.endDate = 'Must be after the start date';
   else if (draft.endDate && draft.endDate < TODAY) errors.endDate = 'This date has passed';
   const valid = !Object.keys(errors).length;
@@ -49,8 +57,13 @@ export function AgreementEditor() {
   const goLive = () => (valid ? setConfirm(true) : setTried(true));
   const saveDraft = () => (valid || (draft.name || '').trim() ? dispatch({ type: 'SAVE_AGREEMENT' }) : setTried(true));
   const nextVersion = (saved?.version || 0) + 1;
-  // The order-limit conflicts going live would cause (the live version comes off first).
-  const goLiveConflicts = confirm ? newConflicts(state.db, limitsAfterAgreement(state.db, { off: started ? saved : null, on: draft })) : [];
+  // Saving a live contract unchanged would only add an empty version.
+  const unchanged = live && sameAgreement(saved, draft, state.db);
+  // How its order limits overlap others once it's live (the live version — or the
+  // contract this one replaces — comes off first). Notes: they don't block it.
+  const goLiveOverlaps = confirm ? overlapsOf(withCatalog(state.db), limitsAfterAgreement(state.db, { off: started ? saved : replacing, on: draft }), draft.terms.limits) : [];
+  // Terms that won't apply for the whole contract (turned off, or dated).
+  const warnings = confirm ? termWarnings(state.db, draft) : [];
   const when = startsLater ? `on ${fmtDay(draft.startDate)}` : 'right away';
   const until = draft.endDate ? ` They come off after ${fmtDay(draft.endDate)}, unless you renew it.` : '';
 
@@ -60,7 +73,7 @@ export function AgreementEditor() {
       heading={saved ? `${draft.number} · ${saved.name}` : `New contract ${draft.number}`}
       subtitle={company?.name}
       backAction={{ content: 'Contracts', onAction: close }}
-      primaryAction={{ content: live ? `Save as version ${nextVersion}` : 'Activate', onAction: goLive }}
+      primaryAction={{ content: live ? `Save as version ${nextVersion}` : 'Activate', onAction: goLive, disabled: unchanged }}
       secondaryActions={[...(live ? [] : [{ content: 'Save draft', onAction: saveDraft }]), { content: 'Cancel', onAction: close }]}
     />
     <s-page>
@@ -101,7 +114,9 @@ export function AgreementEditor() {
               </s-grid>
             </s-query-container>
             <s-paragraph color="subdued" fontSize="small">
-              {`It starts and ends on its own. After the end date, ${company?.name} goes back to the pricing and limits outside the contract.`}
+              {replacing
+                ? `It starts and ends on its own. On the start date it replaces ${replacing.number}. After the end date, ${company?.name} goes back to the pricing and limits outside the contract.`
+                : `It starts and ends on its own. After the end date, ${company?.name} goes back to the pricing and limits outside the contract.`}
             </s-paragraph>
           </s-stack>
         </s-section>
@@ -162,7 +177,9 @@ export function AgreementEditor() {
           <s-paragraph color="subdued" fontSize="small">
             {live
               ? `Saving gives ${company?.name} your changes ${when}, as version ${nextVersion}.`
-              : `Nothing is applied yet. Activate to give ${company?.name} these terms ${startsLater ? `from ${fmtDay(draft.startDate)}` : 'right away'}.`}
+              : replacing
+                ? `Nothing is applied yet. Activate to replace ${replacing.number} with these terms ${startsLater ? `from ${fmtDay(draft.startDate)}` : 'right away'}.`
+                : `Nothing is applied yet. Activate to give ${company?.name} these terms ${startsLater ? `from ${fmtDay(draft.startDate)}` : 'right away'}.`}
           </s-paragraph>
         </s-stack>
       </s-section>
@@ -183,14 +200,21 @@ export function AgreementEditor() {
             <s-paragraph>
               {live
                 ? `${agreementChanges(saved, draft, state.db)}. ${company?.name} gets the new terms ${when}.${until}`
-                : `Its pricing and order limits are assigned to ${company?.name} ${when}.${until}`}
+                : replacing
+                  ? `Its pricing and order limits replace ${replacing.number}’s for ${company?.name} ${when}, and ${replacing.number} ends then.${until}`
+                  : `Its pricing and order limits are assigned to ${company?.name} ${when}.${until}`}
             </s-paragraph>
-            {goLiveConflicts.length ? (
+            {warnings.length ? (
               <>
-                <s-paragraph>{startsLater ? 'When it starts, these order limits conflict:' : 'After this, these order limits conflict:'}</s-paragraph>
-                <LimitConflictList conflicts={goLiveConflicts} />
+                <s-paragraph>These terms won’t apply for the whole contract:</s-paragraph>
+                <s-unordered-list>
+                  {warnings.map((w) => (
+                    <s-list-item key={w}>{w}</s-list-item>
+                  ))}
+                </s-unordered-list>
               </>
             ) : null}
+            {goLiveOverlaps.length ? <s-paragraph>{`${startsLater ? 'When it starts: ' : ''}${overlapMessage('its order limits')}`}</s-paragraph> : null}
           </s-stack>
           <s-button
             slot="primary-action"

@@ -1,0 +1,143 @@
+/* Order-limit walkthrough stage: a bar with what's happening, then the admin
+   (left) and the storefront (right) side by side, with the cursor over both. */
+.lwt {
+  --lwt-ink: #f3f5f8;
+  --lwt-dim: #a3adbd;
+  --lwt-bg: #0f141b;
+  --lwt-accent: #4f7cff;
+  --lwt-pass: #6fd391;
+  --lwt-fail: #ff8a80;
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: var(--lwt-bg);
+  color: var(--lwt-ink);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.lwt-bar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid #263040;
+}
+.lwt-title {
+  font-size: 14px;
+  white-space: nowrap;
+}
+.lwt-title b {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  margin-right: 6px;
+}
+.lwt-caption {
+  font-size: 13.5px;
+  color: var(--lwt-dim);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lwt-caption.is-pass { color: var(--lwt-pass); }
+.lwt-caption.is-fail { color: var(--lwt-fail); }
+.lwt-actions {
+  display: flex;
+  gap: 8px;
+}
+.lwt-bar button {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid #3a4558;
+  background: #1b2330;
+  color: var(--lwt-ink);
+  cursor: pointer;
+}
+.lwt-bar button:hover { background: #243042; }
+.lwt-bar button:focus-visible { outline: 2px solid var(--lwt-accent); outline-offset: 2px; }
+.lwt-stage {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 42fr) minmax(0, 58fr);
+  gap: 12px;
+  padding: 12px;
+  min-height: 0;
+}
+.lwt-stage--admin-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+.lwt-pane {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+  outline: 2px solid transparent;
+  transition: outline-color 0.2s;
+}
+.lwt-pane.is-active { outline-color: var(--lwt-accent); }
+.lwt-pane > header {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  background: #1b2330;
+  color: var(--lwt-dim);
+}
+.lwt-pane.is-active > header { color: var(--lwt-ink); }
+.lwt-pane iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+.lwt-cursor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 22px;
+  height: 22px;
+  pointer-events: none;
+  z-index: 3;
+  transform: translate(50vw, 50vh);
+  transition: transform 0.55s cubic-bezier(0.3, 0.7, 0.3, 1);
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
+}
+.lwt-cursor svg { width: 22px; height: 22px; display: block; transition: transform 0.12s; }
+.lwt-cursor.is-pressing svg { transform: scale(0.82); }
+.lwt-cursor::after {
+  content: "";
+  position: absolute;
+  left: -9px;
+  top: -9px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--lwt-accent);
+  opacity: 0;
+  transform: scale(0.4);
+}
+.lwt-cursor.is-pressing::after { animation: lwt-press 0.4s ease-out; }
+@keyframes lwt-press {
+  0% { opacity: 0.9; transform: scale(0.4); }
+  100% { opacity: 0; transform: scale(1.8); }
+}
+.lwt-ring {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  pointer-events: none;
+  border: 3px solid #ffb020;
+  border-radius: 10px;
+  box-shadow: 0 0 0 4px rgba(255, 176, 32, 0.25);
+  transition: transform 0.25s, width 0.25s, height 0.25s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lwt-cursor, .lwt-ring { transition: none; }
+  .lwt-cursor.is-pressing::after { animation: none; }
+}

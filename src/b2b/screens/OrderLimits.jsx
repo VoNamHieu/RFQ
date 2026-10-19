@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { LIMIT_KINDS, limitSummary, limitTargetsLabel, isLimitAssigned, isD2CLimit, newConflicts } from '../limits.js';
-import { LimitEditor, DeleteLimitConflicts } from '../components/LimitEditor.jsx';
-import { LimitConflictList } from '../components/LimitConflictList.jsx';
+import { LIMIT_KINDS, limitSummary, limitTargetsLabel, isLimitAssigned, isD2CLimit, limitOverlaps, productRules, limitState } from '../limits.js';
+import { LimitEditor, withCatalog } from '../components/LimitEditor.jsx';
+import { LimitOverlapMessage } from '../components/LimitOverlapList.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import { Modal, IndexFiltersBar, useWcId } from '../../shared/wc.jsx';
+import { contractsHolding, lockedTip } from '../agreements.js';
 
 // Tabs by who a limit is for, like the Pricing list; the kind is a filter.
 const AUDIENCE = [
@@ -12,13 +13,15 @@ const AUDIENCE = [
   { id: 'b2b', label: 'Companies' },
   { id: 'd2c', label: 'Customers' },
 ];
+// Status badge, by limitState: turned off, not started yet, applying, or past its end date.
+const STATE_TONE = { Active: 'success', Upcoming: 'info', Expired: undefined, Inactive: undefined };
 const TYPE_CHOICES = [
   { label: 'All types', value: 'all' },
   ...Object.entries(LIMIT_KINDS).map(([value, k]) => ({ label: k.label, value })),
 ];
 
 // Order limits library: every limit with what it sets and who it applies to.
-// Create limit opens a menu of the three kinds (each with its description, like
+// Create limit opens a menu of the two kinds (each with its description, like
 // Add limit on a location page); the editor opens as a page here (OPEN_LIMIT_EDITOR).
 export function OrderLimits() {
   const { state, dispatch } = useStore();
@@ -64,6 +67,9 @@ export function OrderLimits() {
         <s-button slot="primary-action" variant="primary" commandFor={createId}>
           {create.content}
         </s-button>
+        <s-button slot="secondary-actions" onClick={() => dispatch({ type: 'NAVIGATE', view: 'limitTests' })}>
+          Run tests
+        </s-button>
         {createMenu}
         <s-section>
           <EmptyBlock heading="Set rules for what buyers can order" action={create}>
@@ -80,13 +86,11 @@ export function OrderLimits() {
     .filter((l) => (type === 'all' || l.kind === type) && (!q || l.name.toLowerCase().includes(q)))
     .sort((a, b) => a.name.localeCompare(b.name));
   const edit = (l) => dispatch({ type: 'OPEN_LIMIT_EDITOR', limit: l });
-  // Turning a limit on (or off, when it covered a clash) can make limits conflict:
-  // warn first, as saving does.
+  // Turning a limit on: the other limits it overlaps are shown first, as when
+  // saving it — notes, it still turns on. Turning one off needs no check.
   const toggle = (l) => {
-    const on = l.status !== 'Active';
-    const next = all.map((x) => (x.id === l.id ? { ...x, status: on ? 'Active' : 'Inactive' } : x));
-    const found = newConflicts(state.db, next, on ? l.id : null);
-    if (found.length) setConfirmToggle({ limit: l, on, conflicts: found });
+    const found = l.status === 'Active' ? [] : limitOverlaps(withCatalog(state.db), { ...l, status: 'Active' }).filter((o) => !o.soft);
+    if (found.length) setConfirmToggle({ limit: l, overlaps: found });
     else dispatch({ type: 'TOGGLE_LIMIT_STATUS', id: l.id });
   };
 
@@ -94,6 +98,10 @@ export function OrderLimits() {
     <s-page heading="Order limits">
       <s-button slot="primary-action" variant="primary" commandFor={createId}>
         {create.content}
+      </s-button>
+      {/* The order-limit test console (#/b2b/order-limit-tests). */}
+      <s-button slot="secondary-actions" onClick={() => dispatch({ type: 'NAVIGATE', view: 'limitTests' })}>
+        Run tests
       </s-button>
       {createMenu}
       <s-stack gap="base">
@@ -127,6 +135,8 @@ export function OrderLimits() {
               {limits.map((l) => {
                 const isOff = l.status !== 'Active';
                 const id = `${rowId}-${l.id}`;
+                // Live contracts hold it: it can't be turned off or deleted outside them.
+                const held = contractsHolding(state.db, l.id);
                 return (
                   <s-table-row key={l.id} clickDelegate={`${id}-open`}>
                     <s-table-cell>
@@ -137,14 +147,15 @@ export function OrderLimits() {
                     <s-table-cell>{LIMIT_KINDS[l.kind].label}</s-table-cell>
                     <s-table-cell>
                       <div style={{ whiteSpace: 'normal', maxWidth: 320 }}>
-                        <s-text>{limitSummary(l, state.db)}</s-text>
+                        {/* A product limit with several rules reads as a count; open it for the rules. */}
+                        <s-text>{l.kind === 'product' && productRules(l).length > 1 ? `${productRules(l).length} rules` : limitSummary(l, state.db)}</s-text>
                       </div>
                     </s-table-cell>
                     <s-table-cell>
                       <s-text color={isLimitAssigned(l) ? undefined : 'subdued'}>{limitTargetsLabel(l, state.db)}</s-text>
                     </s-table-cell>
                     <s-table-cell>
-                      <s-badge tone={isOff ? undefined : 'success'}>{isOff ? 'Inactive' : 'Active'}</s-badge>
+                      <s-badge tone={STATE_TONE[limitState(l)]}>{limitState(l)}</s-badge>
                     </s-table-cell>
                     <s-table-cell>
                       <s-stack direction="inline" gap="small-400" justifyContent="end">
@@ -152,13 +163,14 @@ export function OrderLimits() {
                           icon={isOff ? 'toggle-off' : 'toggle-on'}
                           variant="tertiary"
                           accessibilityLabel={isOff ? 'Turn on' : 'Turn off'}
+                          disabled={!isOff && held.length > 0}
                           interestFor={`${id}-toggle-tip`}
                           onClick={(e) => {
                             e.stopPropagation();
                             toggle(l);
                           }}
                         />
-                        <s-tooltip id={`${id}-toggle-tip`}>{isOff ? 'Turn on' : 'Turn off'}</s-tooltip>
+                        <s-tooltip id={`${id}-toggle-tip`}>{isOff ? 'Turn on' : held.length ? lockedTip(held, 'turn off') : 'Turn off'}</s-tooltip>
                         <s-button
                           icon="edit"
                           variant="tertiary"
@@ -175,13 +187,14 @@ export function OrderLimits() {
                           variant="tertiary"
                           tone="critical"
                           accessibilityLabel="Delete limit"
+                          disabled={held.length > 0}
                           interestFor={`${id}-delete-tip`}
                           onClick={(e) => {
                             e.stopPropagation();
                             setConfirmDelete(l);
                           }}
                         />
-                        <s-tooltip id={`${id}-delete-tip`}>Delete limit</s-tooltip>
+                        <s-tooltip id={`${id}-delete-tip`}>{held.length ? lockedTip(held, 'delete') : 'Delete limit'}</s-tooltip>
                       </s-stack>
                     </s-table-cell>
                   </s-table-row>
@@ -205,7 +218,6 @@ export function OrderLimits() {
             <s-paragraph>
               Buyers it applies to ({limitTargetsLabel(confirmDelete, state.db)}) can check out without it right away. This can’t be undone.
             </s-paragraph>
-            <DeleteLimitConflicts db={state.db} id={confirmDelete.id} />
           </s-stack>
           <s-button
             slot="primary-action"
@@ -225,11 +237,8 @@ export function OrderLimits() {
       )}
 
       {confirmToggle && (
-        <Modal onClose={() => setConfirmToggle(null)} heading={`${confirmToggle.on ? 'Turn on' : 'Turn off'} ${confirmToggle.limit.name}?`}>
-          <s-stack gap="small">
-            <s-paragraph>{confirmToggle.on ? 'Where these limits apply together:' : 'Without it, these limits conflict:'}</s-paragraph>
-            <LimitConflictList conflicts={confirmToggle.conflicts} />
-          </s-stack>
+        <Modal onClose={() => setConfirmToggle(null)} heading={`Turn on ${confirmToggle.limit.name}?`}>
+          <LimitOverlapMessage subject="it" />
           <s-button
             slot="primary-action"
             variant="primary"
@@ -238,7 +247,7 @@ export function OrderLimits() {
               setConfirmToggle(null);
             }}
           >
-            {confirmToggle.on ? 'Turn on anyway' : 'Turn off anyway'}
+            Turn on
           </s-button>
           <s-button slot="secondary-actions" onClick={() => setConfirmToggle(null)}>
             Cancel

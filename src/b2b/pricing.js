@@ -148,7 +148,7 @@ export function baseInScope(base, sku) {
   if (!base) return false;
   const st = base.scopeType;
   if (!st || st === 'all') return true;
-  if (st === 'collection') return (COLLECTIONS[base.collection] || []).includes(sku);
+  if (st === 'collection') return scopeCollections(base).some((c) => (COLLECTIONS[c] || []).includes(sku));
   if (st === 'products') return (base.selectedProducts || []).includes(sku);
   return true;
 }
@@ -497,21 +497,28 @@ export function ruleAdjustmentLabel(rule) {
   return rule.rule === 'increase' ? `+${unit}` : `${unit} off`;
 }
 
+// What a base pricing is made of, as the editor's Settings summary says it:
+// "2 rules · 3 overrides", or "No rules".
+export function calculationLabel(policy) {
+  const count = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
+  const rules = (policy.conditionalRules || []).length;
+  const overrides = Object.keys(policy.variantAdjustments || {}).length;
+  return [rules ? count(rules, 'rule') : null, overrides ? count(overrides, 'override') : null].filter(Boolean).join(' · ') || 'No rules';
+}
+
+// The segment of products a quantity pricing covers, as its editor names the
+// choice — not the collections, products or tags themselves.
 export const scopeTypeLabel = (policy) => {
   if (!policy) return '';
   switch (policy.scopeType) {
     case 'all':
       return 'All products';
-    case 'collection': {
-      const cs = scopeCollections(policy);
-      return cs.length === 1 ? cs[0] : cs.length ? `${cs.length} collections` : 'Collection';
-    }
+    case 'collection':
+      return 'Specific collections';
     case 'products':
-      return `${(policy.selectedProducts || []).length} products`;
-    case 'tags': {
-      const ts = policy.selectedTags || [];
-      return ts.length === 1 ? `Tag: ${ts[0]}` : `${ts.length} product tags`;
-    }
+      return 'Specific products';
+    case 'tags':
+      return 'Product tags';
     default:
       return '';
   }

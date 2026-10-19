@@ -49,8 +49,26 @@
 - **Rule cụ thể hơn thắng:** của riêng location → của company → store-wide. Nhờ vậy merchant cho một khách lớn mức
   minimum thấp hơn mọi người được. Ví dụ: Vinh Phat $200 thay store-wide $500.
 - **Cùng cấp thì rule chặt hơn thắng:** minimum cao hơn, maximum hoặc ngưỡng thấp hơn.
+- **Riêng số lượng của một sản phẩm, cùng cấp thì limit mới nhất thắng** (limit tạo sau cùng). Ví dụ company đang
+  có pack 12, tạo thêm limit pack 6 cho company đó thì pack 6 áp dụng. Limit store-wide mới không thắng được limit
+  riêng của company, vì cụ thể hơn vẫn xét trước.
+- **Customer D2C thuộc nhiều segment (nhiều customer tag):** với mỗi loại limit, customer theo segment của limit
+  **mới nhất** áp qua tag; limit trên các tag khác của customer đó không áp. Nhờ vậy hai segment không cộng thành
+  một đơn không check out được (ví dụ tag A min $500 + tag B max $300). Hai limit trên **cùng một tag** vẫn cộng như
+  thường (order setting chặt hơn thắng, số lượng sản phẩm limit mới hơn thắng). Khi lưu một limit theo tag mà các tag
+  khác đã có limit cùng loại thì hiện câu chung về trùng (xem dưới); không tra customer nào. Ở checkout, function đọc
+  tag của buyer rồi tính tại chỗ (không tính sẵn theo từng customer).
 - **So theo từng thiết lập**, không theo cả rule. Một rule store-wide có thể bị thay phần minimum nhưng vẫn giữ phần
   maximum.
+- **Báo khi limit trùng nhau, không chặn — một câu chung.** App so từng cặp limit (không tính theo từng location hay
+  theo giá) để biết có trùng không, nhưng chỉ hiện **một câu chung**, không nêu limit, sản phẩm, giá trị hay địa điểm:
+  "Some buyers or products this limit covers already have other limits, so they may overlap. Review your other limits
+  to make sure orders go through as you expect." Luật áp dụng nằm ở ô **When limits overlap** cạnh editor.
+  - Hiện khi: limit đang tạo cụ thể hơn limit đã có ở chỗ đó và cùng đặt một thiết lập / cùng có một sản phẩm; hoặc
+    min của limit này cao hơn max của limit kia, pack không khớp min / max (ở mọi cấp); hoặc limit theo customer tag
+    mà tag khác đã có limit cùng loại. Cùng cấp hoặc rộng hơn (không kẹt) thì không hiện.
+  - Banner màu vàng khi có thể làm kẹt đơn, xanh khi chỉ là trùng. Hiện khi lưu limit, khi bật limit ở danh sách và
+    khi kích hoạt contract. Merchant vẫn luôn lưu được.
 - **Product limit xét theo từng sản phẩm, nguyên cả rule:** không trộn min của rule này với increment của rule kia, vì
   Shopify yêu cầu min / max là bội của increment.
 - Trên thẻ của location, rule bị thay hiện **gạch ngang**, kèm "Replaced here by {tên rule}".
@@ -94,6 +112,10 @@ merchant quyết định. Dữ liệu mẫu có hai đơn: #1045 (ABC Constructi
 - **Approve:** draft order được hoàn tất thành đơn thật, trạng thái chuyển sang **Unfulfilled**.
 - **Decline:** hỏi lại trước khi làm. Draft bị huỷ, buyer được báo, có thể sửa đơn rồi gửi lại. Trạng thái chuyển sang
   **Declined**.
+  - Trong modal xác nhận có checkbox **Add a message for the buyer**: tick thì hiện ô **Message to the buyer** (không bắt
+    buộc, tối đa 500 ký tự) để giải thích vì sao từ chối.
+  - Lời nhắn hiện trên thẻ đơn bị từ chối ở storefront (B2B Portal → Orders, mục "Message from the seller"), và ở dòng
+    đơn trong Order history / tab Orders của admin ("Your message to the buyer: …").
 - Cả hai thao tác đều ghi vào activity của company.
 - Analytics chỉ tính đơn Fulfilled / Paid, nên duyệt hay từ chối không làm đổi số liệu.
 
@@ -121,6 +143,19 @@ Rule mẫu cho Watson Co · Phố Thái Hà (`quatnap.of@gmail.com`):
   Buyer message do merchant tự viết cũng được ghép tên dòng hàng phía trước.
 - Vượt ngưỡng duyệt thì thay Check out bằng **Submit order for review**, đơn được gửi cho merchant. Demo hiện chỉ báo
   "Order sent for review" và xoá cart.
+
+**My account → B2B Portal → Orders**
+- Trang **Orders** là của Shopify, app không thêm dòng vào đó được, nên đơn gửi duyệt nằm trên trang của app: panel
+  **Orders** trong B2B Portal (trước là "Recent orders"), chung với các đơn thường. Chỉ buyer B2B có đơn gửi duyệt.
+- Mỗi đơn một thẻ có status: đơn thường giữ status của Shopify (Fulfilled…); đơn gửi duyệt là **Waiting for review**
+  hoặc **Declined**, kèm ngày, sản phẩm, số tiền và lý do ("Over your $10,000 limit" / "…monthly limit"). Đơn được
+  duyệt đã thành order, nên hiện là order đó kèm dòng "Approved after review". Chỉ order thật có nút Request a quote.
+- Đơn mới xếp trước. Hàng nút **xem theo status**: All · Waiting for review · Fulfilled · Declined… (chỉ những status
+  đang có, kèm số đơn); bấm một nút thì chỉ hiện đơn có status đó.
+- Gửi đơn đi duyệt xong, buyer được đưa tới B2B Portal.
+- Dữ liệu: các đơn bị giữ để duyệt mà B2B app đẩy sang storefront, kèm kết quả (giống order limits và contracts; mẫu:
+  #1045 của John Nguyen ở ABC Construction · Hanoi đang chờ), đơn storefront vừa gửi mà app chưa nhận, và lịch sử
+  mẫu của tài khoản demo (#1036 đã duyệt, #1030 bị từ chối).
 
 ## 8. Cách chặn đơn ở bản thật (đề xuất kỹ thuật)
 

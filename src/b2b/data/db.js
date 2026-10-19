@@ -47,7 +47,7 @@ const companies = [
       { id: 'Q-1051', status: 'Negotiating', context: 'Special project pricing', updated: 'Jul 16' },
       { id: 'Q-0982', status: 'Accepted', context: '2026 annual terms', updated: 'Jan 3' }
     ],
-    exceptions: [{ id: '#1045', reason: 'Above the $10,000 review threshold', location: 'Hanoi', amount: 12400, status: 'Needs review' }],
+    exceptions: [{ id: '#1045', reason: 'Above the $10,000 maximum', location: 'Hanoi', amount: 12400, status: 'Needs review' }],
     activity: [
       { when: 'Jul 15', what: 'Order #1045 held for your review' },
       { when: 'Jul 12', what: 'ABC Hanoi Negotiated reapplied to Hanoi' },
@@ -374,32 +374,39 @@ const quotes = [
   }
 ];
 
-// Order limits (see limits.js). Vinh Phat's own minimum replaces the store-wide one
-// for its location. The review thresholds held orders #1045 (ABC Hanoi's own, $10,000)
-// and #1048 (store-wide, $20,000) — see `heldBy` in orderSeed.
+// Order limits (see limits.js). Each setting says what it does: `set` a value,
+// `inherit` (left to the wider limits) or `none` (no limit here). Vinh Phat's own
+// minimum replaces the store-wide one for its location. The maximums sent for
+// review held orders #1045 (ABC Hanoi's own, $10,000) and #1048 (store-wide,
+// $20,000) — see `heldAt` in orderSeed.
+const inherit = () => ({ mode: 'inherit' });
+const set = (value) => ({ mode: 'set', value });
+const orderSettings = (s) => ({ minValue: inherit(), maxValue: inherit(), minQty: inherit(), maxQty: inherit(), ...s });
 const limits = [
-  { id: 'ol1', name: 'Wholesale minimum', kind: 'order', status: 'Active', minValue: 500, maxValue: null, minQty: null, maxQty: null, min: null, max: null, increment: null, threshold: null,
-    scopeType: 'products', collection: '', selectedProducts: [], storeWide: true, companyIds: [], locationKeys: [], message: '' },
-  { id: 'ol2', name: 'Vinh Phat low minimum', kind: 'order', status: 'Active', minValue: 200, maxValue: null, minQty: null, maxQty: null, min: null, max: null, increment: null, threshold: null,
-    scopeType: 'products', collection: '', selectedProducts: [], storeWide: false, companyIds: ['c2'], locationKeys: [], message: '' },
-  { id: 'ol3', name: 'Filter case packs', kind: 'product', status: 'Active', minValue: null, maxValue: null, minQty: null, maxQty: null, min: 12, max: null, increment: 12, threshold: null,
-    scopeType: 'products', collection: '', selectedProducts: ['FIL-XL', 'FIL-STD'], storeWide: false, companyIds: ['c1', 'c2'], locationKeys: [], message: '' },
-  { id: 'ol4', name: 'ABC Hanoi review', kind: 'review', status: 'Active', minValue: null, maxValue: null, minQty: null, maxQty: null, min: null, max: null, increment: null, threshold: 10000,
-    scopeType: 'products', collection: '', selectedProducts: [], storeWide: false, companyIds: [], locationKeys: ['c1::l1'], message: '' },
-  { id: 'ol5', name: 'Large order review', kind: 'review', status: 'Active', minValue: null, maxValue: null, minQty: null, maxQty: null, min: null, max: null, increment: null, threshold: 20000,
-    scopeType: 'products', collection: '', selectedProducts: [], storeWide: true, companyIds: [], locationKeys: [], message: '' },
+  { id: 'ol1', name: 'Wholesale minimum', kind: 'order', status: 'Active', maxAction: 'block', settings: orderSettings({ minValue: set(500) }),
+    storeWide: true, companyIds: [], locationKeys: [], message: '' },
+  { id: 'ol2', name: 'Vinh Phat low minimum', kind: 'order', status: 'Active', maxAction: 'block', settings: orderSettings({ minValue: set(200) }),
+    storeWide: false, companyIds: ['c2'], locationKeys: [], message: '' },
+  { id: 'ol3', name: 'Filter case packs', kind: 'product', status: 'Active', maxAction: 'block',
+    rules: [{ id: 'r1', scopeType: 'products', collection: '', selectedProducts: ['FIL-XL', 'FIL-STD'], min: set(12), max: inherit(), increment: set(12) }],
+    storeWide: false, companyIds: ['c1', 'c2'], locationKeys: [], message: '' },
+  { id: 'ol4', name: 'ABC Hanoi review', kind: 'order', status: 'Active', maxAction: 'review', settings: orderSettings({ maxValue: set(10000) }),
+    storeWide: false, companyIds: [], locationKeys: ['c1::l1'], message: '' },
+  { id: 'ol5', name: 'Large order review', kind: 'order', status: 'Active', maxAction: 'review', settings: orderSettings({ maxValue: set(20000) }),
+    storeWide: true, companyIds: [], locationKeys: [], message: '' },
 ];
 
 // Agreements (see agreements.js). ABC's CT-301 is live and its terms are the ones
 // assigned above (p1, p8, p30, p6, ol3) — the rest of ABC's pricing is outside it.
 // It ends Aug 20, 2026 — within the renewal reminder. Vinh Phat's CT-305 is a
-// draft for 2027; Song Hong's CT-274 expired (see its activity).
+// draft for 2027; Song Hong's CT-274 expired (see its activity). A version entry's
+// `terms` (ids) becomes its snapshot on load (seedSnapshots).
 const agreements = [
   { id: 'ag1', number: 'CT-301', name: '2026 annual terms', companyId: 'c1', locationIds: null, status: 'Active', version: 2, startDate: '2026-01-03', endDate: '2026-08-20',
     terms: { base: ['p1', 'p8', 'p30'], quantity: ['p6'], limits: ['ol3'] },
     history: [
-      { version: 2, date: '2026-07-12', note: 'Added VLV-40 Contract Price' },
-      { version: 1, date: '2026-01-03', note: 'Activated, from accepted quote Q-0982' },
+      { version: 2, date: '2026-07-12', note: 'Added VLV-40 Contract Price', terms: { base: ['p1', 'p8', 'p30'], quantity: ['p6'], limits: ['ol3'] } },
+      { version: 1, date: '2026-01-03', note: 'Activated', terms: { base: ['p1', 'p8'], quantity: ['p6'], limits: ['ol3'] } },
     ] },
   { id: 'ag2', number: 'CT-305', name: '2027 distributor terms', companyId: 'c2', locationIds: null, status: 'Draft', version: 0, startDate: '2027-01-01', endDate: '2027-12-31',
     terms: { base: ['p1'], quantity: [], limits: ['ol2', 'ol3'] }, history: [] },
@@ -407,7 +414,7 @@ const agreements = [
     terms: { base: ['p8'], quantity: [], limits: [] },
     history: [
       { version: 1, date: '2026-07-01', note: 'Expired' },
-      { version: 1, date: '2025-07-01', note: 'Activated' },
+      { version: 1, date: '2025-07-01', note: 'Activated', terms: { base: ['p8'], quantity: [], limits: [] } },
     ] },
 ];
 
@@ -418,7 +425,7 @@ export const orderSeed = {
     {
       id: '#1045', location: 'Hanoi', buyer: 'John Nguyen', date: '2026-07-15', amount: 12400, lines: 3, po: 'PO-9821',
       pricing: 'ABC Hanoi Negotiated', pricingSource: 'Location price', source: 'Direct checkout',
-      status: 'Needs review', shopifyStatus: 'Draft order', reason: 'Above the $10,000 review threshold', heldBy: 'ol4'
+      status: 'Needs review', shopifyStatus: 'Draft order', reason: 'Above the $10,000 maximum', heldBy: 'ol4', heldAt: { value: 10000, limitId: 'ol4', limitName: 'ABC Hanoi review' }
     },
     {
       id: '#1044', location: 'Hanoi', buyer: 'Le Thu Ha', date: '2026-07-14', amount: 5860, lines: 2, po: 'PO-9814',
@@ -445,7 +452,7 @@ export const orderSeed = {
     {
       id: '#1048', location: 'Da Nang', buyer: 'Bui Quang', date: '2026-08-07', amount: 21500, lines: 8, po: 'PO-4470',
       pricing: 'Distributor Tier 2', pricingSource: 'Company price', source: 'Direct checkout',
-      status: 'Needs review', shopifyStatus: 'Draft order', reason: 'Above the $20,000 review threshold', heldBy: 'ol5'
+      status: 'Needs review', shopifyStatus: 'Draft order', reason: 'Above the $20,000 maximum', heldBy: 'ol5', heldAt: { value: 20000, limitId: 'ol5', limitName: 'Large order review' }
     },
     {
       id: '#1041', location: 'Da Nang', buyer: 'Bui Quang', date: '2026-07-11', amount: 1560, lines: 1, po: 'None',

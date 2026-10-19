@@ -5,6 +5,7 @@
 import { orderSeed } from './data/db.js';
 import { policyById, policyUsageCount, slotIds } from './pricing.js';
 import { newBaseBuilder } from './builders.js';
+import { money } from './format.js';
 
 export const clone = (obj) =>
   typeof structuredClone === 'function' ? structuredClone(obj) : JSON.parse(JSON.stringify(obj));
@@ -244,4 +245,53 @@ export function applyQuotePricingTransfer(db, companyId, lines, transfer) {
   base.variantAdjustments = { ...(base.variantAdjustments || {}), ...overrides };
   base.explicitEnabled = true;
   return 'Quote prices added';
+}
+
+// Order requests from the storefront (a cart over an order maximum sent for review) wait as held
+// orders: draft orders for the merchant to approve or decline. Adds the ones that
+// aren't there yet, numbered after the newest order. Mutates `db`.
+export function injectOrderRequests(db, requests) {
+  const all = (db.companies || []).flatMap((c) => c.orders || []);
+  let next = Math.max(1000, ...all.map((o) => Number(String(o.id).replace(/\D/g, '')) || 0)) + 1;
+  requests.forEach((r) => {
+    const c = (db.companies || []).find((x) => x.id === r.companyId);
+    if (!c || all.some((o) => o.requestId === r.id)) return;
+    const loc = (c.locations || []).find((l) => l.id === r.locationId);
+    const order = {
+      id: `#${next++}`, requestId: r.id, location: loc?.name || '', locationId: r.locationId, buyer: r.buyer, date: r.date, amount: r.amount, lines: r.lines.length, po: '',
+      pricing: r.priceList || '', pricingSource: 'Company price', source: 'Storefront order request',
+      status: 'Needs review', shopifyStatus: 'Draft order', reason: `Above the ${money(r.threshold)} maximum`, heldBy: r.limitId,
+      heldAt: { value: r.threshold, limitId: r.limitId, limitName: r.limitName || '', period: r.period || 'order' }, // what it broke when it was held
+    };
+    c.orders = [order, ...(c.orders || [])];
+    all.push(order);
+  });
+  return db;
+}
+
+// The orders held for the merchant's review (over a maximum sent for review) and
+// what became of them, as the buyer's B2B Portal on the storefront lists them
+// (Orders): `status` 'waiting', 'approved' or 'declined', the location each is for,
+// who sent it, what's in it (a count; the storefront keeps the lines of a request
+// it sent), the maximum it went over and, once declined, the merchant's message to
+// the buyer (`message`, null without one). `requestId`: the storefront request it
+// came from.
+const REVIEW_STATUS = (o) => (o.status === 'Needs review' ? 'waiting' : o.status === 'Declined' ? 'declined' : 'approved');
+export function storefrontHeldOrders(db) {
+  return (db.companies || []).flatMap((c) => (c.orders || [])
+    .filter((o) => o.status === 'Needs review' || o.heldAt)
+    .map((o) => ({
+      status: REVIEW_STATUS(o),
+      id: o.id,
+      requestId: o.requestId || null,
+      companyId: c.id,
+      locationId: o.locationId || (c.locations || []).find((l) => l.name === o.location)?.id || null,
+      buyer: o.buyer,
+      date: o.date,
+      amount: o.amount,
+      lines: o.lines,
+      threshold: o.heldAt?.value ?? null,
+      period: o.heldAt?.period || 'order',
+      message: o.status === 'Declined' ? o.declineMessage || null : null,
+    })));
 }

@@ -7,8 +7,8 @@ import { useWcId } from '../../shared/wc.jsx';
 // With `onApplyLaterChange`, a checkbox under both choices says whether locations
 // added later get it too (`applyLater`) — only for a company with "Automatically
 // add new locations" on, since only then are locations added later. `separate`
-// drops the detail line and puts the location list right under Specific locations.
-// Shared by the Assign modal, the pricing editor and the agreement editor.
+// puts the location list right under Specific locations. Shared by the Assign
+// modal, the pricing editor and the agreement editor.
 export function LocationScopePicker({ company, locationIds, onChange, title = 'Apply to', titleHidden = false, applyLater = false, onApplyLaterChange, separate = false }) {
   const name = useWcId('loc-scope');
   const locations = company?.locations || [];
@@ -20,7 +20,6 @@ export function LocationScopePicker({ company, locationIds, onChange, title = 'A
     onChange(locations.length > 0 && locations.every((l) => next.includes(l.id)) ? null : next);
   };
 
-  const allDetails = onApplyLaterChange ? 'Company pricing.' : 'Company pricing. Locations added later get it too.';
   const laterBox = onApplyLaterChange && company?.autoAddLocations && (
     <s-checkbox
       label="Automatically apply this pricing to locations added later"
@@ -32,29 +31,22 @@ export function LocationScopePicker({ company, locationIds, onChange, title = 'A
   // (renderChildren); it follows the choice, indented to match.
   const locationsBox = some && (
     <s-box paddingInlineStart="large-200">
-      <s-stack gap="small-300">
-        <s-box border="base" borderRadius="base" overflow="hidden">
-          <div style={{ maxHeight: 240, overflowY: 'auto' }}>
-            {locations.map((l, i) => (
-              <React.Fragment key={l.id}>
-                {i > 0 ? <s-divider /> : null}
-                <s-box paddingInline="small" paddingBlock="small-200">
-                  <s-checkbox
-                    label={l.name}
-                    checked={picked.includes(l.id)}
-                    onChange={(e) => setPicked(l.id, e.currentTarget.checked)}
-                  />
-                </s-box>
-              </React.Fragment>
-            ))}
-          </div>
-        </s-box>
-        <s-paragraph color="subdued" fontSize="small">
-          {picked.length
-            ? `${picked.length} of ${locations.length} selected. They get their own pricing, starting from the company’s, so later company changes won’t reach them.`
-            : 'Pick the locations that get this pricing.'}
-        </s-paragraph>
-      </s-stack>
+      <s-box border="base" borderRadius="base" overflow="hidden">
+        <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+          {locations.map((l, i) => (
+            <React.Fragment key={l.id}>
+              {i > 0 ? <s-divider /> : null}
+              <s-box paddingInline="small" paddingBlock="small-200">
+                <s-checkbox
+                  label={l.name}
+                  checked={picked.includes(l.id)}
+                  onChange={(e) => setPicked(l.id, e.currentTarget.checked)}
+                />
+              </s-box>
+            </React.Fragment>
+          ))}
+        </div>
+      </s-box>
     </s-box>
   );
 
@@ -99,7 +91,6 @@ export function LocationScopePicker({ company, locationIds, onChange, title = 'A
       >
         <s-choice value="all" selected={!some}>
           All locations
-          <s-text slot="details">{allDetails}</s-text>
         </s-choice>
         <s-choice value="some" selected={some}>
           Specific locations

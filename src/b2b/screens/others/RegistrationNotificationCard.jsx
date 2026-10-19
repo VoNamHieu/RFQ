@@ -5,7 +5,9 @@ import { useWcId } from '../../../shared/wc.jsx';
 // features/Email/components/RegistrationNotificationCard). A collapsible list of
 // the four registration emails, each with an Active/Inactive badge, an on/off
 // toggle icon and an edit icon. Dimmed and inert until a sender email is connected.
+// The contract emails use the same card under their own heading.
 export function RegistrationNotificationCard({
+  heading = 'Registration form notification',
   notifications,
   isConnected,
   collapsed,
@@ -20,11 +22,11 @@ export function RegistrationNotificationCard({
     <s-section>
       <s-stack gap="small">
         <s-grid gridTemplateColumns="1fr auto" alignItems="center" gap="small-200">
-          <s-heading>Registration form notification</s-heading>
+          <s-heading>{heading}</s-heading>
           <s-button
             variant="tertiary"
             icon={collapsed ? 'caret-down' : 'caret-up'}
-            accessibilityLabel="Toggle registration form notification card"
+            accessibilityLabel={`Toggle ${heading.toLowerCase()} card`}
             onClick={onToggleCollapse}
           />
         </s-grid>

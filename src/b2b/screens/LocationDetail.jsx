@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { locationPricingEntries, scopeLabel, policyStatus } from '../pricing.js';
+import { locationPricingEntries, calculationLabel, scopeTypeLabel, policyStatus } from '../pricing.js';
 import { money } from '../format.js';
 
 import { AssignBuyerModal, GeneralModal, ShippingModal, PAYMENT_TERM_OPTIONS, TAX_SETTINGS, COUNTRY_NAMES } from '../components/LocationModals.jsx';
 import { LocationLimitsCard } from '../components/LocationLimitsCard.jsx';
 import { DeleteLocationsModal } from '../components/tabs/LocationsTab.jsx';
 import { isHeld, heldReason, heldFirst, HeldOrderActions } from '../components/HeldOrders.jsx';
+import { PricingName } from '../components/BasePricingCard.jsx';
+import { contractGiving, lockedTip } from '../agreements.js';
 import { versionFlags } from '../../shared/versions.js';
 import { MenuButton, Tip, useWcId, wcTone, PageHeader, Tabs } from '../../shared/wc.jsx';
 
@@ -43,13 +45,14 @@ export function LocationDetail() {
   const [ordersPage, setOrdersPage] = useState(0);
   const ids = useWcId('loc');
   if (!company || !location) return null;
-  // Add / change / remove pricing on this location (its own list of that kind — see
+  // Add / edit / remove pricing on this location (its own list of that kind — see
   // locationSlotArray), with the same row actions as the company page. Edit opens it
   // for the company: "Who this pricing serves" ticks the locations that get it.
   const addPricing = (kind) => {
     dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, locationId: location.id, kind, mode: 'add' });
   };
-  const pricingActions = (policy, kind) => (
+  // A pricing a live contract gives this location comes off through the contract only.
+  const pricingActions = (policy, kind, ag) => (
     <s-stack direction="inline" gap="small-400" justifyContent="end" alignItems="center">
       <s-button
         icon="edit"
@@ -58,18 +61,15 @@ export function LocationDetail() {
         onClick={() => dispatch({ type: 'OPEN_EDITOR', policy, context: { mode: 'edit', companyId: company.id } })}
       />
       <s-button
-        icon="exchange"
-        variant="tertiary"
-        accessibilityLabel={`Change ${policy.name}`}
-        onClick={() => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, locationId: location.id, kind, mode: 'swap', swapId: policy.id })}
-      />
-      <s-button
         icon="x-circle"
         variant="tertiary"
         tone="critical"
         accessibilityLabel={`Remove ${policy.name}`}
+        disabled={!!ag}
+        interestFor={ag ? `${ids}-lock-${kind}-${policy.id}` : undefined}
         onClick={() => dispatch({ type: 'REMOVE_LOCATION_PRICING', companyId: company.id, locationId: location.id, kind, policyId: policy.id })}
       />
+      {ag ? <s-tooltip id={`${ids}-lock-${kind}-${policy.id}`}>{lockedTip([ag], 'remove')}</s-tooltip> : null}
     </s-stack>
   );
 
@@ -77,7 +77,7 @@ export function LocationDetail() {
   // Scheduled / Inactive ones listed too (with their status), so each can be edited or removed.
   const { bases, quantities } = locationPricingEntries(company, location, policies, { includeInactive: true });
   const buyers = (company.contacts || []).filter((c) => c.locations === location.name);
-  // Orders held by a review threshold sit on top, with Approve / Decline (order limits).
+  // Orders held by an order maximum sent for review sit on top, with Approve / Decline (order limits).
   const reviewOrders = versionFlags().orderLimits;
   const locOrders = (company.orders || [])
     .filter((o) => o.location === location.name)
@@ -102,21 +102,23 @@ export function LocationDetail() {
   // Pricing rows of the picked kind: the location's own, else inherited from the company.
   const pricingRow = (e, kind) => {
     const status = policyStatus(e.policy, state.db);
+    const ag = contractGiving(state.db, company, e.policy.id, location.id);
     return (
       <s-table-row key={`${kind}-${e.policy.id}`}>
         <s-table-cell>
           <s-stack gap="small-500">
-            <s-text>{e.policy.name}</s-text>
+            <PricingName policy={e.policy} contract={ag} />
             {e.source === 'COMPANY' ? (
               <s-text color="subdued" fontSize="small">Inherited from {company.name}</s-text>
             ) : null}
           </s-stack>
         </s-table-cell>
-        <s-table-cell>{scopeLabel(e.policy)}</s-table-cell>
+        {/* Base: what it's made of; quantity: the products it covers. */}
+        <s-table-cell>{kind === 'quantity' ? scopeTypeLabel(e.policy) : calculationLabel(e.policy)}</s-table-cell>
         <s-table-cell>
           <s-badge tone={wcTone(status.tone)}>{status.label}</s-badge>
         </s-table-cell>
-        <s-table-cell>{pricingActions(e.policy, kind)}</s-table-cell>
+        <s-table-cell>{pricingActions(e.policy, kind, ag)}</s-table-cell>
       </s-table-row>
     );
   };
@@ -237,7 +239,7 @@ export function LocationDetail() {
                 <s-table>
                   <s-table-header-row>
                     <s-table-header listSlot="primary">Pricing</s-table-header>
-                    <s-table-header listSlot="labeled">Products</s-table-header>
+                    <s-table-header listSlot="labeled">{pricingKind === 'quantity' ? 'Products' : 'Assignments'}</s-table-header>
                     <s-table-header listSlot="secondary">Status</s-table-header>
                     <s-table-header listSlot="inline"><s-text accessibilityVisibility="exclusive">Actions</s-text></s-table-header>
                   </s-table-header-row>
@@ -329,7 +331,7 @@ export function LocationDetail() {
                     <s-button onClick={() => dispatch({ type: 'OPEN_COMPANY', id: company.id, tab: 'orders' })}>View all company orders</s-button>,
                   )}
                 </s-box>
-                {/* Held by a review threshold: the decision sits above the list (this column is too narrow for a row of buttons). */}
+                {/* Held for review: the decision sits above the list (this column is too narrow for a row of buttons). */}
                 {reviewOrders && locOrders.filter(isHeld).map((o) => (
                   <s-box key={o.id} paddingInline="small" paddingBlockEnd="small">
                     <s-banner tone="warning" heading={`Order ${o.id} for ${money(o.amount)} is waiting for your review`}>
@@ -364,6 +366,7 @@ export function LocationDetail() {
                                 <s-text fontWeight="medium">{o.id}</s-text>
                                 {o.po && o.po !== 'None' ? <s-text color="subdued" fontSize="small">{o.po}</s-text> : null}
                                 {reviewOrders && isHeld(o) ? <s-text tone="caution" fontSize="small">{heldReason(o, state.db)}</s-text> : null}
+                                {o.declineMessage ? <s-text color="subdued" fontSize="small">{`Your message to the buyer: “${o.declineMessage}”`}</s-text> : null}
                               </s-stack>
                             </s-table-cell>
                             <s-table-cell>{o.buyer}</s-table-cell>

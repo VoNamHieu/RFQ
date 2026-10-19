@@ -1,10 +1,25 @@
-import React, { createContext, useContext, useReducer } from 'react';
+import React, { createContext, useContext, useEffect, useReducer } from 'react';
 import { shopifyCompanies } from './data/directory.js';
-import { policyUsageCount, slotIds, hasOwnSlot } from './pricing.js';
+import { policyUsageCount, slotIds, hasOwnSlot, TODAY } from './pricing.js';
 import { newRule, newBaseBuilder, newQuantityBuilder } from './builders.js';
 import { buildInitialState } from './initialState.js';
-import { newLimit, normalizeLimit } from './limits.js';
-import { newAgreement, applyAgreement, unapplyAgreement, agreementChanges, isLive, liveStatus, fmtDay } from './agreements.js';
+import { newLimit, normalizeLimit, upgradeLimits, toDraft } from './limits.js';
+import { versionFlags } from '../shared/versions.js';
+import {
+  newAgreement,
+  applyAgreement,
+  unapplyAgreement,
+  agreementChanges,
+  isLive,
+  liveStatus,
+  fmtDay,
+  addVersion,
+  closeAgreement,
+  takeEffect,
+  newlyBroken,
+  recordTermEdit,
+  storefrontContracts,
+} from './agreements.js';
 import { todayISO, registrationDuplicates, isD2CRegistration } from './registrations.js';
 import {
   clone,
@@ -16,7 +31,10 @@ import {
   demoPolicyId,
   recomputeBuyers,
   applyQuotePricingTransfer,
+  injectOrderRequests,
+  storefrontHeldOrders,
 } from './dbHelpers.js';
+import { publishOrderLimits, publishedOrderLimits, publishContracts, publishHeldOrders, readOrderRequests, removeOrderRequests, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, IS_DEMO } from '../shared/persistence.js';
 
 // The B2B god file rebuilt #app from a single `state` on every action. Here that
 // is a reducer over a view state machine + the mutable demo db. The db helpers,
@@ -314,9 +332,11 @@ function reducer(state, action) {
       // Case 1 (same email, same company) is merge or decline only. The page shows
       // those choices instead of Approve, so a match does nothing here.
       const d = registrationDuplicates(db, reg);
-      // D2C: a Shopify customer, no company — unless the email is a company contact (merge or decline).
+      // D2C: a Shopify customer, no company. A company contact becomes one only when the
+      // merchant picks it (createNew) — they leave the company.
       if (isD2CRegistration(reg)) {
-        if (d.blocking) return state;
+        if (d.blocking && !action.createNew) return state;
+        if (d.contactOf) removeContactFrom(db, d.contactOf, reg.email, 'D2C');
         approveAsCustomer(db, reg, d.customer);
         return { ...state, db, toast: 'Registration approved' };
       }
@@ -549,6 +569,20 @@ function reducer(state, action) {
       const c = db.companies.find((x) => x.id === action.companyId);
       if (c) removeCompanySlot(c, 'quantity', action.policyId);
       return { ...state, db, toast: 'Quantity pricing removed' };
+    }
+    // Whether locations added later get a pricing (the switch on the company's
+    // Pricing tab, with auto-add locations on). Today's locations keep what they have.
+    case 'SET_PRICING_APPLY_LATER': {
+      const db = clone(state.db);
+      const c = db.companies.find((x) => x.id === action.companyId);
+      const locs = c?.locations || [];
+      const holders = locs.filter((l) => locationHolds(c, l, action.kind, action.policyId)).map((l) => l.id);
+      if (!holders.length) return state;
+      const priority = [c, ...locs]
+        .map((h) => (Array.isArray(h.pricing?.[action.kind]) ? h.pricing[action.kind] : []).find((e) => e.id === action.policyId))
+        .find(Boolean)?.priority;
+      syncCompanyLocations(c, action.kind, action.policyId, (l) => holders.includes(l.id), priority, action.on);
+      return { ...state, db, toast: action.on ? 'Auto-apply turned on' : 'Auto-apply turned off' };
     }
     // ----- Assign one policy to many targets (companies / customers / tags / global) -----
     case 'OPEN_MULTI_ASSIGN':
@@ -895,10 +929,13 @@ function reducer(state, action) {
         }
         return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: 'Pricing forked' };
       }
+      const before = clone(existing);
       Object.assign(existing, draft, { id: existing.id });
       // Library edit (not scoped to a Company) → sync the assignment choices.
       if (!state.editorContext?.companyId) applyAssignment(db, existing.id, draft);
       else if (pickLocations) syncCompanyLocations(scopeCompany, kind, existing.id, wanted, draft.priority, later);
+      // Live contracts holding it get a version with its new terms.
+      recordTermEdit(db, before, existing, false);
       return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: 'Pricing saved' };
     }
     // ----- Pricing library actions -----
@@ -911,6 +948,10 @@ function reducer(state, action) {
           removeCompanySlot(holder, 'base', action.id);
           removeCompanySlot(holder, 'quantity', action.id);
         });
+      });
+      // A draft contract drops it (a live one can't lose it — see newlyBroken).
+      (db.agreements || []).forEach((a) => {
+        if (a.status === 'Draft') a.terms = { ...a.terms, base: a.terms.base.filter((x) => x !== action.id), quantity: a.terms.quantity.filter((x) => x !== action.id) };
       });
       return { ...state, db, toast: 'Pricing deleted' };
     }
@@ -996,9 +1037,20 @@ function reducer(state, action) {
       const msg = applyQuotePricingTransfer(db, companyId, lines, transfer) || 'Prices unchanged';
       return { ...state, db, buildQuotes: null, toast: msg };
     }
-    // ----- Orders held by a review threshold (order limits) -----
+    // Order limits changed in another window (the full app, or the one docked in
+    // the storefront).
+    case 'SYNC_LIMITS':
+      return { ...state, db: { ...state.db, limits: action.limits } };
+    // An order request just sent from the storefront (in another tab).
+    case 'SYNC_ORDER_REQUESTS': {
+      const db = clone(state.db);
+      injectOrderRequests(db, action.requests);
+      return { ...state, db };
+    }
+    // ----- Orders held by an order maximum sent for review (order limits) -----
     // Approving completes the held draft order into a real order; declining cancels
-    // it (the buyer is told, and can change the order and submit it again).
+    // it (the buyer is told, and can change the order and submit it again) — with
+    // the merchant's message to the buyer, if they wrote one (`declineMessage`).
     case 'APPROVE_ORDER':
     case 'DECLINE_ORDER': {
       const approve = action.type === 'APPROVE_ORDER';
@@ -1006,8 +1058,9 @@ function reducer(state, action) {
       const c = db.companies.find((x) => x.id === action.companyId);
       const o = c?.orders?.find((x) => x.id === action.orderId);
       if (!o) return state;
-      Object.assign(o, approve ? { status: 'Unfulfilled', shopifyStatus: 'Unfulfilled' } : { status: 'Declined', shopifyStatus: 'Cancelled' });
-      c.activity = [{ when: 'Today', what: `Order ${o.id} ${approve ? 'approved' : 'declined'} after review` }, ...(c.activity || [])];
+      const message = !approve && action.message ? action.message : null;
+      Object.assign(o, approve ? { status: 'Unfulfilled', shopifyStatus: 'Unfulfilled' } : { status: 'Declined', shopifyStatus: 'Cancelled', declineMessage: message });
+      c.activity = [{ when: 'Today', what: `Order ${o.id} ${approve ? 'approved' : 'declined'} after review${message ? ', with a message to the buyer' : ''}` }, ...(c.activity || [])];
       return { ...state, db, toast: `Order ${o.id} ${approve ? 'approved' : 'declined'}` };
     }
     // ----- Agreements (see agreements.js) -----
@@ -1026,7 +1079,8 @@ function reducer(state, action) {
       return { ...state, ...(state.agreementEditor?.returnTo || {}), agreementEditor: null };
     // Save the editor's draft (or `action.draft`, e.g. Activate from the Agreement
     // tab). Activating, or saving an active agreement, applies its terms now: the
-    // previous version's terms come off, the new ones go on, as a new version.
+    // previous version's terms come off, the new ones go on, as a new version. A next
+    // contract starting now replaces the company's Active one.
     case 'SAVE_AGREEMENT': {
       const db = clone(state.db);
       const draft = clone(action.draft || state.agreementEditor.draft);
@@ -1035,29 +1089,28 @@ function reducer(state, action) {
       const wasLive = isLive(prev);
       const goLive = wasLive || !!action.activate;
       if (!draft.id) draft.id = `ag${Date.now()}`;
+      db.agreements = prev ? db.agreements.map((a) => (a.id === draft.id ? draft : a)) : [...(db.agreements || []), draft];
       if (goLive) {
         // Live terms come off first; they go back on if it's (still) in its dates.
         if (prev?.status === 'Active') unapplyAgreement(db, prev);
-        draft.status = liveStatus(draft);
-        if (draft.status === 'Active') applyAgreement(db, draft);
-        draft.version = (prev?.version || 0) + 1;
-        const note = wasLive ? agreementChanges(prev, draft, db) : draft.status === 'Scheduled' ? `Activated, starts ${fmtDay(draft.startDate)}` : 'Activated';
-        draft.history = [{ version: draft.version, date: todayISO(), note }, ...(prev?.history || [])];
+        const status = liveStatus(draft);
+        if (status === 'Scheduled') draft.status = 'Scheduled';
+        else if (prev?.status === 'Active') applyAgreement(db, draft);
+        else takeEffect(db, draft);
+        const note = wasLive ? agreementChanges(prev, draft, db) : status === 'Scheduled' ? `Activated, starts ${fmtDay(draft.startDate)}` : 'Activated';
+        addVersion(db, draft, note);
       }
-      db.agreements = prev ? db.agreements.map((a) => (a.id === draft.id ? draft : a)) : [...(db.agreements || []), draft];
       const returnTo = action.draft ? {} : state.agreementEditor?.returnTo || {};
       const toast = wasLive ? `Version ${draft.version} saved` : !goLive ? 'Draft saved' : draft.status === 'Scheduled' ? `${draft.number} scheduled` : `${draft.number} activated`;
       return { ...state, db, ...returnTo, agreementEditor: action.draft ? state.agreementEditor : null, toast };
     }
-    // Ending takes the agreement's terms off the company; it stays as history.
+    // Ending takes the agreement's terms off the company; it stays as history. A
+    // scheduled one hasn't been applied yet: it's cancelled before it starts.
     case 'END_AGREEMENT': {
       const db = clone(state.db);
       const ag = (db.agreements || []).find((a) => a.id === action.id);
       if (!isLive(ag)) return state;
-      // A scheduled one hasn't been applied yet.
-      if (ag.status === 'Active') unapplyAgreement(db, ag);
-      ag.status = 'Ended';
-      ag.history = [{ version: ag.version, date: todayISO(), note: 'Ended' }, ...(ag.history || [])];
+      closeAgreement(db, ag, 'Ended', ag.status === 'Scheduled' ? 'Cancelled before it started' : 'Ended');
       return { ...state, db, toast: `${ag.number} ended` };
     }
     // Renew: a new end date, same terms, as the next version.
@@ -1066,8 +1119,7 @@ function reducer(state, action) {
       const ag = (db.agreements || []).find((a) => a.id === action.id);
       if (!isLive(ag) || !action.endDate) return state;
       ag.endDate = action.endDate;
-      ag.version += 1;
-      ag.history = [{ version: ag.version, date: todayISO(), note: `Renewed until ${fmtDay(action.endDate)}` }, ...(ag.history || [])];
+      addVersion(db, ag, `Renewed until ${fmtDay(action.endDate)}`);
       return { ...state, db, toast: `${ag.number} renewed` };
     }
     case 'DELETE_AGREEMENT':
@@ -1081,7 +1133,7 @@ function reducer(state, action) {
     // The editor is a page in the Order limits view. Opened from somewhere else (a
     // location's Order limits card), it goes back there on save or cancel.
     case 'OPEN_LIMIT_EDITOR': {
-      const draft = action.limit ? clone(action.limit) : { ...newLimit(action.kind), ...(action.preset || {}) };
+      const draft = action.limit ? toDraft(action.limit) : { ...newLimit(action.kind), ...(action.preset || {}) };
       return { ...state, view: 'limits', limitEditor: { draft, returnTo: action.returnTo || null } };
     }
     case 'LIMIT_EDITOR_PATCH':
@@ -1093,11 +1145,18 @@ function reducer(state, action) {
       const isNew = !limit.id;
       if (isNew) limit.id = `ol${Date.now()}`;
       const limits = state.db.limits || [];
-      const db = { ...state.db, limits: isNew ? [...limits, limit] : limits.map((l) => (l.id === limit.id ? limit : l)) };
+      const db = { ...state.db, limits: isNew ? [...limits, limit] : limits.map((l) => (l.id === limit.id ? limit : l)), agreements: clone(state.db.agreements || []) };
+      // Live contracts holding it get a version with its new terms.
+      const before = limits.find((l) => l.id === limit.id);
+      if (before) recordTermEdit(db, before, limit, true);
       return { ...state, db, ...(state.limitEditor.returnTo || {}), limitEditor: null, toast: isNew ? 'Order limit created' : 'Order limit saved' };
     }
     case 'DELETE_LIMIT': {
-      const db = { ...state.db, limits: (state.db.limits || []).filter((l) => l.id !== action.id) };
+      // A draft contract drops it (a live one can't lose it — see newlyBroken).
+      const agreements = (state.db.agreements || []).map((a) =>
+        a.status === 'Draft' && a.terms.limits.includes(action.id) ? { ...a, terms: { ...a.terms, limits: a.terms.limits.filter((x) => x !== action.id) } } : a,
+      );
+      const db = { ...state.db, limits: (state.db.limits || []).filter((l) => l.id !== action.id), agreements };
       const editing = state.limitEditor?.draft.id === action.id;
       return { ...state, db, ...(editing ? { ...(state.limitEditor.returnTo || {}), limitEditor: null } : {}), toast: 'Order limit deleted' };
     }
@@ -1115,10 +1174,53 @@ function reducer(state, action) {
   }
 }
 
+// A live contract's pricing and limits change only through it: any other action
+// that would take one off where it applies, turn it off or delete it is turned
+// down (the screens lock those actions first; this catches every other way).
+const CONTRACT_ACTIONS = new Set(['SAVE_AGREEMENT', 'END_AGREEMENT', 'RENEW_AGREEMENT', 'DELETE_AGREEMENT', 'DELETE_COMPANY', 'DELETE_LOCATIONS', 'SET_EMPTY_MODE', 'SYNC_LIMITS']);
+function guardedReducer(state, action) {
+  const next = reducer(state, action);
+  if (next.db === state.db || CONTRACT_ACTIONS.has(action.type) || !versionFlags().agreements) return next;
+  const broken = newlyBroken(state.db, next.db);
+  return broken.length ? { ...state, toast: `Part of ${broken[0].number} · edit the contract to change it` } : next;
+}
+
 const StoreContext = createContext(null);
 
 export function StoreProvider({ children }) {
-  const [state, dispatch] = useReducer(reducer, undefined, buildInitialState);
+  const [state, dispatch] = useReducer(guardedReducer, undefined, buildInitialState);
+  // Order limits reach the storefront (and other windows of this app); order
+  // requests come back from it, even while this tab is open. A request the
+  // merchant approved or declined is done, so it doesn't come back on reload (see
+  // persistence.js). The sample-data-hidden state isn't saved.
+  useEffect(() => {
+    if (!state.emptyMode) publishOrderLimits(state.db.limits || []);
+  }, [state.db.limits, state.emptyMode]);
+  // The order-limit walkthrough (screens/LimitWalkthrough.jsx) drives this app
+  // from its stage: only in demo mode (?demo=1).
+  useEffect(() => {
+    if (IS_DEMO) window.__qsDemo = { dispatch, state };
+  });
+  // Active contracts reach the buyer's account on the storefront the same way.
+  useEffect(() => {
+    if (!state.emptyMode) publishContracts(storefrontContracts(state.db));
+  }, [state.db.agreements, state.db.policies, state.db.companies, state.emptyMode]);
+  // …and so do the orders held for review, for the buyer's Orders on the B2B Portal.
+  useEffect(() => {
+    if (!state.emptyMode) publishHeldOrders(storefrontHeldOrders(state.db));
+  }, [state.db.companies, state.emptyMode]);
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key === ORDER_REQUESTS_KEY) dispatch({ type: 'SYNC_ORDER_REQUESTS', requests: readOrderRequests() });
+      if (e.key === ORDER_LIMITS_KEY && Array.isArray(publishedOrderLimits())) dispatch({ type: 'SYNC_LIMITS', limits: upgradeLimits(publishedOrderLimits()) });
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+  useEffect(() => {
+    const done = state.db.companies.flatMap((c) => c.orders || []).filter((o) => o.requestId && o.status !== 'Needs review');
+    if (done.length) removeOrderRequests(done.map((o) => o.requestId));
+  }, [state.db.companies]);
   return <StoreContext.Provider value={{ state, dispatch }}>{children}</StoreContext.Provider>;
 }
 

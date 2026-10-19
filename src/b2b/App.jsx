@@ -14,6 +14,7 @@ import { FormSettings } from './screens/FormSettings.jsx';
 import { Registrations } from './screens/Registrations.jsx';
 import { RegistrationDetail } from './screens/RegistrationDetail.jsx';
 import { pendingCount } from './registrations.js';
+import { EMBEDDED } from './initialState.js';
 import { PricingEditor } from './components/PricingEditor.jsx';
 import { BuildFromQuotes } from './components/BuildFromQuotes.jsx';
 import { PriceBoard } from './components/PriceBoard.jsx';
@@ -22,6 +23,7 @@ import { MultiAssignModal } from './components/MultiAssignModal.jsx';
 import { AddCompanyWizard } from './components/AddCompanyWizard.jsx';
 import { versionFlags, withVersion } from '../shared/versions.js';
 import { OrderLimits } from './screens/OrderLimits.jsx';
+import { LimitTestConsole } from './screens/LimitTestConsole.jsx';
 import { Agreements } from './screens/Agreements.jsx';
 import { ManualOrders } from './screens/manualOrders/ManualOrders.jsx';
 import { Discounts } from './screens/discounts/Discounts.jsx';
@@ -45,6 +47,9 @@ function CurrentView() {
       return <PricingLibrary />;
     case 'limits':
       return flags.orderLimits ? <OrderLimits /> : <CompaniesList />;
+    // Test console for order limits (no nav item: open #/b2b/order-limit-tests).
+    case 'limitTests':
+      return flags.orderLimits ? <LimitTestConsole /> : <CompaniesList />;
     case 'agreements':
       return flags.agreements ? <Agreements /> : <CompaniesList />;
     case 'registrations':
@@ -143,7 +148,7 @@ export function App() {
   ];
 
   return (
-    <AdminFrame app="b2b" sections={sections} searchPlaceholder="Search customers, prices and issues">
+    <AdminFrame app="b2b" sections={sections} searchPlaceholder="Search customers, prices and issues" bare={!!EMBEDDED}>
       {/* Opened from the Pricing screen, the editor is an in-frame page that
           replaces the current view; opened from a button on any other screen it
           stays a full-screen overlay on top of that screen. */}

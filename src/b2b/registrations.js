@@ -35,9 +35,9 @@ export const pendingCount =(db) => (db.registrations || []).filter((r) => r.stat
 //   'company'  — 3. a Company with the same name, different email: Merge into it,
 //                   or create a new Company anyway (Shopify allows duplicate names).
 //   'customer' — the email is a Shopify customer only: Approve reuses it.
-// A D2C registration (no company name) only has 'contact' (Merge into that Company
-// or Decline — it can't become a D2C customer while it's a company contact) and
-// 'customer'.
+// A D2C registration (no company name) only has 'contact' (Merge into that Company,
+// or leave it and become a D2C customer — an email belongs to one company or none)
+// and 'customer'.
 // `mergeTargets` are the Companies a Merge can go into: the email's Company first, then
 // every Company with the same name (Shopify allows several — the merchant picks one).
 export function registrationDuplicates(db, reg) {

@@ -12,6 +12,7 @@ import { ActiveDatesCard, ProductScopeCard, QuantityProductsCard, VolumeBasisCar
 import { PricePreviewDialog } from './PricePreviewDialog.jsx';
 import { AssignmentCard } from './AssignmentCard.jsx';
 import { policyUsageCount, policyUsageDetail, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, locationCatalog } from '../pricing.js';
+import { contractsHolding, contractGiving, contractNames, appliesAt, lockedTip } from '../agreements.js';
 
 // Main column + aside side by side once the editor is wide enough (Polaris React
 // InlineGrid columns={{ xs: '1fr', md: '2fr 1fr' }}); two fields side by side
@@ -181,8 +182,29 @@ export function PricingEditor({ asPage = false }) {
       ? companiesAssigned > 0 || savedUsage.globals.includes('All Companies')
       : savedUsage.customers + savedUsage.tags > 0 || savedUsage.globals.includes('All customers');
 
+  // Live contracts holding it: editing what it sets adds a version to them; it must
+  // stay on and keep reaching every location they apply to (changing that goes
+  // through them). `breaks`: the ones these choices would leave without it.
+  const held = isNew ? [] : contractsHolding(state.db, builder.id);
+  const breaks = held.filter((ag) => {
+    if (builder.status === 'Inactive') return true;
+    if (ag.status !== 'Active') return false;
+    if (builder.audienceType === 'd2c') return true;
+    const c = state.db.companies.find((x) => x.id === ag.companyId);
+    if (!c) return false;
+    const locs = (c.locations || []).filter((l) => appliesAt(c, ag, l.id));
+    if (showAssignment) {
+      return !((builder.b2bCompanyIds || []).includes(c.id) || (locs.length && locs.every((l) => (builder.b2bLocationKeys || []).includes(`${c.id}::${l.id}`))));
+    }
+    if (showCompanyLocations && scopeCompany.id === c.id) return !(!scopeLocationIds || locs.every((l) => scopeLocationIds.includes(l.id)));
+    return false;
+  });
+  // Opened from a company or location a live contract gives it to: it can't be swapped
+  // there for a separate copy, so a change applies everywhere it's used.
+  const contractHere = scopeCompany && !isNew ? contractGiving(state.db, scopeCompany, builder.id, scopeLoc?.id || null) : null;
+
   const onSave = () => {
-    if (noLocationPicked) return;
+    if (noLocationPicked || breaks.length) return;
     if (!builder.name?.trim()) {
       setNameMissing(true);
       return;
@@ -218,9 +240,20 @@ export function PricingEditor({ asPage = false }) {
   const editorTitle = isNew ? `Create ${isQuantity ? 'quantity' : 'base'} pricing` : `Edit pricing: ${builder.name}`;
   const editorBody = (
     <s-stack gap="base">
+          {breaks.length ? (
+            <s-banner tone="critical" heading={`Part of ${contractNames(state.db, breaks)}`}>
+              <s-paragraph>It has to stay on and keep reaching every location the contract applies to. To change that, edit the contract.</s-paragraph>
+            </s-banner>
+          ) : held.length ? (
+            <s-banner tone="warning" heading={`Part of ${contractNames(state.db, held)}`}>
+              <s-paragraph>A change to what it sets updates the contract, kept as a new version. To turn it off or delete it, edit the contract.</s-paragraph>
+            </s-banner>
+          ) : null}
           {sharedElsewhere && (
             <s-banner tone="info">
-              {`This pricing is also assigned to ${sharedWith}. Saving will offer to fork a copy for ${scopeName} or apply to all.`}
+              {contractHere
+                ? `This pricing is also assigned to ${sharedWith}. It’s part of ${contractHere.number}, so saving applies to all of them.`
+                : `This pricing is also assigned to ${sharedWith}. Saving will offer to fork a copy for ${scopeName} or apply to all.`}
             </s-banner>
           )}
 
@@ -323,8 +356,8 @@ export function PricingEditor({ asPage = false }) {
 
             {/* Aside (god-file builder-side): status, resolution, summary. */}
             <s-stack gap="base">
-              <RuleStatusCard builder={builder} patch={patch} />
-              <SummaryCard builder={builder} isQuantity={isQuantity} assignedTo={assignedTo} products={state.db.products} />
+              <RuleStatusCard builder={builder} patch={patch} held={held} />
+              <SummaryCard builder={builder} isQuantity={isQuantity} assignedTo={assignedTo} products={state.db.products} locations={reach} />
             </s-stack>
           </s-grid>
           </s-query-container>
@@ -372,11 +405,18 @@ export function PricingEditor({ asPage = false }) {
       {forkConfirm && (
         <Modal onClose={() => setForkConfirm(false)} heading={`Save changes to ${builder.name}`}>
           <s-stack gap="small">
+            {contractHere ? (
+              <s-paragraph>
+                {`${builder.name} is shared with ${sharedWith}. It’s part of ${contractHere.number}, so it can’t be replaced by a separate copy for ${scopeName}: your changes apply everywhere it’s used (${sharedCount + 1}).`}
+              </s-paragraph>
+            ) : (
             <s-paragraph>
               {`${builder.name} is shared with ${sharedWith}. Save as a separate pricing for `}
               <s-text fontWeight="semibold">{scopeName}</s-text>
               {` — the others keep ${builder.name}.`}
             </s-paragraph>
+            )}
+            {!contractHere && (
             <s-box padding="small" border="base" borderRadius="base">
               <s-checkbox
                 label={allNoun ? `Apply to all ${sharedCount + 1} ${allNoun} instead` : `Apply everywhere it’s used instead (${sharedCount + 1})`}
@@ -389,6 +429,7 @@ export function PricingEditor({ asPage = false }) {
                 onChange={(e) => setApplyAll(e.currentTarget.checked)}
               />
             </s-box>
+            )}
           </s-stack>
           <s-button
             slot="primary-action"
@@ -396,7 +437,7 @@ export function PricingEditor({ asPage = false }) {
             onClick={() => {
               setForkConfirm(false);
               // Unticked: a separate copy for here (the default path forks).
-              dispatch({ type: 'SAVE_EDITOR', applyToAll: applyAll });
+              dispatch({ type: 'SAVE_EDITOR', applyToAll: applyAll || !!contractHere });
             }}
           >
             Save
@@ -407,14 +448,14 @@ export function PricingEditor({ asPage = false }) {
         </Modal>
       )}
       {catalogPreview && targets.length > 1 && (
-        <CatalogPricePreview builder={builder} products={state.db.products} targets={targets} onClose={() => setCatalogPreview(false)} />
+        <BuilderPricePreview builder={builder} products={state.db.products} targets={reach} onClose={() => setCatalogPreview(false)} />
       )}
       {asPage ? (
         <>
           <PageHeader
             heading={editorTitle}
             backAction={{ content: 'Back', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }}
-            primaryAction={{ content: isNew ? 'Create pricing' : 'Save', onAction: onSave, disabled: noLocationPicked }}
+            primaryAction={{ content: isNew ? 'Create pricing' : 'Save', onAction: onSave, disabled: noLocationPicked || breaks.length > 0 }}
             secondaryActions={[{ content: 'Cancel', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }]}
           />
           <s-page>{editorBody}</s-page>
@@ -456,44 +497,84 @@ export function PricingEditor({ asPage = false }) {
 }
 
 // Rule status (god-file ruleStatusCard), shown in the aside: an on/off toggle.
-function RuleStatusCard({ builder, patch }) {
+// `held`: live contracts holding it — it can't be turned off outside them.
+function RuleStatusCard({ builder, patch, held = [] }) {
   const on = (builder.status || 'Active') !== 'Inactive';
+  const locked = on && held.length > 0;
   return (
     <s-section>
-      <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
-        <s-stack direction="inline" gap="small-200" alignItems="center">
-          <s-heading>Rule status</s-heading>
-          <s-badge tone={on ? 'success' : undefined}>{on ? 'Active' : 'Inactive'}</s-badge>
-        </s-stack>
-        <s-button onClick={() => patch({ status: on ? 'Inactive' : 'Active' })}>
-          {on ? 'Turn off' : 'Turn on'}
-        </s-button>
-      </s-grid>
+      <s-stack gap="small-200">
+        <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            <s-heading>Rule status</s-heading>
+            <s-badge tone={on ? 'success' : undefined}>{on ? 'Active' : 'Inactive'}</s-badge>
+          </s-stack>
+          <s-button disabled={locked} onClick={() => patch({ status: on ? 'Inactive' : 'Active' })}>
+            {on ? 'Turn off' : 'Turn on'}
+          </s-button>
+        </s-grid>
+        {locked && (
+          <s-text color="subdued" fontSize="small">
+            {lockedTip(held, 'turn off')}
+          </s-text>
+        )}
+      </s-stack>
     </s-section>
   );
 }
 
-// "Preview all prices": every product this base pricing covers, the layer that
-// decides each price, and what the buyer pays — computed from the DRAFT builder, so
-// it reflects unsaved rule/override edits. Same modal as the company page's Preview
-// prices (PricePreviewDialog), which reads the saved pricing instead.
-function BuilderPricePreview({ builder, products, onClose }) {
+// "Preview prices": every product this base pricing covers, the layer that decides
+// each price, and what the buyer pays — computed from the DRAFT builder, so it
+// reflects unsaved rule/override edits. With locations it reaches, picked from the
+// toolbar: products outside that location's catalog don't get it ("Not in
+// catalog"). Opened from the Settings summary and from the several-locations note.
+// Same modal as the company page's Preview prices (PricePreviewDialog), which reads
+// the saved pricing instead.
+function BuilderPricePreview({ builder, products, targets = [], onClose }) {
+  const keyOf = (t) => `${t.company.id}::${t.location.id}`;
+  const [key, setKey] = useState(targets.length ? keyOf(targets[0]) : null);
+  const target = targets.find((t) => keyOf(t) === key) || targets[0] || null;
+  const catalog = target ? locationCatalog(target.location, products) : null;
+  const severalCompanies = new Set(targets.map((t) => t.company.id)).size > 1;
   const entries = products
     .map((p) => ({ p, bd: policyPriceBreakdown(builder, p) }))
     .filter(({ bd }) => bd?.inScope)
     .map(({ p, bd }) => {
+      if (catalog && !catalog.skus.includes(p.sku)) return { product: p, shopify: bd.shopify, final: null, decidedBy: 'Not in catalog', highlight: true };
       const layer = bd.override != null ? 'override' : bd.rule ? 'rule' : 'default';
       const rule = bd.rule ? (builder.conditionalRules || [])[bd.rule.index] : null;
       const decidedBy =
         layer === 'override' ? 'Product override' : layer === 'rule' ? `Rule ${bd.rule.index + 1} · ${ruleTypeLabel(rule)}` : 'Default';
       return { product: p, shopify: bd.shopify, final: bd.final, decidedBy, highlight: layer === 'override' };
     });
+  const outside = entries.filter((e) => e.final == null).length;
   return (
     <PricePreviewDialog
       title={`Preview prices · ${builder.name || 'This pricing'}`}
-      description="Every product this pricing covers, with the layer that decides each price. Reflects your unsaved edits."
+      description={
+        target
+          ? `${target.location.name}${severalCompanies ? ` (${target.company.name})` : ''} uses the ${catalog.name} catalog. ${
+              outside
+                ? `${outside} of the products this pricing covers ${outside === 1 ? 'isn’t' : 'aren’t'} in it, so ${outside === 1 ? 'it doesn’t' : 'they don’t'} get this price there.`
+                : 'Every product this pricing covers is in it.'
+            }`
+          : 'Every product this pricing covers, with the layer that decides each price. Reflects your unsaved edits.'
+      }
       entries={entries}
       emptyLabel="This pricing covers no products yet."
+      toolbar={
+        target ? (
+          <div style={{ width: 340, flex: '0 0 auto' }}>
+            <s-select label="Location" value={keyOf(target)} onChange={(e) => setKey(e.currentTarget.value)}>
+              {targets.map((t) => (
+                <s-option key={keyOf(t)} value={keyOf(t)}>
+                  {severalCompanies ? `${t.location.name} · ${t.company.name}` : t.location.name}
+                </s-option>
+              ))}
+            </s-select>
+          </div>
+        ) : undefined
+      }
       onClose={onClose}
     />
   );
@@ -512,49 +593,6 @@ function MultiCatalogNote({ onPreview }) {
         Preview by location
       </s-button>
     </s-banner>
-  );
-}
-
-// What this base pricing (unsaved edits included) gives at one of the locations
-// it reaches, picked from the toolbar. Products outside that location's catalog
-// don't get it — they show "—".
-function CatalogPricePreview({ builder, products, targets, onClose }) {
-  const keyOf = (t) => `${t.company.id}::${t.location.id}`;
-  const [key, setKey] = useState(keyOf(targets[0]));
-  const target = targets.find((t) => keyOf(t) === key) || targets[0];
-  const catalog = locationCatalog(target.location, products);
-  const severalCompanies = new Set(targets.map((t) => t.company.id)).size > 1;
-  const entries = products
-    .map((p) => ({ p, bd: policyPriceBreakdown(builder, p) }))
-    .filter(({ bd }) => bd?.inScope)
-    .map(({ p, bd }) =>
-      catalog.skus.includes(p.sku)
-        ? { product: p, shopify: bd.shopify, final: bd.final, decidedBy: 'This pricing' }
-        : { product: p, shopify: bd.shopify, final: null, decidedBy: 'Not in catalog', highlight: true });
-  const outside = entries.filter((e) => e.final == null).length;
-  return (
-    <PricePreviewDialog
-      title={`Preview prices · ${builder.name || 'This pricing'}`}
-      description={`${target.location.name}${severalCompanies ? ` (${target.company.name})` : ''} uses the ${catalog.name} catalog. ${
-        outside
-          ? `${outside} of the products this pricing covers ${outside === 1 ? 'isn’t' : 'aren’t'} in it, so ${outside === 1 ? 'it doesn’t' : 'they don’t'} get this price there.`
-          : 'Every product this pricing covers is in it.'
-      }`}
-      entries={entries}
-      emptyLabel="This pricing covers no products yet."
-      toolbar={
-        <div style={{ width: 340, flex: '0 0 auto' }}>
-          <s-select label="Location" value={key} onChange={(e) => setKey(e.currentTarget.value)}>
-            {targets.map((t) => (
-              <s-option key={keyOf(t)} value={keyOf(t)}>
-                {severalCompanies ? `${t.location.name} · ${t.company.name}` : t.location.name}
-              </s-option>
-            ))}
-          </s-select>
-        </div>
-      }
-      onClose={onClose}
-    />
   );
 }
 
@@ -590,7 +628,7 @@ function CompanyLocationsCard({ company, locationIds, onChange, applyLater, onAp
 // Settings summary (production's SettingsSummaryCard): what this pricing is and
 // who gets it at a glance, then — for base pricing — Preview prices: what buyers
 // pay with these settings, unsaved edits included.
-function SummaryCard({ builder, isQuantity, assignedTo, products }) {
+function SummaryCard({ builder, isQuantity, assignedTo, products, locations }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const count = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
   const rules = (builder.conditionalRules || []).length;
@@ -636,7 +674,7 @@ function SummaryCard({ builder, isQuantity, assignedTo, products }) {
           </>
         )}
       </s-stack>
-      {previewOpen && <BuilderPricePreview builder={builder} products={products} onClose={() => setPreviewOpen(false)} />}
+      {previewOpen && <BuilderPricePreview builder={builder} products={products} targets={locations} onClose={() => setPreviewOpen(false)} />}
     </s-section>
   );
 }

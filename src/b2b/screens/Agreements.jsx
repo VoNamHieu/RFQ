@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { currentAgreement, agreementScopeLabel, agreementTermCount, agreementDatesLabel, expiringSoon, daysUntil, PAST_STATUSES } from '../agreements.js';
+import { canCreateAgreement, agreementScopeLabel, agreementTermCount, agreementDatesLabel, expiringSoon, daysUntil, PAST_STATUSES } from '../agreements.js';
 import { AgreementEditor } from '../components/AgreementEditor.jsx';
+import { ContractVersionModal } from '../components/ContractVersionModal.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import { Modal, IndexFiltersBar, useWcId, wcTone } from '../../shared/wc.jsx';
 
@@ -15,22 +16,25 @@ const STATUS_TABS = [
 ];
 const STATUS_TONE = { Active: 'success', Scheduled: 'info', Draft: undefined, Expired: undefined, Ended: undefined };
 
-// Every company's agreement in one list. A row opens the company's Agreement tab;
-// the editor opens as a page here (OPEN_AGREEMENT_EDITOR).
+// Every company's agreement in one list. A row opens the company's Agreement tab —
+// a past one opens as it was, read-only; the editor opens as a page here
+// (OPEN_AGREEMENT_EDITOR).
 export function Agreements() {
   const { state, dispatch } = useStore();
   const [status, setStatus] = useState('all');
   const [search, setSearch] = useState('');
   const [picking, setPicking] = useState(false);
   const [companyId, setCompanyId] = useState('');
+  const [viewing, setViewing] = useState(null);
   const rowId = useWcId('agreement');
 
   if (state.agreementEditor) return <AgreementEditor />;
 
   const all = state.db.agreements || [];
   const companyOf = (id) => state.db.companies.find((c) => c.id === id);
-  // One current agreement per company: only companies without one can get a new one.
-  const free = state.db.companies.filter((c) => !currentAgreement(state.db, c.id));
+  // One Active contract and one next one per company: only companies without a next
+  // one can get a new one.
+  const free = state.db.companies.filter((c) => canCreateAgreement(state.db, c.id));
   const create = { content: 'Create contract', onAction: () => { setCompanyId(free[0]?.id || ''); setPicking(true); }, disabled: !free.length };
   const createButton = (
     <s-button slot="primary-action" variant="primary" disabled={create.disabled} onClick={create.onAction}>
@@ -50,7 +54,10 @@ export function Agreements() {
         <s-table-row key={a.id} clickDelegate={linkId}>
           <s-table-cell>
             <s-stack gap="small-500">
-              <s-link id={linkId} onClick={() => dispatch({ type: 'OPEN_COMPANY', id: a.companyId, tab: 'agreement' })}>
+              <s-link
+                id={linkId}
+                onClick={() => (PAST_STATUSES.includes(a.status) ? setViewing(a) : dispatch({ type: 'OPEN_COMPANY', id: a.companyId, tab: 'agreement' }))}
+              >
                 {a.number}
               </s-link>
               <s-text color="subdued" fontSize="small">{a.name || 'Untitled contract'}</s-text>
@@ -61,14 +68,14 @@ export function Agreements() {
           <s-table-cell>
             <s-stack gap="small-500">
               <s-text>{agreementDatesLabel(a)}</s-text>
-              {expiringSoon(a) ? (
+              {expiringSoon(a, state.db) ? (
                 <div>
                   <s-badge tone="warning">{daysUntil(a.endDate) === 0 ? 'Ends today' : `Ends in ${daysUntil(a.endDate)} day${daysUntil(a.endDate) === 1 ? '' : 's'}`}</s-badge>
                 </div>
               ) : null}
             </s-stack>
           </s-table-cell>
-          <s-table-cell>{agreementTermCount(a)}</s-table-cell>
+          <s-table-cell>{agreementTermCount(state.db, a)}</s-table-cell>
           <s-table-cell>{a.version ? `v${a.version}` : '—'}</s-table-cell>
           <s-table-cell>
             <s-badge tone={wcTone(STATUS_TONE[a.status])}>{a.status}</s-badge>
@@ -83,7 +90,7 @@ export function Agreements() {
         label="Company"
         value={companyId}
         onChange={(e) => setCompanyId(e.currentTarget.value)}
-        details="A company has one current contract. Companies that already have one aren’t listed."
+        details="A company has one contract in force and can have one next contract set up ahead. Companies that already have a next one aren’t listed."
       >
         {free.map((c) => (
           <s-option key={c.id} value={c.id}>
@@ -156,6 +163,7 @@ export function Agreements() {
         </s-section>
       </s-stack>
       {picker}
+      {viewing && <ContractVersionModal ag={viewing} onClose={() => setViewing(null)} />}
     </s-page>
   );
 }
