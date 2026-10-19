@@ -2,6 +2,7 @@ import React from 'react';
 import { EmptyBlock } from '../../../shared/EmptyBlock.jsx';
 import { Tabs, useWcId, wcTone } from '../../../shared/wc.jsx';
 import { useStore } from '../../store.jsx';
+import { QuoteAppCrossSell, noQuotesFromRfqApp } from '../QuoteAppCrossSell.jsx';
 
 // quote.status → Badge tone (undefined = the default neutral badge).
 const STATUS_TONE = {
@@ -33,7 +34,12 @@ export function QuotesTab({ company }) {
   if (companyQuotes.length === 0) {
     return (
       <s-section>
-        <EmptyBlock heading="No quotes yet">Quotes from this company will show up here.</EmptyBlock>
+        {/* No quotes anywhere in the store → cross-sell the RFQ app instead. */}
+        {noQuotesFromRfqApp(state.db) ? (
+          <QuoteAppCrossSell installed={!!state.db.rfqAppInstalled} />
+        ) : (
+          <EmptyBlock heading="No quotes yet">Quotes from this company will show up here.</EmptyBlock>
+        )}
       </s-section>
     );
   }

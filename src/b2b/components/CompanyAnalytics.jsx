@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { MetricTooltip } from './MetricTooltip.jsx';
 import { MenuButton, wcTone } from '../../shared/wc.jsx';
 import { useStore } from '../store.jsx';
+import { QuoteAppCrossSell, noQuotesFromRfqApp } from './QuoteAppCrossSell.jsx';
 import { money } from '../format.js';
 import { moneyShort, LineChart, RankBars } from './charts.jsx';
 import { buildAttributedLines, pricingProfileRows, appliedEconomics } from '../pricingAttribution.js';
@@ -224,6 +225,9 @@ export function CompanyAnalytics({ company }) {
   const showEmpty = genuinelyEmpty || devEmpty;
   const allCompleted = showEmpty ? [] : rawCompleted;
   const companyQuotes = showEmpty ? [] : rawQuotes;
+  // No quote has come in from the RFQ app (or the empty-state preview is on): the Quotes tab
+  // leads with a cross-sell to the app.
+  const showQuoteCrossSell = devEmpty || noQuotesFromRfqApp(state.db);
   const periodOrders = allCompleted.filter((o) => inPeriod(o.date));
   const prevOrders = allCompleted.filter((o) => inPrev(o.date));
   const openQuotes = companyQuotes.filter((q) => !OPEN_QUOTE_EXCLUDE.has(q.status));
@@ -547,6 +551,11 @@ export function CompanyAnalytics({ company }) {
   // ── QUOTES ────────────────────────────────────────────────────────────────────
   const quotes = (
     <s-stack gap="base">
+      {showQuoteCrossSell && (
+        <s-section>
+          <QuoteAppCrossSell installed={!!state.db.rfqAppInstalled} />
+        </s-section>
+      )}
       <s-section>
         <StatGrid narrow={2} wide={4}>
           <Stat blank={compareOnly} label="Open quote value" value={money(openQuoteValue)} sub="Current snapshot" help="Total value of this company's quotes that are still open as of today." />
