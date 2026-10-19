@@ -4,12 +4,13 @@
 // product key the cart, product page and quote requests use: the first variant's
 // SKU, or the handle when the store has none. `list` is the D2C price.
 import storeCatalog from './shopifyProducts.json';
-import { productRuleFor, productRuleForCustomer, cartProblems, cartProblemsForCustomer, limitLevel, limitRules, limitState, upgradeLimits, spentSoFar } from '../../b2b/limits.js';
+import { productRuleFor, productRuleForCustomer, cartProblems, cartProblemsForCustomer, effectiveRules, effectiveRulesForCustomer, limitLevel, limitRules, limitState, upgradeLimits, spentSoFar } from '../../b2b/limits.js';
 import { TODAY } from '../../b2b/pricing.js';
 import { dbSeed } from '../../b2b/data/db.js';
 import { versionFlags } from '../../shared/versions.js';
-import { publishedOrderLimits, publishedContracts, readOrderRequests } from '../../shared/persistence.js';
+import { publishedOrderLimits, publishedContracts, publishedHeldOrders, readOrderRequests } from '../../shared/persistence.js';
 import { storefrontContracts } from '../../b2b/agreements.js';
+import { normalizeDb, storefrontHeldOrders } from '../../b2b/dbHelpers.js';
 import { money } from '../utils.js';
 
 // A soft, always-rendering placeholder image per product (Dawn ships gray
@@ -51,6 +52,8 @@ export const PRODUCTS = storeCatalog.products.map((p) => {
     })),
     image: p.image ? sized(p.image.url) : placeholder(p.title, sku),
     tagline: p.productType,
+    productType: p.productType, // for order limit rules by product type or tag
+    tags: p.tags || [],
     description, // plain text, for compact previews (e.g. the B2B app's form preview)
     descriptionHtml: description ? p.descriptionHtml : '',
   };
@@ -83,6 +86,33 @@ export function productRuleForSession(sku, session) {
   return atLocation(session)
     ? productRuleFor(limitsDb(), session.companyKey, session.locationId, sku)
     : productRuleForCustomer(limitsDb(), asCustomer(session), sku);
+}
+
+// ── Order requests ──────────────────────────────────────────────────────────
+// The buyer's order requests at their location — orders over a maximum sent for the
+// merchant's review — and what became of each: 'waiting', 'approved' or 'declined'
+// (REQUEST_STATUS). From the orders held for review the B2B app last published (its
+// sample ones until it has, e.g. ABC Hanoi's #1045), the requests this storefront
+// sent that it hasn't picked up yet, and the account's earlier ones. A held order
+// that came from one of this storefront's requests keeps the request's lines.
+// Only for a B2B buyer at a location (sending an order for review is B2B only).
+// Shown with the account's orders on the B2B Portal.
+export const REQUEST_STATUS = {
+  waiting: { label: 'Waiting for review', tone: 'amber' },
+  approved: { label: 'Approved', tone: 'green' },
+  declined: { label: 'Declined', tone: null },
+};
+let seedHeld = null;
+export function orderRequestsForSession(session) {
+  if (!versionFlags().orderLimits || !atLocation(session)) return [];
+  const here = (x) => x.companyId === session.companyKey && x.locationId === session.locationId;
+  const requests = readOrderRequests().filter(here);
+  const held = (publishedHeldOrders() ?? (seedHeld ||= storefrontHeldOrders(normalizeDb(dbSeed)))).filter(here);
+  return [
+    ...held.map((h) => ({ ...(requests.find((r) => r.id === h.requestId) || h), number: h.id, status: h.status || 'waiting' })),
+    ...requests.filter((r) => !held.some((h) => h.requestId === r.id)).map((r) => ({ ...r, status: 'waiting' })),
+    ...(session.orderRequests || []).filter((r) => !held.some((h) => h.id === r.number)),
+  ];
 }
 
 // ── Agreement ───────────────────────────────────────────────────────────────
@@ -128,6 +158,19 @@ function spentForSession(session) {
     ? readOrderRequests().filter((r) => r.companyId === session.companyKey && r.locationId === session.locationId).map((r) => ({ date: TODAY, amount: r.amount, status: 'Needs review' }))
     : [];
   return spentSoFar([...orders, ...requests]);
+}
+
+// The buyer's order value limits, for the product page to count the order against:
+// the minimum, the maximum sent for review and the blocking maximum (each a number,
+// or null). Null when none applies.
+export function orderValueLimitsForSession(session) {
+  if (!versionFlags().orderLimits) return null;
+  const rec = atLocation(session)
+    ? effectiveRules(limitsDb(), session.companyKey, session.locationId)
+    : effectiveRulesForCustomer(limitsDb(), asCustomer(session));
+  const value = (key) => (rec.settings[key]?.mode === 'set' && Number(rec.settings[key].value) > 0 ? Number(rec.settings[key].value) : null);
+  const out = { min: value('minValue'), review: value('threshold'), block: value('maxValue') };
+  return out.min == null && out.review == null && out.block == null ? null : out;
 }
 
 // What's wrong with the cart for the buyer (see cartProblems).
@@ -186,6 +229,7 @@ export const DEMO_ACCOUNTS = [
     paymentMethods: [{ brand: 'Visa', last4: '4242', expires: '08/28' }],
     get orders() { return ACCOUNT_ORDERS; },
     get quotes() { return ACCOUNT_QUOTES; },
+    get orderRequests() { return ACCOUNT_ORDER_REQUESTS; },
   },
 ];
 
@@ -222,8 +266,28 @@ export const ACCOUNT_ORDERS = [
     lines: [{ sku: 'SEA-30', title: 'Sealant cartridge, 30 pack', quantity: 8 }],
   },
   {
+    // An order request the seller approved (ACCOUNT_ORDER_REQUESTS): it became this order.
+    id: '#1036', date: 'Jun 22, 2026', status: 'Fulfilled', statusTone: 'green', total: 11250,
+    lines: [{ sku: 'FIL-XL', title: 'Industrial filter, XL', quantity: 96 }, { sku: 'HOS-12', title: 'Reinforced hose, 12m', quantity: 30 }],
+  },
+  {
     id: '#0994', date: 'Jun 15, 2026', status: 'Fulfilled', statusTone: 'green', total: 1465,
     lines: [{ sku: 'FIL-XL', title: 'Industrial filter, XL', quantity: 12 }, { sku: 'HOS-12', title: 'Reinforced hose, 12m', quantity: 4 }],
+  },
+];
+
+// The account's earlier order requests the seller already decided on (the B2B
+// app's own held orders join them, see orderRequestsForSession): one approved —
+// it became order #1036 — and one declined, with the seller's message.
+export const ACCOUNT_ORDER_REQUESTS = [
+  {
+    number: '#1036', status: 'approved', companyId: 'c1', locationId: 'l1', buyer: 'John Nguyen', date: '2026-06-22', amount: 11250, threshold: 10000, period: 'order',
+    lines: [{ sku: 'FIL-XL', title: 'Industrial filter, XL', qty: 96 }, { sku: 'HOS-12', title: 'Reinforced hose, 12m', qty: 30 }],
+  },
+  {
+    number: '#1030', status: 'declined', companyId: 'c1', locationId: 'l1', buyer: 'John Nguyen', date: '2026-06-05', amount: 14800, threshold: 10000, period: 'order',
+    message: 'We can’t take an order this size before your credit review in July. Please split it into orders under $10,000.',
+    lines: [{ sku: 'FIL-XL', title: 'Industrial filter, XL', qty: 120 }, { sku: 'SEA-30', title: 'Sealant cartridge, 30 pack', qty: 40 }],
   },
 ];
 

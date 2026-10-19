@@ -366,6 +366,7 @@ export function LocationDetail() {
                                 <s-text fontWeight="medium">{o.id}</s-text>
                                 {o.po && o.po !== 'None' ? <s-text color="subdued" fontSize="small">{o.po}</s-text> : null}
                                 {reviewOrders && isHeld(o) ? <s-text tone="caution" fontSize="small">{heldReason(o, state.db)}</s-text> : null}
+                                {o.declineMessage ? <s-text color="subdued" fontSize="small">{`Your message to the buyer: “${o.declineMessage}”`}</s-text> : null}
                               </s-stack>
                             </s-table-cell>
                             <s-table-cell>{o.buyer}</s-table-cell>

@@ -435,6 +435,16 @@ h3 { font-size: 1.8rem; }
 .acct-row--button:hover { background: #fafafa; }
 .acct-row--order .badge { flex: none; }
 
+/* The B2B Portal's Orders: one button per status (a view), with its count. */
+.acct-views { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.acct-views button {
+  display: inline-flex; align-items: center; gap: 0.6rem; padding: 0.5rem 1.2rem; border-radius: 10rem; cursor: pointer;
+  border: 0.1rem solid var(--color-border-strong); background: #fff; color: rgb(var(--color-fg)); font: inherit; font-size: 1.4rem;
+}
+.acct-views button:hover { background: var(--color-surface-2); }
+.acct-views button[aria-pressed="true"] { background: rgb(var(--color-button)); border-color: rgb(var(--color-button)); color: rgb(var(--color-button-text)); }
+.acct-views-count { opacity: 0.7; }
+
 .acct-toggle {
   width: 4.4rem; height: 2.6rem; border-radius: 100px; background: #cccccc; border: none;
   position: relative; cursor: pointer; padding: 0; flex: none; transition: background 0.15s ease;
@@ -475,6 +485,9 @@ h3 { font-size: 1.8rem; }
 .acct-order-card { border: 0.1rem solid var(--color-border); border-radius: 0.8rem; padding: 1.6rem; display: flex; flex-direction: column; gap: 1rem; font-size: 1.5rem; }
 .acct-order-card .muted { margin: 0; }
 .acct-order-card .acct-btn { align-self: flex-start; }
+.acct-order-message { background: var(--color-surface-2); border-radius: 0.6rem; padding: 1rem 1.2rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.acct-order-message-label { font-size: 1.3rem; font-weight: 600; color: var(--color-muted); }
+.acct-order-message p { margin: 0; font-size: 1.5rem; }
 
 .acct-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; font-size: 1.5rem; color: #4a4a4a; }
 
@@ -631,5 +644,19 @@ h3 { font-size: 1.8rem; }
 .limit-notice { background: #fff4e5; border: 0.1rem solid #f1c48a; color: #6b4300; padding: 1.2rem 1.4rem; font-size: 1.35rem; margin-bottom: 1.6rem; }
 .limit-notice ul { margin: 0; padding-left: 1.8rem; }
 .limit-notice li + li { margin-top: 0.4rem; }
-.qty-note { font-size: 1.3rem; color: var(--color-muted); margin: 0.8rem 0 2.4rem; }
-.qty-note--error { color: #b42318; }
+.qty-note { font-size: 1.3rem; color: var(--color-muted); margin: 0; }
+/* Order limits on the product page: what applies, and warnings for the quantity picked. */
+.qty-feedback { display: grid; justify-items: start; gap: 0.8rem; margin: 0.8rem 0 2.4rem; }
+.qty-note--warn {
+  display: inline-flex; align-items: center; gap: 0.6rem; padding: 0.4rem 1rem;
+  border-radius: 100px; background: #fdf2dc; color: #9a6a00; font-weight: 600;
+}
+.qty-note--warn svg, .badge--warn svg, .limit-count svg { width: 1.6rem; height: 1.6rem; flex: none; }
+.badge--warn { display: inline-flex; align-items: center; gap: 0.4rem; }
+/* The order counted against its limits (cart + quantity picked), live as it changes. */
+.limit-count {
+  display: inline-flex; align-items: center; gap: 0.6rem; margin: 0; padding: 0.4rem 1rem;
+  border-radius: 100px; font-size: 1.3rem; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.limit-count--warn { background: #fdf2dc; color: #9a6a00; }
+.limit-count--ok { background: #e3f1e6; color: #1f7a34; }

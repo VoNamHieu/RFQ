@@ -2,13 +2,11 @@
 // one builds a fresh copy of the sample data (as the app loads it), sets up its
 // case, runs it through the real code — the limits engine, the held-order reason,
 // the storefront's quantity check — and compares what comes out with what should.
-import { dbSeed } from './data/db.js';
 import { clone } from './dbHelpers.js';
 import { makeBaseState } from './initialState.js';
 import {
-  newLimit, normalizeLimit, upgradeLimits, limitConflicts, cartProblems, productRuleFor, effectiveRules,
-  locationLimits, limitSummary, limitState, spentSoFar, inheritedSetting, warmPriceIndex,
-  newConflicts, blockingOf, notesOf,
+  newLimit, normalizeLimit, upgradeLimits, limitOverlaps, cartProblems, cartProblemsForCustomer, productRuleFor, effectiveRules, effectiveRulesForCustomer,
+  locationLimits, limitSummary, limitState, spentSoFar, inheritedSetting, limitErrors,
 } from './limits.js';
 import { withCatalog } from './limitCatalog.js';
 import { heldReason } from './components/HeldOrders.jsx';
@@ -23,7 +21,7 @@ const fresh = () => {
 };
 const draftOf = (d) => ({ ...newLimit(d.kind || 'order'), ...d });
 const withLimit = (db, d, id) => ({ ...db, limits: [...db.limits, { ...normalizeLimit(draftOf(d)), id }] });
-const warningsFor = (db, d) => limitConflicts(db, draftOf(d)).map((c) => c.text);
+const warningsFor = (db, d) => limitOverlaps(db, draftOf(d)).map((o) => o.text);
 const rule = (sku, o) => ({ id: `r_${sku}`, scopeType: 'products', collection: '', selectedProducts: [sku], min: null, max: null, increment: null, ...o });
 const allProducts = (o) => ({ id: 'r_all', scopeType: 'all', collection: '', selectedProducts: [], min: null, max: null, increment: null, ...o });
 const hoses = (amount) => [[{ sku: 'HOS-12', title: 'Reinforced hose', qty: 10 }], amount];
@@ -36,8 +34,6 @@ const shown = (v) => (v == null ? 'nothing' : typeof v === 'string' ? v : JSON.s
 const listed = (list) => (list.length ? list.join(' | ') : 'nothing');
 const equals = (label, actual, expected) => ({ label, expected: shown(expected), actual: shown(actual), pass: JSON.stringify(actual) === JSON.stringify(expected) });
 const includes = (label, list, text) => ({ label, expected: `includes “${text}”`, actual: listed(list), pass: list.some((x) => x.includes(text)) });
-const excludes = (label, list, text) => ({ label, expected: `no “${text}”`, actual: listed(list), pass: !list.some((x) => x.includes(text)) });
-const under = (label, ms, limit) => ({ label, expected: `under ${limit} ms`, actual: `${Math.round(ms)} ms`, pass: ms < limit });
 
 // ── Cases ───────────────────────────────────────────────────────────────────
 const CASES = [
@@ -55,7 +51,7 @@ const CASES = [
   },
   {
     code: 'OL-02', title: 'A location maximum keeps the company’s pack', ref: '#7',
-    expect: 'Hanoi “max 100” keeps min 12 and packs of 12; warns that buyers can order at most 96',
+    expect: 'Hanoi “max 100” keeps min 12 and packs of 12; notes that the maximum isn’t a multiple of the pack',
     run() {
       const d = { kind: 'product', name: 'Hanoi filter cap', storeWide: false, locationKeys: ['c1::l1'], rules: [rule('FIL-XL', { max: '100' })] };
       const base = fresh();
@@ -63,13 +59,13 @@ const CASES = [
       return [
         equals('Industrial filter, XL at Hanoi', quantities(productRuleFor(db, 'c1', 'l1', 'FIL-XL')), { min: 12, max: 100, pack: 12 }),
         equals('Cart: 5 filters', messages(cartProblems(db, 'c1', 'l1', ...filters(5))), ['Industrial filter, XL: order at least 12.']),
-        includes('Warning on save', warningsFor(base, d), 'so buyers can order at most 96'),
+        includes('Note on save', warningsFor(base, d), 'Maximum 100 isn’t a multiple of the pack size 12'),
       ];
     },
   },
   {
     code: 'OL-03', title: 'Lift a pack size at one location', ref: 'Set to none',
-    expect: 'Pack set to none (1) at Hanoi: 13 filters check out, the company minimum of 12 stays',
+    expect: 'Pack set to none (1) at Hanoi: 13 filters check out, the company minimum of 12 stays; Bac Ninh still sells in packs of 12',
     run() {
       const db = withLimit(fresh(), { kind: 'product', name: 'Hanoi loose filters', storeWide: false, locationKeys: ['c1::l1'], rules: [rule('FIL-XL', { increment: '1' })] }, 'loose');
       const card = locationLimits(db, 'c1', 'l1').find((r) => r.limit.name === 'Filter case packs');
@@ -77,16 +73,20 @@ const CASES = [
         equals('Industrial filter, XL at Hanoi', quantities(productRuleFor(db, 'c1', 'l1', 'FIL-XL')), { min: 12, max: null, pack: 1 }),
         equals('Cart: 13 filters', messages(cartProblems(db, 'c1', 'l1', ...filters(13))), []),
         equals('Cart: 5 filters', messages(cartProblems(db, 'c1', 'l1', ...filters(5))), ['Industrial filter, XL: order at least 12.']),
+        equals('Industrial filter, XL at Bac Ninh', quantities(productRuleFor(db, 'c1', 'l2', 'FIL-XL')), { min: 12, max: null, pack: 12 }),
+        equals('Bac Ninh cart: 13 filters', messages(cartProblems(db, 'c1', 'l2', ...filters(13))), ['Industrial filter, XL is sold in packs of 12.']),
         includes('Location card', (card?.rules[0]?.partly || []).map((p) => `${p.label} replaced here by ${p.by?.name}`), 'Pack size for Industrial filter, XL replaced here by Hanoi loose filters'),
       ];
     },
   },
   {
     code: 'OL-04', title: 'Exempt one location from a minimum', ref: '#5',
-    expect: 'Bac Ninh minimum set to none (0): a $100 cart checks out there, still blocked at Hanoi',
+    expect: 'Bac Ninh minimum set to none (0): a $100 cart checks out there, still blocked at Hanoi; saving it notes that it replaces the store-wide minimum there',
     run() {
-      const db = withLimit(fresh(), { name: 'Bac Ninh no minimum', storeWide: false, locationKeys: ['c1::l2'], minValue: '0' }, 'nomin');
+      const d = { name: 'Bac Ninh no minimum', storeWide: false, locationKeys: ['c1::l2'], minValue: '0' };
+      const db = withLimit(fresh(), d, 'nomin');
       return [
+        includes('Note on save (more specific than the store-wide minimum)', warningsFor(fresh(), d), 'Both set the minimum order at Bac Ninh site · ABC Construction: “Bac Ninh no minimum” (none) and “Wholesale minimum” ($500). “Bac Ninh no minimum” wins there: it’s more specific.'),
         equals('Bac Ninh, $100', messages(cartProblems(db, 'c1', 'l2', ...hoses(100))), []),
         equals('Hanoi, $100', messages(cartProblems(db, 'c1', 'l1', ...hoses(100))), ['Your order must be at least $500 to check out. Add $400 more.']),
         equals('How the limit reads', limitSummary(db.limits.at(-1), db), 'No minimum order'),
@@ -95,19 +95,19 @@ const CASES = [
   },
   {
     code: 'OL-05', title: 'Two store-wide minimums', ref: 'Gap 1',
-    expect: 'A second store-wide minimum ($300) warns that only the stricter $500 applies',
+    expect: 'A second store-wide minimum ($300): the stricter $500 applies (order settings at the same level), and no note — it isn’t more specific',
     run() {
       const base = fresh();
       const d = { name: 'Promo minimum', minValue: '300' };
       return [
-        includes('Warning on save', warningsFor(base, d), 'The minimum order is set by 2 limits at the same level: “Wholesale minimum” ($500) and “Promo minimum” ($300). Only the stricter one, “Wholesale minimum”, applies.'),
+        equals('Note on save', warningsFor(base, d), []),
         equals('Minimum in effect at Bac Ninh', effectiveRules(withLimit(base, d, 'promo'), 'c1', 'l2').settings.minValue.value, 500),
       ];
     },
   },
   {
     code: 'OL-06', title: 'Two company rules on one product', ref: 'Gap 1',
-    expect: 'Company minimum 24 wins over 12, the pack of 12 stays; 30 filters are blocked',
+    expect: 'Company minimum 24 (the newer limit) wins over 12, the pack of 12 stays; 30 filters are blocked. No note at the same level; the same rule for Hanoi only notes it',
     run() {
       const base = fresh();
       const d = { kind: 'product', name: 'Big filter minimum', storeWide: false, companyIds: ['c1'], rules: [rule('FIL-XL', { min: '24' })] };
@@ -115,7 +115,8 @@ const CASES = [
       return [
         equals('Industrial filter, XL at Hanoi', quantities(productRuleFor(db, 'c1', 'l1', 'FIL-XL')), { min: 24, max: null, pack: 12 }),
         equals('Cart: 30 filters', messages(cartProblems(db, 'c1', 'l1', ...filters(30))), ['Industrial filter, XL is sold in packs of 12.']),
-        includes('Warning on save', warningsFor(base, d), 'Only the stricter one, “Big filter minimum”, applies.'),
+        equals('Note on save (same level)', warningsFor(base, d), []),
+        includes('For Hanoi only (more specific): a note', warningsFor(base, { ...d, name: 'Hanoi big minimum', companyIds: [], locationKeys: ['c1::l1'] }), 'For the minimum, “Hanoi big minimum” wins there: it’s more specific.'),
       ];
     },
   },
@@ -152,64 +153,17 @@ const CASES = [
   },
   {
     code: 'OL-09', title: 'A limit that starts later', ref: 'Dates',
-    expect: 'A $150 cap from Oct 1 is Upcoming today; the clash with the $200 minimum is dated Oct 1',
+    expect: 'A $150 cap from Oct 1 is Upcoming today; the clash with Vinh Phat’s $200 minimum is noted from Oct 1, not the store-wide $500 it replaces',
     run() {
       const base = fresh();
       const d = { name: 'Q4 cap', maxValue: '150', storeWide: false, companyIds: ['c2'], startDate: '2026-10-01' };
       const db = withLimit(base, d, 'q4');
-      const found = limitConflicts(base, draftOf(d));
+      const found = limitOverlaps(base, draftOf(d));
       return [
         equals('Status today (Jul 28, 2026)', limitState(db.limits.at(-1)), 'Upcoming'),
         equals('Da Nang cart today, $300', messages(cartProblems(db, 'c2', 'l3', ...hoses(300))), []),
-        equals('Warning on save', found.filter((c) => c.text.startsWith('No order can check out')).map((c) => `${c.from} · ${c.text}`),
-          ['2026-10-01 · No order can check out: “Vinh Phat low minimum” needs at least $200, but “Q4 cap” allows at most $150.']),
-      ];
-    },
-  },
-  {
-    code: 'OL-10', title: 'Minimum units cost more than the maximum value', ref: 'Qty × value',
-    expect: '100 units at Vinh Phat cost at least $520: a $420 cap blocks every order, $600 doesn’t',
-    run() {
-      const db = withLimit(fresh(), { name: 'Vinh Phat bulk', minQty: '100', storeWide: false, companyIds: ['c2'] }, 'bulk');
-      return [
-        includes('Cap $420', warningsFor(db, { name: 'Vinh Phat cap', maxValue: '420', storeWide: false, companyIds: ['c2'] }), 'the cheapest 100 cost $520 (from Sealant cartridge 300ml at $5.20), more than the $420 “Vinh Phat cap” allows'),
-        excludes('Cap $600', warningsFor(db, { name: 'Vinh Phat cap', maxValue: '600', storeWide: false, companyIds: ['c2'] }), '“Vinh Phat bulk” needs at least'),
-      ];
-    },
-  },
-  {
-    code: 'OL-11', title: 'Maximum units can’t reach the minimum value', ref: 'Qty × value',
-    expect: '5 units at Vinh Phat are worth at most $1,875,000 (5 gift sets from the storefront catalog), under a $2,000,000 minimum',
-    run() {
-      const db = withLimit(fresh(), { name: 'Vinh Phat small orders', maxQty: '5', storeWide: false, companyIds: ['c2'] }, 'small');
-      return [
-        includes('Minimum $2,000,000', warningsFor(db, { name: 'Vinh Phat high minimum', minValue: '2000000', storeWide: false, companyIds: ['c2'] }), 'the most 5 can cost is $1,875,000 (from Manchester City 4 Piece Gift Set at $375,000)'),
-        excludes('Minimum $1,800,000', warningsFor(db, { name: 'Vinh Phat high minimum', minValue: '1800000', storeWide: false, companyIds: ['c2'] }), 'the most 5 can cost'),
-      ];
-    },
-  },
-  {
-    code: 'OL-12', title: 'The cheapest product is capped', ref: 'Qty × value',
-    expect: 'With sealant capped at 10, the cheapest 100 units cost $727 (10 sealant, 90 pillows), over a $700 cap; $520 without it',
-    run() {
-      const bulk = withLimit(fresh(), { name: 'Vinh Phat bulk', minQty: '100', storeWide: false, companyIds: ['c2'] }, 'bulk');
-      const capped = withLimit(bulk, { kind: 'product', name: 'Sealant max 10', storeWide: false, companyIds: ['c2'], rules: [rule('SEA-30', { max: '10' })] }, 'sea');
-      const cap = { name: 'Vinh Phat cap', maxValue: '700', storeWide: false, companyIds: ['c2'] };
-      return [
-        excludes('Without the sealant cap', warningsFor(bulk, cap), '“Vinh Phat bulk” needs at least'),
-        includes('With the sealant cap', warningsFor(capped, cap), 'the cheapest 100 cost $727 (from Sealant cartridge 300ml at $5.20)'),
-      ];
-    },
-  },
-  {
-    code: 'OL-13', title: 'Review that is never reached', ref: '#6',
-    expect: 'A block below a review maximum warns, per order and per month',
-    run() {
-      const db = fresh();
-      const monthly = withLimit(db, { name: 'Monthly review 40k', maxValue: '40000', maxAction: 'review', period: 'month', storeWide: false, companyIds: ['c2'] }, 'mr');
-      return [
-        includes('Block $15,000 under the $20,000 review', warningsFor(db, { name: 'Vinh Phat credit cap', maxValue: '15000', storeWide: false, companyIds: ['c2'] }), 'Orders never reach review: “Vinh Phat credit cap” blocks orders over $15,000, before they reach the $20,000 “Large order review” sends to you.'),
-        includes('Monthly block $30,000 under monthly review $40,000', warningsFor(monthly, { name: 'Monthly block 30k', maxValue: '30000', period: 'month', storeWide: false, companyIds: ['c2'] }), 'blocks orders over $30,000 a month, before they reach the $40,000 a month “Monthly review 40k” sends to you.'),
+        equals('Note on save', found.filter((o) => o.stops).map((o) => `${o.from} · ${o.text}`),
+          ['2026-10-01 · No order can check out at Vinh Phat Trading: “Vinh Phat low minimum” needs at least $200, but “Q4 cap” allows at most $150. Consider adjusting one of the two.']),
       ];
     },
   },
@@ -223,14 +177,6 @@ const CASES = [
         equals('Min + max limit, $7,000 cart', messages(cartProblems(two, 'c4', 'l5', ...hoses(7000))), ['Orders can’t be more than $5,000. Remove $2,000 to check out.']),
         equals('Min-only limit, $300 cart', messages(cartProblems(one, 'c4', 'l5', ...hoses(300))), ['We ship pallets: $800 minimum.']),
       ];
-    },
-  },
-  {
-    code: 'OL-15', title: 'Deleted locations aren’t checked', ref: '#12',
-    expect: 'Warnings for ABC Construction leave out Hai Duong depot (deleted in Shopify)',
-    run() {
-      const places = limitConflicts(fresh(), draftOf({ name: 'ABC tiny cap', maxValue: '300', storeWide: false, companyIds: ['c1'] })).flatMap((c) => c.where);
-      return [excludes('Where the warnings apply', places, 'Hai Duong depot'), includes('Where the warnings apply', places, 'Hanoi · ABC Construction')];
     },
   },
   {
@@ -306,40 +252,81 @@ const CASES = [
     },
   },
   {
-    code: 'OL-22', title: 'Only limits that stop orders are blocked', ref: 'Blocking',
-    expect: 'A $300 cap under the $500 minimum blocks; pack rounding is a note; turning off an exemption that keeps orders possible blocks',
+    code: 'OL-22', title: 'Overlaps are notes, never a block', ref: 'Notes',
+    expect: 'A $300 cap under the $500 minimum is a note and still saves; a limit on other products has no note',
     run() {
       const db = fresh();
-      const tiny = limitConflicts(db, draftOf({ name: 'ABC tiny cap', maxValue: '300', storeWide: false, companyIds: ['c1'] }));
-      const pack = limitConflicts(db, draftOf({ kind: 'product', name: 'Hanoi filter cap', storeWide: false, locationKeys: ['c1::l1'], rules: [rule('FIL-XL', { max: '100' })] }));
-      // Bac Ninh is exempt from a store-wide 50-unit minimum and takes at most 20 units.
-      let ex = withLimit(db, { name: 'Bulk everywhere', minQty: '50' }, 'bulk');
-      ex = withLimit(ex, { name: 'Bac Ninh no unit minimum', minQty: '0', storeWide: false, locationKeys: ['c1::l2'] }, 'exempt');
-      ex = withLimit(ex, { name: 'Bac Ninh small orders', maxQty: '20', storeWide: false, locationKeys: ['c1::l2'] }, 'small');
-      const offExempt = newConflicts(ex, ex.limits.map((l) => (l.id === 'exempt' ? { ...l, status: 'Inactive' } : l)));
+      const tiny = { name: 'ABC tiny cap', maxValue: '300', storeWide: false, companyIds: ['c1'] };
+      const hosePacks = { kind: 'product', name: 'Hose packs', storeWide: false, companyIds: ['c1'], rules: [rule('HOS-12', { increment: '10' })] };
       return [
-        includes('$300 cap: blocks saving', blockingOf(tiny).map((c) => c.text), 'No order can check out: “Wholesale minimum” needs at least $500, but “ABC tiny cap” allows at most $300.'),
-        equals('Hanoi “max 100” on packs of 12: blocks', blockingOf(pack).length, 0),
-        includes('…it’s a note', notesOf(pack).map((c) => c.text), 'so buyers can order at most 96'),
-        includes('Turning off Bac Ninh’s exemption: blocks', blockingOf(offExempt).map((c) => c.text), 'No order can check out: “Bulk everywhere” needs at least 50 units, but “Bac Ninh small orders” allows at most 20 units.'),
+        includes('$300 cap: a note', warningsFor(db, tiny), 'No order can check out at ABC Construction: “Wholesale minimum” needs at least $500, but “ABC tiny cap” allows at most $300.'),
+        equals('…and it saves (no errors)', Object.keys(limitErrors(draftOf(tiny))), []),
+        equals('Hose packs: no note', warningsFor(db, hosePacks), []),
       ];
     },
   },
   {
-    code: 'OL-21', title: 'Saving on a large store stays fast', ref: 'Speed',
-    expect: '2,100 locations with their own pricing: a store-wide Save under 500 ms, a company one under 150 ms',
-    slow: true,
+    code: 'OL-23', title: 'Rules in one limit apply in order', ref: 'Rule order',
+    expect: 'Rule 1 caps the Contractor assortment at 12, rule 2 sets a minimum of 13 on the Wholesale assortment (which holds all of it): the limit saves, shared products take rule 1, the rest rule 2; swapping the rules swaps them. A rule on all products shares the limit too: below, it takes what the other rules leave; on top, everything',
     run() {
-      const db = largeStore();
-      warmPriceIndex(db); // the store does this in the background when prices change
-      const time = (d) => {
-        const t = performance.now();
-        limitConflicts(db, draftOf(d));
-        return performance.now() - t;
-      };
+      const db = fresh();
+      const col = (name, o) => ({ id: `r_${name}`, scopeType: 'collection', collection: '', selectedCollections: [name], selectedProducts: [], min: null, max: null, increment: null, ...o });
+      const d = { kind: 'product', name: 'ABC assortments', storeWide: false, companyIds: ['c1'], rules: [col('Contractor assortment', { max: '12' }), col('Wholesale assortment', { min: '13' })] };
+      const inOrder = withLimit(db, d, 'assort');
+      const swapped = withLimit(db, { ...d, rules: [d.rules[1], d.rules[0]] }, 'assort');
+      const sealant = (n) => messages(cartProblems(inOrder, 'c1', 'l1', [{ sku: 'SEA-30', title: 'Sealant cartridge 300ml', qty: n }], n * 8).filter((p) => p.type === 'product'));
+      const allBelow = { ...d, rules: [d.rules[0], allProducts({ min: '5' })] };
+      const below = withLimit(db, allBelow, 'assort');
+      const above = withLimit(db, { ...d, rules: [allProducts({ max: '50' }), d.rules[0]] }, 'assort');
       return [
-        under('Store-wide limit (checks every location)', time({ name: 'Bulk', minQty: '100' }), 500),
-        under('One company’s limit (checks its locations)', time({ name: 'Cap', maxValue: '400', storeWide: false, companyIds: ['c2_7'] }), 150),
+        equals('Overlapping rules: saves', Object.keys(limitErrors(draftOf(d))), []),
+        equals('Sealant (in both) takes rule 1', quantities(productRuleFor(inOrder, 'c1', 'l1', 'SEA-30')), { min: null, max: 12, pack: 1 }),
+        equals('Reinforced hose (rule 2 only) takes rule 2', quantities(productRuleFor(inOrder, 'c1', 'l1', 'HOS-12')), { min: 13, max: null, pack: 1 }),
+        equals('Cart: 12 sealants check out', sealant(12), []),
+        includes('List says what rule 2 leaves to rule 1', [limitSummary(inOrder.limits.at(-1), inOrder)], 'Min 13 on Wholesale assortment, except 3 products in rule 1'),
+        equals('Rules swapped: the sealant takes the minimum of 13', quantities(productRuleFor(swapped, 'c1', 'l1', 'SEA-30')), { min: 13, max: null, pack: 1 }),
+        equals('All products below rule 1: saves', Object.keys(limitErrors(draftOf(allBelow))), []),
+        equals('…the sealant still takes rule 1', quantities(productRuleFor(below, 'c1', 'l1', 'SEA-30')), { min: null, max: 12, pack: 1 }),
+        equals('…a ball valve (in no other rule) takes all products', quantities(productRuleFor(below, 'c1', 'l1', 'VLV-40')), { min: 5, max: null, pack: 1 }),
+        equals('All products on top: the sealant takes it', quantities(productRuleFor(above, 'c1', 'l1', 'SEA-30')), { min: null, max: 50, pack: 1 }),
+      ];
+    },
+  },
+  {
+    code: 'OL-24', title: 'The newer limit wins a product at the same level', ref: 'Newest',
+    expect: 'A newer company pack of 6 replaces the company pack of 12 (the minimum of 12 stays); a newer store-wide one doesn’t — the company’s is more specific. Neither is more specific than the existing limit, so no note',
+    run() {
+      const base = fresh();
+      const d = { kind: 'product', name: 'ABC filter packs of 6', storeWide: false, companyIds: ['c1'], rules: [rule('FIL-XL', { increment: '6' })] };
+      const wide = { ...d, name: 'Store filter packs of 6', storeWide: true, companyIds: [] };
+      const db = withLimit(base, d, 'six');
+      return [
+        equals('Industrial filter, XL at Hanoi', quantities(productRuleFor(db, 'c1', 'l1', 'FIL-XL')), { min: 12, max: null, pack: 6 }),
+        equals('Cart: 18 filters', messages(cartProblems(db, 'c1', 'l1', ...filters(18))), []),
+        equals('Note on save (same level)', warningsFor(base, d), []),
+        equals('Store-wide pack of 6 at Hanoi', quantities(productRuleFor(withLimit(base, wide, 'six'), 'c1', 'l1', 'FIL-XL')), { min: 12, max: null, pack: 12 }),
+        equals('…no note (wider)', warningsFor(base, wide), []),
+      ];
+    },
+  },
+  {
+    code: 'OL-25', title: 'A customer in two tag segments takes the newer limit', ref: 'Segments', note: 'No walkthrough for this case: the storefront has no D2C tagged customer.',
+    expect: 'Tag “retailer” has a $500 minimum, a newer limit gives tag “trade” a $300 maximum. An Nam Retail has both tags: only the trade cap applies (no order is stopped); saving it gives a soft note that other tags have limits; Lan Anh Home (retailer only) keeps the minimum; two limits on the same tag still combine',
+    run() {
+      const d2c = (ids) => ({ audienceType: 'd2c', customerTarget: 'tags', customerTargetIds: ids });
+      const base = { ...fresh(), limits: [] };
+      const retail = { name: 'Retailer minimum', minValue: '500', ...d2c(['retailer']) };
+      const trade = { name: 'Trade cap', maxValue: '300', ...d2c(['trade']) };
+      const db = withLimit(withLimit(base, retail, 'rm'), trade, 'tc');
+      const customer = (id) => db.customers.find((c) => c.id === id);
+      const annam = cartProblemsForCustomer(db, customer('w4'), ...hoses(400));
+      const twice = withLimit(withLimit(base, retail, 'rm'), { name: 'Retailer minimum 2', minValue: '300', ...d2c(['retailer']) }, 'rm2');
+      return [
+        equals('An Nam Retail, $400 cart: only the trade cap', messages(annam), ['Orders can’t be more than $300. Remove $100 to check out.']),
+        equals('Lan Anh Home, $400 cart: the $500 minimum', messages(cartProblemsForCustomer(db, customer('w1'), ...hoses(400))), ['Your order must be at least $500 to check out. Add $100 more.']),
+        includes('Soft note on save', warningsFor(withLimit(base, retail, 'rm'), trade), 'Other customer tags already have order limits (retailer). A customer with several tags gets only the newest of these limits, so check them if they may overlap.'),
+        equals('…no clash', limitOverlaps(withLimit(base, retail, 'rm'), draftOf(trade)).filter((o) => o.stops).length, 0),
+        equals('Same tag twice: the stricter $500 stays', effectiveRulesForCustomer(twice, customer('w1')).settings.minValue.value, 500),
       ];
     },
   },
@@ -347,31 +334,6 @@ const CASES = [
 
 // In code order.
 export const LIMIT_TESTS = CASES.sort((a, b) => a.code.localeCompare(b.code));
-
-// 300 copies of the sample companies (2,100 locations), each with its own copy of
-// its first price list, and 170 copies of the products.
-function largeStore() {
-  const seed = fresh();
-  const policies = [...seed.policies];
-  const companies = [];
-  for (let i = 0; i < 300; i += 1) {
-    seed.companies.forEach((c) => {
-      const copy = { ...clone(c), id: `${c.id}_${i}`, orders: [] };
-      const first = (copy.pricing?.base || [])[0];
-      const src = first && policies.find((p) => p.id === (first.id || first));
-      if (src) {
-        const id = `${src.id}_${copy.id}`;
-        policies.push({ ...clone(src), id, name: `${src.name} ${copy.id}`, scopeType: 'all' });
-        copy.pricing.base = [{ id, priority: 0 }, ...copy.pricing.base];
-      }
-      companies.push(copy);
-    });
-  }
-  const products = [];
-  for (let i = 0; i < 170; i += 1) dbSeed.products.forEach((p) => products.push({ ...clone(p), sku: `${p.sku}_${i}` }));
-  const limits = seed.limits.map((l) => ({ ...l, companyIds: (l.companyIds || []).map((c) => `${c}_0`), locationKeys: (l.locationKeys || []).map((k) => k.replace('::', '_0::')) }));
-  return { ...seed, companies, policies, products, limits };
-}
 
 // Run one case: every check, whether all passed, how long it took — or what broke.
 export function runLimitTest(test) {

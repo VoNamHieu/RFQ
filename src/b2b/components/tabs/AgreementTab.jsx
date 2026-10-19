@@ -7,7 +7,6 @@ import {
   nextAgreement,
   agreementScopeLabel,
   agreementTermLines,
-  limitsAfterAgreement,
   agreementDatesLabel,
   expiringSoon,
   daysUntil,
@@ -17,10 +16,7 @@ import {
   fmtDay,
   PAST_STATUSES,
 } from '../../agreements.js';
-import { newConflicts } from '../../limits.js';
-import { LimitConflictList } from '../LimitConflictList.jsx';
 import { ContractVersionModal } from '../ContractVersionModal.jsx';
-import { withCatalog } from '../LimitEditor.jsx';
 import { Modal, wcTone } from '../../../shared/wc.jsx';
 
 const STATUS_TONE = { Active: 'success', Scheduled: 'info', Draft: undefined, Expired: undefined, Ended: undefined };
@@ -139,8 +135,6 @@ export function AgreementTab({ company }) {
   const returnTo = { view: 'company', selectedCompany: company.id, companyTab: 'agreement' };
   const edit = (ag) => dispatch({ type: 'OPEN_AGREEMENT_EDITOR', agreementId: ag.id, returnTo });
   const view = (ag, version) => setViewing({ ag, version });
-  // The order-limit conflicts ending it would leave (its limits can stop covering a clash).
-  const endConflicts = ending?.status === 'Active' ? newConflicts(withCatalog(state.db), limitsAfterAgreement(state.db, { off: ending })) : [];
 
   const pastCard = past.length ? (
     <s-section heading="Past contracts">
@@ -233,12 +227,6 @@ export function AgreementTab({ company }) {
                 ? `Its pricing and order limits come off ${company.name} right away. Anything assigned outside the contract stays.${next?.status === 'Scheduled' ? ` ${next.number} still starts on ${fmtDay(next.startDate)}.` : ''}`
                 : `It won’t start on ${fmtDay(ending.startDate)}, and nothing changes for ${company.name}${active ? `: ${active.number} stays in place` : ''}.`}
             </s-paragraph>
-            {endConflicts.length ? (
-              <>
-                <s-paragraph>Without them, these order limits conflict:</s-paragraph>
-                <LimitConflictList conflicts={endConflicts} />
-              </>
-            ) : null}
           </s-stack>
           <s-button
             slot="primary-action"

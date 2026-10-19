@@ -42,6 +42,10 @@
 }
 .lwt-caption.is-pass { color: var(--lwt-pass); }
 .lwt-caption.is-fail { color: var(--lwt-fail); }
+.lwt-actions {
+  display: flex;
+  gap: 8px;
+}
 .lwt-bar button {
   font: inherit;
   font-size: 13px;

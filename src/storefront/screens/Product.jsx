@@ -1,9 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import { useStore } from '../store.jsx';
-import { productBySku, b2bPriceFor, productRuleForSession } from '../data/products.js';
+import { useStore, unitPrice } from '../store.jsx';
+import { productBySku, b2bPriceFor, productRuleForSession, cartProblemsForSession, orderValueLimitsForSession } from '../data/products.js';
 import { Price } from '../components/Price.jsx';
 import { quantityProblem } from '../quantityProblem.js';
-import { QuoteIcon, InfoIcon } from '../components/icons.jsx';
+import { money } from '../utils.js';
+import { QuoteIcon, InfoIcon, WarningIcon, CheckIcon } from '../components/icons.jsx';
+
+// An order maximum the cart would go over with this quantity added: a review one
+// sends the order for the seller's review, the others stop checkout.
+const OVER_MAXIMUM = ['maxValue', 'maxQty', 'review'];
+
+// The order counted against the buyer's limits: `total` is the cart plus the
+// quantity picked; `over` the first maximum it goes over (cartProblems), if any.
+// { tone: 'warn' | 'ok', text }, or null when no order limit applies.
+// Limits read as whole dollars ($500), amounts with cents ($171.70).
+const whole = (n) => (n % 1 === 0 ? `$${n.toLocaleString('en-US')}` : money(n));
+function limitCount(total, limits, over) {
+  if (over) {
+    const then = over.type === 'review' ? 'needs the seller’s review' : 'over the maximum, can’t check out';
+    if (over.type === 'maxQty') return { tone: 'warn', text: over.message };
+    if (over.period && over.period !== 'order') return { tone: 'warn', text: `Over your ${whole(over.value)} ${over.period}ly limit · ${then}` };
+    const cap = over.type === 'review' ? limits?.review : limits?.block;
+    return { tone: 'warn', text: cap ? `${money(total)} / ${whole(cap)} limit · ${then}` : over.message };
+  }
+  if (!limits) return null;
+  if (limits.min != null && total < limits.min) {
+    return { tone: 'warn', text: `${money(total)} / ${whole(limits.min)} minimum · add ${money(limits.min - total)} more` };
+  }
+  const max = [limits.review, limits.block].filter((v) => v != null).sort((a, b) => a - b)[0];
+  const parts = [money(total), limits.min != null ? 'minimum met' : null, max != null ? `up to ${whole(max)}` : null];
+  return { tone: 'ok', text: parts.filter(Boolean).join(' · ') };
+}
 
 // Product = the theme's main-product section: media gallery + info column
 // (vendor, title, price, variant picker, quantity, buy buttons, description).
@@ -35,6 +62,11 @@ export function Product() {
   // The rule counts this variant in the cart too: what's there plus what's being added.
   const inCart = state.cart.filter((l) => l.sku === product.sku && l.variantId === variant?.id).reduce((n, l) => n + l.qty, 0);
   const qtyProblem = quantityProblem(rule, qty, inCart);
+  // The order as it would be with this quantity in the cart, counted against the order limits.
+  const withThis = [...state.cart.map((l) => ({ sku: l.sku, title: l.sku, qty: l.qty })), { sku: product.sku, title: product.title, qty }];
+  const subtotal = withThis.reduce((s, l) => s + unitPrice(l.sku, state.session) * l.qty, 0);
+  const overMax = cartProblemsForSession(withThis, subtotal, state.session).find((p) => OVER_MAXIMUM.includes(p.type));
+  const count = limitCount(subtotal, orderValueLimitsForSession(state.session), overMax);
 
   const addToCart = () => {
     if (!inStock || qtyProblem) return;
@@ -56,7 +88,10 @@ export function Product() {
           <h1>{product.title}</h1>
           {product.tagline && <p className="muted" style={{ marginTop: 0 }}>{product.tagline}</p>}
 
-          <div className="product__price"><Price sku={product.sku} list={product.list} size="lg" /></div>
+          <div className="product__price">
+            <Price sku={product.sku} list={product.list} size="lg" />
+            {rule && <span className="badge badge--amber badge--warn"><WarningIcon /> Order limits apply</span>}
+          </div>
 
           {/* B2B contract-price context or an invitation to log in / request pricing */}
           {hasB2B ? (
@@ -103,10 +138,22 @@ export function Product() {
             <input value={qty} onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))} />
             <button onClick={() => setQty((q) => q + step)}>+</button>
           </div>
-          {rule && (
-            <p className={`qty-note${qtyProblem ? ' qty-note--error' : ''}`}>
-              {qtyProblem || [step > 1 ? `Sold in packs of ${step}` : null, rule.min ? `Minimum ${rule.min}` : null, rule.max ? `Maximum ${rule.max}` : null].filter(Boolean).join(' · ')}
-            </p>
+          {(rule || count) && (
+            <div className="qty-feedback">
+              {rule &&
+                (qtyProblem ? (
+                  <p className="qty-note qty-note--warn"><WarningIcon /> {qtyProblem}</p>
+                ) : (
+                  <p className="qty-note">
+                    {[step > 1 ? `Sold in packs of ${step}` : null, rule.min ? `Minimum ${rule.min}` : null, rule.max ? `Maximum ${rule.max}` : null].filter(Boolean).join(' · ')}
+                  </p>
+                ))}
+              {count && (
+                <p className={`limit-count limit-count--${count.tone}`} aria-live="polite">
+                  {count.tone === 'ok' ? <CheckIcon /> : <WarningIcon />} {count.text}
+                </p>
+              )}
+            </div>
           )}
 
           {/* Buy buttons + RFQ touchpoint */}

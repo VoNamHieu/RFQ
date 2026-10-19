@@ -1,6 +1,7 @@
 import React from 'react';
 import { useStore } from '../store.jsx';
 import { LIMIT_KINDS, limitKey, locationLimits } from '../limits.js';
+import { withCatalog } from '../limitCatalog.js';
 import { useWcId } from '../../shared/wc.jsx';
 
 const LEVEL_LABEL = { location: 'This location', company: 'Company', store: 'Store-wide' };
@@ -12,7 +13,8 @@ const LEVEL_LABEL = { location: 'This location', company: 'Company', store: 'Sto
 export function LocationLimitsCard({ company, location }) {
   const { state, dispatch } = useStore();
   const addId = useWcId('add-limit');
-  const rows = locationLimits(state.db, company.id, location.id);
+  // The whole catalog, so a rule by tag, vendor or type finds the storefront's products too.
+  const rows = locationLimits(withCatalog(state.db), company.id, location.id);
   // The editor opens in Order limits and comes back here on save or cancel.
   const returnTo = { view: 'location', selectedCompany: company.id, selectedLocation: location.id };
   const add = (kind) => {

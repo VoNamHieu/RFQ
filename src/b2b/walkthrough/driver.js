@@ -6,10 +6,12 @@
 
 export const STOPPED = new Error('Stopped');
 
-export function createDriver({ frames, stage, cursor, ring, say, showPane, stopped }) {
+export function createDriver({ frames, stage, cursor, ring, say, showPane, stopped, paused = () => false }) {
   const checks = [];
+  // Every step goes through here: it holds while the walkthrough is paused.
   const wait = async (ms) => {
     await new Promise((r) => setTimeout(r, ms));
+    while (paused() && !stopped()) await new Promise((r) => setTimeout(r, 100));
     if (stopped()) throw STOPPED;
   };
   const doc = (app) => frames[app].contentDocument;
@@ -22,12 +24,12 @@ export function createDriver({ frames, stage, cursor, ring, say, showPane, stopp
   const text = (el) => (el?.innerText ?? el?.textContent ?? '').replace(/\s+/g, ' ').trim();
   const byText = (selector, label) => (d) => [...d.querySelectorAll(selector)].find((e) => text(e) === label);
   const field = (name) => (d) => d.querySelector(`[data-field="${name}"]`);
+  // `timeout` counts the time spent looking, not time paused.
   async function find(app, pick, what, timeout = 6000) {
-    const until = Date.now() + timeout;
-    for (;;) {
+    for (let waited = 0; ; waited += 100) {
       const el = pick(doc(app));
       if (el) return el;
-      if (Date.now() > until) throw new Error(`Couldn’t find ${what} in ${where(app)}.`);
+      if (waited > timeout) throw new Error(`Couldn’t find ${what} in ${where(app)}.`);
       await wait(100);
     }
   }
@@ -42,14 +44,15 @@ export function createDriver({ frames, stage, cursor, ring, say, showPane, stopp
 
   // ── The cursor ──────────────────────────────────────────────────────────────
   // Some web components lay out no box of their own (their children do): aim at
-  // the first part of them that has one.
+  // the first part of them that has one — what they render first (s-table's whole
+  // card), before the children slotted into it (its filters bar).
   function shown(el) {
     const queue = [el];
     for (let i = 0; i < queue.length && i < 60; i += 1) {
       const n = queue[i];
       const r = n.getBoundingClientRect();
       if (r.width > 0 && r.height > 0) return n;
-      queue.push(...n.children, ...(n.shadowRoot ? n.shadowRoot.children : []));
+      queue.push(...(n.shadowRoot ? n.shadowRoot.children : []), ...n.children);
     }
     return el;
   }
@@ -163,29 +166,16 @@ export function createDriver({ frames, stage, cursor, ring, say, showPane, stopp
         await type('admin', el, String(value), (v) => admin.patch({ rules: admin.draft().rules.map((r, j) => (j === i ? { ...r, [key]: v } : r)) }));
       }
     },
-    // Save (Create limit / Save). The editor checks the limit against the others
-    // as it's filled in. Notes (orders still go through) are shown, then it saves;
-    // when it would stop orders, Save is blocked — shown and returned unsaved.
-    // { saved, blocked: [text], notes: [text] }
+    // Save (Create limit / Save). The editor shows one message when the limit
+    // overlaps others, as it's filled in — read before saving; it never blocks it.
+    // { saved, notes: [text] }
     async save() {
-      await wait(500); // the editor's check runs a moment after the last change
-      const items = (name) => [...doc('admin').querySelectorAll(`[data-field="${name}"] s-list-item`)].map(text);
-      const blocked = items('conflicts-blocking');
-      const notes = items('conflicts-notes');
+      await wait(500); // let the editor settle after the last change
+      const notes = [...doc('admin').querySelectorAll('[data-field="limit-overlaps"] s-paragraph')].map(text);
       const label = admin.draft()?.id ? 'Save' : 'Create limit';
       const btn = await find('admin', byText('s-button', label), `the ${label} button`);
-      if (blocked.length) {
-        const banner = doc('admin').querySelector('[data-field="conflicts-blocking"]');
-        await point('admin', banner);
-        highlight('admin', banner);
-        say(`Admin · can’t save: ${blocked[0]}`);
-        await wait(3200);
-        await point('admin', btn); // Save is off until the limit changes
-        await wait(500);
-        return { saved: false, blocked, notes };
-      }
       if (notes.length) {
-        const banner = doc('admin').querySelector('[data-field="conflicts-notes"]');
+        const banner = doc('admin').querySelector('[data-field="limit-overlaps"]');
         await point('admin', banner);
         highlight('admin', banner);
         say(`Admin · note: ${notes[0]}`);
@@ -193,31 +183,25 @@ export function createDriver({ frames, stage, cursor, ring, say, showPane, stopp
       }
       await click('admin', btn);
       await wait(300);
-      return { saved: true, blocked, notes };
+      return { saved: true, notes };
     },
-    // A blocked limit: set it to Inactive and save it, or leave without saving.
-    async turnOff() {
-      say('Admin · set it to Inactive, then save');
-      await admin.choose('status', { status: 'Inactive' });
-      return admin.save();
-    },
-    // Turn a limit on (or off) from the list. When that would stop orders it's
-    // refused: the reason is shown and returned. { blocked: [text] }
+    // Turn a limit on (or off) from the list. Turning one on that overlaps other
+    // limits shows them first: they're read, then it turns on. { notes: [text] }
     async toggle(name, on = true) {
       say(`Admin · turn “${name}” ${on ? 'on' : 'off'} from the list`);
       await admin.list();
       const row = await find('admin', (d) => [...d.querySelectorAll('s-table-row')].find((r) => r.textContent.includes(name)), `“${name}” in the list`);
       await click('admin', row.querySelector('s-button'));
-      const close = await maybe('admin', byText('s-button', 'Close'), 1500);
-      const blocked = close ? [...doc('admin').querySelectorAll('s-modal s-list-item')].map(text) : [];
-      if (close) {
-        const why = doc('admin').querySelector('s-modal s-unordered-list');
+      const confirm = await maybe('admin', byText('s-button', 'Turn on'), 1500);
+      const notes = confirm ? [...doc('admin').querySelectorAll('s-modal s-paragraph')].map(text) : [];
+      if (confirm) {
+        const why = doc('admin').querySelector('s-modal s-paragraph');
         if (why) highlight('admin', why);
-        say(`Admin · can’t turn it ${on ? 'on' : 'off'}: ${blocked[0] || ''}`);
-        await wait(3200);
-        await click('admin', close);
+        say(`Admin · note: ${notes[0] || ''}`);
+        await wait(2400);
+        await click('admin', confirm);
       }
-      return { blocked };
+      return { notes };
     },
     async cancel() {
       const btn = await find('admin', byText('s-button', 'Cancel'), 'Cancel');
@@ -257,6 +241,7 @@ export function createDriver({ frames, stage, cursor, ring, say, showPane, stopp
       return text(el);
     },
     navigate: (view, patch) => dispatch('admin', { type: 'NAVIGATE', view, patch }),
+    openLocation: (companyId, locationId) => dispatch('admin', { type: 'OPEN_LOCATION', companyId, locationId }),
     // What an editor field shows while it's empty.
     placeholder(name) {
       const el = doc('admin').querySelector(`[data-field="${name}"]`);
@@ -293,9 +278,24 @@ export function createDriver({ frames, stage, cursor, ring, say, showPane, stopp
       await find('store', (d) => d.querySelector('.product__info'), 'the product page');
       await wait(300);
     },
-    async quantity(n) {
+    // Type a quantity, then show the order count under it. `count`: the text the count
+    // must show (null: none shown), checked when given.
+    async quantity(n, count) {
       const input = await find('store', (d) => d.querySelector('.product__info .qty input'), 'the quantity');
       await type('store', input, String(n), (v) => setNative(input, v));
+      await store.showCount(n, count);
+    },
+    // The order (cart + the quantity picked) counted against its limits, live under
+    // the quantity.
+    async showCount(n, expected) {
+      const el = await maybe('store', (d) => d.querySelector('.limit-count'), 800);
+      if (el) {
+        await point('store', el);
+        highlight('store', el);
+        say(`Storefront · order count: ${text(el)}`);
+        await wait(1800);
+      }
+      if (expected !== undefined) see(`Storefront: the order count at quantity ${n}`, text(el), expected);
     },
     qtyNote: () => text(doc('store').querySelector('.qty-note')),
     // Add to cart, if the product page lets it. Returns whether it was added.
@@ -308,9 +308,9 @@ export function createDriver({ frames, stage, cursor, ring, say, showPane, stopp
       await wait(700);
       return true;
     },
-    async buy(title, n) {
+    async buy(title, n, count) {
       await store.product(title);
-      await store.quantity(n);
+      await store.quantity(n, count);
       return store.add();
     },
     // Check out from the cart: blocked (the notice), sent for review (the dialog)
@@ -345,8 +345,18 @@ export function createDriver({ frames, stage, cursor, ring, say, showPane, stopp
       await click('store', btn);
       await wait(600);
     },
+    // The order request just sent, at the top of the buyer's Orders (where sending lands).
+    async showRequest() {
+      const el = await find('store', (d) => [...d.querySelectorAll('.acct-order-card')].find((r) => text(r).includes('Waiting for review')), 'the order request in the B2B Portal’s Orders');
+      await point('store', el);
+      highlight('store', el);
+      say(`Storefront · in the B2B Portal’s Orders: ${text(el)}`);
+      await wait(2000);
+      return text(el);
+    },
     async showNote() {
       const el = await find('store', (d) => d.querySelector('.qty-note'), 'the quantity note');
+      await point('store', el); // scrolls it into view
       highlight('store', el);
       say(`Storefront · ${text(el)}`);
       await wait(2000);

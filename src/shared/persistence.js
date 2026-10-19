@@ -67,6 +67,12 @@ export const readOrderRequests = () => readJSON(ORDER_REQUESTS_KEY) || [];
 export const CONTRACTS_KEY = key('qsContracts');
 export const publishContracts = (contracts) => writeJSON(CONTRACTS_KEY, contracts);
 export const publishedContracts = () => readJSON(CONTRACTS_KEY);
+// Held orders ↔ storefront: the B2B app publishes the orders held for its review
+// and what became of them (see storefrontHeldOrders in b2b/dbHelpers.js), for the
+// buyer's Orders on the B2B Portal.
+export const HELD_ORDERS_KEY = key('qsHeldOrders');
+export const publishHeldOrders = (orders) => writeJSON(HELD_ORDERS_KEY, orders);
+export const publishedHeldOrders = () => readJSON(HELD_ORDERS_KEY);
 export const addOrderRequest = (request) => writeJSON(ORDER_REQUESTS_KEY, [...readOrderRequests(), request]);
 export function removeOrderRequests(ids) {
   const left = readOrderRequests().filter((r) => !ids.includes(r.id));
@@ -89,7 +95,7 @@ export function consumeHandoff() {
 // "Reset sample data" — clear the shared demo state + any pending handoff and
 // reload back to seed (legacy resetDemoData / the top-bar "Reset data" button).
 export function resetDemo() {
-  removeKeys(DEMO_STATE_KEY, HANDOFF_KEY, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, CONTRACTS_KEY);
+  removeKeys(DEMO_STATE_KEY, HANDOFF_KEY, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, CONTRACTS_KEY, HELD_ORDERS_KEY);
   try {
     window.location.reload();
   } catch {

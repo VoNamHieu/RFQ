@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useWcId } from '../../shared/wc.jsx';
 import { COLLECTIONS } from '../data/constants.js';
 import { money } from '../format.js';
-import { productVariants, applyAdjustment, locationCatalog, scopeCollections } from '../pricing.js';
+import { productVariants, applyAdjustment, locationCatalog, scopeCollections, conditionValueOptions } from '../pricing.js';
 import { VariantPicker } from './VariantPicker.jsx';
 import { CollectionPicker } from './CollectionPicker.jsx';
 
@@ -195,10 +195,21 @@ export function QuantityProductsCard({ builder, patch, products }) {
 // like quantity pricing's: Search products opens Select products, and only the
 // picked ones show (as chips), however big the catalog. ProductScopeCard wraps it
 // in a Products card; a product limit's rules use it as is.
-export function ProductScopeFields({ builder, patch, products }) {
+// `allDisabled`: another rule of the same list already covers all products.
+// `attributeScopes` (product limit rules only): more "Applies to" options picked by
+// a product attribute — { scopeType, label, key (where the picks are kept), field
+// (for conditionValueOptions), noun }.
+export function ProductScopeFields({ builder, patch, products, allDisabled = false, attributeScopes = [] }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [collectionPickerOpen, setCollectionPickerOpen] = useState(false);
   const st = builder.scopeType || 'all';
+  const attr = attributeScopes.find((a) => a.scopeType === st);
+  const attrValues = attr ? builder[attr.key] || [] : [];
+  const attrRemaining = attr
+    ? conditionValueOptions(attr.field, products)
+        .filter((o) => !attrValues.includes(o))
+        .sort((a, b) => a.localeCompare(b))
+    : [];
   // Specific collections are picked the same way (Search collections opens Select collections).
   const collections = scopeCollections(builder);
   const selected = builder.selectedProducts || [];
@@ -212,10 +223,52 @@ export function ProductScopeFields({ builder, patch, products }) {
     <>
       <s-stack gap="small">
         <s-select label="Applies to" value={st} onChange={(e) => patch({ scopeType: e.currentTarget.value })}>
-          <s-option value="all">All products</s-option>
+          <s-option value="all" disabled={allDisabled}>
+            All products
+          </s-option>
           <s-option value="collection">Specific collections</s-option>
           <s-option value="products">Specific products</s-option>
+          {attributeScopes.map((a) => (
+            <s-option key={a.scopeType} value={a.scopeType}>
+              {a.label}
+            </s-option>
+          ))}
         </s-select>
+        {attr && (
+          <s-stack gap="small-200">
+            {attrRemaining.length > 0 && (
+              // Keyed by the picks so the select remounts (back to the placeholder)
+              // after each pick — its value is always "", as in RuleBuilderCard.
+              <s-select
+                key={attrValues.join('|')}
+                label={`Add ${attr.noun}`}
+                labelAccessibilityVisibility="exclusive"
+                placeholder={attrValues.length ? 'Add another…' : `Select ${attr.noun}…`}
+                value=""
+                onChange={(e) => {
+                  const v = e.currentTarget.value;
+                  // Idempotent: onChange can fire twice for one pick.
+                  if (v && !attrValues.includes(v)) patch({ [attr.key]: [...attrValues, v] });
+                }}
+              >
+                {attrRemaining.map((o) => (
+                  <s-option key={o} value={o}>
+                    {o}
+                  </s-option>
+                ))}
+              </s-select>
+            )}
+            {attrValues.length ? (
+              <s-stack direction="inline" gap="small-300">
+                {attrValues.map((v) => (
+                  <s-clickable-chip key={v} removable accessibilityLabel={`Remove ${v}`} onRemove={() => patch({ [attr.key]: attrValues.filter((x) => x !== v) })}>
+                    {v}
+                  </s-clickable-chip>
+                ))}
+              </s-stack>
+            ) : null}
+          </s-stack>
+        )}
         {st === 'collection' && (
           <s-stack gap="small-200">
             <s-search-field

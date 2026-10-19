@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
 import { kindOf, scopeLabel } from '../pricing.js';
-import { limitSummary, isD2CLimit, newConflicts, blockingOf, notesOf } from '../limits.js';
-import { LimitConflictList } from './LimitConflictList.jsx';
+import { limitSummary, isD2CLimit, overlapsOf } from '../limits.js';
+import { overlapMessage } from './LimitOverlapList.jsx';
 import { withCatalog } from './LimitEditor.jsx';
 import { agreementChanges, limitsAfterAgreement, isLive, liveStatus, fmtDay, addDay, activeAgreement, sameAgreement, termWarnings } from '../agreements.js';
 import { TODAY } from '../pricing.js';
@@ -59,9 +59,9 @@ export function AgreementEditor() {
   const nextVersion = (saved?.version || 0) + 1;
   // Saving a live contract unchanged would only add an empty version.
   const unchanged = live && sameAgreement(saved, draft, state.db);
-  // The order-limit conflicts going live would cause (the live version — or the
-  // contract this one replaces — comes off first).
-  const goLiveConflicts = confirm ? newConflicts(withCatalog(state.db), limitsAfterAgreement(state.db, { off: started ? saved : replacing, on: draft })) : [];
+  // How its order limits overlap others once it's live (the live version — or the
+  // contract this one replaces — comes off first). Notes: they don't block it.
+  const goLiveOverlaps = confirm ? overlapsOf(withCatalog(state.db), limitsAfterAgreement(state.db, { off: started ? saved : replacing, on: draft }), draft.terms.limits) : [];
   // Terms that won't apply for the whole contract (turned off, or dated).
   const warnings = confirm ? termWarnings(state.db, draft) : [];
   const when = startsLater ? `on ${fmtDay(draft.startDate)}` : 'right away';
@@ -214,24 +214,11 @@ export function AgreementEditor() {
                 </s-unordered-list>
               </>
             ) : null}
-            {/* Order limits that would stop orders block it; notes don't. */}
-            {blockingOf(goLiveConflicts).length ? (
-              <>
-                <s-paragraph>{`${startsLater ? 'When it starts, its' : 'Its'} order limits would stop orders, so it can’t be ${live ? 'saved' : 'activated'}. Change the limits first:`}</s-paragraph>
-                <LimitConflictList conflicts={blockingOf(goLiveConflicts)} />
-              </>
-            ) : null}
-            {notesOf(goLiveConflicts).length ? (
-              <>
-                <s-paragraph>{startsLater ? 'When it starts, how its order limits work with others:' : 'How its order limits work with others:'}</s-paragraph>
-                <LimitConflictList conflicts={notesOf(goLiveConflicts)} />
-              </>
-            ) : null}
+            {goLiveOverlaps.length ? <s-paragraph>{`${startsLater ? 'When it starts: ' : ''}${overlapMessage('its order limits')}`}</s-paragraph> : null}
           </s-stack>
           <s-button
             slot="primary-action"
             variant="primary"
-            disabled={blockingOf(goLiveConflicts).length > 0}
             onClick={() => {
               setConfirm(false);
               dispatch({ type: 'SAVE_AGREEMENT', activate: true });

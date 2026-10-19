@@ -3,8 +3,7 @@ import { shopifyCompanies } from './data/directory.js';
 import { policyUsageCount, slotIds, hasOwnSlot, TODAY } from './pricing.js';
 import { newRule, newBaseBuilder, newQuantityBuilder } from './builders.js';
 import { buildInitialState } from './initialState.js';
-import { newLimit, normalizeLimit, upgradeLimits, toDraft, warmPriceIndex } from './limits.js';
-import { withCatalog } from './limitCatalog.js';
+import { newLimit, normalizeLimit, upgradeLimits, toDraft } from './limits.js';
 import { versionFlags } from '../shared/versions.js';
 import {
   newAgreement,
@@ -33,8 +32,9 @@ import {
   recomputeBuyers,
   applyQuotePricingTransfer,
   injectOrderRequests,
+  storefrontHeldOrders,
 } from './dbHelpers.js';
-import { publishOrderLimits, publishedOrderLimits, publishContracts, readOrderRequests, removeOrderRequests, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, IS_DEMO } from '../shared/persistence.js';
+import { publishOrderLimits, publishedOrderLimits, publishContracts, publishHeldOrders, readOrderRequests, removeOrderRequests, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, IS_DEMO } from '../shared/persistence.js';
 
 // The B2B god file rebuilt #app from a single `state` on every action. Here that
 // is a reducer over a view state machine + the mutable demo db. The db helpers,
@@ -1049,7 +1049,8 @@ function reducer(state, action) {
     }
     // ----- Orders held by an order maximum sent for review (order limits) -----
     // Approving completes the held draft order into a real order; declining cancels
-    // it (the buyer is told, and can change the order and submit it again).
+    // it (the buyer is told, and can change the order and submit it again) — with
+    // the merchant's message to the buyer, if they wrote one (`declineMessage`).
     case 'APPROVE_ORDER':
     case 'DECLINE_ORDER': {
       const approve = action.type === 'APPROVE_ORDER';
@@ -1057,8 +1058,9 @@ function reducer(state, action) {
       const c = db.companies.find((x) => x.id === action.companyId);
       const o = c?.orders?.find((x) => x.id === action.orderId);
       if (!o) return state;
-      Object.assign(o, approve ? { status: 'Unfulfilled', shopifyStatus: 'Unfulfilled' } : { status: 'Declined', shopifyStatus: 'Cancelled' });
-      c.activity = [{ when: 'Today', what: `Order ${o.id} ${approve ? 'approved' : 'declined'} after review` }, ...(c.activity || [])];
+      const message = !approve && action.message ? action.message : null;
+      Object.assign(o, approve ? { status: 'Unfulfilled', shopifyStatus: 'Unfulfilled' } : { status: 'Declined', shopifyStatus: 'Cancelled', declineMessage: message });
+      c.activity = [{ when: 'Today', what: `Order ${o.id} ${approve ? 'approved' : 'declined'} after review${message ? ', with a message to the buyer' : ''}` }, ...(c.activity || [])];
       return { ...state, db, toast: `Order ${o.id} ${approve ? 'approved' : 'declined'}` };
     }
     // ----- Agreements (see agreements.js) -----
@@ -1203,6 +1205,10 @@ export function StoreProvider({ children }) {
   useEffect(() => {
     if (!state.emptyMode) publishContracts(storefrontContracts(state.db));
   }, [state.db.agreements, state.db.policies, state.db.companies, state.emptyMode]);
+  // …and so do the orders held for review, for the buyer's Orders on the B2B Portal.
+  useEffect(() => {
+    if (!state.emptyMode) publishHeldOrders(storefrontHeldOrders(state.db));
+  }, [state.db.companies, state.emptyMode]);
   useEffect(() => {
     const onStorage = (e) => {
       if (e.key === ORDER_REQUESTS_KEY) dispatch({ type: 'SYNC_ORDER_REQUESTS', requests: readOrderRequests() });
@@ -1211,16 +1217,6 @@ export function StoreProvider({ children }) {
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, []);
-  // The prices order-limit checks read are worked out ahead, when the pricings,
-  // the catalog or the companies change (in production a background job), so
-  // saving a limit never waits for them.
-  useEffect(() => {
-    if (!versionFlags().orderLimits) return undefined;
-    const run = () => warmPriceIndex(withCatalog(state.db));
-    const idle = typeof window.requestIdleCallback === 'function';
-    const id = idle ? window.requestIdleCallback(run) : setTimeout(run, 200);
-    return () => (idle ? window.cancelIdleCallback(id) : clearTimeout(id));
-  }, [state.db.policies, state.db.products, state.db.companies]);
   useEffect(() => {
     const done = state.db.companies.flatMap((c) => c.orders || []).filter((o) => o.requestId && o.status !== 'Needs review');
     if (done.length) removeOrderRequests(done.map((o) => o.requestId));

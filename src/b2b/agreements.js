@@ -200,7 +200,7 @@ export function unapplyAgreement(db, ag) {
 }
 
 // The order limits as they'd be after taking `off` off its company and putting
-// `on` on (either can be null) — to check for conflicts before it happens.
+// `on` on (either can be null) — to show how its limits overlap others before it happens.
 export function limitsAfterAgreement(db, { off = null, on = null }) {
   const copy = JSON.parse(JSON.stringify({ companies: db.companies, policies: db.policies, limits: db.limits || [] }));
   if (off) unapplyAgreement(copy, JSON.parse(JSON.stringify(off)));

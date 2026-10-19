@@ -5,10 +5,11 @@ import { LimitWalkthrough } from './LimitWalkthrough.jsx';
 import './LimitTestConsole.css';
 
 // Order limit test console (#/b2b/order-limit-tests): every test case with its
-// code, and a command line. Typing a code plays the case's walkthrough — a cursor
+// code and a Run button, and a command line. Running a case (its button, or
+// typing its code) plays the case's walkthrough — a cursor
 // sets it up in the admin and shows the result on the storefront (LimitWalkthrough)
 // — then prints what the screens showed and the engine's own checks. A case
-// with no walkthrough (the speed one) runs its engine checks only.
+// with no walkthrough runs its engine checks only.
 export function LimitTestConsole() {
   const [command, setCommand] = useState('');
   const [log, setLog] = useState([]);
@@ -22,9 +23,9 @@ export function LimitTestConsole() {
     if (logBox.current) logBox.current.scrollTop = logBox.current.scrollHeight;
   }, [log]);
 
-  const run = () => {
-    const code = command.trim().toUpperCase();
-    setCommand('');
+  const busy = !!walk && log.some((x) => x.id === walk.id && x.running);
+  const run = (raw) => {
+    const code = raw.trim().toUpperCase();
     if (!code) return;
     const id = `${Date.now()}-${log.length}`;
     const test = LIMIT_TESTS.find((t) => t.code === code);
@@ -40,7 +41,7 @@ export function LimitTestConsole() {
     // Show "Running" first: the large-store case takes a few seconds.
     setTimeout(() => {
       const engine = runLimitTest(test);
-      const result = { ...engine, groups: [{ title: 'Engine', checks: engine.checks }], note: 'No walkthrough for this case: it measures speed.' };
+      const result = { ...engine, groups: [{ title: 'Engine', checks: engine.checks }], note: test.note || 'No walkthrough for this case.' };
       setLog((l) => l.map((e) => (e.id === id ? { ...e, running: false, result } : e)));
     }, 30);
   };
@@ -62,7 +63,7 @@ export function LimitTestConsole() {
     <s-page heading="Order limit tests">
       <s-stack gap="base">
         <s-paragraph color="subdued">
-          Type a test code and press Enter. A cursor sets the case up in the admin and shows what the buyer gets on the storefront, both starting from the sample data in their own space (your prototype data isn’t touched). Then the console lists what the screens showed and the engine’s own checks.
+          Click Run next to a case, or type its code and press Enter. A cursor sets the case up in the admin and shows what the buyer gets on the storefront, both starting from the sample data in their own space (your prototype data isn’t touched). Then the console lists what the screens showed and the engine’s own checks.
         </s-paragraph>
 
         <div className="ltc-terminal" onClick={() => input.current?.focus()}>
@@ -121,12 +122,15 @@ export function LimitTestConsole() {
             <span aria-hidden="true">›</span>
             <input
               ref={input}
-              disabled={!!walk && log.some((x) => x.id === walk.id && x.running)}
+              disabled={busy}
               id="limit-test-command"
               value={command}
               onChange={(e) => setCommand(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') run();
+                if (e.key === 'Enter') {
+                  run(command);
+                  setCommand('');
+                }
               }}
               placeholder="Enter a test code, e.g. OL-02"
               aria-label="Test code"
@@ -150,7 +154,12 @@ export function LimitTestConsole() {
                   <s-table-cell>
                     <span className="ltc-code">{t.code}</span>
                   </s-table-cell>
-                  <s-table-cell>{t.title}</s-table-cell>
+                  <s-table-cell>
+                    <s-stack direction="inline" gap="small-200" alignItems="center">
+                      <span>{t.title}</span>
+                      <s-button icon="play" variant="tertiary" disabled={busy} onClick={() => run(t.code)} accessibilityLabel={`Run ${t.code}`}>Run</s-button>
+                    </s-stack>
+                  </s-table-cell>
                   <s-table-cell>
                     <div style={{ whiteSpace: 'normal', maxWidth: 440 }}>{t.expect}</div>
                   </s-table-cell>
@@ -170,6 +179,10 @@ export function LimitTestConsole() {
           script={WALKTHROUGHS[walk.test.code]}
           storefront={!ADMIN_ONLY.has(walk.test.code)}
           onDone={finish}
+          onRestart={() => {
+            setWalk((w) => ({ ...w, started: performance.now() }));
+            setLog((l) => l.map((e) => (e.id === walk.id ? { ...e, running: true, result: null } : e)));
+          }}
           onClose={() => {
             setWalk(null);
             setTimeout(() => input.current?.focus(), 0);

@@ -17,23 +17,48 @@ function demoUrl(app) {
 // (left) and the storefront (right), both live and starting from the sample
 // data, with a cursor that sets the case up and shows what the buyer gets.
 // `onDone({ checks, stopped, error })` once it ends; `onClose` closes the stage.
+// Pause holds it at its next step; Restart reloads both pages from the sample data
+// and plays it again (`onRestart` first).
 // A case whose result is only in the admin (`storefront` false) shows the admin alone.
-export function LimitWalkthrough({ test, script, storefront = true, onDone, onClose }) {
+export function LimitWalkthrough({ test, script, storefront = true, onDone, onRestart, onClose }) {
   // Empty the demo storage before the two pages load, so both start fresh.
   useState(() => clearDemoState());
   const [caption, setCaption] = useState('Loading the admin and the storefront…');
   const [pane, setPane] = useState('admin');
   const [result, setResult] = useState(null);
+  const [paused, setPaused] = useState(false);
+  const [attempt, setAttempt] = useState(0); // each Restart reloads the pages (their key)
   const stage = useRef(null);
   const cursor = useRef(null);
   const ring = useRef(null);
   const admin = useRef(null);
   const store = useRef(null);
   const stopAsked = useRef(false);
+  const pausedNow = useRef(false);
+  const checksNow = useRef([]); // what the screens showed so far, for a Close midway
   const run = useRef(0);
+
+  const togglePause = () => {
+    pausedNow.current = !pausedNow.current;
+    setPaused(pausedNow.current);
+  };
+  const restart = () => {
+    stopAsked.current = true; // the run on now ends at its next step
+    pausedNow.current = false;
+    clearDemoState();
+    setPaused(false);
+    setResult(null);
+    setCaption('Loading the admin and the storefront…');
+    setPane('admin');
+    if (ring.current) ring.current.hidden = true;
+    onRestart?.();
+    setAttempt((a) => a + 1);
+  };
 
   useEffect(() => {
     const mine = (run.current += 1);
+    stopAsked.current = false;
+    checksNow.current = [];
     const stopped = () => run.current !== mine || stopAsked.current;
     const ready = (f) => !!f.current?.contentWindow?.__qsDemo;
     (async () => {
@@ -55,8 +80,10 @@ export function LimitWalkthrough({ test, script, storefront = true, onDone, onCl
           say: (t) => !stopped() && setCaption(t),
           showPane: (p) => !stopped() && setPane(p),
           stopped,
+          paused: () => pausedNow.current,
         });
         checks = d.checks;
+        checksNow.current = d.checks;
         await script(d);
       } catch (e) {
         if (e !== STOPPED) error = e?.message || String(e);
@@ -71,15 +98,24 @@ export function LimitWalkthrough({ test, script, storefront = true, onDone, onCl
     return () => {
       run.current += 1;
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [attempt]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Close works any time: one still playing ends here, as stopped, with what the
+  // screens showed so far.
+  const close = () => {
+    if (!result) {
+      run.current += 1;
+      onDone({ checks: checksNow.current, stopped: true, error: null });
+    }
+    onClose();
+  };
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === 'Escape' && result) onClose();
+      if (e.key === 'Escape') close();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [result, onClose]);
+  });
 
   return (
     <div className="lwt" role="dialog" aria-modal="true" aria-label={`Walkthrough ${test.code}: ${test.title}`}>
@@ -91,21 +127,23 @@ export function LimitWalkthrough({ test, script, storefront = true, onDone, onCl
         <div className={`lwt-caption${result ? (result.pass ? ' is-pass' : ' is-fail') : ''}`} aria-live="polite" title={caption}>
           {caption}
         </div>
-        {result ? (
-          <button type="button" onClick={onClose}>Close</button>
-        ) : (
-          <button type="button" onClick={() => { stopAsked.current = true; }}>Stop</button>
-        )}
+        <div className="lwt-actions">
+          {result ? null : (
+            <button type="button" onClick={togglePause} aria-pressed={paused}>{paused ? 'Resume' : 'Pause'}</button>
+          )}
+          <button type="button" onClick={restart}>Restart</button>
+          <button type="button" onClick={close}>Close</button>
+        </div>
       </div>
       <div className={`lwt-stage${storefront ? '' : ' lwt-stage--admin-only'}`} ref={stage}>
         <section className={`lwt-pane${pane === 'admin' ? ' is-active' : ''}`}>
           <header>Admin · Order limits</header>
-          <iframe ref={admin} title="Admin" src={demoUrl('admin')} />
+          <iframe key={attempt} ref={admin} title="Admin" src={demoUrl('admin')} />
         </section>
         {storefront && (
           <section className={`lwt-pane${pane === 'store' ? ' is-active' : ''}`}>
             <header>Storefront · John Nguyen, ABC Construction · Hanoi</header>
-            <iframe ref={store} title="Storefront" src={demoUrl('store')} />
+            <iframe key={attempt} ref={store} title="Storefront" src={demoUrl('store')} />
           </section>
         )}
         <div className="lwt-ring" ref={ring} hidden />

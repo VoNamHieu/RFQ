@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useStore } from '../store.jsx';
-import { LIMIT_KINDS, limitErrors, defaultLimitMessage, normalizeLimit, limitConflicts, newConflicts, productRules, newProductRule, inheritedSetting, blockingOf, notesOf } from '../limits.js';
+import { LIMIT_KINDS, limitErrors, defaultLimitMessage, normalizeLimit, limitOverlaps, productRules, inheritedSetting, ruleSkus } from '../limits.js';
 import { money } from '../format.js';
-import { LimitConflictList } from './LimitConflictList.jsx';
-import { ProductScopeFields } from './pricingEditorCards.jsx';
+import { LimitOverlapBanner } from './LimitOverlapList.jsx';
+import { LimitRulesCard } from './LimitRulesCard.jsx';
 import { SelectCompaniesModal, CustomerTargetsBox, companyPicks } from './AssignmentCard.jsx';
 import { Modal, useWcId, PageHeader } from '../../shared/wc.jsx';
 import { limitCatalog, withCatalog } from '../limitCatalog.js';
@@ -23,34 +23,8 @@ const REQUIRED = ['name', 'order', 'targets'];
 const isRequired = (k) => REQUIRED.includes(k) || /^rule-\d+(-products)?$/.test(k);
 
 // Create / edit one order limit — an in-frame page in the Order limits view (see
-// the OPEN_LIMIT_EDITOR action). Settings in the main column; status and who it
-// applies to in the aside, like the pricing editor.
-// Deleting a limit: what it leaves between other limits (it can stop covering a
-// clash). Ones that stop orders block the delete until those limits change.
-// Shared with the list.
-export function deleteCheck(db, id) {
-  const left = newConflicts(withCatalog(db), (db.limits || []).filter((l) => l.id !== id));
-  return { blocking: blockingOf(left), notes: notesOf(left) };
-}
-export function DeleteLimitConflicts({ check }) {
-  return (
-    <>
-      {check.blocking.length ? (
-        <>
-          <s-paragraph>Without it, other limits stop orders. Change those limits before deleting it:</s-paragraph>
-          <LimitConflictList conflicts={check.blocking} />
-        </>
-      ) : null}
-      {check.notes.length ? (
-        <>
-          <s-paragraph>Without it:</s-paragraph>
-          <LimitConflictList conflicts={check.notes} />
-        </>
-      ) : null}
-    </>
-  );
-}
-
+// the OPEN_LIMIT_EDITOR action). Name, then who it applies to, so the empty
+// fields below show what those buyers inherit; status in the aside.
 export function LimitEditor() {
   const { state, dispatch } = useStore();
   const draft = state.limitEditor.draft;
@@ -71,32 +45,12 @@ export function LimitEditor() {
   const breaks = held.length
     ? newlyBroken(state.db, { ...state.db, limits: (state.db.limits || []).map((l) => (l.id === draft.id ? normalizeLimit(draft) : l)) })
     : [];
-  // What saving it would do with the other limits, worked out a moment after each
-  // change. Conflicts that stop orders block saving: change the limit, or set it
-  // to Inactive. Notes (orders still go through) don't.
-  const [check, setCheck] = useState({ blocking: [], notes: [] });
   const hasErrors = Object.keys(allErrors).length > 0;
-  useEffect(() => {
-    if (hasErrors) {
-      setCheck({ blocking: [], notes: [] });
-      return undefined;
-    }
-    const t = setTimeout(() => {
-      const found = limitConflicts(withCatalog(state.db), draft);
-      setCheck({ blocking: blockingOf(found), notes: notesOf(found) });
-    }, 250);
-    return () => clearTimeout(t);
-  }, [draft, state.db, hasErrors]);
-  // The ones this limit is part of, or only ones it leaves between other limits.
-  const ownBlock = check.blocking.some((c) => (c.ids || []).includes(draft.id || 'new'));
   const save = () => {
     if (breaks.length) return undefined;
     if (hasErrors) return setTried(true);
-    const found = limitConflicts(withCatalog(state.db), draft);
-    if (blockingOf(found).length) return setCheck({ blocking: blockingOf(found), notes: notesOf(found) });
     return dispatch({ type: 'SAVE_LIMIT' });
   };
-  const delCheck = confirmDelete ? deleteCheck(state.db, draft.id) : null;
 
   // Who it's for, like pricing: Company-based B2B or D2C Wholesale. Switching side
   // clears the other side's picks; D2C can't send an order for review, so its
@@ -122,8 +76,16 @@ export function LimitEditor() {
   );
 
   // The other limits (without this one's saved version), the same while editing so
-  // each buyer's record is worked out once: what an empty field inherits.
-  const others = useMemo(() => ({ ...state.db, limits: (state.db.limits || []).filter((l) => l.id !== draft.id) }), [state.db, draft.id]);
+  // each buyer's record is worked out once: what an empty field inherits. Over the
+  // whole catalog, so a rule by tag, vendor or type finds the storefront's products too.
+  const catalogDb = useMemo(() => withCatalog(state.db), [state.db]);
+  const others = useMemo(() => ({ ...catalogDb, limits: (catalogDb.limits || []).filter((l) => l.id !== draft.id) }), [catalogDb, draft.id]);
+
+  // Whether it overlaps other limits, read off the limits two at a time, so it
+  // updates as the fields change. One message whatever it is (LimitOverlapBanner);
+  // it never blocks saving. Shown once the limit knows who it's for.
+  const checkable = Object.keys(allErrors).every((k) => k === 'name');
+  const overlaps = useMemo(() => (checkable ? limitOverlaps(catalogDb, draft) : []), [catalogDb, draft, checkable]);
 
   // A product limit's rules: each picks its products and their quantities.
   const rules = draft.kind === 'product' ? productRules(draft) : [];
@@ -132,6 +94,32 @@ export function LimitEditor() {
     patch({
       rules: rules.map((r, j) => (j === i ? { ...r, ...p } : r)),
     });
+  const titleOf = (sku) => limitProducts.find((p) => p.sku === sku)?.title || sku;
+  // Product titles can hold commas ("Industrial filter, XL"), so a list uses semicolons.
+  const someTitles = (skus) => {
+    const names = skus.slice(0, 3).map(titleOf);
+    if (skus.length > 3) return `${names.join('; ')} and ${skus.length - 3} more`;
+    return names.length > 1 ? `${names.slice(0, -1).join('; ')} and ${names.at(-1)}` : names[0];
+  };
+  // Products the rules as they are now give to a different rule than the saved limit
+  // did (moving a rule, or changing which products a rule has).
+  const ownerOf = (l) => {
+    const owner = new Map();
+    for (const r of productRules(l)) {
+      const skus = r.scopeType === 'all' ? limitProducts.map((p) => p.sku) : ruleSkus(r, catalogDb);
+      skus.forEach((sku) => { if (!owner.has(sku)) owner.set(sku, r.id); });
+      if (r.scopeType === 'all') break; // every product is taken
+    }
+    return owner;
+  };
+  const savedLimit = draft.kind === 'product' && draft.id ? (state.db.limits || []).find((l) => l.id === draft.id) : null;
+  const moved = savedLimit
+    ? (() => {
+        const before = ownerOf(savedLimit);
+        const after = ownerOf(draft);
+        return [...after].filter(([sku, id]) => before.has(sku) && before.get(sku) !== id).map(([sku]) => sku);
+      })()
+    : [];
   const ruleField = (i, key, label) => (
     <s-number-field
       data-field={`rule-${i}-${key}`}
@@ -170,7 +158,7 @@ export function LimitEditor() {
     <PageHeader
       heading={isNew ? `Create ${kind.label.toLowerCase()}` : `Edit limit: ${draft.name}`}
       backAction={{ content: 'Order limits', onAction: close }}
-      primaryAction={{ content: isNew ? 'Create limit' : 'Save', onAction: save, disabled: breaks.length > 0 || check.blocking.length > 0 }}
+      primaryAction={{ content: isNew ? 'Create limit' : 'Save', onAction: save, disabled: breaks.length > 0 }}
       secondaryActions={[
         ...(isNew ? [] : [{ content: 'Delete', destructive: true, disabled: held.length > 0, onAction: () => setConfirmDelete(true) }]),
         { content: 'Cancel', onAction: close },
@@ -187,22 +175,7 @@ export function LimitEditor() {
             <s-paragraph>A change to what it sets updates the contract, kept as a new version. To turn it off or delete it, edit the contract.</s-paragraph>
           </s-banner>
         ) : null}
-        {check.blocking.length ? (
-          <s-banner data-field="conflicts-blocking" tone="critical" heading={ownBlock ? 'This limit stops orders, so it can’t be saved' : 'Saving this would leave other limits that stop orders'}>
-            <s-stack gap="small-200">
-              <LimitConflictList conflicts={check.blocking} />
-              <s-paragraph>{ownBlock ? 'Change it so these orders can go through, or set its status to Inactive.' : 'Change those limits first.'}</s-paragraph>
-            </s-stack>
-          </s-banner>
-        ) : null}
-        {check.notes.length ? (
-          <s-banner data-field="conflicts-notes" tone="warning" heading="How it works with other limits">
-            <s-stack gap="small-200">
-              <LimitConflictList conflicts={check.notes} />
-              <s-paragraph>These don’t stop orders, so you can save.</s-paragraph>
-            </s-stack>
-          </s-banner>
-        ) : null}
+        <LimitOverlapBanner overlaps={overlaps} />
         <s-section>
           <s-stack gap="small">
             <s-stack gap="small-400">
@@ -223,116 +196,6 @@ export function LimitEditor() {
               autocomplete="off"
             />
           </s-stack>
-        </s-section>
-
-        {draft.kind === 'order' && (
-          <s-section>
-            <s-stack gap="base">
-              <s-stack gap="small-200">
-                <s-heading>Order value</s-heading>
-                <s-grid gridTemplateColumns="repeat(2, minmax(0, 1fr))" gap="small">
-                  {numberField('minValue', 'Minimum', { money: true, helpText: 'Enter 0 for no minimum.' })}
-                  {numberField('maxValue', 'Maximum', { money: true })}
-                </s-grid>
-                <s-paragraph color="subdued" fontSize="small">
-                  The cart subtotal at the {isD2C ? 'customer’s' : 'buyer’s B2B'} prices, before tax, shipping and order discounts. In your store currency, converted for buyers who pay in another.
-                </s-paragraph>
-                {!isD2C && str(draft.maxValue) !== '' && (
-                  <s-choice-list
-                    data-field="maxAction"
-                    label="When an order is over the maximum"
-                    name={`${scopeName}-max-action`}
-                    onChange={(e) => {
-                      const v = e.currentTarget.values?.[0];
-                      if (v) patch({ maxAction: v });
-                    }}
-                  >
-                    <s-choice value="block" selected={draft.maxAction !== 'review'}>
-                      Block checkout
-                    </s-choice>
-                    <s-choice value="review" selected={draft.maxAction === 'review'}>
-                      Let the buyer send an order request for your review
-                    </s-choice>
-                  </s-choice-list>
-                )}
-              </s-stack>
-              <s-stack gap="small-200">
-                <s-heading>Order quantity</s-heading>
-                <s-grid gridTemplateColumns="repeat(2, minmax(0, 1fr))" gap="small">
-                  {numberField('minQty', 'Minimum', { step: 1, suffix: 'units', helpText: 'Enter 0 for no minimum.' })}
-                  {numberField('maxQty', 'Maximum', { step: 1, suffix: 'units' })}
-                </s-grid>
-                <s-paragraph color="subdued" fontSize="small">
-                  All items in the cart added together.
-                </s-paragraph>
-              </s-stack>
-              {errors.order && (
-                <s-paragraph tone="critical" id="order-limits">
-                  {errors.order}
-                </s-paragraph>
-              )}
-            </s-stack>
-          </s-section>
-        )}
-
-        {draft.kind === 'product' && (
-          <>
-            {rules.map((r, i) => (
-              <s-section key={r.id} data-field={`rule-${i}`}>
-                <s-stack gap="small">
-                  <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small" alignItems="center">
-                    <s-heading>{`Rule ${i + 1}`}</s-heading>
-                    {rules.length > 1 ? (
-                      <s-button
-                        icon="delete"
-                        variant="tertiary"
-                        tone="critical"
-                        accessibilityLabel={`Remove rule ${i + 1}`}
-                        onClick={() => patch({ rules: rules.filter((_, j) => j !== i) })}
-                      />
-                    ) : null}
-                  </s-grid>
-                  {/* The storefront's catalog too, so a product limit can be checked there. */}
-                  <ProductScopeFields builder={r} patch={(p) => patchRule(i, p)} products={limitProducts} />
-                  {errors[`rule-${i}-products`] && (
-                    <s-paragraph tone="critical">{errors[`rule-${i}-products`]}</s-paragraph>
-                  )}
-                  <s-query-container>
-                    <s-grid gridTemplateColumns="@container (inline-size > 490px) 1fr 1fr 1fr, 1fr" gap="small">
-                      {ruleField(i, 'min', 'Minimum')}
-                      {ruleField(i, 'max', 'Maximum')}
-                      {ruleField(i, 'increment', 'Sold in multiples of')}
-                    </s-grid>
-                  </s-query-container>
-                  {errors[`rule-${i}`] && <s-paragraph tone="critical">{errors[`rule-${i}`]}</s-paragraph>}
-                </s-stack>
-              </s-section>
-            ))}
-            <s-stack gap="small-200">
-              <s-stack direction="inline">
-                <s-button icon="plus" onClick={() => patch({ rules: [...rules, newProductRule()] })}>
-                  Add rule
-                </s-button>
-              </s-stack>
-              {errors.rules && <s-paragraph tone="critical">{errors.rules}</s-paragraph>}
-              <s-paragraph color="subdued" fontSize="small">
-                Counted per variant, like Shopify’s quantity rules. Use multiples for case packs, e.g. 12. The minimum and maximum must be multiples of it. Leave a field empty to keep what wider limits set; 0 is no minimum and 1 no pack size.
-              </s-paragraph>
-            </s-stack>
-          </>
-        )}
-
-        <s-section heading="Buyer message">
-          <s-text-area
-            data-field="message"
-            label="Message buyers see"
-            rows={2}
-            value={draft.message || ''}
-            onInput={(e) => patch({ message: e.currentTarget.value })}
-            placeholder={defaultLimitMessage(normalizeLimit(draft))}
-            details="Shown in the cart and at checkout when an order breaks this limit. Leave it empty to use the suggested message. When the limit sets more than one thing, buyers see the suggested message for the one they broke."
-            autocomplete="off"
-          />
         </s-section>
 
         <s-section heading="Applies to">
@@ -416,6 +279,88 @@ export function LimitEditor() {
           </s-stack>
         </s-section>
 
+        {draft.kind === 'order' && (
+          <s-section>
+            <s-stack gap="base">
+              <s-stack gap="small-200">
+                <s-heading>Order value</s-heading>
+                <s-grid gridTemplateColumns="repeat(2, minmax(0, 1fr))" gap="small">
+                  {numberField('minValue', 'Minimum', { money: true, helpText: 'Enter 0 for no minimum.' })}
+                  {numberField('maxValue', 'Maximum', { money: true })}
+                </s-grid>
+                <s-paragraph color="subdued" fontSize="small">
+                  The cart subtotal at the {isD2C ? 'customer’s' : 'buyer’s B2B'} prices, before tax, shipping and order discounts. In your store currency, converted for buyers who pay in another.
+                </s-paragraph>
+                {!isD2C && str(draft.maxValue) !== '' && (
+                  <s-choice-list
+                    data-field="maxAction"
+                    label="When an order is over the maximum"
+                    name={`${scopeName}-max-action`}
+                    onChange={(e) => {
+                      const v = e.currentTarget.values?.[0];
+                      if (v) patch({ maxAction: v });
+                    }}
+                  >
+                    <s-choice value="block" selected={draft.maxAction !== 'review'}>
+                      Block checkout
+                    </s-choice>
+                    <s-choice value="review" selected={draft.maxAction === 'review'}>
+                      Let the buyer send an order request for your review
+                    </s-choice>
+                  </s-choice-list>
+                )}
+              </s-stack>
+              <s-stack gap="small-200">
+                <s-heading>Order quantity</s-heading>
+                <s-grid gridTemplateColumns="repeat(2, minmax(0, 1fr))" gap="small">
+                  {numberField('minQty', 'Minimum', { step: 1, suffix: 'units', helpText: 'Enter 0 for no minimum.' })}
+                  {numberField('maxQty', 'Maximum', { step: 1, suffix: 'units' })}
+                </s-grid>
+                <s-paragraph color="subdued" fontSize="small">
+                  All items in the cart added together.
+                </s-paragraph>
+              </s-stack>
+              {errors.order && (
+                <s-paragraph tone="critical" id="order-limits">
+                  {errors.order}
+                </s-paragraph>
+              )}
+            </s-stack>
+          </s-section>
+        )}
+
+        {draft.kind === 'product' && (
+          <>
+            {moved.length ? (
+              <s-banner tone="info" heading="Some products follow another rule now" data-field="rules-moved">
+                {`Compared with the saved limit, ${moved.length} product${moved.length === 1 ? '' : 's'} now take${moved.length === 1 ? 's' : ''} ${moved.length === 1 ? 'its' : 'their'} quantities from a different rule: ${someTitles(moved)}. Check them before you save.`}
+              </s-banner>
+            ) : null}
+            <LimitRulesCard
+              rules={rules}
+              setRules={(next) => patch({ rules: next })}
+              ruleField={ruleField}
+              errors={errors}
+              products={limitProducts}
+              db={catalogDb}
+              startOpen={draft.id ? null : 0}
+            />
+          </>
+        )}
+
+        <s-section heading="Buyer message">
+          <s-text-area
+            data-field="message"
+            label="Message buyers see"
+            rows={2}
+            value={draft.message || ''}
+            onInput={(e) => patch({ message: e.currentTarget.value })}
+            placeholder={defaultLimitMessage(normalizeLimit(draft))}
+            details="Shown in the cart and at checkout when an order breaks this limit. Leave it empty to use the suggested message. When the limit sets more than one thing, buyers see the suggested message for the one they broke."
+            autocomplete="off"
+          />
+        </s-section>
+
         <s-section heading="Dates">
           <s-query-container>
             <s-grid gridTemplateColumns="@container (inline-size > 400px) 1fr 1fr, 1fr" gap="small">
@@ -467,8 +412,11 @@ export function LimitEditor() {
       <s-section slot="aside" heading="When limits overlap">
         <s-paragraph color="subdued" fontSize="small">
           {isD2C
-            ? 'The most specific limit wins: a customer’s own, then their tag’s, then all customers. So you can give one customer a lower minimum than everyone else.'
+            ? 'The most specific limit wins: a customer’s own, then their tag’s, then all customers. So you can give one customer a lower minimum than everyone else. A customer with several tags gets the newest of those tags’ limits.'
             : 'The most specific limit wins: a location’s own, then its company’s, then store-wide. So you can give one account a lower minimum than everyone else.'}
+        </s-paragraph>
+        <s-paragraph color="subdued" fontSize="small">
+          At the same level, the stricter order setting applies. A product in two product limits takes the newer limit’s quantities.
         </s-paragraph>
       </s-section>
 
@@ -485,9 +433,8 @@ export function LimitEditor() {
         <Modal onClose={() => setConfirmDelete(false)} heading={`Delete ${draft.name}?`}>
           <s-stack gap="small">
             <s-paragraph>Buyers it applies to can check out without it right away. This can’t be undone.</s-paragraph>
-            <DeleteLimitConflicts check={delCheck} />
           </s-stack>
-          <s-button slot="primary-action" variant="primary" tone="critical" disabled={delCheck.blocking.length > 0} onClick={() => dispatch({ type: 'DELETE_LIMIT', id: draft.id })}>
+          <s-button slot="primary-action" variant="primary" tone="critical" onClick={() => dispatch({ type: 'DELETE_LIMIT', id: draft.id })}>
             Delete limit
           </s-button>
           <s-button slot="secondary-actions" onClick={() => setConfirmDelete(false)}>
@@ -495,6 +442,7 @@ export function LimitEditor() {
           </s-button>
         </Modal>
       )}
+
     </s-page>
     </>
   );
