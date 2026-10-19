@@ -13,7 +13,7 @@ export function noQuotesFromRfqApp(db) {
 }
 
 // Cross-sell to the RFQ app, shown where quotes would be (Analytics → Quotes, company
-// Quotes tab) while noQuotesFromRfqApp() holds. Installed → open it; not installed → install.
+// Quotes tab, company Analytics → Quotes) while noQuotesFromRfqApp() holds. Installed → open it; not installed → install.
 export function QuoteAppCrossSell({ installed }) {
   return installed ? (
     <EmptyBlock
