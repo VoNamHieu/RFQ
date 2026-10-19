@@ -5,6 +5,7 @@ import { useStore } from '../store.jsx';
 import { money } from '../format.js';
 import { LineChart, VBarChart, StackedBar, FunnelV2, RankBars, Timeline, moneyShort } from '../components/charts.jsx';
 import { MetricTooltip } from '../components/MetricTooltip.jsx';
+import { QuoteAppCrossSell, noQuotesFromRfqApp } from '../components/QuoteAppCrossSell.jsx';
 import { resolveDetail, defaultVariant } from '../pricing.js';
 import { buildAttributedLines, pricingProfileRows } from '../pricingAttribution.js';
 import {
@@ -418,6 +419,9 @@ export function Analytics({ embeddedCompanyId = null }) {
   // the whole dashboard layout, controls and tabs stay put.
   const genuinelyEmpty = !companies.some((c) => (c.orders || []).length > 0) && !allQuotes.length;
   const showEmpty = genuinelyEmpty || devEmpty;
+  // No quote has come in from the RFQ app (or the empty-state preview is on): the Quotes tab
+  // leads with a cross-sell to the app.
+  const showQuoteCrossSell = devEmpty || noQuotesFromRfqApp(state.db);
   const scopedBase = activeCompanyId === 'all' ? companies.slice() : companies.filter((c) => c.id === activeCompanyId);
   const scopedCompanies = showEmpty ? scopedBase.map((c) => ({ ...c, orders: [] })) : scopedBase;
   const selected = activeCompanyId === 'all' ? null : scopedCompanies[0] || null;
@@ -1745,6 +1749,11 @@ export function Analytics({ embeddedCompanyId = null }) {
 
   const quotesTab = (
     <s-stack gap="large">
+      {showQuoteCrossSell && (
+        <s-box border="base" borderRadius="base">
+          <QuoteAppCrossSell installed={!!state.db.rfqAppInstalled} />
+        </s-box>
+      )}
       {/* §5.1 — hero metrics: future revenue + where it's stuck */}
       <ScoreGrid
         items={cmpOnly([
