@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { LIMIT_KINDS, limitSummary, limitTargetsLabel, isLimitAssigned, isD2CLimit, limitOverlaps, productRules, limitState } from '../limits.js';
+import { LIMIT_KINDS, limitTargetsLabel, isLimitAssigned, isD2CLimit, limitOverlaps, limitState } from '../limits.js';
 import { LimitEditor, withCatalog } from '../components/LimitEditor.jsx';
 import { LimitOverlapMessage } from '../components/LimitOverlapList.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import { Modal, IndexFiltersBar, useWcId } from '../../shared/wc.jsx';
-import { contractsHolding, lockedTip } from '../agreements.js';
+import { contractsHolding, lockedTip, fmtDay } from '../agreements.js';
 
 // Tabs by who a limit is for, like the Pricing list; the kind is a filter.
 const AUDIENCE = [
@@ -124,8 +124,8 @@ export function OrderLimits() {
             <s-table-header-row>
               <s-table-header listSlot="primary">Name</s-table-header>
               <s-table-header listSlot="labeled">Type</s-table-header>
-              <s-table-header listSlot="labeled">Rule</s-table-header>
               <s-table-header listSlot="labeled">Applies to</s-table-header>
+              <s-table-header listSlot="labeled">Created date</s-table-header>
               <s-table-header listSlot="secondary">Status</s-table-header>
               <s-table-header listSlot="inline">
                 <s-text accessibilityVisibility="exclusive">Actions</s-text>
@@ -146,14 +146,9 @@ export function OrderLimits() {
                     </s-table-cell>
                     <s-table-cell>{LIMIT_KINDS[l.kind].label}</s-table-cell>
                     <s-table-cell>
-                      <div style={{ whiteSpace: 'normal', maxWidth: 320 }}>
-                        {/* A product limit with several rules reads as a count; open it for the rules. */}
-                        <s-text>{l.kind === 'product' && productRules(l).length > 1 ? `${productRules(l).length} rules` : limitSummary(l, state.db)}</s-text>
-                      </div>
-                    </s-table-cell>
-                    <s-table-cell>
                       <s-text color={isLimitAssigned(l) ? undefined : 'subdued'}>{limitTargetsLabel(l, state.db)}</s-text>
                     </s-table-cell>
+                    <s-table-cell>{l.createdAt ? fmtDay(l.createdAt) : '—'}</s-table-cell>
                     <s-table-cell>
                       <s-badge tone={STATE_TONE[limitState(l)]}>{limitState(l)}</s-badge>
                     </s-table-cell>

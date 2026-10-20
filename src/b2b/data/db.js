@@ -383,16 +383,16 @@ const inherit = () => ({ mode: 'inherit' });
 const set = (value) => ({ mode: 'set', value });
 const orderSettings = (s) => ({ minValue: inherit(), maxValue: inherit(), minQty: inherit(), maxQty: inherit(), ...s });
 const limits = [
-  { id: 'ol1', name: 'Wholesale minimum', kind: 'order', status: 'Active', maxAction: 'block', settings: orderSettings({ minValue: set(500) }),
+  { id: 'ol1', createdAt: '2025-11-12', name: 'Wholesale minimum', kind: 'order', status: 'Active', maxAction: 'block', settings: orderSettings({ minValue: set(500) }),
     storeWide: true, companyIds: [], locationKeys: [], message: '' },
-  { id: 'ol2', name: 'Vinh Phat low minimum', kind: 'order', status: 'Active', maxAction: 'block', settings: orderSettings({ minValue: set(200) }),
+  { id: 'ol2', createdAt: '2025-12-08', name: 'Vinh Phat low minimum', kind: 'order', status: 'Active', maxAction: 'block', settings: orderSettings({ minValue: set(200) }),
     storeWide: false, companyIds: ['c2'], locationKeys: [], message: '' },
-  { id: 'ol3', name: 'Filter case packs', kind: 'product', status: 'Active', maxAction: 'block',
+  { id: 'ol3', createdAt: '2025-12-15', name: 'Filter case packs', kind: 'product', status: 'Active', maxAction: 'block',
     rules: [{ id: 'r1', scopeType: 'products', collection: '', selectedProducts: ['FIL-XL', 'FIL-STD'], min: set(12), max: inherit(), increment: set(12) }],
     storeWide: false, companyIds: ['c1', 'c2'], locationKeys: [], message: '' },
-  { id: 'ol4', name: 'ABC Hanoi review', kind: 'order', status: 'Active', maxAction: 'review', settings: orderSettings({ maxValue: set(10000) }),
+  { id: 'ol4', createdAt: '2026-04-21', name: 'ABC Hanoi review', kind: 'order', status: 'Active', maxAction: 'review', settings: orderSettings({ maxValue: set(10000) }),
     storeWide: false, companyIds: [], locationKeys: ['c1::l1'], message: '' },
-  { id: 'ol5', name: 'Large order review', kind: 'order', status: 'Active', maxAction: 'review', settings: orderSettings({ maxValue: set(20000) }),
+  { id: 'ol5', createdAt: '2026-06-09', name: 'Large order review', kind: 'order', status: 'Active', maxAction: 'review', settings: orderSettings({ maxValue: set(20000) }),
     storeWide: true, companyIds: [], locationKeys: [], message: '' },
 ];
 

@@ -1143,7 +1143,7 @@ function reducer(state, action) {
     case 'SAVE_LIMIT': {
       const limit = normalizeLimit(state.limitEditor.draft);
       const isNew = !limit.id;
-      if (isNew) limit.id = `ol${Date.now()}`;
+      if (isNew) Object.assign(limit, { id: `ol${Date.now()}`, createdAt: TODAY });
       const limits = state.db.limits || [];
       const db = { ...state.db, limits: isNew ? [...limits, limit] : limits.map((l) => (l.id === limit.id ? limit : l)), agreements: clone(state.db.agreements || []) };
       // Live contracts holding it get a version with its new terms.
