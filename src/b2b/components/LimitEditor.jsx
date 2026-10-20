@@ -198,87 +198,6 @@ export function LimitEditor() {
           </s-stack>
         </s-section>
 
-        <s-section heading="Applies to">
-          <s-stack gap="small">
-            <div className="wc-segmented" role="group" aria-label="Applies to">
-              {side('b2b', 'Company-based B2B')}
-              {side('d2c', 'D2C Wholesale')}
-            </div>
-            {isD2C ? (
-              <s-stack gap="small-200">
-                <s-text color="subdued" fontSize="small">
-                  B2B buyers get their company’s limits, so they are never covered here.
-                </s-text>
-                <CustomerTargetsBox
-                  db={state.db}
-                  target={draft.customerTarget || 'all'}
-                  ids={draft.customerTargetIds || []}
-                  onTarget={setTarget}
-                  onSetId={setCustomerId}
-                  name={`${scopeName}-customers`}
-                />
-                {errors.targets && (
-                  <s-paragraph tone="critical" id="limit-targets">
-                    {errors.targets}
-                  </s-paragraph>
-                )}
-              </s-stack>
-            ) : (
-              <>
-                <s-choice-list
-                  data-field="appliesTo"
-                  label="Applies to"
-                  labelAccessibilityVisibility="exclusive"
-                  name={scopeName}
-                  onChange={(e) => {
-                    const v = e.currentTarget.values?.[0];
-                    if (v) patch({ storeWide: v === 'store' });
-                  }}
-                >
-                  <s-choice value="store" selected={!!draft.storeWide}>
-                    Store-wide
-                    <s-text slot="details">Every B2B company and location.</s-text>
-                  </s-choice>
-                  <s-choice value="specific" selected={!draft.storeWide}>
-                    Specific companies and locations
-                  </s-choice>
-                </s-choice-list>
-                {!draft.storeWide && (
-                  <s-stack gap="small-200">
-                    {/* Like the pricing editor's: opens on click / Enter, not on focus —
-                        closing the modal hands focus back to this field. */}
-                    <s-search-field
-                      data-field="targets"
-                      label="Search companies"
-                      labelAccessibilityVisibility="exclusive"
-                      placeholder="Search companies"
-                      value=""
-                      onClick={() => setCompanyModal(true)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') setCompanyModal(true);
-                      }}
-                    />
-                    {picks.selectedCompanies.length ? (
-                      <s-stack direction="inline" gap="small-300">
-                        {picks.selectedCompanies.map((c) => (
-                          <s-clickable-chip key={c.id} removable accessibilityLabel={`Remove ${picks.tagLabel(c)}`} onRemove={() => picks.setTicked(c, [])}>
-                            {picks.tagLabel(c)}
-                          </s-clickable-chip>
-                        ))}
-                      </s-stack>
-                    ) : null}
-                    {errors.targets && (
-                      <s-paragraph tone="critical" id="limit-targets">
-                        {errors.targets}
-                      </s-paragraph>
-                    )}
-                  </s-stack>
-                )}
-              </>
-            )}
-          </s-stack>
-        </s-section>
-
         {draft.kind === 'order' && (
           <s-section>
             <s-stack gap="base">
@@ -359,6 +278,87 @@ export function LimitEditor() {
             details="Shown in the cart and at checkout when an order breaks this limit. Leave it empty to use the suggested message. When the limit sets more than one thing, buyers see the suggested message for the one they broke."
             autocomplete="off"
           />
+        </s-section>
+
+        <s-section heading="Applies to">
+          <s-stack gap="small">
+            <div className="wc-segmented" role="group" aria-label="Applies to">
+              {side('b2b', 'Company-based B2B')}
+              {side('d2c', 'D2C Wholesale')}
+            </div>
+            {isD2C ? (
+              <s-stack gap="small-200">
+                <s-text color="subdued" fontSize="small">
+                  B2B buyers get their company’s limits, so they are never covered here.
+                </s-text>
+                <CustomerTargetsBox
+                  db={state.db}
+                  target={draft.customerTarget || 'all'}
+                  ids={draft.customerTargetIds || []}
+                  onTarget={setTarget}
+                  onSetId={setCustomerId}
+                  name={`${scopeName}-customers`}
+                />
+                {errors.targets && (
+                  <s-paragraph tone="critical" id="limit-targets">
+                    {errors.targets}
+                  </s-paragraph>
+                )}
+              </s-stack>
+            ) : (
+              <>
+                <s-choice-list
+                  data-field="appliesTo"
+                  label="Applies to"
+                  labelAccessibilityVisibility="exclusive"
+                  name={scopeName}
+                  onChange={(e) => {
+                    const v = e.currentTarget.values?.[0];
+                    if (v) patch({ storeWide: v === 'store' });
+                  }}
+                >
+                  <s-choice value="store" selected={!!draft.storeWide}>
+                    Store-wide
+                    <s-text slot="details">Every B2B company and location.</s-text>
+                  </s-choice>
+                  <s-choice value="specific" selected={!draft.storeWide}>
+                    Specific companies and locations
+                  </s-choice>
+                </s-choice-list>
+                {!draft.storeWide && (
+                  <s-stack gap="small-200">
+                    {/* Like the pricing editor's: opens on click / Enter, not on focus —
+                        closing the modal hands focus back to this field. */}
+                    <s-search-field
+                      data-field="targets"
+                      label="Search companies"
+                      labelAccessibilityVisibility="exclusive"
+                      placeholder="Search companies"
+                      value=""
+                      onClick={() => setCompanyModal(true)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') setCompanyModal(true);
+                      }}
+                    />
+                    {picks.selectedCompanies.length ? (
+                      <s-stack direction="inline" gap="small-300">
+                        {picks.selectedCompanies.map((c) => (
+                          <s-clickable-chip key={c.id} removable accessibilityLabel={`Remove ${picks.tagLabel(c)}`} onRemove={() => picks.setTicked(c, [])}>
+                            {picks.tagLabel(c)}
+                          </s-clickable-chip>
+                        ))}
+                      </s-stack>
+                    ) : null}
+                    {errors.targets && (
+                      <s-paragraph tone="critical" id="limit-targets">
+                        {errors.targets}
+                      </s-paragraph>
+                    )}
+                  </s-stack>
+                )}
+              </>
+            )}
+          </s-stack>
         </s-section>
 
         <s-section heading="Dates">
