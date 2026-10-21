@@ -166,22 +166,23 @@ export function createDriver({ frames, stage, cursor, ring, say, showPane, stopp
         await type('admin', el, String(value), (v) => admin.patch({ rules: admin.draft().rules.map((r, j) => (j === i ? { ...r, [key]: v } : r)) }));
       }
     },
-    // Save (Create limit / Save). The editor shows one message when the limit
-    // overlaps others, as it's filled in — read before saving; it never blocks it.
+    // Save (Create limit / Save). Saving a limit that overlaps others shows one
+    // message first: it's read, then the save goes ahead — it never blocks it.
     // { saved, notes: [text] }
     async save() {
       await wait(500); // let the editor settle after the last change
-      const notes = [...doc('admin').querySelectorAll('[data-field="limit-overlaps"] s-paragraph')].map(text);
       const label = admin.draft()?.id ? 'Save' : 'Create limit';
       const btn = await find('admin', byText('s-button', label), `the ${label} button`);
-      if (notes.length) {
-        const banner = doc('admin').querySelector('[data-field="limit-overlaps"]');
-        await point('admin', banner);
-        highlight('admin', banner);
-        say(`Admin · note: ${notes[0]}`);
-        await wait(2400);
-      }
       await click('admin', btn);
+      const confirm = await maybe('admin', (d) => [...d.querySelectorAll('s-modal s-button')].find((e) => text(e) === label), 1500);
+      const notes = confirm ? [...doc('admin').querySelectorAll('s-modal s-paragraph')].map(text) : [];
+      if (confirm) {
+        const why = doc('admin').querySelector('s-modal s-paragraph');
+        if (why) highlight('admin', why);
+        say(`Admin · note: ${notes[0] || ''}`);
+        await wait(2400);
+        await click('admin', confirm);
+      }
       await wait(300);
       return { saved: true, notes };
     },

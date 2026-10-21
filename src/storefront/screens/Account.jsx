@@ -618,8 +618,13 @@ function AddressCard({ address, tag, onClick }) {
 }
 
 const requestDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
-// Why a request waits: the maximum it went over, e.g. "Over your $10,000 monthly limit".
-const requestReason = (r) => (r.threshold == null ? null : `Over your ${money(r.threshold)}${r.period && r.period !== 'order' ? ` ${r.period}ly` : ''} limit`);
+// Why a request waits: the maximum it went over, e.g. "Over your $10,000 monthly limit"
+// or, for a product, "Industrial filter, XL over your maximum of 48".
+const requestReason = (r) => {
+  if (r.threshold == null) return null;
+  if (r.item) return `${r.item} over your maximum of ${r.threshold}`;
+  return `Over your ${money(r.threshold)}${r.period && r.period !== 'order' ? ` ${r.period}ly` : ''} limit`;
+};
 
 function Orders({ orders, dispatch }) {
   if (orders.length === 0) {

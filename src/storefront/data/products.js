@@ -160,17 +160,21 @@ function spentForSession(session) {
   return spentSoFar([...orders, ...requests]);
 }
 
-// The buyer's order value limits, for the product page to count the order against:
-// the minimum, the maximum sent for review and the blocking maximum (each a number,
-// or null). Null when none applies.
-export function orderValueLimitsForSession(session) {
+// The buyer's order limits, for the product page to show and count the order
+// against: each setting in force as a number, by its key — minValue, maxValue,
+// threshold (the maximum sent for review), minQty, maxQty, and the weekly and
+// monthly maximums ('maxValue@week', 'threshold@month', …) — with what the buyer
+// ordered so far this week and month (`spent`, see spentSoFar). Null when none applies.
+export function orderLimitsForSession(session) {
   if (!versionFlags().orderLimits) return null;
   const rec = atLocation(session)
     ? effectiveRules(limitsDb(), session.companyKey, session.locationId)
     : effectiveRulesForCustomer(limitsDb(), asCustomer(session));
-  const value = (key) => (rec.settings[key]?.mode === 'set' && Number(rec.settings[key].value) > 0 ? Number(rec.settings[key].value) : null);
-  const out = { min: value('minValue'), review: value('threshold'), block: value('maxValue') };
-  return out.min == null && out.review == null && out.block == null ? null : out;
+  const out = {};
+  Object.entries(rec.settings).forEach(([key, s]) => {
+    if (s.mode === 'set' && Number(s.value) > 0) out[key] = Number(s.value);
+  });
+  return Object.keys(out).length ? { ...out, spent: spentForSession(session) } : null;
 }
 
 // What's wrong with the cart for the buyer (see cartProblems).

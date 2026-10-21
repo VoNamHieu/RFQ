@@ -644,19 +644,17 @@ h3 { font-size: 1.8rem; }
 .limit-notice { background: #fff4e5; border: 0.1rem solid #f1c48a; color: #6b4300; padding: 1.2rem 1.4rem; font-size: 1.35rem; margin-bottom: 1.6rem; }
 .limit-notice ul { margin: 0; padding-left: 1.8rem; }
 .limit-notice li + li { margin-top: 0.4rem; }
-.qty-note { font-size: 1.3rem; color: var(--color-muted); margin: 0; }
-/* Order limits on the product page: what applies, and warnings for the quantity picked. */
-.qty-feedback { display: grid; justify-items: start; gap: 0.8rem; margin: 0.8rem 0 2.4rem; }
-.qty-note--warn {
-  display: inline-flex; align-items: center; gap: 0.6rem; padding: 0.4rem 1rem;
-  border-radius: 100px; background: #fdf2dc; color: #9a6a00; font-weight: 600;
-}
-.qty-note--warn svg, .badge--warn svg, .limit-count svg { width: 1.6rem; height: 1.6rem; flex: none; }
-.badge--warn { display: inline-flex; align-items: center; gap: 0.4rem; }
-/* The order counted against its limits (cart + quantity picked), live as it changes. */
-.limit-count {
-  display: inline-flex; align-items: center; gap: 0.6rem; margin: 0; padding: 0.4rem 1rem;
-  border-radius: 100px; font-size: 1.3rem; font-weight: 600; font-variant-numeric: tabular-nums;
-}
-.limit-count--warn { background: #fdf2dc; color: #9a6a00; }
-.limit-count--ok { background: #e3f1e6; color: #1f7a34; }
+/* Order limits on the product page: one block, a row for this product and one for
+   the order (cart + quantity picked), live as it changes. A row is grey while it's
+   fine, amber when it can't check out like this, blue when the seller will review it. */
+.limit-block { display: grid; margin: 0.8rem 0 2.4rem; border-radius: 0.8rem; overflow: hidden; font-size: 1.3rem; }
+.limit-row { display: grid; grid-template-columns: 9.6rem minmax(0, 1fr); gap: 1.2rem; padding: 1rem 1.2rem; background: var(--color-surface-2); }
+.limit-row + .limit-row { border-top: 0.1rem solid rgb(var(--color-bg)); }
+.limit-row--warn { background: #fdf2dc; color: #9a6a00; }
+.limit-row--review { background: var(--b2b-bg); color: var(--b2b); }
+.limit-row__label { font-weight: 600; }
+.limit-row__body { display: grid; gap: 0.2rem; }
+.limit-row__body p { margin: 0; }
+.limit-row__rule, .limit-row__detail { opacity: 0.75; }
+.limit-row__status { display: inline-flex; align-items: center; gap: 0.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.limit-row__status svg { width: 1.6rem; height: 1.6rem; flex: none; }

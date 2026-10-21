@@ -1,35 +1,70 @@
 import React, { useState, useEffect } from 'react';
 import { useStore, unitPrice } from '../store.jsx';
-import { productBySku, b2bPriceFor, productRuleForSession, cartProblemsForSession, orderValueLimitsForSession } from '../data/products.js';
+import { productBySku, b2bPriceFor, productRuleForSession, orderLimitsForSession } from '../data/products.js';
 import { Price } from '../components/Price.jsx';
-import { quantityProblem } from '../quantityProblem.js';
 import { money } from '../utils.js';
-import { QuoteIcon, InfoIcon, WarningIcon, CheckIcon } from '../components/icons.jsx';
+import { QuoteIcon, InfoIcon, WarningIcon } from '../components/icons.jsx';
 
-// An order maximum the cart would go over with this quantity added: a review one
-// sends the order for the seller's review, the others stop checkout.
-const OVER_MAXIMUM = ['maxValue', 'maxQty', 'review'];
-
-// The order counted against the buyer's limits: `total` is the cart plus the
-// quantity picked; `over` the first maximum it goes over (cartProblems), if any.
-// { tone: 'warn' | 'ok', text }, or null when no order limit applies.
+// Order limits on the product page: one block, a row for this product's quantity
+// rule and one for the order (the cart plus the quantity picked). Each row is
+// { rule, tone, status, detail }: what applies, and live where the quantity or the
+// order stands. `tone`: 'info' (grey), 'warn' (amber: it can't check out like
+// this) or 'review' (blue: the seller will review the order). `detail`: how a
+// count that takes in the cart, or the orders so far, adds up.
 // Limits read as whole dollars ($500), amounts with cents ($171.70).
 const whole = (n) => (n % 1 === 0 ? `$${n.toLocaleString('en-US')}` : money(n));
-function limitCount(total, limits, over) {
-  if (over) {
-    const then = over.type === 'review' ? 'needs the seller’s review' : 'over the maximum, can’t check out';
-    if (over.type === 'maxQty') return { tone: 'warn', text: over.message };
-    if (over.period && over.period !== 'order') return { tone: 'warn', text: `Over your ${whole(over.value)} ${over.period}ly limit · ${then}` };
-    const cap = over.type === 'review' ? limits?.review : limits?.block;
-    return { tone: 'warn', text: cap ? `${money(total)} / ${whole(cap)} limit · ${then}` : over.message };
+const PERIODS = ['order', 'week', 'month'];
+const keyFor = (base, p) => (p === 'order' ? base : `${base}@${p}`);
+
+// This product, under its quantity rule (productRuleForSession), with `inCart`
+// units of the variant already in the cart.
+function productRow(rule, qty, inCart) {
+  const step = rule.increment || 1;
+  const total = qty + inCart;
+  const parts = [step > 1 && `Sold in packs of ${step}`, rule.min && `Min ${rule.min}`, rule.max && `Max ${rule.max}${rule.review ? ' without review' : ''}`];
+  const row = { rule: parts.filter(Boolean).join(' · '), tone: 'info', status: null, detail: null };
+  const at = (tone, status) => ({ ...row, tone, status, detail: inCart ? `${total} = ${inCart} already in your cart + ${qty} selected` : null });
+  if (rule.min != null && total < rule.min) return at('warn', `${total} of ${rule.min} minimum · add ${rule.min - total} more`);
+  if (rule.max != null && !rule.review && total > rule.max) return at('warn', `${total} of ${rule.max} maximum · remove ${total - rule.max}`);
+  if (total % step) {
+    // The quantities to pick instead: the pack multiples either side, less what's in the cart.
+    const choices = [Math.floor(total / step) * step - inCart, Math.ceil(total / step) * step - inCart].filter((n) => n > 0);
+    return at('warn', `${total} isn’t a multiple of ${step} · choose ${choices.join(' or ')}`);
   }
-  if (!limits) return null;
-  if (limits.min != null && total < limits.min) {
-    return { tone: 'warn', text: `${money(total)} / ${whole(limits.min)} minimum · add ${money(limits.min - total)} more` };
+  if (rule.review && total > rule.max) return at('review', `${total} of ${rule.max} maximum · the seller will review this order`);
+  return row;
+}
+
+// Your order, under the order limits (orderLimitsForSession): `subtotal` and
+// `units` with the quantity picked. A weekly or monthly maximum counts the orders
+// so far in the period too. One status: a maximum, then a minimum, then review.
+function orderRow(limits, subtotal, units) {
+  const per = (p) => (p === 'order' ? '' : ` per ${p}`);
+  const parts = [
+    limits.minValue && `Min ${whole(limits.minValue)}`,
+    ...PERIODS.map((p) => limits[keyFor('maxValue', p)] && `Max ${whole(limits[keyFor('maxValue', p)])}${per(p)}`),
+    ...PERIODS.map((p) => limits[keyFor('threshold', p)] && `Review above ${whole(limits[keyFor('threshold', p)])}${per(p)}`),
+    limits.minQty && `Min ${limits.minQty} items`,
+    limits.maxQty && `Max ${limits.maxQty} items`,
+  ];
+  const row = { rule: parts.filter(Boolean).join(' · '), tone: 'info', status: `${money(subtotal)} · within your order limits`, detail: null };
+  const at = (tone, status, detail = null) => ({ ...row, tone, status, detail });
+  const sofar = (p) => (p === 'order' ? 0 : Number(limits.spent?.[p]) || 0);
+  const sofarDetail = (p, total) => (sofar(p) ? `${money(total)} = ${money(sofar(p))} ordered this ${p} + ${money(subtotal)} this order` : null);
+  for (const p of PERIODS) {
+    const cap = limits[keyFor('maxValue', p)];
+    const total = sofar(p) + subtotal;
+    if (cap && total > cap) return at('warn', `${money(total)} of ${whole(cap)} ${p === 'order' ? '' : `${p}ly `}maximum · remove ${money(total - cap)} to check out`, sofarDetail(p, total));
   }
-  const max = [limits.review, limits.block].filter((v) => v != null).sort((a, b) => a - b)[0];
-  const parts = [money(total), limits.min != null ? 'minimum met' : null, max != null ? `up to ${whole(max)}` : null];
-  return { tone: 'ok', text: parts.filter(Boolean).join(' · ') };
+  if (limits.maxQty && units > limits.maxQty) return at('warn', `${units} of ${limits.maxQty} items maximum · remove ${units - limits.maxQty} to check out`);
+  if (limits.minValue && subtotal < limits.minValue) return at('warn', `${money(subtotal)} of ${whole(limits.minValue)} minimum · add ${money(limits.minValue - subtotal)} more`);
+  if (limits.minQty && units < limits.minQty) return at('warn', `${units} of ${limits.minQty} items minimum · add ${limits.minQty - units} more`);
+  for (const p of PERIODS) {
+    const t = limits[keyFor('threshold', p)];
+    const total = sofar(p) + subtotal;
+    if (t && total > t) return at('review', `${money(total)} of ${whole(t)}${p === 'order' ? '' : ` this ${p}`} · the seller will review this order`, sofarDetail(p, total));
+  }
+  return row;
 }
 
 // Product = the theme's main-product section: media gallery + info column
@@ -61,15 +96,20 @@ export function Product() {
 
   // The rule counts this variant in the cart too: what's there plus what's being added.
   const inCart = state.cart.filter((l) => l.sku === product.sku && l.variantId === variant?.id).reduce((n, l) => n + l.qty, 0);
-  const qtyProblem = quantityProblem(rule, qty, inCart);
+  // Only a quantity under the minimum stops Add to cart; the cart checks the rest.
+  const belowMin = rule?.min != null && qty + inCart < rule.min;
   // The order as it would be with this quantity in the cart, counted against the order limits.
-  const withThis = [...state.cart.map((l) => ({ sku: l.sku, title: l.sku, qty: l.qty })), { sku: product.sku, title: product.title, qty }];
+  const withThis = [...state.cart.map((l) => ({ sku: l.sku, qty: l.qty })), { sku: product.sku, qty }];
   const subtotal = withThis.reduce((s, l) => s + unitPrice(l.sku, state.session) * l.qty, 0);
-  const overMax = cartProblemsForSession(withThis, subtotal, state.session).find((p) => OVER_MAXIMUM.includes(p.type));
-  const count = limitCount(subtotal, orderValueLimitsForSession(state.session), overMax);
+  const units = withThis.reduce((n, l) => n + l.qty, 0);
+  const orderLimits = orderLimitsForSession(state.session);
+  const rows = [
+    rule && { label: 'This product', hook: 'qty-note', ...productRow(rule, qty, inCart) },
+    orderLimits && { label: 'Your order', hook: 'limit-count', ...orderRow(orderLimits, subtotal, units) },
+  ].filter(Boolean);
 
   const addToCart = () => {
-    if (!inStock || qtyProblem) return;
+    if (!inStock || belowMin) return;
     dispatch({ type: 'ADD_TO_CART', line: { sku: product.sku, variantId: variant.id, qty } });
   };
 
@@ -90,7 +130,6 @@ export function Product() {
 
           <div className="product__price">
             <Price sku={product.sku} list={product.list} size="lg" />
-            {rule && <span className="badge badge--amber badge--warn"><WarningIcon /> Order limits apply</span>}
           </div>
 
           {/* B2B contract-price context or an invitation to log in / request pricing */}
@@ -138,27 +177,30 @@ export function Product() {
             <input value={qty} onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))} />
             <button onClick={() => setQty((q) => q + step)}>+</button>
           </div>
-          {(rule || count) && (
-            <div className="qty-feedback">
-              {rule &&
-                (qtyProblem ? (
-                  <p className="qty-note qty-note--warn"><WarningIcon /> {qtyProblem}</p>
-                ) : (
-                  <p className="qty-note">
-                    {[step > 1 ? `Sold in packs of ${step}` : null, rule.min ? `Minimum ${rule.min}` : null, rule.max ? `Maximum ${rule.max}` : null].filter(Boolean).join(' · ')}
-                  </p>
-                ))}
-              {count && (
-                <p className={`limit-count limit-count--${count.tone}`} aria-live="polite">
-                  {count.tone === 'ok' ? <CheckIcon /> : <WarningIcon />} {count.text}
-                </p>
-              )}
+          {rows.length > 0 && (
+            <div className="limit-block" aria-live="polite">
+              {/* qty-note / limit-count: the rows the order-limit walkthrough reads. */}
+              {rows.map((r) => (
+                <div key={r.label} className={`limit-row limit-row--${r.tone} ${r.hook}`}>
+                  <span className="limit-row__label">{r.label}</span>
+                  <div className="limit-row__body">
+                    {r.rule && <p className="limit-row__rule">{r.rule}</p>}
+                    {r.status && (
+                      <p className="limit-row__status">
+                        {r.tone === 'warn' ? <WarningIcon /> : r.tone === 'review' ? <InfoIcon /> : null}
+                        {r.status}
+                      </p>
+                    )}
+                    {r.detail && <p className="limit-row__detail">{r.detail}</p>}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
           {/* Buy buttons + RFQ touchpoint */}
           <div className="buy-stack">
-            <button className="button button--full" disabled={!inStock || !!qtyProblem} onClick={addToCart}>
+            <button className="button button--full" disabled={!inStock || belowMin} onClick={addToCart}>
               {inStock ? 'Add to cart' : 'Out of stock'}
             </button>
             <button className="button button--b2b button--full" onClick={() => dispatch({ type: 'OPEN_QUOTE', sku: product.sku })}>

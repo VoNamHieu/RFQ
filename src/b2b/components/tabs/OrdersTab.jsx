@@ -52,11 +52,6 @@ export function OrdersTab({ company }) {
               {heldReason(o, state.db)}
             </s-text>
           ) : null}
-          {o.declineMessage ? (
-            <s-text color="subdued" fontSize="small">
-              {`Your message to the buyer: “${o.declineMessage}”`}
-            </s-text>
-          ) : null}
         </s-stack>
       </s-table-cell>
       <s-table-cell>{o.location || '—'}</s-table-cell>

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { MenuButton } from '../../shared/wc.jsx';
-import { ATTRIBUTE_SCOPES, newProductRule, productScopeLabel, ruleOverlaps, ruleSkus } from '../limits.js';
+import { ATTRIBUTE_SCOPES, newProductRule, productScopeLabel, ruleSkus } from '../limits.js';
 import { ProductScopeFields } from './pricingEditorCards.jsx';
 
 // Rules picked by a product attribute; the values come from the catalog.
@@ -30,7 +30,7 @@ function quantitiesLabel(r) {
 // (RuleBuilderCard): collapsed rows with drag-to-reorder, one rule open at a time
 // for editing, and an add-rule menu where "All products" is off once a rule has it.
 // Rules are in order: a product in more than one takes the higher rule's quantities.
-export function LimitRulesCard({ rules, setRules, ruleField, errors, products, db, startOpen }) {
+export function LimitRulesCard({ rules, setRules, ruleField, errors, products, db, startOpen, children }) {
   const [open, setOpen] = useState(startOpen);
   const [dropIndex, setDropIndex] = useState(null);
   const scrollRef = useRef(null);
@@ -40,19 +40,6 @@ export function LimitRulesCard({ rules, setRules, ruleField, errors, products, d
   useEffect(() => () => rafRef.current && cancelAnimationFrame(rafRef.current), []);
 
   const hasAll = rules.some((r) => r.scopeType === 'all');
-  const overlaps = ruleOverlaps({ kind: 'product', rules }, db);
-  const titleOf = (sku) => products.find((p) => p.sku === sku)?.title || sku;
-  // Product titles can hold commas ("Industrial filter, XL"), so a list uses semicolons.
-  const someTitles = (skus) => {
-    const names = skus.slice(0, 3).map(titleOf);
-    if (skus.length > 3) return `${names.join('; ')} and ${skus.length - 3} more`;
-    return names.length > 1 ? `${names.slice(0, -1).join('; ')} and ${names.at(-1)}` : names[0];
-  };
-  const overlapNote = (left) => {
-    const from = [...new Set(left.map((x) => x.rule + 1))];
-    const n = left.length;
-    return `${n} of these product${n === 1 ? ' is' : 's are'} already in ${from.length === 1 ? `rule ${from[0]}` : 'earlier rules'}, so ${n === 1 ? 'it follows' : 'they follow'} ${from.length === 1 ? 'that rule' : 'those'}: ${someTitles(left.map((x) => x.sku))}.`;
-  };
   const matchCount = (r) => (r.scopeType === 'all' ? products.length : ruleSkus(r, db).length);
   const ruleErrors = (i) => Object.entries(errors).filter(([k]) => k === `rule-${i}` || k.startsWith(`rule-${i}-`)).map(([, v]) => v);
 
@@ -156,11 +143,6 @@ export function LimitRulesCard({ rules, setRules, ruleField, errors, products, d
               <s-paragraph color="subdued" fontSize="small">
                 {scope[0].toUpperCase() + scope.slice(1)}
               </s-paragraph>
-              {overlaps[i]?.length ? (
-                <s-paragraph color="subdued" fontSize="small" data-field={`rule-${i}-overlap`}>
-                  {overlapNote(overlaps[i])}
-                </s-paragraph>
-              ) : null}
               {errs.length ? (
                 <s-paragraph tone="critical" fontSize="small">
                   {errs.join(' · ')}
@@ -202,11 +184,6 @@ export function LimitRulesCard({ rules, setRules, ruleField, errors, products, d
             {/* The storefront's catalog too, so a product limit can be checked there. */}
             <ProductScopeFields builder={r} patch={(p) => patchRule(i, p)} products={products} allDisabled={hasAll && r.scopeType !== 'all'} attributeScopes={ATTRIBUTE_PICKS} />
             {errors[`rule-${i}-products`] && <s-paragraph tone="critical">{errors[`rule-${i}-products`]}</s-paragraph>}
-            {overlaps[i]?.length ? (
-              <s-paragraph color="subdued" fontSize="small" data-field={`rule-${i}-overlap`}>
-                {overlapNote(overlaps[i])}
-              </s-paragraph>
-            ) : null}
             <s-query-container>
               <s-grid gridTemplateColumns="@container (inline-size > 490px) 1fr 1fr 1fr, 1fr" gap="small">
                 {ruleField(i, 'min', 'Minimum')}
@@ -241,7 +218,7 @@ export function LimitRulesCard({ rules, setRules, ruleField, errors, products, d
           {rules.length > 0 && <s-badge>{String(rules.length)}</s-badge>}
         </s-stack>
         <s-paragraph color="subdued" fontSize="small">
-          Set quantities for all products, or by collection, product, tag, vendor or product type. When several rules match one product, the higher rule wins — drag the handle to reorder.
+          When a product is in several rules, the rule higher in the list applies. Drag to reorder.
         </s-paragraph>
         <div>
           <div
@@ -253,8 +230,9 @@ export function LimitRulesCard({ rules, setRules, ruleField, errors, products, d
           <s-box paddingBlockStart="small-200">{addControl}</s-box>
         </div>
         <s-paragraph color="subdued" fontSize="small">
-          Counted per variant, like Shopify’s quantity rules. Use multiples for case packs, e.g. 12. The minimum and maximum must be multiples of it. Leave a field empty to keep what wider limits set; 0 is no minimum and 1 no pack size.
+          Counted per variant. Minimum and maximum must be multiples of the pack size.
         </s-paragraph>
+        {children}
       </s-stack>
     </s-section>
   );

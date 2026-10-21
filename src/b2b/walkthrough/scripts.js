@@ -43,9 +43,11 @@ export const WALKTHROUGHS = {
     see('Admin: the overlap note, and it saves', w.saved ? all(w.notes) : '', 'already have other limits, so they may overlap');
     await store.signIn();
     await store.product(JERSEY);
-    see('Storefront: product page', await store.showNote(), 'Sold in packs of 12 · Minimum 12 · Maximum 100');
+    const note = await store.showNote();
+    see('Storefront: product page', note, 'Maximum 100');
+    see('Storefront: …without the company’s minimum and pack', /Minimum|packs/.test(note) ? note : '', null);
     await store.quantity(5, '$429.25 / $500 minimum · add $70.75 more');
-    see('Storefront: quantity 5', await store.showNote(), 'Order at least 12.');
+    see('Storefront: quantity 5', await store.showNote(), 'Maximum 100');
   },
 
   'OL-03': async ({ admin, store, see }) => {
@@ -53,9 +55,7 @@ export const WALKTHROUGHS = {
     await admin.create('product', { name: 'Hanoi loose jerseys', locationKeys: HANOI, rules: [{ skus: [JERSEY_SKU], increment: 1 }] });
     await store.signIn();
     await store.product(JERSEY);
-    const note = await store.showNote();
-    see('Storefront: product page keeps the minimum', note, 'Minimum 12');
-    see('Storefront: …without a pack size', note.includes('packs') ? note : '', null);
+    see('Storefront: product page — Hanoi’s rule replaces the company’s, its minimum too', store.qtyNote(), null);
     await store.quantity(13, '$1,116.05 · minimum met · up to $10,000');
     await store.add();
     const r = await store.checkout();
@@ -64,16 +64,16 @@ export const WALKTHROUGHS = {
 
   'OL-04': async ({ admin, store, see }) => {
     const w = await admin.create('order', { name: 'Hanoi no minimum', minValue: 0, locationKeys: HANOI });
-    see('Admin: the overlap note (more specific than the store-wide minimum), and it saves', w.saved ? all(w.notes) : '', 'already have other limits, so they may overlap');
+    see('Admin: the overlap note (it replaces Hanoi’s own limit and the store-wide one), and it saves', w.saved ? all(w.notes) : '', 'already have other limits, so they may overlap');
     await store.signIn();
-    await store.buy(JERSEY, 2, '$171.70 · up to $10,000');
+    await store.buy(JERSEY, 2, null);
     const r = await store.checkout();
     see('Storefront: 2 jerseys ($171.70)', r.through ? 'checks out' : r.blocked || r.review, 'checks out');
   },
 
   'OL-05': async ({ admin, store, see }) => {
     const w = await admin.create('order', { name: 'Promo minimum', minValue: 300 });
-    see('Admin: no note (same level), and it saves', w.saved ? all(w.notes) || 'no note' : '', 'no note');
+    see('Admin: the overlap note (it replaces the older store-wide limit), and it saves', w.saved ? all(w.notes) : '', 'already have other limits, so they may overlap');
     await store.signIn();
     await store.buy(JERSEY, 4, '$343.40 / $500 minimum · add $156.60 more');
     see('Storefront: 4 jerseys ($343.40)', (await store.checkout()).blocked, 'Your order must be at least $500 to check out. Add $156.60 more.');
@@ -82,12 +82,14 @@ export const WALKTHROUGHS = {
   'OL-06': async ({ admin, store, see }) => {
     await admin.create('product', casePacks);
     const w = await admin.create('product', { name: 'Big jersey minimum', companyIds: ABC, rules: [{ skus: [JERSEY_SKU], min: 24 }] });
-    see('Admin: no note (same level), and it saves', w.saved ? all(w.notes) || 'no note' : '', 'no note');
+    see('Admin: the overlap note (it replaces the case packs for the jersey), and it saves', w.saved ? all(w.notes) : '', 'already have other limits, so they may overlap');
     await store.signIn();
     await store.product(JERSEY);
-    see('Storefront: product page', await store.showNote(), 'Sold in packs of 12 · Minimum 24');
+    const note = await store.showNote();
+    see('Storefront: product page', note, 'Minimum 24');
+    see('Storefront: …without the case pack', note.includes('packs') ? note : '', null);
     await store.quantity(30, '$2,575.50 · minimum met · up to $10,000');
-    see('Storefront: quantity 30', await store.showNote(), 'Sold in packs of 12.');
+    see('Storefront: quantity 30', await store.showNote(), 'Minimum 24');
   },
 
   'OL-07': async ({ admin, store, see }) => {
@@ -143,7 +145,7 @@ export const WALKTHROUGHS = {
   },
 
   'OL-17': async ({ admin, store, see }) => {
-    await admin.create('order', { name: 'ABC weekly cap', maxValue: 5000, period: 'week', companyIds: ABC });
+    await admin.create('order', { name: 'Hanoi weekly cap', maxValue: 5000, period: 'week', locationKeys: HANOI });
     await store.signIn();
     await store.buy(JERSEY, 60, 'Over your $5,000 weekly limit · over the maximum, can’t check out');
     see('Storefront: 60 jerseys ($5,151)', (await store.checkout()).blocked, 'over your $5,000 weekly limit. Remove $151 to check out.');
@@ -154,17 +156,19 @@ export const WALKTHROUGHS = {
     await admin.create('order', { name: 'Hanoi monthly 10k', maxValue: 10000, period: 'month', locationKeys: HANOI });
     admin.navigate('location', { selectedCompany: 'c1', selectedLocation: 'l1' });
     const line = (label) => (d) => [...d.querySelectorAll('s-paragraph')].find((p) => p.textContent.trim() === label);
-    see('Admin: Hanoi’s limits card', await admin.show('Admin · Hanoi has both maximums', line('Maximum $10,000 per month'), 'the monthly maximum'), 'Maximum $10,000 per month');
-    see('Admin: …and the per-order one', await admin.show('Admin · …and the per-order one', line('Maximum order $9,000'), 'the per-order maximum'), 'Maximum order $9,000');
+    // The innermost block holding a replaced setting and the line naming what replaced it.
+    const replaced = (label) => (d) => [...d.querySelectorAll('s-stack')].filter((st) => st.textContent.includes(label) && st.textContent.includes('Replaced here')).at(-1);
+    see('Admin: Hanoi’s limits card', await admin.show('Admin · Hanoi: the newer monthly maximum applies', line('Maximum $10,000 per month'), 'the monthly maximum'), 'Maximum $10,000 per month');
+    see('Admin: …the per-order one is replaced', await admin.show('Admin · …the per-order one is replaced by it', replaced('Maximum order $9,000'), 'the per-order maximum'), 'Replaced here by Hanoi monthly 10k');
     await store.signIn();
-    await store.buy(JERSEY, 110, '$9,443.50 / $9,000 limit · over the maximum, can’t check out');
+    await store.buy(JERSEY, 110, 'Over your $10,000 monthly limit · over the maximum, can’t check out');
     const r = await store.checkout();
-    see('Storefront: 110 jerseys ($9,443.50), per order', r.blocked, 'Orders can’t be more than $9,000.');
-    see('Storefront: …and for the month', r.blocked, 'over your $10,000 monthly limit');
+    see('Storefront: 110 jerseys ($9,443.50), $890 ordered in July', r.blocked, 'over your $10,000 monthly limit');
+    see('Storefront: …not the replaced $9,000 per order', r.blocked?.includes('$9,000') ? r.blocked : '', null);
   },
 
   'OL-19': async ({ admin, see, say }) => {
-    say('Admin · a new limit for Hanoi: empty fields show what they inherit');
+    say('Admin · a new limit for Hanoi: an empty field is no limit');
     await admin.open('order');
     await admin.type('name', 'Hanoi draft');
     await admin.appliesTo({ locationKeys: HANOI });
@@ -172,9 +176,8 @@ export const WALKTHROUGHS = {
       await admin.show(label, (d) => d.querySelector(`[data-field="${name}"]`), `the ${name} field`);
       return admin.placeholder(name);
     };
-    see('Admin: Minimum order, empty', await hint('minValue', 'Admin · Minimum: inherited from the store-wide $500'), 'Inherited: $500 · Wholesale minimum');
-    admin.patch({ maxAction: 'review' });
-    see('Admin: Maximum sent for review, empty', await hint('maxValue', 'Admin · Maximum for review: inherited from Hanoi’s own $10,000'), 'Inherited: $10,000 · ABC Hanoi review');
+    see('Admin: Minimum order, empty', await hint('minValue', 'Admin · Minimum: empty is no minimum, not the store-wide $500'), 'No limit');
+    see('Admin: Maximum, empty', await hint('maxValue', 'Admin · Maximum: empty is no maximum, not Hanoi’s $10,000'), 'No limit');
     await admin.list();
   },
 
@@ -189,10 +192,12 @@ export const WALKTHROUGHS = {
   'OL-24': async ({ admin, store, see }) => {
     await admin.create('product', casePacks);
     const w = await admin.create('product', { name: 'ABC jersey packs of 6', companyIds: ABC, rules: [{ skus: [JERSEY_SKU], increment: 6 }] });
-    see('Admin: no note (same level), and it saves', w.saved ? all(w.notes) || 'no note' : '', 'no note');
+    see('Admin: the overlap note (it replaces the case packs for the jersey), and it saves', w.saved ? all(w.notes) : '', 'already have other limits, so they may overlap');
     await store.signIn();
     await store.product(JERSEY);
-    see('Storefront: product page', await store.showNote(), 'Sold in packs of 6 · Minimum 12');
+    const note = await store.showNote();
+    see('Storefront: product page', note, 'Sold in packs of 6');
+    see('Storefront: …without the case packs’ minimum of 12', note.includes('Minimum') ? note : '', null);
   },
 
   'OL-20': async ({ admin, store, see }) => {

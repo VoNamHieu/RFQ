@@ -260,8 +260,9 @@ export function injectOrderRequests(db, requests) {
     const order = {
       id: `#${next++}`, requestId: r.id, location: loc?.name || '', locationId: r.locationId, buyer: r.buyer, date: r.date, amount: r.amount, lines: r.lines.length, po: '',
       pricing: r.priceList || '', pricingSource: 'Company price', source: 'Storefront order request',
-      status: 'Needs review', shopifyStatus: 'Draft order', reason: `Above the ${money(r.threshold)} maximum`, heldBy: r.limitId,
-      heldAt: { value: r.threshold, limitId: r.limitId, limitName: r.limitName || '', period: r.period || 'order' }, // what it broke when it was held
+      status: 'Needs review', shopifyStatus: 'Draft order', reason: r.sku ? `${r.item} above the maximum of ${r.threshold}` : `Above the ${money(r.threshold)} maximum`, heldBy: r.limitId,
+      // What it broke when it was held: an order value, or a product's maximum (`sku`, `item`).
+      heldAt: { value: r.threshold, limitId: r.limitId, limitName: r.limitName || '', period: r.period || 'order', ...(r.sku ? { sku: r.sku, item: r.item } : {}) },
     };
     c.orders = [order, ...(c.orders || [])];
     all.push(order);
@@ -292,6 +293,7 @@ export function storefrontHeldOrders(db) {
       lines: o.lines,
       threshold: o.heldAt?.value ?? null,
       period: o.heldAt?.period || 'order',
+      item: o.heldAt?.item ?? null,
       message: o.status === 'Declined' ? o.declineMessage || null : null,
     })));
 }
