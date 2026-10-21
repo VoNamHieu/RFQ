@@ -4,8 +4,8 @@ import { money } from '../format.js';
 import { reviewMaximumFor, spentSoFar } from '../limits.js';
 import { Modal } from '../../shared/wc.jsx';
 
-// Orders an order maximum (order limits) held back for review: status 'Needs review',
-// `heldAt` = what it broke then ({ value, limitId, limitName }). The buyer couldn't check out, so the order waits as a
+// Orders a maximum (order limits: an order value, or a product's) held back for review: status 'Needs review',
+// `heldAt` = what it broke then ({ value, limitId, limitName }, plus `sku` and `item` for a product). The buyer couldn't check out, so the order waits as a
 // draft order until the merchant approves it (it becomes a real order) or
 // declines it. Listed on app home and in the location / company orders.
 export const isHeld = (o) => o.status === 'Needs review';
@@ -33,6 +33,8 @@ export function heldReason(order, db) {
   const location = company && (company.locations || []).find((l) => (order.locationId ? l.id === order.locationId : l.name === order.location));
   if (!location) return order.reason || 'Held for your review';
   const held = order.heldAt;
+  // A product over its maximum: what it broke when it was held.
+  if (held?.sku) return `${held.item} over the maximum of ${held.value} · ${held.limitName}`;
   // A weekly or monthly maximum counts this order on top of the location's other
   // orders in that period.
   const period = held?.period || 'order';

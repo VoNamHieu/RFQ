@@ -7,9 +7,8 @@ import { useWcId } from '../../shared/wc.jsx';
 const LEVEL_LABEL = { location: 'This location', company: 'Company', store: 'Store-wide' };
 
 // A location's order limits: every active limit that reaches it (its own, its
-// company's, store-wide), most specific first, read off the location's record. A
-// setting a more specific limit replaces here is struck through and names the
-// limit that wins; a product rule that lost only some fields lists those.
+// company's, store-wide), most specific first, read off the location's record.
+// Each shows its name and level only.
 export function LocationLimitsCard({ company, location }) {
   const { state, dispatch } = useStore();
   const addId = useWcId('add-limit');
@@ -59,39 +58,15 @@ export function LocationLimitsCard({ company, location }) {
         </s-popover>
 
         {rows.length ? (
-          rows.map(({ limit, level, rules }, i) => (
+          rows.map(({ limit, level }, i) => (
             <React.Fragment key={limit.id}>
               {i > 0 && <s-divider />}
-              <s-stack gap="small-400">
-                <s-grid gridTemplateColumns="1fr auto" alignItems="start" gap="small-200">
-                  <div>
-                    <s-link onClick={() => dispatch({ type: 'OPEN_LIMIT_EDITOR', limit, returnTo })}>{limit.name}</s-link>
-                  </div>
-                  <s-badge tone={level === 'location' ? 'info' : undefined}>{LEVEL_LABEL[level]}</s-badge>
-                </s-grid>
-                {rules.map((r) =>
-                  r.replacedBy ? (
-                    <s-stack key={r.text} gap="none">
-                      <s-paragraph fontSize="small" color="subdued">
-                        <s>{r.text}</s>
-                      </s-paragraph>
-                      <s-paragraph fontSize="small" color="subdued">{`Replaced here by ${r.replacedBy.name}`}</s-paragraph>
-                    </s-stack>
-                  ) : r.partly?.length ? (
-                    // A product rule other limits won some fields of (each field is taken on its own).
-                    <s-stack key={r.text} gap="none">
-                      <s-paragraph fontSize="small">{r.text}</s-paragraph>
-                      {r.partly.map((p) => (
-                        <s-paragraph key={p.field} fontSize="small" color="subdued">{`${p.label} replaced here by ${p.by?.name || 'another limit'}`}</s-paragraph>
-                      ))}
-                    </s-stack>
-                  ) : (
-                    <s-paragraph key={r.text} fontSize="small">
-                      {r.text}
-                    </s-paragraph>
-                  ),
-                )}
-              </s-stack>
+              <s-grid gridTemplateColumns="1fr auto" alignItems="start" gap="small-200">
+                <div>
+                  <s-link onClick={() => dispatch({ type: 'OPEN_LIMIT_EDITOR', limit, returnTo })}>{limit.name}</s-link>
+                </div>
+                <s-badge tone={level === 'location' ? 'info' : undefined}>{LEVEL_LABEL[level]}</s-badge>
+              </s-grid>
             </React.Fragment>
           ))
         ) : (

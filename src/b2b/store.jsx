@@ -3,7 +3,7 @@ import { shopifyCompanies } from './data/directory.js';
 import { policyUsageCount, slotIds, hasOwnSlot, TODAY } from './pricing.js';
 import { newRule, newBaseBuilder, newQuantityBuilder } from './builders.js';
 import { buildInitialState } from './initialState.js';
-import { newLimit, normalizeLimit, upgradeLimits, toDraft } from './limits.js';
+import { newLimit, normalizeLimit, upgradeLimits, toDraft, turnLimitOn } from './limits.js';
 import { versionFlags } from '../shared/versions.js';
 import {
   newAgreement,
@@ -1143,11 +1143,17 @@ function reducer(state, action) {
     case 'SAVE_LIMIT': {
       const limit = normalizeLimit(state.limitEditor.draft);
       const isNew = !limit.id;
-      if (isNew) limit.id = `ol${Date.now()}`;
+      if (isNew) Object.assign(limit, { id: `ol${Date.now()}`, createdAt: TODAY });
       const limits = state.db.limits || [];
-      const db = { ...state.db, limits: isNew ? [...limits, limit] : limits.map((l) => (l.id === limit.id ? limit : l)), agreements: clone(state.db.agreements || []) };
-      // Live contracts holding it get a version with its new terms.
       const before = limits.find((l) => l.id === limit.id);
+      // Saved from off to on, it's the newest limit, as when turned on in the list.
+      const next = isNew
+        ? [...limits, limit]
+        : before && before.status !== 'Active' && limit.status === 'Active'
+          ? turnLimitOn(limits, limit)
+          : limits.map((l) => (l.id === limit.id ? limit : l));
+      const db = { ...state.db, limits: next, agreements: clone(state.db.agreements || []) };
+      // Live contracts holding it get a version with its new terms.
       if (before) recordTermEdit(db, before, limit, true);
       return { ...state, db, ...(state.limitEditor.returnTo || {}), limitEditor: null, toast: isNew ? 'Order limit created' : 'Order limit saved' };
     }
@@ -1161,8 +1167,11 @@ function reducer(state, action) {
       return { ...state, db, ...(editing ? { ...(state.limitEditor.returnTo || {}), limitEditor: null } : {}), toast: 'Order limit deleted' };
     }
     case 'TOGGLE_LIMIT_STATUS': {
-      const limits = (state.db.limits || []).map((l) => (l.id === action.id ? { ...l, status: l.status === 'Active' ? 'Inactive' : 'Active' } : l));
-      const on = limits.find((l) => l.id === action.id)?.status === 'Active';
+      const all = state.db.limits || [];
+      const limit = all.find((l) => l.id === action.id);
+      const on = !!limit && limit.status !== 'Active';
+      // Turned back on, it's the newest limit (turnLimitOn).
+      const limits = on ? turnLimitOn(all, limit) : all.map((l) => (l.id === action.id ? { ...l, status: 'Inactive' } : l));
       return { ...state, db: { ...state.db, limits }, toast: on ? 'Limit turned on' : 'Limit turned off' };
     }
     case 'TOAST':

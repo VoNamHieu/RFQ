@@ -375,25 +375,23 @@ const quotes = [
 ];
 
 // Order limits (see limits.js). Each setting says what it does: `set` a value,
-// `inherit` (left to the wider limits) or `none` (no limit here). Vinh Phat's own
-// minimum replaces the store-wide one for its location. The maximums sent for
-// review held orders #1045 (ABC Hanoi's own, $10,000) and #1048 (store-wide,
-// $20,000) — see `heldAt` in orderSeed.
+// `inherit` (left empty) or `none` (no limit here). Limits don't combine, so each
+// order limit sets everything its buyers get: Vinh Phat's own and ABC Hanoi's
+// replace the store-wide one there. The maximums sent for review held orders #1045
+// (ABC Hanoi's, $10,000) and #1048 (Vinh Phat's, $20,000) — see `heldAt` in orderSeed.
 const inherit = () => ({ mode: 'inherit' });
 const set = (value) => ({ mode: 'set', value });
 const orderSettings = (s) => ({ minValue: inherit(), maxValue: inherit(), minQty: inherit(), maxQty: inherit(), ...s });
 const limits = [
-  { id: 'ol1', name: 'Wholesale minimum', kind: 'order', status: 'Active', maxAction: 'block', settings: orderSettings({ minValue: set(500) }),
+  { id: 'ol1', createdAt: '2025-11-12', name: 'Wholesale minimum', kind: 'order', status: 'Active', maxAction: 'review', settings: orderSettings({ minValue: set(500), maxValue: set(20000) }),
     storeWide: true, companyIds: [], locationKeys: [], message: '' },
-  { id: 'ol2', name: 'Vinh Phat low minimum', kind: 'order', status: 'Active', maxAction: 'block', settings: orderSettings({ minValue: set(200) }),
+  { id: 'ol2', createdAt: '2025-12-08', name: 'Vinh Phat low minimum', kind: 'order', status: 'Active', maxAction: 'review', settings: orderSettings({ minValue: set(200), maxValue: set(20000) }),
     storeWide: false, companyIds: ['c2'], locationKeys: [], message: '' },
-  { id: 'ol3', name: 'Filter case packs', kind: 'product', status: 'Active', maxAction: 'block',
+  { id: 'ol3', createdAt: '2025-12-15', name: 'Filter case packs', kind: 'product', status: 'Active', maxAction: 'block',
     rules: [{ id: 'r1', scopeType: 'products', collection: '', selectedProducts: ['FIL-XL', 'FIL-STD'], min: set(12), max: inherit(), increment: set(12) }],
     storeWide: false, companyIds: ['c1', 'c2'], locationKeys: [], message: '' },
-  { id: 'ol4', name: 'ABC Hanoi review', kind: 'order', status: 'Active', maxAction: 'review', settings: orderSettings({ maxValue: set(10000) }),
+  { id: 'ol4', createdAt: '2026-04-21', name: 'ABC Hanoi review', kind: 'order', status: 'Active', maxAction: 'review', settings: orderSettings({ minValue: set(500), maxValue: set(10000) }),
     storeWide: false, companyIds: [], locationKeys: ['c1::l1'], message: '' },
-  { id: 'ol5', name: 'Large order review', kind: 'order', status: 'Active', maxAction: 'review', settings: orderSettings({ maxValue: set(20000) }),
-    storeWide: true, companyIds: [], locationKeys: [], message: '' },
 ];
 
 // Agreements (see agreements.js). ABC's CT-301 is live and its terms are the ones
@@ -452,7 +450,7 @@ export const orderSeed = {
     {
       id: '#1048', location: 'Da Nang', buyer: 'Bui Quang', date: '2026-08-07', amount: 21500, lines: 8, po: 'PO-4470',
       pricing: 'Distributor Tier 2', pricingSource: 'Company price', source: 'Direct checkout',
-      status: 'Needs review', shopifyStatus: 'Draft order', reason: 'Above the $20,000 maximum', heldBy: 'ol5', heldAt: { value: 20000, limitId: 'ol5', limitName: 'Large order review' }
+      status: 'Needs review', shopifyStatus: 'Draft order', reason: 'Above the $20,000 maximum', heldBy: 'ol2', heldAt: { value: 20000, limitId: 'ol2', limitName: 'Vinh Phat low minimum' }
     },
     {
       id: '#1041', location: 'Da Nang', buyer: 'Bui Quang', date: '2026-07-11', amount: 1560, lines: 1, po: 'None',

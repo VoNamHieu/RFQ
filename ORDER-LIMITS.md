@@ -114,8 +114,7 @@ merchant quyết định. Dữ liệu mẫu có hai đơn: #1045 (ABC Constructi
   **Declined**.
   - Trong modal xác nhận có checkbox **Add a message for the buyer**: tick thì hiện ô **Message to the buyer** (không bắt
     buộc, tối đa 500 ký tự) để giải thích vì sao từ chối.
-  - Lời nhắn hiện trên thẻ đơn bị từ chối ở storefront (B2B Portal → Orders, mục "Message from the seller"), và ở dòng
-    đơn trong Order history / tab Orders của admin ("Your message to the buyer: …").
+  - Lời nhắn hiện trên thẻ đơn bị từ chối ở storefront (B2B Portal → Orders, mục "Message from the seller").
 - Cả hai thao tác đều ghi vào activity của company.
 - Analytics chỉ tính đơn Fulfilled / Paid, nên duyệt hay từ chối không làm đổi số liệu.
 

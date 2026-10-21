@@ -79,7 +79,11 @@ export function buildInitialState() {
   // Order limits as last saved (they're shared with the storefront), and order
   // requests buyers sent from it, waiting for review.
   const limits = publishedOrderLimits();
-  if (Array.isArray(limits)) s.db.limits = upgradeLimits(limits);
+  if (Array.isArray(limits)) {
+    // Limits saved before they had a created date take the seed's.
+    const created = Object.fromEntries((s.db.limits || []).map((l) => [l.id, l.createdAt]));
+    s.db.limits = upgradeLimits(limits).map((l) => (l.createdAt || !created[l.id] ? l : { ...l, createdAt: created[l.id] }));
+  }
   injectOrderRequests(s.db, readOrderRequests());
   if (EMBEDDED === 'limits' && versionFlags().orderLimits) s.view = 'limits';
   // 2) One-shot handoff: open the specific company just handed over from RFQ.

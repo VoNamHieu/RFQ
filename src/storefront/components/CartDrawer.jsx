@@ -17,6 +17,8 @@ export function CartDrawer() {
   const { state, dispatch } = useStore();
   // Check out on a cart over a maximum sent for review: it doesn't go to checkout.
   const [overLimit, setOverLimit] = useState(false);
+  // Check out on a cart a limit blocks: it says why instead.
+  const [blockedOpen, setBlockedOpen] = useState(false);
   if (!state.cartOpen) return null;
 
   const lines = state.cart.map((l) => {
@@ -29,22 +31,30 @@ export function CartDrawer() {
   });
   const subtotal = lines.reduce((s, l) => s + l.price * l.qty, 0);
   // Order limits, as the validation function would report them: anything but a
-  // review problem blocks checkout. Over a maximum sent for review, Check out asks the
-  // buyer to reduce the order or send it as an order request — a draft order the
-  // merchant reviews in the B2B app.
+  // review problem blocks checkout — Check out stays on and shows why in a dialog.
+  // Over a maximum sent for review, Check out asks the buyer to reduce the order or
+  // send it as an order request — a draft order the merchant reviews in the B2B app.
   // One line per variant (product limits count each variant on its own), named
   // with the variant when the product has several.
   const lineTitle = (l) => (l.product?.variants?.length > 1 && l.variant ? `${l.product.title} (${l.variant.title})` : l.product?.title || l.sku);
   const problems = cartProblemsForSession(lines.map((l) => ({ sku: l.sku, title: lineTitle(l), qty: l.qty })), subtotal, state.session);
   const blocking = problems.filter((p) => p.type !== 'review');
-  const review = problems.find((p) => p.type === 'review');
+  // Every maximum sent for review the order is over; the request records one — the
+  // order value's, else the first product's (`sku`).
+  const reviews = problems.filter((p) => p.type === 'review');
+  const review = reviews.find((p) => !p.sku) || reviews[0];
   const close = () => dispatch({ type: 'TOGGLE_CART', open: false });
-  const checkout = () => (review ? setOverLimit(true) : dispatch({ type: 'TOAST', message: 'Demo only' }));
+  const checkout = () => {
+    if (blocking.length) setBlockedOpen(true);
+    else if (review) setOverLimit(true);
+    else dispatch({ type: 'TOAST', message: 'Demo only' });
+  };
   const sendRequest = () => {
     const s = state.session;
     addOrderRequest({
       id: `req-${Date.now()}`, companyId: s.companyKey, locationId: s.locationId, buyer: s.contact, date: today(),
       amount: subtotal, threshold: review.value, period: review.period, limitId: review.limit.id, limitName: review.limit.name, priceList: s.priceListName,
+      ...(review.sku ? { sku: review.sku, item: review.item } : {}),
       lines: lines.map((l) => ({ sku: l.sku, title: lineTitle(l), qty: l.qty, price: l.price })),
     });
     setOverLimit(false);
@@ -89,12 +99,28 @@ export function CartDrawer() {
             )}
             <div className="summary-row"><span>Subtotal</span><strong>{money(subtotal)}</strong></div>
             <p className="muted" style={{ fontSize: '1.3rem', marginTop: 0 }}>Taxes and shipping calculated at checkout.</p>
-            <button className="button button--full" disabled={blocking.length > 0} onClick={checkout}>
+            <button className="button button--full" onClick={checkout}>
               Check out
             </button>
           </div>
         )}
       </aside>
+      {blockedOpen && blocking.length > 0 && (
+        <div className="overlay" onClick={() => setBlockedOpen(false)}>
+          <div className="modal" role="dialog" aria-label="You can’t check out yet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal__head">
+              <h3>You can’t check out yet</h3>
+              <button className="icon-btn" aria-label="Close" onClick={() => setBlockedOpen(false)}><CloseIcon /></button>
+            </div>
+            <div className="modal__body">
+              {blocking.map((p, i) => <p key={i} style={{ margin: i ? '0.8rem 0 0' : 0 }}>{p.message}</p>)}
+            </div>
+            <div className="modal__foot">
+              <button className="button" onClick={() => setBlockedOpen(false)}>Back to cart</button>
+            </div>
+          </div>
+        </div>
+      )}
       {overLimit && review && (
         <div className="overlay" onClick={() => setOverLimit(false)}>
           <div className="modal" role="dialog" aria-label="Your order is over the limit" onClick={(e) => e.stopPropagation()}>
@@ -103,7 +129,7 @@ export function CartDrawer() {
               <button className="icon-btn" aria-label="Close" onClick={() => setOverLimit(false)}><CloseIcon /></button>
             </div>
             <div className="modal__body">
-              <p style={{ margin: 0 }}>{review.message}</p>
+              {reviews.map((p, i) => <p key={i} style={{ margin: i ? '0.8rem 0 0' : 0 }}>{p.message}</p>)}
             </div>
             <div className="modal__foot">
               <button className="button button--secondary" onClick={() => setOverLimit(false)}>Reduce order</button>
