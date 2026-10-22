@@ -86,14 +86,17 @@ export function BasePricingCard({ company }) {
   const { state, dispatch } = useStore();
   const policies = state.db.policies;
   const tipId = useWcId('base-row');
-  // The company's own list plus pricing only some locations get (labelled with them),
-  // in priority order — the stable sort keeps the company's own tie-breaks.
-  const entries = [...companyBaseEntries(company, policies), ...locationOnlyEntries(company, policies, 'base')].sort((a, b) => a.priority - b.priority);
   // The live contract giving a row's pricing (on the company, or on its locations).
   const contractOf = (entry) =>
     entry.locations
       ? entry.locations.map((l) => contractGiving(state.db, company, entry.policy.id, l.id)).find(Boolean) || null
       : contractGiving(state.db, company, entry.policy.id);
+  // The company's own list plus pricing only some locations get (labelled with them),
+  // in the order they apply: a live contract's pricing first, then by priority — the
+  // stable sort keeps the company's own tie-breaks.
+  const entries = [...companyBaseEntries(company, policies), ...locationOnlyEntries(company, policies, 'base')].sort(
+    (a, b) => !!contractOf(b) - !!contractOf(a) || a.priority - b.priority,
+  );
 
   // v1: single base pricing per company (no priority list / pagination).
   if (!versionFlags().multiBase) return <SingleBaseCard company={company} />;
@@ -114,7 +117,7 @@ export function BasePricingCard({ company }) {
   const buildFromQuotes = () => openBuildFromQuotes(dispatch, company, state.db);
 
   const priorityHeader = (
-    <Tip content="Lower number applies first.">
+    <Tip content={versionFlags().agreements ? 'Lower number applies first. A live contract’s pricing applies before any priority.' : 'Lower number applies first.'}>
       <span style={{ borderBottom: '1px dotted var(--p-color-border)', cursor: 'help' }}>Priority</span>
     </Tip>
   );

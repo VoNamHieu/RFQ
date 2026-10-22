@@ -5,6 +5,7 @@ import { money } from '../format.js';
 
 import { AssignBuyerModal, GeneralModal, ShippingModal, PAYMENT_TERM_OPTIONS, TAX_SETTINGS, COUNTRY_NAMES } from '../components/LocationModals.jsx';
 import { LocationLimitsCard } from '../components/LocationLimitsCard.jsx';
+import { LocationContractCard } from '../components/LocationContractCard.jsx';
 import { DeleteLocationsModal } from '../components/tabs/LocationsTab.jsx';
 import { isHeld, heldReason, heldFirst, HeldOrderActions } from '../components/HeldOrders.jsx';
 import { PricingName } from '../components/BasePricingCard.jsx';
@@ -479,6 +480,9 @@ export function LocationDetail() {
                   </s-select>
                 </s-stack>
               </s-section>
+
+              {/* The contract that applies here (Contracts) */}
+              {versionFlags().agreements && <LocationContractCard company={company} location={location} />}
 
               {/* Order limits that reach this location, next to Shopify's own checkout settings */}
               {versionFlags().orderLimits && <LocationLimitsCard company={company} location={location} />}

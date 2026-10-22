@@ -116,8 +116,9 @@ const REGISTRATION_EMAIL_TEMPLATES = {
 };
 
 // Contract emails (Upcoming version): to the buyers at the locations a contract
-// applies to when it starts, 30 days before it ends, when it ends and when it's
-// renewed; and to you 30 days before it ends.
+// applies to when it starts, when its renewal reminder starts (reminderDays in
+// agreements.js), when it ends and when it's renewed; and to you when the reminder
+// starts.
 const CONTRACT_EMAIL_TEMPLATES = {
   allow_contract_started_email: {
     title: 'Contract started',
@@ -128,8 +129,8 @@ const CONTRACT_EMAIL_TEMPLATES = {
   },
   allow_contract_ending_email: {
     title: 'Contract ending soon',
-    description: 'Email sent to the company’s buyers 30 days before a contract ends',
-    detail: 'Contract ending soon email is sent automatically to the buyers at the locations a contract applies to, 30 days before its end date',
+    description: 'Email sent to the company’s buyers before a contract ends',
+    detail: 'Contract ending soon email is sent automatically to the buyers at the locations a contract applies to, 30 days before its end date, or halfway through a contract shorter than 60 days. A contract shorter than 7 days gets none',
     dynamicValues: CONTRACT_DYNAMIC_VALUES,
     preheaderFields: BUYER_PREHEADER_FIELDS,
   },
@@ -149,8 +150,8 @@ const CONTRACT_EMAIL_TEMPLATES = {
   },
   allow_contract_reminder_email: {
     title: 'Renewal reminder',
-    description: 'Email sent to admin 30 days before a contract ends',
-    detail: 'Renewal reminder email is sent automatically to admin 30 days before a contract’s end date, unless a next contract is set to take over',
+    description: 'Email sent to admin before a contract ends',
+    detail: 'Renewal reminder email is sent automatically to admin 30 days before a contract’s end date, or halfway through a contract shorter than 60 days, unless a next contract is set to take over. A contract shorter than 7 days gets none',
     dynamicValues: CONTRACT_DYNAMIC_VALUES,
     preheaderFields: ADMIN_PREHEADER_FIELDS,
   },

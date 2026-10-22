@@ -70,13 +70,14 @@ function InlineCheckList({ items, selected, onSet, searchable, placeholder, empt
 // ticked company with 2+ locations lists them underneath (all ticked) so the
 // pricing can go to only some; ticking every location is the whole company. With
 // `onApplyLaterChange`, a checkbox says whether locations added later get it too
-// (`applyLater`) at the companies picked.
-export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompany, onToggleLocation, onClose, applyLater = true, onApplyLaterChange }) {
+// (`applyLater`) at the companies picked. `single`: one company only (a contract) —
+// each company has a radio button instead, and picking one replaces the one before.
+export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompany, onToggleLocation, onClose, applyLater = true, onApplyLaterChange, single = false }) {
   const [q, setQ] = useState('');
   const query = q.trim().toLowerCase();
   const shown = query ? companies.filter((c) => `${c.name} ${c.contact} ${c.email}`.toLowerCase().includes(query)) : companies;
   return (
-    <Modal open={open} onClose={onClose} heading="Select companies and locations">
+    <Modal open={open} onClose={onClose} heading={single ? 'Select company and locations' : 'Select companies and locations'}>
       <s-stack gap="small">
         <s-search-field
           label="Search"
@@ -102,18 +103,34 @@ export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompan
                   {i > 0 ? <s-divider /> : null}
                   <s-box paddingBlock="small">
                     <s-grid gridTemplateColumns="auto auto 1fr" gap="small" alignItems="center">
-                      <s-checkbox
-                        accessibilityLabel={`Select ${c.name}`}
-                        checked={all}
-                        indeterminate={!all && ticked.length > 0}
-                        onChange={(e) => {
-                          const want = e.currentTarget.checked;
-                          if (want === all) return; // a repeat event for the same click
-                          onToggleCompany(c);
-                          // Clicking a partly ticked company clears it (as before), so untick the box.
-                          if (want && ticked.length) e.currentTarget.checked = false;
-                        }}
-                      />
+                      {single ? (
+                        // Its own one-choice list (so the locations can sit under it), kept
+                        // in step by remounting when it's picked or not.
+                        <s-choice-list
+                          key={`${c.id}-${ticked.length > 0}`}
+                          label={`Select ${c.name}`}
+                          labelAccessibilityVisibility="exclusive"
+                          name={`select-company-${c.id}`}
+                          onChange={(e) => {
+                            if (e.currentTarget.values?.[0] === c.id && !ticked.length) onToggleCompany(c);
+                          }}
+                        >
+                          <s-choice value={c.id} selected={ticked.length > 0} accessibilityLabel={`Select ${c.name}`} />
+                        </s-choice-list>
+                      ) : (
+                        <s-checkbox
+                          accessibilityLabel={`Select ${c.name}`}
+                          checked={all}
+                          indeterminate={!all && ticked.length > 0}
+                          onChange={(e) => {
+                            const want = e.currentTarget.checked;
+                            if (want === all) return; // a repeat event for the same click
+                            onToggleCompany(c);
+                            // Clicking a partly ticked company clears it (as before), so untick the box.
+                            if (want && ticked.length) e.currentTarget.checked = false;
+                          }}
+                        />
+                      )}
                       <s-avatar size="base" initials={initialsOf(c.name)} alt={c.name} />
                       <s-stack gap="small-500">
                         <s-text fontWeight="semibold">{c.name}</s-text>

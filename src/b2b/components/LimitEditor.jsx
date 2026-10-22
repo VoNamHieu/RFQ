@@ -7,7 +7,8 @@ import { ProductScopeFields } from './pricingEditorCards.jsx';
 import { SelectCompaniesModal, CustomerTargetsBox, companyPicks } from './AssignmentCard.jsx';
 import { Modal, useWcId, PageHeader } from '../../shared/wc.jsx';
 import { limitCatalog, withCatalog } from '../limitCatalog.js';
-import { contractsHolding, contractNames, newlyBroken } from '../agreements.js';
+import { contractsHolding, contractNames, newlyBroken, termChanged, termDateWarnings } from '../agreements.js';
+import { TODAY } from '../pricing.js';
 
 const str = (v) => (v == null ? '' : String(v));
 // An empty field's placeholder: what the buyers get from the wider limits (see inheritedSetting).
@@ -57,6 +58,9 @@ export function LimitEditor() {
   const [tried, setTried] = useState(false);
   const [companyModal, setCompanyModal] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Save dialog for a limit live contracts hold: override it (a version in each), or
+  // save the changes as a new limit.
+  const [contractConfirm, setContractConfirm] = useState(false);
   const scopeName = useWcId('limit-scope');
   const patch = (p) => dispatch({ type: 'LIMIT_EDITOR_PATCH', patch: p });
   const close = () => dispatch({ type: 'CLOSE_LIMIT_EDITOR' });
@@ -70,6 +74,15 @@ export function LimitEditor() {
   const held = isNew ? [] : contractsHolding(state.db, draft.id);
   const breaks = held.length
     ? newlyBroken(state.db, { ...state.db, limits: (state.db.limits || []).map((l) => (l.id === draft.id ? normalizeLimit(draft) : l)) })
+    : [];
+  // Saving onto it adds a version to the live contracts holding it (when what it sets,
+  // or its name, changed): confirm first. Dates that leave part of a contract from
+  // today on uncovered are warned about there.
+  const saved = held.length ? (state.db.limits || []).find((l) => l.id === draft.id) || null : null;
+  const edited = normalizeLimit(draft);
+  const versionsContracts = !!saved && termChanged(state.db, saved, edited, true);
+  const dateWarnings = versionsContracts
+    ? held.flatMap((ag) => termDateWarnings(edited, ag, ag.startDate > TODAY ? ag.startDate : TODAY, ag.number))
     : [];
   // What saving it would do with the other limits, worked out a moment after each
   // change. Conflicts that stop orders block saving: change the limit, or set it
@@ -94,6 +107,7 @@ export function LimitEditor() {
     if (hasErrors) return setTried(true);
     const found = limitConflicts(withCatalog(state.db), draft);
     if (blockingOf(found).length) return setCheck({ blocking: blockingOf(found), notes: notesOf(found) });
+    if (versionsContracts) return setContractConfirm(true);
     return dispatch({ type: 'SAVE_LIMIT' });
   };
   const delCheck = confirmDelete ? deleteCheck(state.db, draft.id) : null;
@@ -492,6 +506,47 @@ export function LimitEditor() {
           </s-button>
           <s-button slot="secondary-actions" onClick={() => setConfirmDelete(false)}>
             Cancel
+          </s-button>
+        </Modal>
+      )}
+
+      {/* No Cancel: closing it (X) saves nothing. */}
+      {contractConfirm && (
+        <Modal onClose={() => setContractConfirm(false)} heading={`Save changes to ${saved.name}?`}>
+          <s-stack gap="small">
+            <s-paragraph>
+              {held.length === 1
+                ? `${saved.name} is assigned to ${contractNames(state.db, held)}. Changing it adds a new version to the contract. You can also save your changes as a new order limit, not assigned anywhere yet, and keep ${saved.name} as it is for the contract.`
+                : `${saved.name} is assigned to ${held.length} contracts: ${contractNames(state.db, held)}. Changing it adds a new version to each of them. You can also save your changes as a new order limit, not assigned anywhere yet, and keep ${saved.name} as it is for these contracts.`}
+            </s-paragraph>
+            {dateWarnings.length ? (
+              <s-banner tone="warning" heading="It won’t apply for the whole contract">
+                <s-unordered-list>
+                  {dateWarnings.map((w) => (
+                    <s-list-item key={w}>{w}</s-list-item>
+                  ))}
+                </s-unordered-list>
+              </s-banner>
+            ) : null}
+          </s-stack>
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            onClick={() => {
+              setContractConfirm(false);
+              dispatch({ type: 'SAVE_LIMIT' });
+            }}
+          >
+            Override
+          </s-button>
+          <s-button
+            slot="secondary-actions"
+            onClick={() => {
+              setContractConfirm(false);
+              dispatch({ type: 'SAVE_LIMIT', asNew: true });
+            }}
+          >
+            Save as new limit
           </s-button>
         </Modal>
       )}

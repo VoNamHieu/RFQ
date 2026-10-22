@@ -1,6 +1,7 @@
 import React from 'react';
 import { useStore } from '../store.jsx';
 import { LIMIT_KINDS, limitKey, locationLimits } from '../limits.js';
+import { contractGiving } from '../agreements.js';
 import { useWcId } from '../../shared/wc.jsx';
 
 const LEVEL_LABEL = { location: 'This location', company: 'Company', store: 'Store-wide' };
@@ -8,11 +9,13 @@ const LEVEL_LABEL = { location: 'This location', company: 'Company', store: 'Sto
 // A location's order limits: every active limit that reaches it (its own, its
 // company's, store-wide), most specific first, read off the location's record. A
 // setting a more specific limit replaces here is struck through and names the
-// limit that wins; a product rule that lost only some fields lists those.
+// limit that wins; a product rule that lost only some fields lists those. One a
+// contract gives here is badged with it, as pricing is.
 export function LocationLimitsCard({ company, location }) {
   const { state, dispatch } = useStore();
   const addId = useWcId('add-limit');
   const rows = locationLimits(state.db, company.id, location.id);
+  const contractOf = (limit) => contractGiving(state.db, company, limit.id, location.id);
   // The editor opens in Order limits and comes back here on save or cancel.
   const returnTo = { view: 'location', selectedCompany: company.id, selectedLocation: location.id };
   const add = (kind) => {
@@ -62,9 +65,10 @@ export function LocationLimitsCard({ company, location }) {
               {i > 0 && <s-divider />}
               <s-stack gap="small-400">
                 <s-grid gridTemplateColumns="1fr auto" alignItems="start" gap="small-200">
-                  <div>
+                  <s-stack direction="inline" gap="small-200" alignItems="center">
                     <s-link onClick={() => dispatch({ type: 'OPEN_LIMIT_EDITOR', limit, returnTo })}>{limit.name}</s-link>
-                  </div>
+                    {contractOf(limit) ? <s-badge tone="info">{`Contract ${contractOf(limit).number}`}</s-badge> : null}
+                  </s-stack>
                   <s-badge tone={level === 'location' ? 'info' : undefined}>{LEVEL_LABEL[level]}</s-badge>
                 </s-grid>
                 {rules.map((r) =>

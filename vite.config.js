@@ -12,17 +12,19 @@ function devRootRedirect() {
     apply: 'serve',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        const url = (req.url || '').split('?')[0];
+        const [url, query] = (req.url || '').split('?');
+        // Keep the query (?v=upcoming) so the version survives the redirect.
+        const qs = query ? `?${query}` : '';
         if (url === '/' || url === '/index.html') {
-          res.writeHead(302, { Location: '/src/rfq/index.html' });
+          res.writeHead(302, { Location: `/src/rfq/index.html${qs}` });
           return res.end();
         }
         if (url === '/b2b' || url === '/b2b/' || url === '/b2b/index.html') {
-          res.writeHead(302, { Location: '/src/b2b/index.html' });
+          res.writeHead(302, { Location: `/src/b2b/index.html${qs}` });
           return res.end();
         }
         if (url === '/storefront' || url === '/storefront/' || url === '/storefront/index.html') {
-          res.writeHead(302, { Location: '/src/storefront/index.html' });
+          res.writeHead(302, { Location: `/src/storefront/index.html${qs}` });
           return res.end();
         }
         next();

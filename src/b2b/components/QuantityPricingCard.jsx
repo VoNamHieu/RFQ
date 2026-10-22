@@ -10,10 +10,18 @@ import quantityPricingArt from '../assets/quantity-pricing-empty.webp';
 export function QuantityPricingCard({ company }) {
   const { state, dispatch } = useStore();
   const tipId = useWcId('qty-row');
-  // A company can hold several quantity pricings (lowest priority applies first).
-  // The company's own list plus pricing only some locations get (labelled with them),
-  // in priority order — the stable sort keeps the company's own tie-breaks.
-  const entries = [...companyQuantityEntries(company, state.db.policies), ...locationOnlyEntries(company, state.db.policies, 'quantity')].sort((a, b) => a.priority - b.priority);
+  // The live contract giving a row's pricing (on the company, or on its locations).
+  const contractOf = (entry) =>
+    entry.locations
+      ? entry.locations.map((l) => contractGiving(state.db, company, entry.policy.id, l.id)).find(Boolean) || null
+      : contractGiving(state.db, company, entry.policy.id);
+  // A company can hold several quantity pricings (lowest priority applies first, after
+  // a live contract's). The company's own list plus pricing only some locations get
+  // (labelled with them), in the order they apply — the stable sort keeps the
+  // company's own tie-breaks.
+  const entries = [...companyQuantityEntries(company, state.db.policies), ...locationOnlyEntries(company, state.db.policies, 'quantity')].sort(
+    (a, b) => !!contractOf(b) - !!contractOf(a) || a.priority - b.priority,
+  );
   const policies = entries.map((e) => e.policy);
   const openAdd = () => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, kind: 'quantity', mode: 'add' });
   const autoApply = !!company.autoAddLocations;
@@ -60,10 +68,7 @@ export function QuantityPricingCard({ company }) {
           {entries.map((entry) => {
             const policy = entry.policy;
             const st = policyStatus(policy, state.db);
-            // The live contract giving it (on the company, or on its locations).
-            const ag = entry.locations
-              ? entry.locations.map((l) => contractGiving(state.db, company, policy.id, l.id)).find(Boolean) || null
-              : contractGiving(state.db, company, policy.id);
+            const ag = contractOf(entry);
             return (
               <s-table-row key={policy.id}>
                 <s-table-cell>

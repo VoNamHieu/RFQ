@@ -5,7 +5,9 @@ import { Modal } from '../../shared/wc.jsx';
 // One version of a contract, read-only, as its snapshot kept it — its terms as they
 // were then — with the version history to move between versions. Opened from a
 // company's Contract tab (version history, past contracts) and the Contracts list.
-export function ContractVersionModal({ ag, version, onClose }) {
+// A contract that's over can be duplicated from here (`onDuplicate`) into a new one
+// with its terms; open ones are duplicated from their row.
+export function ContractVersionModal({ ag, version, onClose, onDuplicate }) {
   const [shown, setShown] = useState(version ?? ag.version);
   const snap = versionSnapshot(ag, shown);
   const over = PAST_STATUSES.includes(ag.status) ? ag.history?.[0] : null;
@@ -64,6 +66,11 @@ export function ContractVersionModal({ ag, version, onClose }) {
           ))}
         </s-stack>
       </s-stack>
+      {onDuplicate && PAST_STATUSES.includes(ag.status) ? (
+        <s-button slot="primary-action" variant="primary" onClick={() => onDuplicate(ag)}>
+          Duplicate
+        </s-button>
+      ) : null}
       <s-button slot="secondary-actions" onClick={onClose}>
         Close
       </s-button>

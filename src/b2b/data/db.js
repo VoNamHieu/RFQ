@@ -99,6 +99,29 @@ const companies = [
     contacts: [{ name: 'Le Van Tam', email: 'tam@deltamech-dn.vn', role: 'Location admin', access: 'Buys directly', locations: 'Da Nang workshop' }],
     quotes: [], exceptions: [],
     activity: [{ when: 'Aug 04', what: 'Created by the merchant for the Da Nang workshop' }]
+  },
+  // Demo: contracts per location (see the agreements below). Its own pricing outside
+  // them is Volume Tier A; each contract's pricing goes on its locations on load.
+  {
+    id: 'c7', name: 'Phu Thanh Hardware', mainContact: 'Tran Minh Khoa', source: 'Merchant created',
+    pricing: { base: [{ id: 'p20', priority: 3 }], quantity: null }, revenue: 158300,
+    locations: [
+      { id: 'l11', name: 'Ho Chi Minh City', ordering: 'Buys directly', terms: 'Net 30', lastOrder: '2026-07-21', buyers: 2 },
+      { id: 'l12', name: 'Can Tho', ordering: 'Buys directly', terms: 'Net 15', lastOrder: '2026-07-09', buyers: 1 },
+      { id: 'l13', name: 'Vung Tau', ordering: 'You approve first', terms: 'Net 15', lastOrder: '2026-06-30', buyers: 1 }
+    ],
+    contacts: [
+      { name: 'Tran Minh Khoa', email: 'khoa@phuthanh.vn', role: 'Location admin', access: 'Buys directly', locations: 'Ho Chi Minh City' },
+      { name: 'Nguyen Thi Mai', email: 'mai@phuthanh.vn', role: 'Ordering only', access: 'Buys directly', locations: 'Ho Chi Minh City' },
+      { name: 'Le Hoang Phuc', email: 'phuc@phuthanh.vn', role: 'Location admin', access: 'Buys directly', locations: 'Can Tho' },
+      { name: 'Pham Thanh Tung', email: 'tung@phuthanh.vn', role: 'Location admin', access: 'You approve first', locations: 'Vung Tau' }
+    ],
+    quotes: [], exceptions: [],
+    activity: [
+      { when: 'Jul 20', what: 'CT-304 scheduled for Can Tho from Feb 1, 2027' },
+      { when: 'May 01', what: 'CT-303 started for Vung Tau' },
+      { when: 'Feb 01', what: 'CT-302 started for Ho Chi Minh City and Can Tho' }
+    ]
   }
 ];
 
@@ -399,8 +422,13 @@ const limits = [
 // Agreements (see agreements.js). ABC's CT-301 is live and its terms are the ones
 // assigned above (p1, p8, p30, p6, ol3) — the rest of ABC's pricing is outside it.
 // It ends Aug 20, 2026 — within the renewal reminder. Vinh Phat's CT-305 is a
-// draft for 2027; Song Hong's CT-274 expired (see its activity). A version entry's
-// `terms` (ids) becomes its snapshot on load (seedSnapshots).
+// inactive contract for 2027; Song Hong's CT-274 expired (see its activity). Phu Thanh has a
+// contract per location: CT-302 (Ho Chi Minh City, Can Tho) and CT-303 (Vung Tau)
+// are seeded Scheduled with past start dates, so they start on load
+// (syncContractDates) and put their pricing on those locations; CT-304 takes Can Tho
+// over from CT-302 on Feb 1, 2027, the day after CT-302 ends (contracts at a location
+// never overlap). A version entry's `terms` (ids) becomes its snapshot on load
+// (seedSnapshots).
 const agreements = [
   { id: 'ag1', number: 'CT-301', name: '2026 annual terms', companyId: 'c1', locationIds: null, status: 'Active', version: 2, startDate: '2026-01-03', endDate: '2026-08-20',
     terms: { base: ['p1', 'p8', 'p30'], quantity: ['p6'], limits: ['ol3'] },
@@ -408,7 +436,7 @@ const agreements = [
       { version: 2, date: '2026-07-12', note: 'Added VLV-40 Contract Price', terms: { base: ['p1', 'p8', 'p30'], quantity: ['p6'], limits: ['ol3'] } },
       { version: 1, date: '2026-01-03', note: 'Activated', terms: { base: ['p1', 'p8'], quantity: ['p6'], limits: ['ol3'] } },
     ] },
-  { id: 'ag2', number: 'CT-305', name: '2027 distributor terms', companyId: 'c2', locationIds: null, status: 'Draft', version: 0, startDate: '2027-01-01', endDate: '2027-12-31',
+  { id: 'ag2', number: 'CT-305', name: '2027 distributor terms', companyId: 'c2', locationIds: null, status: 'Inactive', version: 0, startDate: '2027-01-01', endDate: '2027-12-31',
     terms: { base: ['p1'], quantity: [], limits: ['ol2', 'ol3'] }, history: [] },
   { id: 'ag3', number: 'CT-274', name: '2025–26 negotiated terms', companyId: 'c4', locationIds: null, status: 'Expired', version: 1, startDate: '2025-07-01', endDate: '2026-06-30',
     terms: { base: ['p8'], quantity: [], limits: [] },
@@ -416,6 +444,15 @@ const agreements = [
       { version: 1, date: '2026-07-01', note: 'Expired' },
       { version: 1, date: '2025-07-01', note: 'Activated', terms: { base: ['p8'], quantity: [], limits: [] } },
     ] },
+  { id: 'ag4', number: 'CT-302', name: 'South region terms', companyId: 'c7', locationIds: ['l11', 'l12'], status: 'Scheduled', version: 1, startDate: '2026-02-01', endDate: '2027-01-31',
+    terms: { base: ['p23'], quantity: [], limits: [] },
+    history: [{ version: 1, date: '2026-01-20', note: 'Activated, starts Feb 1, 2026', terms: { base: ['p23'], quantity: [], limits: [] } }] },
+  { id: 'ag5', number: 'CT-303', name: 'Vung Tau port terms', companyId: 'c7', locationIds: ['l13'], status: 'Scheduled', version: 1, startDate: '2026-05-01', endDate: '',
+    terms: { base: ['p27'], quantity: [], limits: [] },
+    history: [{ version: 1, date: '2026-04-22', note: 'Activated, starts May 1, 2026', terms: { base: ['p27'], quantity: [], limits: [] } }] },
+  { id: 'ag6', number: 'CT-304', name: 'Can Tho 2027–28 terms', companyId: 'c7', locationIds: ['l12'], status: 'Scheduled', version: 1, startDate: '2027-02-01', endDate: '2028-01-31',
+    terms: { base: ['p22'], quantity: [], limits: [] },
+    history: [{ version: 1, date: '2026-07-20', note: 'Activated, starts Feb 1, 2027', terms: { base: ['p22'], quantity: [], limits: [] } }] },
 ];
 
 export const dbSeed = { defaults, products, companies, tagPricing, customers, policies, limits, agreements, attention, requests, health, quotes };

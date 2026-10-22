@@ -18,13 +18,36 @@ export function policyById(policies, id) {
   return (policies || []).find((p) => p.id === id) || null;
 }
 
+// ── Contract pricing first (Upcoming) ───────────────────────────────────────
+// A pricing an Active contract gives a company or location applies there before
+// every other one, whatever its priority (it beats priority 0); among themselves,
+// contract pricings go by priority. Which ones those are is derived from the
+// contracts (agreements.js liveContractPricing) and handed over by the store:
+// holder id (company or location) → pricing ids. Empty without Contracts.
+let contractPricing = {};
+export function setContractPricing(map) {
+  contractPricing = map || {};
+}
+// Resolve with other contracts in force — e.g. a contract's price preview, as if
+// it applied. Restores the live ones after.
+export function withContractPricing(map, fn) {
+  const live = contractPricing;
+  contractPricing = map || {};
+  try {
+    return fn();
+  } finally {
+    contractPricing = live;
+  }
+}
+const fromContract = (holder, id) => !!holder?.id && (contractPricing[holder.id] || []).includes(id);
+
 // ── Company base / quantity lists (resolution order) ─────────────────────────
 // A company (or location) holds a LIST per kind: pricing.base and pricing.quantity
 // are both [{id, priority}]. Priority is a property of the PROFILE (its "Priority
-// 0-99" field), not a per-company number: lower applies first. On a tie a SCOPED
-// profile (covers only some SKUs — e.g. a quote pricing) beats an all-products
-// one, then insertion order. Dangling ids dropped; a legacy scalar id normalized
-// to a one-item list.
+// 0-99" field), not a per-company number: lower applies first. A live contract's
+// pricing comes before all of them (see above). On a tie a SCOPED profile (covers
+// only some SKUs — e.g. a quote pricing) beats an all-products one, then insertion
+// order. Dangling ids dropped; a legacy scalar id normalized to a one-item list.
 function slotEntries(holder, policies, kind) {
   let list = holder?.pricing?.[kind];
   if (!list) return [];
@@ -37,10 +60,10 @@ function slotEntries(holder, policies, kind) {
     .map((e, idx) => {
       const id = (e && e.id) || e;
       const policy = policyById(policies, id);
-      return { id, idx, priority: Number(policy?.priority) || 0, policy };
+      return { id, idx, priority: Number(policy?.priority) || 0, policy, byContract: fromContract(holder, id) };
     })
     .filter((e) => e.policy)
-    .sort((a, b) => a.priority - b.priority || spec(a.id) - spec(b.id) || a.idx - b.idx);
+    .sort((a, b) => b.byContract - a.byContract || a.priority - b.priority || spec(a.id) - spec(b.id) || a.idx - b.idx);
 }
 
 // Usable for resolution right now: not Inactive, and inside its dated window if

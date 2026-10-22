@@ -11,8 +11,9 @@ import { money } from '../format.js';
 import { ActiveDatesCard, ProductScopeCard, QuantityProductsCard, VolumeBasisCard, ProductOverridesCard } from './pricingEditorCards.jsx';
 import { PricePreviewDialog } from './PricePreviewDialog.jsx';
 import { AssignmentCard } from './AssignmentCard.jsx';
-import { policyUsageCount, policyUsageDetail, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, locationCatalog } from '../pricing.js';
-import { contractsHolding, contractGiving, contractNames, appliesAt, lockedTip } from '../agreements.js';
+import { policyUsageCount, policyUsageDetail, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, locationCatalog, TODAY } from '../pricing.js';
+import { contractsHolding, contractGiving, contractNames, appliesAt, lockedTip, termChanged, termDateWarnings } from '../agreements.js';
+import { builderDraft } from '../builders.js';
 
 // Main column + aside side by side once the editor is wide enough (Polaris React
 // InlineGrid columns={{ xs: '1fr', md: '2fr 1fr' }}); two fields side by side
@@ -30,6 +31,9 @@ const TWO_UP = '@container (inline-size > 400px) 1fr 1fr, 1fr';
 export function PricingEditor({ asPage = false }) {
   const { state, dispatch } = useStore();
   const [forkConfirm, setForkConfirm] = useState(false);
+  // Save dialog for a pricing live contracts hold: override it (a version in each), or
+  // save the changes as a new pricing.
+  const [contractConfirm, setContractConfirm] = useState(false);
   // Save-time confirmation when the pricing switched Company-based B2B ↔ D2C Wholesale.
   const [sideConfirm, setSideConfirm] = useState(false);
   // Save dialog for a shared pricing: a separate copy for here, unless ticked to apply to all.
@@ -202,6 +206,28 @@ export function PricingEditor({ asPage = false }) {
   // Opened from a company or location a live contract gives it to: it can't be swapped
   // there for a separate copy, so a change applies everywhere it's used.
   const contractHere = scopeCompany && !isNew ? contractGiving(state.db, scopeCompany, builder.id, scopeLoc?.id || null) : null;
+  // Saving onto it adds a version to the live contracts holding it (when what it sets,
+  // or its name, changed): confirm first. Dates that leave part of a contract from
+  // today on uncovered are warned about there.
+  const draft = builderDraft(builder);
+  const versionsContracts = held.length > 0 && !!savedPolicy && termChanged(state.db, savedPolicy, draft, false);
+  const dateWarnings = versionsContracts
+    ? held.flatMap((ag) => termDateWarnings(draft, ag, ag.startDate > TODAY ? ag.startDate : TODAY, ag.number))
+    : [];
+  // Which contracts it versions, and the dates warning: shown in whichever save dialog
+  // is up (contract, fork or switching side), so a save only ever asks once.
+  const oneContract = held.length === 1;
+  const contractList = oneContract ? contractNames(state.db, held) : `${held.length} contracts: ${contractNames(state.db, held)}`;
+  const versionedWhere = oneContract ? 'the contract' : 'each of them';
+  const dateWarningBanner = dateWarnings.length ? (
+    <s-banner tone="warning" heading="It won’t apply for the whole contract">
+      <s-unordered-list>
+        {dateWarnings.map((w) => (
+          <s-list-item key={w}>{w}</s-list-item>
+        ))}
+      </s-unordered-list>
+    </s-banner>
+  ) : null;
 
   const onSave = () => {
     if (noLocationPicked || breaks.length) return;
@@ -213,7 +239,10 @@ export function PricingEditor({ asPage = false }) {
       setSideConfirm(true);
       return;
     }
-    if (sharedElsewhere) {
+    // Shared elsewhere, it can still fork a copy for here (contracts untouched); a
+    // contract here rules that out.
+    if (versionsContracts && (!sharedElsewhere || contractHere)) setContractConfirm(true);
+    else if (sharedElsewhere) {
       setApplyAll(false);
       setForkConfirm(true);
     }
@@ -315,7 +344,7 @@ export function PricingEditor({ asPage = false }) {
                         inputMode="numeric"
                         value={String(builder.priority ?? '')}
                         onInput={(e) => patch({ priority: Number(e.currentTarget.value) })}
-                        details="Lower number applies first."
+                        details={versionFlags().agreements ? 'Lower number applies first. A live contract’s pricing applies before any priority.' : 'Lower number applies first.'}
                         autocomplete="off"
                       />
                     </s-stack>
@@ -368,6 +397,7 @@ export function PricingEditor({ asPage = false }) {
     <>
       {sideConfirm && (
         <Modal onClose={() => setSideConfirm(false)} heading="Change who this pricing serves?">
+          <s-stack gap="small">
           {savedSide === 'b2b' ? (
             <s-paragraph>
               {'This pricing is set up for '}
@@ -387,6 +417,13 @@ export function PricingEditor({ asPage = false }) {
               {' clears that selection. Only the companies you picked receive it.'}
             </s-paragraph>
           )}
+          {versionsContracts && (
+            <>
+              <s-paragraph>{`It’s also assigned to ${contractList}. Saving adds a new version to ${versionedWhere}.`}</s-paragraph>
+              {dateWarningBanner}
+            </>
+          )}
+          </s-stack>
           <s-button
             slot="primary-action"
             variant="primary"
@@ -430,6 +467,13 @@ export function PricingEditor({ asPage = false }) {
               />
             </s-box>
             )}
+            {/* Ticked, it saves onto the pricing: the contracts holding it get a version. */}
+            {applyAll && versionsContracts && (
+              <>
+                <s-paragraph>{`It’s also assigned to ${contractList}. Applying to all adds a new version to ${versionedWhere}.`}</s-paragraph>
+                {dateWarningBanner}
+              </>
+            )}
           </s-stack>
           <s-button
             slot="primary-action"
@@ -444,6 +488,38 @@ export function PricingEditor({ asPage = false }) {
           </s-button>
           <s-button slot="secondary-actions" onClick={() => setForkConfirm(false)}>
             Cancel
+          </s-button>
+        </Modal>
+      )}
+      {/* No Cancel: closing it (X) saves nothing. */}
+      {contractConfirm && (
+        <Modal onClose={() => setContractConfirm(false)} heading={`Save changes to ${savedPolicy.name}?`}>
+          <s-stack gap="small">
+            <s-paragraph>
+              {`${savedPolicy.name} is assigned to ${contractList}. Changing it adds a new version to ${versionedWhere}. You can also save your changes as a new pricing, not assigned anywhere yet, and keep ${savedPolicy.name} as it is for ${oneContract ? 'the contract' : 'these contracts'}.`}
+            </s-paragraph>
+            {/* Opened from the company its contract gives it to, and shared beyond it. */}
+            {sharedElsewhere && <s-paragraph>{`It’s also assigned to ${sharedWith}. Override changes it for them too.`}</s-paragraph>}
+            {dateWarningBanner}
+          </s-stack>
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            onClick={() => {
+              setContractConfirm(false);
+              dispatch({ type: 'SAVE_EDITOR', applyToAll: true });
+            }}
+          >
+            Override
+          </s-button>
+          <s-button
+            slot="secondary-actions"
+            onClick={() => {
+              setContractConfirm(false);
+              dispatch({ type: 'SAVE_EDITOR', asNew: true });
+            }}
+          >
+            Save as new pricing
           </s-button>
         </Modal>
       )}

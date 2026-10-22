@@ -9,7 +9,7 @@ import { TODAY } from '../../b2b/pricing.js';
 import { dbSeed } from '../../b2b/data/db.js';
 import { versionFlags } from '../../shared/versions.js';
 import { publishedOrderLimits, publishedContracts, readOrderRequests } from '../../shared/persistence.js';
-import { storefrontContracts } from '../../b2b/agreements.js';
+import { storefrontContracts, fmtDay } from '../../b2b/agreements.js';
 import { money } from '../utils.js';
 
 // A soft, always-rendering placeholder image per product (Dawn ships gray
@@ -104,7 +104,11 @@ export function agreementForSession(session) {
     name: ag.name,
     version: ag.version,
     dates: ag.dates,
-    pricing: ag.pricing.length ? ag.pricing.join(', ') : null,
+    // Start and end on their own; contracts published before they were sent have
+    // only `dates`.
+    start: ag.startDate ? fmtDay(ag.startDate) : null,
+    end: ag.endDate ? fmtDay(ag.endDate) : null,
+    pricing: ag.pricing,
     // Buyer wording for a maximum sent for review; the rest read the same for both sides.
     limits: limits.map((l) => limitRules(l, db)
       .map((r) => (r.key?.startsWith('threshold') && r.value != null
