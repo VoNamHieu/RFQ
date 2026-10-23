@@ -24,22 +24,30 @@ export function policyById(policies, id) {
 // contract pricings go by priority. Which ones those are is derived from the
 // contracts (agreements.js liveContractPricing) and handed over by the store:
 // holder id (company or location) → pricing ids. Empty without Contracts.
+// `dates`: the same for the pricing a contract gives with "Use the contract’s dates"
+// (agreements.js liveContractDates) — there it applies whatever its own dates.
 let contractPricing = {};
-export function setContractPricing(map) {
+let contractDates = {};
+export function setContractPricing(map, dates) {
   contractPricing = map || {};
+  contractDates = dates || {};
 }
 // Resolve with other contracts in force — e.g. a contract's price preview, as if
 // it applied. Restores the live ones after.
-export function withContractPricing(map, fn) {
+export function withContractPricing(map, fn, dates) {
   const live = contractPricing;
+  const liveDates = contractDates;
   contractPricing = map || {};
+  contractDates = dates || {};
   try {
     return fn();
   } finally {
     contractPricing = live;
+    contractDates = liveDates;
   }
 }
 const fromContract = (holder, id) => !!holder?.id && (contractPricing[holder.id] || []).includes(id);
+const onContractDates = (holder, id) => !!holder?.id && (contractDates[holder.id] || []).includes(id);
 
 // ── Company base / quantity lists (resolution order) ─────────────────────────
 // A company (or location) holds a LIST per kind: pricing.base and pricing.quantity
@@ -67,9 +75,11 @@ function slotEntries(holder, policies, kind) {
 }
 
 // Usable for resolution right now: not Inactive, and inside its dated window if
-// it has one. Scheduled/expired bases step aside so the next priority applies.
-export function basePriceableNow(policy) {
+// it has one. Scheduled/expired bases step aside so the next priority applies. At
+// a `holder` a contract gives it to on the contract's dates, its own don't count.
+export function basePriceableNow(policy, holder = null) {
   if (!policy || policy.status === 'Inactive') return false;
+  if (onContractDates(holder, policy.id)) return true;
   // Dated window (god-file model): active from startDate, optionally until endDate.
   // Backward compatible with seed policies that carry startDate/endDate directly.
   if (policy.startDate && policy.startDate > TODAY) return false;
@@ -138,7 +148,7 @@ export function slotIds(holder, kind) {
 export function companyActiveBasePolicies(company, policies) {
   return companyBaseEntries(company, policies)
     .map((e) => e.policy)
-    .filter(basePriceableNow);
+    .filter((p) => basePriceableNow(p, company));
 }
 export function companyActiveQuantityPolicies(company, policies) {
   return companyQuantityEntries(company, policies)

@@ -11,9 +11,22 @@ import { money } from '../format.js';
 import { ActiveDatesCard, ProductScopeCard, QuantityProductsCard, VolumeBasisCard, ProductOverridesCard } from './pricingEditorCards.jsx';
 import { PricePreviewDialog } from './PricePreviewDialog.jsx';
 import { AssignmentCard } from './AssignmentCard.jsx';
-import { policyUsageCount, policyUsageDetail, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, locationCatalog, TODAY } from '../pricing.js';
-import { contractsHolding, contractGiving, contractNames, appliesAt, lockedTip, termChanged, termDateWarnings } from '../agreements.js';
+import { policyUsageCount, policyUsageDetail, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, locationCatalog } from '../pricing.js';
+import {
+  contractsHolding,
+  contractGiving,
+  contractNames,
+  appliesAt,
+  termChanged,
+  termDateWarnings,
+  openContractsHolding,
+  lastTermOf,
+  followsContractDates,
+  coverFrom,
+  joinAnd,
+} from '../agreements.js';
 import { builderDraft } from '../builders.js';
+import { useContractLock, LeavingContracts } from './ContractLock.jsx';
 
 // Main column + aside side by side once the editor is wide enough (Polaris React
 // InlineGrid columns={{ xs: '1fr', md: '2fr 1fr' }}); two fields side by side
@@ -34,6 +47,8 @@ export function PricingEditor({ asPage = false }) {
   // Save dialog for a pricing live contracts hold: override it (a version in each), or
   // save the changes as a new pricing.
   const [contractConfirm, setContractConfirm] = useState(false);
+  // Turning it off while live contracts hold it goes through them (the lock box).
+  const [showLock, lockModal] = useContractLock();
   // Save-time confirmation when the pricing switched Company-based B2B ↔ D2C Wholesale.
   const [sideConfirm, setSideConfirm] = useState(false);
   // Save dialog for a shared pricing: a separate copy for here, unless ticked to apply to all.
@@ -186,14 +201,20 @@ export function PricingEditor({ asPage = false }) {
       ? companiesAssigned > 0 || savedUsage.globals.includes('All Companies')
       : savedUsage.customers + savedUsage.tags > 0 || savedUsage.globals.includes('All customers');
 
+  // Switched to D2C Wholesale: it comes off every contract holding it (Active,
+  // Scheduled or Inactive) — the switch dialog says so, and names the ones it leaves
+  // with no terms.
+  const toD2C = sideChanged && builder.audienceType === 'd2c';
+  const leaving = toD2C ? openContractsHolding(state.db, builder.id) : [];
+  const emptied = toD2C ? lastTermOf(state.db, builder.id) : [];
   // Live contracts holding it: editing what it sets adds a version to them; it must
   // stay on and keep reaching every location they apply to (changing that goes
   // through them). `breaks`: the ones these choices would leave without it.
   const held = isNew ? [] : contractsHolding(state.db, builder.id);
   const breaks = held.filter((ag) => {
+    if (toD2C) return false;
     if (builder.status === 'Inactive') return true;
     if (ag.status !== 'Active') return false;
-    if (builder.audienceType === 'd2c') return true;
     const c = state.db.companies.find((x) => x.id === ag.companyId);
     if (!c) return false;
     const locs = (c.locations || []).filter((l) => appliesAt(c, ag, l.id));
@@ -210,9 +231,11 @@ export function PricingEditor({ asPage = false }) {
   // or its name, changed): confirm first. Dates that leave part of a contract from
   // today on uncovered are warned about there.
   const draft = builderDraft(builder);
-  const versionsContracts = held.length > 0 && !!savedPolicy && termChanged(state.db, savedPolicy, draft, false);
+  const versionsContracts = !toD2C && held.length > 0 && !!savedPolicy && termChanged(state.db, savedPolicy, draft, false);
+  // Not for contracts that use their own dates for it; those are named under its dates.
+  const onContractDates = held.filter((ag) => followsContractDates(ag, builder.id));
   const dateWarnings = versionsContracts
-    ? held.flatMap((ag) => termDateWarnings(draft, ag, ag.startDate > TODAY ? ag.startDate : TODAY, ag.number))
+    ? held.filter((ag) => !followsContractDates(ag, builder.id)).flatMap((ag) => termDateWarnings(draft, ag, coverFrom(ag), ag.number))
     : [];
   // Which contracts it versions, and the dates warning: shown in whichever save dialog
   // is up (contract, fork or switching side), so a save only ever asks once.
@@ -235,7 +258,7 @@ export function PricingEditor({ asPage = false }) {
       setNameMissing(true);
       return;
     }
-    if (sideChanged && hadAssignments) {
+    if (sideChanged && (hadAssignments || leaving.length)) {
       setSideConfirm(true);
       return;
     }
@@ -376,7 +399,11 @@ export function PricingEditor({ asPage = false }) {
                   {isQuantity && whoServes}
 
                   {/* Scheduling last, matching the god-file editor order. */}
-                  <ActiveDatesCard builder={builder} patch={patch} />
+                  <ActiveDatesCard
+                    builder={builder}
+                    patch={patch}
+                    note={onContractDates.length ? `In ${joinAnd(onContractDates.map((a) => a.number))} it uses the contract’s dates, not these.` : null}
+                  />
                 </>
               ) : (
                 <AppearanceTab builder={builder} patch={patch} kindWord={kindWord} product={state.db.products[0]} />
@@ -385,7 +412,12 @@ export function PricingEditor({ asPage = false }) {
 
             {/* Aside (god-file builder-side): status, resolution, summary. */}
             <s-stack gap="base">
-              <RuleStatusCard builder={builder} patch={patch} held={held} />
+              <RuleStatusCard
+                builder={builder}
+                patch={patch}
+                held={held}
+                onLocked={() => showLock({ name: savedPolicy?.name || builder.name, count: held.length, verb: 'turn off' })}
+              />
               <SummaryCard builder={builder} isQuantity={isQuantity} assignedTo={assignedTo} products={state.db.products} locations={reach} />
             </s-stack>
           </s-grid>
@@ -417,12 +449,8 @@ export function PricingEditor({ asPage = false }) {
               {' clears that selection. Only the companies you picked receive it.'}
             </s-paragraph>
           )}
-          {versionsContracts && (
-            <>
-              <s-paragraph>{`It’s also assigned to ${contractList}. Saving adds a new version to ${versionedWhere}.`}</s-paragraph>
-              {dateWarningBanner}
-            </>
-          )}
+          {/* To D2C: contracts don't reach D2C pricing, so it comes off them. */}
+          <LeavingContracts leaving={leaving} emptied={emptied} />
           </s-stack>
           <s-button
             slot="primary-action"
@@ -523,6 +551,7 @@ export function PricingEditor({ asPage = false }) {
           </s-button>
         </Modal>
       )}
+      {lockModal}
       {catalogPreview && targets.length > 1 && (
         <BuilderPricePreview builder={builder} products={state.db.products} targets={reach} onClose={() => setCatalogPreview(false)} />
       )}
@@ -573,8 +602,9 @@ export function PricingEditor({ asPage = false }) {
 }
 
 // Rule status (god-file ruleStatusCard), shown in the aside: an on/off toggle.
-// `held`: live contracts holding it — it can't be turned off outside them.
-function RuleStatusCard({ builder, patch, held = [] }) {
+// `held`: live contracts holding it — turning it off goes through them, so Turn off
+// opens the lock box (`onLocked`) instead.
+function RuleStatusCard({ builder, patch, held = [], onLocked }) {
   const on = (builder.status || 'Active') !== 'Inactive';
   const locked = on && held.length > 0;
   return (
@@ -585,15 +615,10 @@ function RuleStatusCard({ builder, patch, held = [] }) {
             <s-heading>Rule status</s-heading>
             <s-badge tone={on ? 'success' : undefined}>{on ? 'Active' : 'Inactive'}</s-badge>
           </s-stack>
-          <s-button disabled={locked} onClick={() => patch({ status: on ? 'Inactive' : 'Active' })}>
+          <s-button onClick={() => (locked ? onLocked() : patch({ status: on ? 'Inactive' : 'Active' }))}>
             {on ? 'Turn off' : 'Turn on'}
           </s-button>
         </s-grid>
-        {locked && (
-          <s-text color="subdued" fontSize="small">
-            {lockedTip(held, 'turn off')}
-          </s-text>
-        )}
       </s-stack>
     </s-section>
   );

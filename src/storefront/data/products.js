@@ -96,8 +96,10 @@ export function agreementForSession(session) {
   const ag = contracts.find((a) => a.companyId === session.companyKey && (!a.locationIds || a.locationIds.includes(session.locationId)));
   if (!ag) return null;
   const db = limitsDb();
+  // In its own dates, or on the contract's (`followIds`).
+  const applies = (l) => limitState(l) === 'Active' || ((ag.followIds || []).includes(l.id) && l.status === 'Active');
   const limits = db.limits.filter(
-    (l) => ag.limitIds.includes(l.id) && limitState(l) === 'Active' && ['company', 'location'].includes(limitLevel(l, session.companyKey, session.locationId)),
+    (l) => ag.limitIds.includes(l.id) && applies(l) && ['company', 'location'].includes(limitLevel(l, session.companyKey, session.locationId)),
   );
   return {
     number: ag.number,

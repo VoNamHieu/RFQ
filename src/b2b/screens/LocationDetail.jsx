@@ -9,7 +9,8 @@ import { LocationContractCard } from '../components/LocationContractCard.jsx';
 import { DeleteLocationsModal } from '../components/tabs/LocationsTab.jsx';
 import { isHeld, heldReason, heldFirst, HeldOrderActions } from '../components/HeldOrders.jsx';
 import { PricingName } from '../components/BasePricingCard.jsx';
-import { contractGiving, lockedTip } from '../agreements.js';
+import { contractGiving } from '../agreements.js';
+import { useContractLock } from '../components/ContractLock.jsx';
 import { versionFlags } from '../../shared/versions.js';
 import { MenuButton, Tip, useWcId, wcTone, PageHeader, Tabs } from '../../shared/wc.jsx';
 
@@ -45,6 +46,7 @@ export function LocationDetail() {
   const [quotesPage, setQuotesPage] = useState(0);
   const [ordersPage, setOrdersPage] = useState(0);
   const ids = useWcId('loc');
+  const [showLock, lockModal] = useContractLock();
   if (!company || !location) return null;
   // Add / edit / remove pricing on this location (its own list of that kind — see
   // locationSlotArray), with the same row actions as the company page. Edit opens it
@@ -66,11 +68,12 @@ export function LocationDetail() {
         variant="tertiary"
         tone="critical"
         accessibilityLabel={`Remove ${policy.name}`}
-        disabled={!!ag}
-        interestFor={ag ? `${ids}-lock-${kind}-${policy.id}` : undefined}
-        onClick={() => dispatch({ type: 'REMOVE_LOCATION_PRICING', companyId: company.id, locationId: location.id, kind, policyId: policy.id })}
+        onClick={() =>
+          ag
+            ? showLock({ name: policy.name, count: 1, verb: 'remove' })
+            : dispatch({ type: 'REMOVE_LOCATION_PRICING', companyId: company.id, locationId: location.id, kind, policyId: policy.id })
+        }
       />
-      {ag ? <s-tooltip id={`${ids}-lock-${kind}-${policy.id}`}>{lockedTip([ag], 'remove')}</s-tooltip> : null}
     </s-stack>
   );
 
@@ -503,6 +506,7 @@ export function LocationDetail() {
       {confirmDelete && (
         <DeleteLocationsModal company={company} locationIds={[location.id]} onClose={() => setConfirmDelete(false)} />
       )}
+      {lockModal}
     </s-page>
     </>
   );

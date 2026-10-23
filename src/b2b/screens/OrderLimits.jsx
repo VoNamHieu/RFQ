@@ -5,7 +5,8 @@ import { LimitEditor, DeleteLimitConflicts, deleteCheck, withCatalog } from '../
 import { LimitConflictList } from '../components/LimitConflictList.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import { Modal, IndexFiltersBar, useWcId } from '../../shared/wc.jsx';
-import { contractsHolding, lockedTip } from '../agreements.js';
+import { contractsHolding } from '../agreements.js';
+import { useContractLock, DraftsLosingIt } from '../components/ContractLock.jsx';
 
 // Tabs by who a limit is for, like the Pricing list; the kind is a filter.
 const AUDIENCE = [
@@ -30,6 +31,7 @@ export function OrderLimits() {
   const [search, setSearch] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [confirmToggle, setConfirmToggle] = useState(null);
+  const [showLock, lockModal] = useContractLock();
   const rowId = useWcId('limit');
   const createId = useWcId('create-limit');
 
@@ -139,8 +141,10 @@ export function OrderLimits() {
               {limits.map((l) => {
                 const isOff = l.status !== 'Active';
                 const id = `${rowId}-${l.id}`;
-                // Live contracts hold it: it can't be turned off or deleted outside them.
+                // Live contracts hold it: turning it off or deleting it goes through
+                // them, so those buttons open the lock box instead.
                 const held = contractsHolding(state.db, l.id);
+                const locked = (verb) => showLock({ name: l.name, count: held.length, verb });
                 return (
                   <s-table-row key={l.id} clickDelegate={`${id}-open`}>
                     <s-table-cell>
@@ -167,14 +171,14 @@ export function OrderLimits() {
                           icon={isOff ? 'toggle-off' : 'toggle-on'}
                           variant="tertiary"
                           accessibilityLabel={isOff ? 'Turn on' : 'Turn off'}
-                          disabled={!isOff && held.length > 0}
                           interestFor={`${id}-toggle-tip`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            toggle(l);
+                            if (!isOff && held.length) locked('turn off');
+                            else toggle(l);
                           }}
                         />
-                        <s-tooltip id={`${id}-toggle-tip`}>{isOff ? 'Turn on' : held.length ? lockedTip(held, 'turn off') : 'Turn off'}</s-tooltip>
+                        <s-tooltip id={`${id}-toggle-tip`}>{isOff ? 'Turn on' : 'Turn off'}</s-tooltip>
                         <s-button
                           icon="edit"
                           variant="tertiary"
@@ -191,14 +195,14 @@ export function OrderLimits() {
                           variant="tertiary"
                           tone="critical"
                           accessibilityLabel="Delete limit"
-                          disabled={held.length > 0}
                           interestFor={`${id}-delete-tip`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            setConfirmDelete(l);
+                            if (held.length) locked('delete');
+                            else setConfirmDelete(l);
                           }}
                         />
-                        <s-tooltip id={`${id}-delete-tip`}>{held.length ? lockedTip(held, 'delete') : 'Delete limit'}</s-tooltip>
+                        <s-tooltip id={`${id}-delete-tip`}>Delete limit</s-tooltip>
                       </s-stack>
                     </s-table-cell>
                   </s-table-row>
@@ -222,6 +226,7 @@ export function OrderLimits() {
             <s-paragraph>
               Buyers it applies to ({limitTargetsLabel(confirmDelete, state.db)}) can check out without it right away. This can’t be undone.
             </s-paragraph>
+            <DraftsLosingIt db={state.db} id={confirmDelete.id} />
             <DeleteLimitConflicts check={delCheck} />
           </s-stack>
           <s-button
@@ -282,6 +287,7 @@ export function OrderLimits() {
           </s-button>
         </Modal>
       )}
+      {lockModal}
     </s-page>
   );
 }

@@ -19,6 +19,10 @@ import {
   termWarnings,
   agreementClashes,
   contractPricingAfter,
+  contractDatesAfter,
+  followsContractDates,
+  termDateWarnings,
+  coverFrom,
   canCreateAgreement,
   defaultStartDate,
   agreementScopeLabel,
@@ -36,9 +40,9 @@ import { Modal, PageHeader } from '../../shared/wc.jsx';
 // libraries; who gets them is all of the company's locations or some, picked like a
 // pricing's or order limit's companies (one company per contract). An inactive one
 // is activated here; an active agreement saves as its next version, applied at once.
-// A location is in one Active contract and one next one: where Active contracts
-// already apply, an inactive one is the next one and takes those locations over when it
-// starts — after they end, since a location is in one contract at a time (clashesAt).
+// A location is in one contract at a time: an inactive one can't overlap the Active or
+// Scheduled ones at its locations (clashesAt) — where Active ones apply, it takes those
+// locations over when it starts, after they end. Drafts don't clash with each other.
 // Any location can be picked; saving says which contracts it overlaps, to change one
 // of them. Created from Contracts, the company is picked here too (`pickCompany`);
 // otherwise only its locations are.
@@ -65,10 +69,17 @@ export function AgreementEditor() {
   const [companyModal, setCompanyModal] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const patch = (p) => dispatch({ type: 'AGREEMENT_EDITOR_PATCH', patch: p });
-  const setTerms = (p) => patch({ terms: { ...draft.terms, ...p } });
+  // A term taken out drops its "Use the contract’s dates" too.
+  const setTerms = (p) => {
+    const terms = { ...draft.terms, ...p };
+    const ids = [...terms.base, ...terms.quantity, ...terms.limits];
+    patch({ terms, followDates: (draft.followDates || []).filter((id) => ids.includes(id)) });
+  };
+  const setFollow = (id, on) =>
+    patch({ followDates: on ? [...new Set([...(draft.followDates || []), id])] : (draft.followDates || []).filter((x) => x !== id) });
   const close = () => dispatch({ type: 'CLOSE_AGREEMENT_EDITOR' });
-  // Companies with a location that has no next contract can get one. A new contract's
-  // untouched start date follows the Active contracts it'd take over from.
+  // Any company can get one. A new contract's untouched start date follows the Active
+  // and Scheduled contracts at its locations.
   const canPick = (c) => (pickCompany ? c.id === draft.companyId || canCreateAgreement(state.db, c.id) : c.id === draft.companyId);
   const followStart = (companyId, locationIds) =>
     !saved && draft.startDate === defaultStartDate(state.db, draft.companyId, draft.locationIds) ? { startDate: defaultStartDate(state.db, companyId, locationIds) } : {};
@@ -92,6 +103,9 @@ export function AgreementEditor() {
 
   const b2b = state.db.policies.filter((p) => p.audienceType !== 'd2c');
   const bases = b2b.filter((p) => kindOf(p) === 'base');
+  // The store's default for all companies, picked as a base pricing: while the
+  // contract runs it can't be turned off or deleted — for every company on it.
+  const defaultBase = draft.terms.base.includes(state.db.defaults?.b2bPolicyId) ? bases.find((p) => p.id === state.db.defaults.b2bPolicyId) : null;
   const quantities = b2b.filter((p) => kindOf(p) === 'quantity');
   // Store-wide limits already reach every company and D2C ones never reach one, so
   // they aren't offered here.
@@ -100,33 +114,30 @@ export function AgreementEditor() {
   const errors = {};
   if (!draft.companyId) errors.company = 'Choose a company';
   if (!(draft.name || '').trim()) errors.name = 'Name is required';
-  if (!draft.terms.base.length && !draft.terms.quantity.length && !draft.terms.limits.length) errors.terms = 'Add at least one pricing or order limit';
+  // A live contract can't be saved empty: it can be ended instead.
+  if (!draft.terms.base.length && !draft.terms.quantity.length && !draft.terms.limits.length) {
+    errors.terms = live
+      ? 'Add at least one pricing or order limit. To stop it instead, use End contract on the company’s Contract tab.'
+      : 'Add at least one pricing or order limit';
+  }
   if (Array.isArray(draft.locationIds) && !draft.locationIds.length) errors.scope = 'Pick at least one location';
   if (!draft.startDate) errors.startDate = 'Choose a start date';
   else if (!started && draft.startDate < TODAY) errors.startDate = 'Can’t be before today';
   if (draft.endDate && draft.startDate && draft.endDate < draft.startDate) errors.endDate = 'Must be after the start date';
   else if (draft.endDate && draft.endDate < TODAY) errors.endDate = 'This date has passed';
-  // A location is in one contract at a time and has one next contract (clashesAt):
-  // these keep it from being saved at all, not only activated — saving says so.
+  // A location is in one contract at a time (clashesAt): overlapping an Active or
+  // Scheduled contract there keeps it from being saved at all, not only activated —
+  // saving says so.
   const clash = company ? agreementClashes(state.db, draft, started) : [];
-  const nextClash = (a) => !started && a.status !== 'Active';
   const clashLine = (a) => {
     const shared = sharedLocations(company, a, draft);
-    const one = shared.length <= 1;
     const where = shared.length ? namesOf(shared) : company.name;
-    const is = one ? 'is' : 'are';
-    if (nextClash(a)) return `${where} already ${one ? 'has' : 'have'} a next contract, ${a.number}`;
-    if (a.status === 'Scheduled') return `${where} ${is} in ${a.number} from ${fmtDay(a.startDate)}`;
+    const is = shared.length <= 1 ? 'is' : 'are';
+    if (a.status === 'Scheduled') return `${where} ${is} in ${a.number} from ${fmtDay(a.startDate)}${a.endDate ? ` until ${fmtDay(a.endDate)}` : ''}`;
     if (started) return `${where} ${is} already in ${a.number}`;
     return a.endDate ? `${where} ${is} in ${a.number} until ${fmtDay(a.endDate)}` : `${where} ${is} in ${a.number}, which has no end date`;
   };
-  if (clash.length) {
-    const rules = [
-      clash.some((a) => !nextClash(a)) && 'A location can be in one contract at a time.',
-      clash.some(nextClash) && 'A location can have one next contract.',
-    ].filter(Boolean);
-    errors.overlap = `${clash.map(clashLine).join('. ')}. ${rules.join(' ')}`;
-  }
+  if (clash.length) errors.overlap = `${clash.map(clashLine).join('. ')}. A location can be in one contract at a time.`;
   const valid = !Object.keys(errors).length;
   const shown = (k) => (tried ? errors[k] : undefined);
 
@@ -142,7 +153,7 @@ export function AgreementEditor() {
   // Terms that won't apply for the whole contract (turned off, or dated).
   const warnings = confirm ? termWarnings(state.db, draft) : [];
   const when = startsLater ? `on ${fmtDay(draft.startDate)}` : 'right away';
-  const until = draft.endDate ? ` They come off after ${fmtDay(draft.endDate)}, unless you renew it.` : '';
+  const until = draft.endDate ? ` They come off after ${fmtDay(draft.endDate)}, unless you extend it.` : '';
   // Overview: the contract at a glance, from the draft, so unsaved edits count.
   const count = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
   const covered = contractProducts(state.db, draft);
@@ -234,6 +245,12 @@ export function AgreementEditor() {
                 onChange={(ids) => setTerms({ base: ids })}
                 optionLabel={(p) => `${p.name} · Priority ${p.priority ?? 0}`}
               />
+              {defaultBase ? (
+                <s-paragraph color="subdued" fontSize="small">
+                  {`${defaultBase.name} is your default pricing for all companies. While this contract runs, it can’t be turned off or deleted — and that applies to every company using it as their default.`}
+                </s-paragraph>
+              ) : null}
+              <DatesCheck draft={draft} terms={pickedOf(draft.terms.base, state.db.policies)} onToggle={setFollow} />
             </s-stack>
             <s-stack gap="small-200">
               <s-heading>Quantity pricing</s-heading>
@@ -246,6 +263,7 @@ export function AgreementEditor() {
                 onChange={(ids) => setTerms({ quantity: ids })}
                 optionLabel={(p) => `${p.name} · ${scopeLabel(p)}`}
               />
+              <DatesCheck draft={draft} terms={pickedOf(draft.terms.quantity, state.db.policies)} onToggle={setFollow} />
             </s-stack>
             <s-stack gap="small-200">
               <s-heading>Order limits</s-heading>
@@ -259,6 +277,7 @@ export function AgreementEditor() {
                 optionLabel={(l) => `${l.name} · ${limitSummary(l, state.db)}`}
                 emptyText="No order limits to add. Store-wide limits already apply to every company."
               />
+              <DatesCheck draft={draft} terms={pickedOf(draft.terms.limits, state.db.limits)} onToggle={setFollow} />
             </s-stack>
             {shown('terms') && (
               <s-paragraph tone="critical" id="agreement-terms">
@@ -272,7 +291,7 @@ export function AgreementEditor() {
           <s-stack gap="small-200">
             {pickCompany && (
               <s-text color="subdued" fontSize="small">
-                A location can be in one contract at a time, and have one next contract set up to start after it ends. Companies whose locations all have a next one aren’t listed.
+                A location can be in one contract at a time: this one can’t overlap the Active or Scheduled contracts at its locations.
               </s-text>
             )}
             {/* Like the pricing and order limit editors: opens on click / Enter, not on
@@ -315,13 +334,22 @@ export function AgreementEditor() {
           <div>
             <s-badge tone={started ? 'success' : live ? 'info' : undefined}>{live ? `${saved.status} · version ${saved.version}` : 'Inactive'}</s-badge>
           </div>
-          <s-paragraph color="subdued" fontSize="small">
-            {live
-              ? `Saving gives ${company?.name} your changes ${when}, as version ${nextVersion}.`
-              : takeover
-                ? `Nothing is applied yet. Once activated, it ${takeover} ${startsLater ? `on ${fmtDay(draft.startDate)}` : 'right away'}.`
-                : `Nothing is applied yet. Activate to give ${who} these terms ${startsLater ? `from ${fmtDay(draft.startDate)}` : 'right away'}.`}
-          </s-paragraph>
+          {/* While the Overlaps banner is up it can't be saved, so nothing on what saving does. */}
+          {shown('overlap') ? (
+            live ? null : (
+              <s-paragraph color="subdued" fontSize="small">
+                Nothing is applied yet.
+              </s-paragraph>
+            )
+          ) : (
+            <s-paragraph color="subdued" fontSize="small">
+              {live
+                ? `Saving gives ${company?.name} your changes ${when}, as version ${nextVersion}.`
+                : takeover
+                  ? `Nothing is applied yet. Once activated, it ${takeover} ${startsLater ? `on ${fmtDay(draft.startDate)}` : 'right away'}.`
+                  : `Nothing is applied yet. Activate to give ${who} these terms ${startsLater ? `from ${fmtDay(draft.startDate)}` : 'right away'}.`}
+            </s-paragraph>
+          )}
         </s-stack>
       </s-section>
       <s-section slot="aside" heading="Overview">
@@ -410,6 +438,33 @@ export function AgreementEditor() {
   );
 }
 
+const pickedOf = (ids, list) => ids.map((id) => (list || []).find((x) => x.id === id)).filter(Boolean);
+
+// Picked terms whose own dates don't cover the contract (from its start, or from
+// today once it has started), each with the choice to apply it on the contract's
+// dates here instead — off unless ticked. One already on them stays listed so it
+// can be switched back.
+function DatesCheck({ draft, terms, onToggle }) {
+  const from = coverFrom(draft);
+  const rows = terms
+    .map((x) => ({ x, gaps: termDateWarnings(x, draft, from) }))
+    .filter(({ x, gaps }) => gaps.length || followsContractDates(draft, x.id));
+  if (!rows.length) return null;
+  return (
+    <s-stack gap="small-200">
+      {rows.map(({ x, gaps }) => (
+        <s-checkbox
+          key={x.id}
+          label={`Use the contract’s dates for ${x.name}`}
+          details={gaps.length ? `${gaps.join('. ')}.` : undefined}
+          checked={followsContractDates(draft, x.id)}
+          onChange={(e) => onToggle(x.id, e.currentTarget.checked)}
+        />
+      ))}
+    </s-stack>
+  );
+}
+
 // The products the contract's pricing covers: a base pricing's product scope, a
 // quantity pricing's.
 function contractProducts(db, ag) {
@@ -431,12 +486,16 @@ function ContractPricePreview({ draft, change, products, onClose }) {
   const company = companyAfterAgreement(state.db, change, draft.companyId);
   const locations = (company?.locations || []).filter((l) => appliesAt(company, draft, l.id));
   const location = locations.find((l) => l.id === locationId) || locations[0] || null;
-  // Resolved with this contract in force, so its pricing comes first.
-  const entries = withContractPricing(contractPricingAfter(state.db, change, draft), () =>
-    products.map((p) => {
-      const d = resolveDetail(company, p, state.db.policies, undefined, location);
-      return { product: p, shopify: p.list, final: d.price, decidedBy: d.decidedBy, priority: d.policy ? d.policy.priority ?? 0 : null };
-    }),
+  // Resolved with this contract in force, so its pricing comes first (on the
+  // contract's dates where ticked).
+  const entries = withContractPricing(
+    contractPricingAfter(state.db, change, draft),
+    () =>
+      products.map((p) => {
+        const d = resolveDetail(company, p, state.db.policies, undefined, location);
+        return { product: p, shopify: p.list, final: d.price, decidedBy: d.decidedBy, priority: d.policy ? d.policy.priority ?? 0 : null };
+      }),
+    contractDatesAfter(state.db, change, draft),
   );
   const hasPricing = draft.terms.base.length || draft.terms.quantity.length;
 

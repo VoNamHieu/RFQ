@@ -3,7 +3,7 @@ import { shopifyCompanies } from './data/directory.js';
 import { policyUsageCount, slotIds, hasOwnSlot, TODAY, setContractPricing } from './pricing.js';
 import { newRule, newBaseBuilder, newQuantityBuilder, builderDraft } from './builders.js';
 import { buildInitialState } from './initialState.js';
-import { newLimit, normalizeLimit, upgradeLimits, toDraft, warmPriceIndex } from './limits.js';
+import { newLimit, normalizeLimit, upgradeLimits, toDraft, warmPriceIndex, isD2CLimit } from './limits.js';
 import { withCatalog } from './limitCatalog.js';
 import { versionFlags } from '../shared/versions.js';
 import {
@@ -20,8 +20,11 @@ import {
   defaultStartDate,
   duplicateAgreement,
   liveContractPricing,
+  liveContractDates,
   newlyBroken,
   recordTermEdit,
+  dropTerm,
+  recordContractNumber,
   storefrontContracts,
 } from './agreements.js';
 import { todayISO, registrationDuplicates, isD2CRegistration } from './registrations.js';
@@ -473,6 +476,10 @@ function reducer(state, action) {
       db.agreements = (db.agreements || []).map((a) =>
         a.companyId === c.id && a.locationIds ? { ...a, locationIds: a.locationIds.filter((id) => !ids.includes(id)) } : a
       );
+      // A live contract for some locations that has none left ends.
+      db.agreements.forEach((a) => {
+        if (a.companyId === c.id && isLive(a) && Array.isArray(a.locationIds) && !a.locationIds.length) closeAgreement(db, a, 'Ended', 'Ended');
+      });
       const leaveDetail = state.view === 'location' && ids.includes(state.selectedLocation);
       return {
         ...state,
@@ -935,6 +942,8 @@ function reducer(state, action) {
       // Library edit (not scoped to a Company) → sync the assignment choices.
       if (!state.editorContext?.companyId) applyAssignment(db, existing.id, draft);
       else if (pickLocations) syncCompanyLocations(scopeCompany, kind, existing.id, wanted, draft.priority, later);
+      // Switched to D2C Wholesale: it comes off every contract holding it.
+      if (existing.audienceType === 'd2c' && before.audienceType !== 'd2c') dropTerm(db, existing.id);
       // Live contracts holding it get a version with its new terms.
       recordTermEdit(db, before, existing, false);
       return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: 'Pricing saved' };
@@ -1103,11 +1112,15 @@ function reducer(state, action) {
       const db = clone(state.db);
       const draft = clone(action.draft || state.agreementEditor.draft);
       draft.name = (draft.name || '').trim();
+      // Only its own terms can be on its dates.
+      draft.followDates = (draft.followDates || []).filter((id) => [...draft.terms.base, ...draft.terms.quantity, ...draft.terms.limits].includes(id));
       const prev = draft.id ? (db.agreements || []).find((a) => a.id === draft.id) : null;
       const wasLive = isLive(prev);
       const goLive = wasLive || !!action.activate;
       if (!draft.id) draft.id = `ag${Date.now()}`;
       db.agreements = prev ? db.agreements.map((a) => (a.id === draft.id ? draft : a)) : [...(db.agreements || []), draft];
+      // Its number is given out for good, even if it's deleted later.
+      if (!prev) recordContractNumber(db, draft);
       if (goLive) {
         // Live terms come off first; they go back on if it's (still) in its dates.
         if (prev?.status === 'Active') unapplyAgreement(db, prev);
@@ -1131,14 +1144,14 @@ function reducer(state, action) {
       closeAgreement(db, ag, 'Ended', ag.status === 'Scheduled' ? 'Cancelled before it started' : 'Ended');
       return { ...state, db, toast: `${ag.number} ended` };
     }
-    // Renew: a new end date, same terms, as the next version.
+    // Extend: a new end date, same terms, as the next version.
     case 'RENEW_AGREEMENT': {
       const db = clone(state.db);
       const ag = (db.agreements || []).find((a) => a.id === action.id);
       if (!isLive(ag) || !action.endDate) return state;
       ag.endDate = action.endDate;
-      addVersion(db, ag, `Renewed until ${fmtDay(action.endDate)}`);
-      return { ...state, db, toast: `${ag.number} renewed` };
+      addVersion(db, ag, `Extended until ${fmtDay(action.endDate)}`);
+      return { ...state, db, toast: `${ag.number} extended` };
     }
     case 'DELETE_AGREEMENT':
       return {
@@ -1165,7 +1178,7 @@ function reducer(state, action) {
       // everywhere else it applies.
       if (action.asNew) {
         const before = (state.db.limits || []).find((l) => l.id === limit.id);
-        const copy = { ...limit, id: `ol${Date.now()}`, storeWide: false, companyIds: [], locationKeys: [] };
+        const copy = { ...limit, id: `ol${Date.now()}`, storeWide: false, companyIds: [], locationKeys: [], contractDatesAt: [] };
         if (before && copy.name === before.name) copy.name = `Copy of ${before.name}`;
         return {
           ...state,
@@ -1179,8 +1192,10 @@ function reducer(state, action) {
       if (isNew) limit.id = `ol${Date.now()}`;
       const limits = state.db.limits || [];
       const db = { ...state.db, limits: isNew ? [...limits, limit] : limits.map((l) => (l.id === limit.id ? limit : l)), agreements: clone(state.db.agreements || []) };
-      // Live contracts holding it get a version with its new terms.
+      // Switched to D2C Wholesale, it comes off every contract holding it; live ones
+      // still holding it get a version with its new terms.
       const before = limits.find((l) => l.id === limit.id);
+      if (before && isD2CLimit(limit) && !isD2CLimit(before)) dropTerm(db, limit.id);
       if (before) recordTermEdit(db, before, limit, true);
       return { ...state, db, ...(state.limitEditor.returnTo || {}), limitEditor: null, toast: isNew ? 'Order limit created' : 'Order limit saved' };
     }
@@ -1222,8 +1237,9 @@ const StoreContext = createContext(null);
 
 export function StoreProvider({ children }) {
   const [state, dispatch] = useReducer(guardedReducer, undefined, buildInitialState);
-  // Live contracts' pricing applies first: the engine reads it before this render.
-  setContractPricing(liveContractPricing(state.db));
+  // Live contracts' pricing applies first (on the contract's dates where ticked): the
+  // engine reads it before this render.
+  setContractPricing(liveContractPricing(state.db), liveContractDates(state.db));
   // Order limits reach the storefront (and other windows of this app); order
   // requests come back from it, even while this tab is open. A request the
   // merchant approved or declined is done, so it doesn't come back on reload (see

@@ -389,15 +389,24 @@ const LEVEL_RANK = { location: 3, company: 2, store: 1, customer: 3, tag: 2, eve
 const atLocation = (companyId, locationId) => (l) => limitLevel(l, companyId, locationId);
 const customerKey = (cu) => (cu ? `cu:${cu.id || ''}:${[...(cu.tags || [])].sort().join(',')}` : 'guest');
 
+// A limit an Active contract gives a location with "Use the contract’s dates"
+// (agreements.js applyAgreement keeps `contractDatesAt`: location keys, or
+// `companyId::*` for all of a company's) applies there whatever its own dates.
+const followsContractAt = (limit, buyerKey) => {
+  const key = String(buyerKey).split('|')[0];
+  const keys = limit.contractDatesAt || [];
+  return limit.status === 'Active' && (keys.includes(key) || keys.includes(`${key.split('::')[0]}::*`));
+};
+
 // ── The resolver ─────────────────────────────────────────────────────────────
 // Every setting the limits that reach a buyer on a day make there (not the ones
 // they inherit), with how specific each is (rank). A product setting is per
 // product (`target`: a SKU, or '*' for a rule on all products) and per field.
-function claimsFor(db, levelOf, at) {
+function claimsFor(db, levelOf, at, buyerKey) {
   const reach = [];
   const claims = [];
   (db.limits || []).forEach((limit) => {
-    if (limitState(limit, at) !== 'Active') return;
+    if (limitState(limit, at) !== 'Active' && !followsContractAt(limit, buyerKey)) return;
     const level = levelOf(limit);
     if (!level) return;
     const rank = LEVEL_RANK[level];
@@ -437,8 +446,8 @@ function byPrecedence(a, b) {
 //   overridden [{ key, field, limit, s, by, byS, sameLevel }] — settings another
 //              limit won (`sameLevel`: only strictness decided it)
 //   reach      [{ limit, level }] — every limit in force there
-function buildRecord(db, levelOf, at) {
-  const { reach, claims } = claimsFor(db, levelOf, at);
+function buildRecord(db, levelOf, at, buyerKey) {
+  const { reach, claims } = claimsFor(db, levelOf, at, buyerKey);
   const byKey = new Map();
   claims.forEach((c) => {
     if (!byKey.has(c.key)) byKey.set(c.key, []);
@@ -481,7 +490,7 @@ function resolveBuyer(db, buyerKey, levelOf, at = TODAY) {
   if (!records.has(limits)) records.set(limits, new Map());
   const kept = records.get(limits);
   const k = `${buyerKey}|${at}`;
-  if (!kept.has(k)) kept.set(k, buildRecord(db, levelOf, at));
+  if (!kept.has(k)) kept.set(k, buildRecord(db, levelOf, at, buyerKey));
   return kept.get(k);
 }
 export const effectiveRules = (db, companyId, locationId, at) => resolveBuyer(db, limitKey(companyId, locationId), atLocation(companyId, locationId), at);

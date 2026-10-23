@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { canCreateAgreement, agreementScopeLabel, agreementTermCount, agreementDatesLabel, expiringSoon, daysUntil, PAST_STATUSES } from '../agreements.js';
+import { canCreateAgreement, agreementScopeLabel, agreementTermCount, agreementDatesLabel, expiringSoon, daysUntil, noTerms, PAST_STATUSES } from '../agreements.js';
 import { AgreementEditor } from '../components/AgreementEditor.jsx';
 import { ContractVersionModal } from '../components/ContractVersionModal.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
@@ -30,8 +30,8 @@ export function Agreements() {
 
   const all = state.db.agreements || [];
   const companyOf = (id) => state.db.companies.find((c) => c.id === id);
-  // One Active contract and one next one per location: only companies with a
-  // location open for a next one can get a new one. The company is picked in the editor.
+  // Any company can get a new one (picked in the editor); it just can't overlap the
+  // Active or Scheduled contracts at its locations.
   const free = state.db.companies.filter((c) => canCreateAgreement(state.db, c.id));
   const create = { content: 'Create contract', onAction: () => dispatch({ type: 'OPEN_AGREEMENT_EDITOR' }), disabled: !free.length };
   const createButton = (
@@ -76,7 +76,10 @@ export function Agreements() {
           <s-table-cell>{agreementTermCount(state.db, a)}</s-table-cell>
           <s-table-cell>{a.version ? `v${a.version}` : '—'}</s-table-cell>
           <s-table-cell>
-            <s-badge tone={wcTone(STATUS_TONE[a.status])}>{a.status}</s-badge>
+            <s-stack direction="inline" gap="small-200">
+              <s-badge tone={wcTone(STATUS_TONE[a.status])}>{a.status}</s-badge>
+              {noTerms(a) ? <s-badge tone="warning">No terms</s-badge> : null}
+            </s-stack>
           </s-table-cell>
         </s-table-row>
       );

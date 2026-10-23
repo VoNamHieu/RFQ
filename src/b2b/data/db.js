@@ -1,7 +1,14 @@
 // Raw demo seed extracted verbatim from rfq-x-b2b/b2b/index.html.
 // Do NOT apply normalize/migrate transforms here — the store applies those.
+import { versionFlags } from '../../shared/versions.js';
 
 const defaults = { b2bPolicyId: null, wholesalePolicyId: null };
+
+// Upcoming only (Contracts): two of CT-301's terms are out of their own dates on the
+// demo's "today", Jul 28, 2026 — VLV-40 Contract Price ended Jul 20, Pallet Breaks
+// starts Aug 5 — so the company's Contract tab marks them and the buyer's Contract
+// card on the storefront leaves them out. Current keeps them undated.
+const contractCase = (dates) => (versionFlags().agreements ? { validityType: 'dated', ...dates } : {});
 
 // Each product carries its variants. The FIRST variant is the default and its
 // id equals the product SKU, so per-SKU pricing (seed overrides, RFQ→B2B sync)
@@ -161,7 +168,7 @@ const policies = [
   // Demo: an account-specific price pointed only at Ball valve 40mm (VLV-40). It
   // loses to the higher-priority Distributor Tier 2, so it surfaces under "Also
   // covers this product" in Preview price — the "why isn't my pricing applied?" case.
-  { id: 'p30', name: 'VLV-40 Contract Price', type: 'Account-specific', status: 'Active', audienceType: 'b2b', priority: 5, priceKind: 'base', scopeType: 'products', collection: '', selectedProducts: ['VLV-40'], pricingRule: 'decrease', valueType: 'percentage', value: 20, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  { id: 'p30', name: 'VLV-40 Contract Price', type: 'Account-specific', status: 'Active', audienceType: 'b2b', priority: 5, priceKind: 'base', scopeType: 'products', collection: '', selectedProducts: ['VLV-40'], pricingRule: 'decrease', valueType: 'percentage', value: 20, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '', ...contractCase({ endDate: '2026-07-20' }) },
   {
     id: 'p1', name: 'Distributor Tier 2', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 1,
     priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: ['FIL-XL', 'FIL-STD', 'SEA-30', 'HOS-12', 'VLV-40'],
@@ -214,7 +221,7 @@ const policies = [
     pricingRule: 'decrease', valueType: 'percentage', value: 10, variantAdjustments: {},
     volumeRanges: [{ id: 'r1', from: 1, to: 9, valueType: 'percentage', value: 0 }, { id: 'r2', from: 10, to: 49, valueType: 'percentage', value: 10 }, { id: 'r3', from: 50, to: null, valueType: 'percentage', value: 20 }],
     quantityBasis: 'all_selected', volumeBasis: 'base',
-    validityType: 'evergreen', startDate: '', endDate: ''
+    validityType: 'evergreen', startDate: '', endDate: '', ...contractCase({ startDate: '2026-08-05' })
   },
   {
     id: 'p7', name: 'Filter Case Pricing', type: 'Reusable', status: 'Active', audienceType: 'b2b',

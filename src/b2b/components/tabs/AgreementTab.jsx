@@ -5,7 +5,6 @@ import { scopeLabel, TODAY } from '../../pricing.js';
 import {
   openAgreements,
   nextAgreements,
-  nextAt,
   agreementClashes,
   sharedLocations,
   namesOf,
@@ -22,6 +21,9 @@ import {
   daysUntil,
   extendedEndDate,
   isLive,
+  noTerms,
+  termDateBadges,
+  followsContractDates,
   fmtDay,
   PAST_STATUSES,
 } from '../../agreements.js';
@@ -65,7 +67,8 @@ function Fact({ icon, label, value }) {
 
 // One kind of term (base pricing, quantity pricing, order limits) as a bordered
 // list: a header with its count, then a row per term — name over its detail, and
-// a side badge (a base pricing's priority).
+// a side badge (a base pricing's priority). `flags`: where its own dates don't cover
+// the contract ("Ends Aug 10, 2026"), beside its name.
 function TermGroup({ icon, title, rows }) {
   return (
     <s-box border="base" borderRadius="base" overflow="hidden">
@@ -83,7 +86,18 @@ function TermGroup({ icon, title, rows }) {
             <s-box paddingBlock="small-200" paddingInline="small">
               <s-grid gridTemplateColumns="minmax(0, 1fr) auto" alignItems="center" gap="small">
                 <s-stack gap="small-500">
-                  <s-text fontWeight="medium">{r.name}</s-text>
+                  {r.flags?.length ? (
+                    <s-stack direction="inline" gap="small-200" alignItems="center">
+                      <s-text fontWeight="medium">{r.name}</s-text>
+                      {r.flags.map((f) => (
+                        <s-badge key={f} tone="warning">
+                          {f}
+                        </s-badge>
+                      ))}
+                    </s-stack>
+                  ) : (
+                    <s-text fontWeight="medium">{r.name}</s-text>
+                  )}
                   <s-text color="subdued" fontSize="small">
                     {r.detail}
                   </s-text>
@@ -186,6 +200,11 @@ function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onV
   const summary = [scope, agreementDatesLabel(ag), ag.version ? `Version ${ag.version}` : null].filter(Boolean).join(' · ');
   const history = ag.history || [];
   const title = `${ag.number} · ${ag.name || 'Untitled contract'}`;
+  // A term whose own dates don't cover the contract is marked — it stays in the
+  // contract, nothing is blocked and no version is added. One applied on the
+  // contract's dates instead says so in its detail.
+  const flags = (x) => termDateBadges(x, ag);
+  const detail = (x, d) => (followsContractDates(ag, x.id) ? `${d} · Uses the contract’s dates` : d);
 
   return (
     <s-stack gap="base">
@@ -202,6 +221,7 @@ function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onV
             <s-stack direction="inline" gap="small-200" alignItems="center">
               <s-text fontWeight="semibold">{title}</s-text>
               <s-badge tone={wcTone(STATUS_TONE[ag.status])}>{ag.status}</s-badge>
+              {noTerms(ag) ? <s-badge tone="warning">No terms</s-badge> : null}
             </s-stack>
             {open ? null : (
               <s-text color="subdued" fontSize="small">
@@ -253,10 +273,18 @@ function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onV
                 <TermGroup
                   icon="receipt-dollar"
                   title="Base pricing"
-                  rows={terms.base.map((p) => ({ key: p.id, name: p.name, detail: scopeLabel(p), side: `Priority ${p.priority ?? 0}` }))}
+                  rows={terms.base.map((p) => ({ key: p.id, name: p.name, detail: detail(p, scopeLabel(p)), side: `Priority ${p.priority ?? 0}`, flags: flags(p) }))}
                 />
-                <TermGroup icon="discount" title="Quantity pricing" rows={terms.quantity.map((p) => ({ key: p.id, name: p.name, detail: scopeLabel(p) }))} />
-                <TermGroup icon="order" title="Order limits" rows={terms.limits.map(({ limit, summary: s }) => ({ key: limit.id, name: limit.name, detail: s }))} />
+                <TermGroup
+                  icon="discount"
+                  title="Quantity pricing"
+                  rows={terms.quantity.map((p) => ({ key: p.id, name: p.name, detail: detail(p, scopeLabel(p)), flags: flags(p) }))}
+                />
+                <TermGroup
+                  icon="order"
+                  title="Order limits"
+                  rows={terms.limits.map(({ limit, summary: s }) => ({ key: limit.id, name: limit.name, detail: detail(limit, s), flags: flags(limit) }))}
+                />
               </s-stack>
               {history.length ? <VersionTimeline history={history} onView={(version) => onView(ag, version)} /> : null}
             </s-grid>
@@ -267,9 +295,9 @@ function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onV
   );
 }
 
-// A company's contracts: every one that isn't over (a location is in one Active
-// contract and one next one, so a company can have several), each collapsed until
-// opened — a company's only contract starts open — then the past ones.
+// A company's contracts: every one that isn't over (Active, Scheduled ones that don't
+// overlap at a location, and any number of drafts), each collapsed until opened — a
+// company's only contract starts open — then the past ones.
 export function AgreementTab({ company }) {
   const { state, dispatch } = useStore();
   const [ending, setEnding] = useState(null);
@@ -289,16 +317,9 @@ export function AgreementTab({ company }) {
   const duplicate = (ag) => dispatch({ type: 'OPEN_AGREEMENT_EDITOR', duplicateOf: ag.id, returnTo });
   const view = (ag, version) => setViewing({ ag, version });
   const toggle = (id) => setFlipped((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
-  // A new contract starts with the locations that have no next contract yet (all of
-  // them when none has one).
-  const freeLocations = (company.locations || []).filter((l) => !nextAt(state.db, company, l.id));
-  const createContract = () =>
-    dispatch({
-      type: 'OPEN_AGREEMENT_EDITOR',
-      companyId: company.id,
-      ...(freeLocations.length < (company.locations || []).length ? { locationIds: freeLocations.map((l) => l.id) } : {}),
-      returnTo,
-    });
+  // A new contract starts with all locations, from the day after the Active and
+  // Scheduled contracts there end (defaultStartDate).
+  const createContract = () => dispatch({ type: 'OPEN_AGREEMENT_EDITOR', companyId: company.id, returnTo });
   // The order-limit conflicts ending it would leave (its limits can stop covering a clash).
   const endConflicts = ending?.status === 'Active' ? newConflicts(withCatalog(state.db), limitsAfterAgreement(state.db, { off: ending })) : [];
 
@@ -359,6 +380,12 @@ export function AgreementTab({ company }) {
 
   return (
     <s-stack gap="base">
+      {/* A live contract left with no terms (No terms): it keeps running, giving nothing. */}
+      {contracts.filter(noTerms).map((a) => (
+        <s-banner key={`no-terms-${a.id}`} tone="warning" heading={`${a.number} has no terms`}>
+          <s-paragraph>{`It has no pricing or order limits left, so it gives ${whereOf(a)} nothing. Add pricing or an order limit to it, or end the contract.`}</s-paragraph>
+        </s-banner>
+      ))}
       {/* The renewal reminder, per contract: shown from reminderDays before the end
           date, unless a next contract is set to take over. */}
       {expiring.map((a) => {

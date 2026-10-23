@@ -4,20 +4,21 @@ import { companyBaseEntries, locationOnlyEntries, pricingLocationsLabel, policyS
 import { openBuildFromQuotes } from './BuildFromQuotes.jsx';
 import { versionFlags } from '../../shared/versions.js';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
-import { Tip, wcTone, useWcId } from '../../shared/wc.jsx';
-import { contractGiving, lockedTip } from '../agreements.js';
+import { Tip, wcTone } from '../../shared/wc.jsx';
+import { contractGiving, contractsGiving } from '../agreements.js';
+import { useContractLock } from './ContractLock.jsx';
 import basePricingArt from '../assets/base-pricing-empty.webp';
 
 const PAGE_SIZES = [5, 10, 20, 100];
 
 // Edit / Remove for pricing only some locations get: editing opens it with those
 // locations picked under "Who this pricing serves", removing takes it off them only.
-export function LocationOnlyActions({ company, kind, entry }) {
+// Live contracts giving it there: it comes off through them, so Remove opens the
+// card's lock box (`onLocked`) instead.
+export function LocationOnlyActions({ company, kind, entry, onLocked }) {
   const { state, dispatch } = useStore();
-  const tip = useWcId('loc-only');
   const locs = entry.locations;
-  // A live contract gives it there: it comes off through the contract only.
-  const ag = locs.map((l) => contractGiving(state.db, company, entry.policy.id, l.id)).find(Boolean);
+  const held = contractsGiving(state.db, company, entry.policy.id, locs.map((l) => l.id));
   return (
     <s-stack direction="inline" gap="small-400" justifyContent="end" alignItems="center">
       <s-button
@@ -31,11 +32,12 @@ export function LocationOnlyActions({ company, kind, entry }) {
         variant="tertiary"
         tone="critical"
         accessibilityLabel={`Remove from ${locs.map((l) => l.name).join(', ')}`}
-        disabled={!!ag}
-        interestFor={ag ? tip : undefined}
-        onClick={() => locs.forEach((l) => dispatch({ type: 'REMOVE_LOCATION_PRICING', companyId: company.id, locationId: l.id, kind, policyId: entry.policy.id }))}
+        onClick={() =>
+          held.length
+            ? onLocked({ name: entry.policy.name, count: held.length, verb: 'remove' })
+            : locs.forEach((l) => dispatch({ type: 'REMOVE_LOCATION_PRICING', companyId: company.id, locationId: l.id, kind, policyId: entry.policy.id }))
+        }
       />
-      {ag ? <s-tooltip id={tip}>{lockedTip([ag], 'remove')}</s-tooltip> : null}
     </s-stack>
   );
 }
@@ -85,7 +87,7 @@ function CardHeader({ title, description }) {
 export function BasePricingCard({ company }) {
   const { state, dispatch } = useStore();
   const policies = state.db.policies;
-  const tipId = useWcId('base-row');
+  const [showLock, lockModal] = useContractLock();
   // The live contract giving a row's pricing (on the company, or on its locations).
   const contractOf = (entry) =>
     entry.locations
@@ -144,7 +146,7 @@ export function BasePricingCard({ company }) {
         </s-table-cell>
         <s-table-cell>
           {locs ? (
-            <LocationOnlyActions company={company} kind="base" entry={entry} />
+            <LocationOnlyActions company={company} kind="base" entry={entry} onLocked={showLock} />
           ) : (
             <s-stack direction="inline" gap="small-400" justifyContent="end" alignItems="center">
               <s-button
@@ -158,11 +160,12 @@ export function BasePricingCard({ company }) {
                 variant="tertiary"
                 tone="critical"
                 accessibilityLabel="Remove this base pricing"
-                disabled={!!ag}
-                interestFor={ag ? `${tipId}-${p.id}` : undefined}
-                onClick={() => dispatch({ type: 'REMOVE_COMPANY_BASE', companyId: company.id, policyId: p.id })}
+                onClick={() => {
+                  const held = contractsGiving(state.db, company, p.id);
+                  if (held.length) showLock({ name: p.name, count: held.length, verb: 'remove' });
+                  else dispatch({ type: 'REMOVE_COMPANY_BASE', companyId: company.id, policyId: p.id });
+                }}
               />
-              {ag ? <s-tooltip id={`${tipId}-${p.id}`}>{lockedTip([ag], 'remove')}</s-tooltip> : null}
             </s-stack>
           )}
         </s-table-cell>
@@ -297,6 +300,7 @@ export function BasePricingCard({ company }) {
       )}
 
       {footerButtons}
+      {lockModal}
     </s-section>
   );
 }
