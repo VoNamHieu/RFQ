@@ -3,7 +3,7 @@ import { EmptyBlock } from '../../../shared/EmptyBlock.jsx';
 import { money } from '../../format.js';
 import { useStore } from '../../store.jsx';
 import { versionFlags } from '../../../shared/versions.js';
-import { isHeld, heldReason, heldFirst, HeldOrderActions } from '../HeldOrders.jsx';
+import { isHeld, heldReason, heldFirst, HeldOrderActions, buyerMessageText } from '../HeldOrders.jsx';
 import { wcTone } from '../../../shared/wc.jsx';
 
 const STATUS_TONE = {
@@ -50,6 +50,11 @@ export function OrdersTab({ company }) {
           {reviewOrders && isHeld(o) ? (
             <s-text tone="caution" fontSize="small">
               {heldReason(o, state.db)}
+            </s-text>
+          ) : null}
+          {reviewOrders && isHeld(o) && buyerMessageText(o) ? (
+            <s-text fontSize="small">
+              {buyerMessageText(o)}
             </s-text>
           ) : null}
         </s-stack>

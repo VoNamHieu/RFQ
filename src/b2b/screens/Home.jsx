@@ -3,7 +3,7 @@ import { useStore } from '../store.jsx';
 import { companyNeedsPrice, kindOf, policyStatus, policyUsageCount } from '../pricing.js';
 import { versionFlags, withVersion } from '../../shared/versions.js';
 import quotesArt from '../assets/quote-block.webp';
-import { heldOrders, heldReason, HeldOrderActions } from '../components/HeldOrders.jsx';
+import { heldOrders, heldReason, HeldOrderActions, buyerMessageText } from '../components/HeldOrders.jsx';
 import { money } from '../format.js';
 
 // Prototype: show the dev toggles in production too (flip to import.meta.env.DEV to hide in prod).
@@ -286,6 +286,7 @@ function HeldOrderList({ items, db, onOpen }) {
                       <s-text fontWeight="semibold">{money(order.amount)}</s-text>
                     </s-stack>
                     <s-paragraph fontSize="small" color="subdued">{`${order.buyer} · ${shortDate(order.date)} · ${heldReason(order, db)}`}</s-paragraph>
+                    {buyerMessageText(order) ? <s-paragraph fontSize="small">{buyerMessageText(order)}</s-paragraph> : null}
                   </s-stack>
                   <HeldOrderActions companyId={company.id} order={order} />
                 </s-grid>

@@ -6,7 +6,7 @@ import { money } from '../format.js';
 import { AssignBuyerModal, GeneralModal, ShippingModal, PAYMENT_TERM_OPTIONS, TAX_SETTINGS, COUNTRY_NAMES } from '../components/LocationModals.jsx';
 import { LocationLimitsCard } from '../components/LocationLimitsCard.jsx';
 import { DeleteLocationsModal } from '../components/tabs/LocationsTab.jsx';
-import { isHeld, heldReason, heldFirst, HeldOrderActions } from '../components/HeldOrders.jsx';
+import { isHeld, heldReason, heldFirst, HeldOrderActions, buyerMessageText } from '../components/HeldOrders.jsx';
 import { PricingName } from '../components/BasePricingCard.jsx';
 import { contractGiving, lockedTip } from '../agreements.js';
 import { versionFlags } from '../../shared/versions.js';
@@ -337,6 +337,7 @@ export function LocationDetail() {
                     <s-banner tone="warning" heading={`Order ${o.id} for ${money(o.amount)} is waiting for your review`}>
                       <s-stack gap="small-200">
                         <s-paragraph>{`${heldReason(o, state.db)}. ${o.buyer} couldn’t check out, so it stays a draft order until you decide.`}</s-paragraph>
+                        {buyerMessageText(o) ? <s-paragraph>{buyerMessageText(o)}</s-paragraph> : null}
                         <s-stack direction="inline" justifyContent="start"><HeldOrderActions companyId={company.id} order={o} /></s-stack>
                       </s-stack>
                     </s-banner>
@@ -366,6 +367,7 @@ export function LocationDetail() {
                                 <s-text fontWeight="medium">{o.id}</s-text>
                                 {o.po && o.po !== 'None' ? <s-text color="subdued" fontSize="small">{o.po}</s-text> : null}
                                 {reviewOrders && isHeld(o) ? <s-text tone="caution" fontSize="small">{heldReason(o, state.db)}</s-text> : null}
+                                {reviewOrders && isHeld(o) && buyerMessageText(o) ? <s-text fontSize="small">{buyerMessageText(o)}</s-text> : null}
                               </s-stack>
                             </s-table-cell>
                             <s-table-cell>{o.buyer}</s-table-cell>

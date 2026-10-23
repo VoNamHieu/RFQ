@@ -14,13 +14,18 @@
 //                     review, storefront limits (Upcoming only)
 //   - agreements:     Agreements screen, company Agreement tab, storefront
 //                     Agreement card (Upcoming only)
+//   - d2cOrderRequests: a D2C limit's maximum can let the customer send an order
+//                     request for review (off everywhere for now: it blocks checkout)
+//   - limitPeriods:   order limit editor's Advanced section — a weekly or monthly
+//                     maximum order value (off everywhere for now, waiting on
+//                     improvements: every maximum counts per order)
 // crossSyncScope: RFQ "Save quoted prices to B2B" applies at the location the
 // quote came from ('location') or the whole company ('company').
 export const DEFAULT_VERSION = 'current';
 
 export const VERSION_FLAGS = {
-  current: { analytics: true, priceCrossSync: true, multiBase: true, locationPricing: true, crossSyncScope: 'location', orderLimits: false, agreements: false },
-  upcoming: { analytics: true, priceCrossSync: true, multiBase: true, locationPricing: true, crossSyncScope: 'location', orderLimits: true, agreements: true },
+  current: { analytics: true, priceCrossSync: true, multiBase: true, locationPricing: true, crossSyncScope: 'location', orderLimits: false, agreements: false, d2cOrderRequests: false, limitPeriods: false },
+  upcoming: { analytics: true, priceCrossSync: true, multiBase: true, locationPricing: true, crossSyncScope: 'location', orderLimits: true, agreements: true, d2cOrderRequests: false, limitPeriods: false },
 };
 
 export function activeVersion() {

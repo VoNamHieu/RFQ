@@ -119,7 +119,6 @@ export function LimitRulesCard({ rules, setRules, ruleField, errors, products, d
     return (
       <div
         key={r.id}
-        data-field={`rule-${i}`}
         draggable
         onDragStart={(e) => onDragStart(e, i)}
         onDragOver={(e) => onDragOver(e, i)}
@@ -163,7 +162,6 @@ export function LimitRulesCard({ rules, setRules, ruleField, errors, products, d
     return (
       <div
         key={r.id}
-        data-field={`rule-${i}`}
         style={{
           border: '1px solid var(--p-color-border-emphasis)',
           borderRadius: 8,

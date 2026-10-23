@@ -34,7 +34,7 @@ import {
   injectOrderRequests,
   storefrontHeldOrders,
 } from './dbHelpers.js';
-import { publishOrderLimits, publishedOrderLimits, publishContracts, publishHeldOrders, readOrderRequests, removeOrderRequests, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, IS_DEMO } from '../shared/persistence.js';
+import { publishOrderLimits, publishedOrderLimits, publishContracts, publishHeldOrders, readOrderRequests, removeOrderRequests, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY } from '../shared/persistence.js';
 
 // The B2B god file rebuilt #app from a single `state` on every action. Here that
 // is a reducer over a view state machine + the mutable demo db. The db helpers,
@@ -1205,11 +1205,6 @@ export function StoreProvider({ children }) {
   useEffect(() => {
     if (!state.emptyMode) publishOrderLimits(state.db.limits || []);
   }, [state.db.limits, state.emptyMode]);
-  // The order-limit walkthrough (screens/LimitWalkthrough.jsx) drives this app
-  // from its stage: only in demo mode (?demo=1).
-  useEffect(() => {
-    if (IS_DEMO) window.__qsDemo = { dispatch, state };
-  });
   // Active contracts reach the buyer's account on the storefront the same way.
   useEffect(() => {
     if (!state.emptyMode) publishContracts(storefrontContracts(state.db));

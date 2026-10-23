@@ -235,7 +235,8 @@ function PortalOrders({ orders, requests, go, dispatch }) {
       // A request sent from this storefront has its lines; one from the B2B app, a count.
       const listed = Array.isArray(r.lines);
       return {
-        key: r.number || r.id, title: r.number ? `Order ${r.number}` : 'Order request', day: dayValue(r.date), date: requestDate(r.date), status: st.label, tone: st.tone, total: r.amount,
+        // Waiting for review it's still a request; decided, it has its order number.
+        key: r.number || r.id, title: r.number && r.status !== 'waiting' ? `Order ${r.number}` : 'Order request', day: dayValue(r.date), date: requestDate(r.date), status: st.label, tone: st.tone, total: r.amount,
         lines: listed ? r.lines.map((l) => `${l.title} ×${l.qty}`) : [], count: listed ? null : r.lines, note: requestReason(r), order: null,
         message: r.status === 'declined' ? r.message || null : null,
       };
@@ -293,7 +294,6 @@ function PortalOrders({ orders, requests, go, dispatch }) {
                     <p>{it.message}</p>
                   </div>
                 )}
-                {it.order && <button className="acct-btn" onClick={() => dispatch({ type: 'OPEN_ORDER_QUOTE', orderId: it.order.id })}>Request a quote</button>}
               </article>
             ))}
           </div>
@@ -623,6 +623,7 @@ const requestDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-
 const requestReason = (r) => {
   if (r.threshold == null) return null;
   if (r.item) return `${r.item} over your maximum of ${r.threshold}`;
+  if (r.basis === 'qty') return `Over your ${r.threshold}-unit limit`;
   return `Over your ${money(r.threshold)}${r.period && r.period !== 'order' ? ` ${r.period}ly` : ''} limit`;
 };
 

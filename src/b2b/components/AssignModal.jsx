@@ -40,6 +40,9 @@ export function AssignModal() {
   // Adding from a company page with 2+ locations: all of them, or only some.
   const locations = company?.locations || [];
   const pickLocations = !location && !isSwap && locations.length > 1;
+  // One location: nothing to pick, but with auto-add on it can still go to
+  // locations added later.
+  const laterOnly = !location && !isSwap && locations.length === 1 && !!company?.autoAddLocations;
   const someLocations = pickLocations && a.applyTo === 'some';
   const pickedLocIds = someLocations ? a.locationIds || [] : [];
 
@@ -109,6 +112,12 @@ export function AssignModal() {
                 onChange={(ids) => dispatch({ type: 'ASSIGN_PATCH', patch: { applyTo: ids ? 'some' : 'all', locationIds: ids || [] } })}
                 applyLater={a.applyLater === true}
                 onApplyLaterChange={(on) => dispatch({ type: 'ASSIGN_PATCH', patch: { applyLater: on } })}
+              />
+            ) : laterOnly ? (
+              <s-checkbox
+                label="Automatically apply this pricing to locations added later"
+                checked={a.applyLater === true}
+                onChange={(e) => dispatch({ type: 'ASSIGN_PATCH', patch: { applyLater: e.currentTarget.checked } })}
               />
             ) : null}
 

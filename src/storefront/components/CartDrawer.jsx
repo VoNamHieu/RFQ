@@ -19,7 +19,12 @@ export function CartDrawer() {
   const [overLimit, setOverLimit] = useState(false);
   // Check out on a cart a limit blocks: it says why instead.
   const [blockedOpen, setBlockedOpen] = useState(false);
+  // A D2C customer (no company) leaves an email with the order request; any buyer
+  // can add a message.
+  const [email, setEmail] = useState('');
+  const [note, setNote] = useState('');
   if (!state.cartOpen) return null;
+  const isD2C = !state.session?.companyKey;
 
   const lines = state.cart.map((l) => {
     const p = productBySku(l.sku);
@@ -31,13 +36,13 @@ export function CartDrawer() {
   });
   const subtotal = lines.reduce((s, l) => s + l.price * l.qty, 0);
   // Order limits, as the validation function would report them: anything but a
-  // review problem blocks checkout — Check out stays on and shows why in a dialog.
-  // Over a maximum sent for review, Check out asks the buyer to reduce the order or
-  // send it as an order request — a draft order the merchant reviews in the B2B app.
-  // One line per variant (product limits count each variant on its own), named
-  // with the variant when the product has several.
+  // review problem blocks checkout — the cart shows nothing; Check out stays on and
+  // says why in a dialog. Over a maximum sent for review, Check out asks the buyer to
+  // reduce the order or send it as an order request — a draft order the merchant
+  // reviews in the B2B app. One line per variant, named by the product: a product
+  // limit counts all its variants together (its pack holds for each variant).
   const lineTitle = (l) => (l.product?.variants?.length > 1 && l.variant ? `${l.product.title} (${l.variant.title})` : l.product?.title || l.sku);
-  const problems = cartProblemsForSession(lines.map((l) => ({ sku: l.sku, title: lineTitle(l), qty: l.qty })), subtotal, state.session);
+  const problems = cartProblemsForSession(lines.map((l) => ({ sku: l.sku, title: l.product?.title || l.sku, qty: l.qty })), subtotal, state.session);
   const blocking = problems.filter((p) => p.type !== 'review');
   // Every maximum sent for review the order is over; the request records one — the
   // order value's, else the first product's (`sku`).
@@ -46,15 +51,21 @@ export function CartDrawer() {
   const close = () => dispatch({ type: 'TOGGLE_CART', open: false });
   const checkout = () => {
     if (blocking.length) setBlockedOpen(true);
-    else if (review) setOverLimit(true);
-    else dispatch({ type: 'TOAST', message: 'Demo only' });
+    else if (review) {
+      setEmail(state.session?.email || '');
+      setNote('');
+      setOverLimit(true);
+    } else dispatch({ type: 'TOAST', message: 'Demo only' });
   };
   const sendRequest = () => {
-    const s = state.session;
+    const s = state.session || {};
     addOrderRequest({
       id: `req-${Date.now()}`, companyId: s.companyKey, locationId: s.locationId, buyer: s.contact, date: today(),
+      ...(isD2C ? { email: email.trim() } : {}),
+      ...(note.trim() ? { note: note.trim() } : {}),
       amount: subtotal, threshold: review.value, period: review.period, limitId: review.limit.id, limitName: review.limit.name, priceList: s.priceListName,
       ...(review.sku ? { sku: review.sku, item: review.item } : {}),
+      ...(review.basis ? { basis: review.basis } : {}),
       lines: lines.map((l) => ({ sku: l.sku, title: lineTitle(l), qty: l.qty, price: l.price })),
     });
     setOverLimit(false);
@@ -92,11 +103,6 @@ export function CartDrawer() {
         </div>
         {lines.length > 0 && (
           <div className="drawer__foot">
-            {blocking.length > 0 && (
-              <div className="limit-notice" role="alert">
-                <ul>{blocking.map((p, i) => <li key={i}>{p.message}</li>)}</ul>
-              </div>
-            )}
             <div className="summary-row"><span>Subtotal</span><strong>{money(subtotal)}</strong></div>
             <p className="muted" style={{ fontSize: '1.3rem', marginTop: 0 }}>Taxes and shipping calculated at checkout.</p>
             <button className="button button--full" onClick={checkout}>
@@ -107,16 +113,19 @@ export function CartDrawer() {
       </aside>
       {blockedOpen && blocking.length > 0 && (
         <div className="overlay" onClick={() => setBlockedOpen(false)}>
-          <div className="modal" role="dialog" aria-label="You can’t check out yet" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" role="dialog" aria-label="Your cart doesn’t meet the order requirements" onClick={(e) => e.stopPropagation()}>
             <div className="modal__head">
-              <h3>You can’t check out yet</h3>
+              <h3>Your cart doesn’t meet the order requirements</h3>
               <button className="icon-btn" aria-label="Close" onClick={() => setBlockedOpen(false)}><CloseIcon /></button>
             </div>
             <div className="modal__body">
-              {blocking.map((p, i) => <p key={i} style={{ margin: i ? '0.8rem 0 0' : 0 }}>{p.message}</p>)}
+              <p style={{ margin: 0 }}>Update your cart to check out:</p>
+              <ul style={{ margin: '0.8rem 0 0', paddingLeft: '2rem' }}>
+                {blocking.map((p, i) => <li key={i}>{p.message}</li>)}
+              </ul>
             </div>
             <div className="modal__foot">
-              <button className="button" onClick={() => setBlockedOpen(false)}>Back to cart</button>
+              <button className="button" onClick={() => setBlockedOpen(false)}>Adjust cart</button>
             </div>
           </div>
         </div>
@@ -130,10 +139,26 @@ export function CartDrawer() {
             </div>
             <div className="modal__body">
               {reviews.map((p, i) => <p key={i} style={{ margin: i ? '0.8rem 0 0' : 0 }}>{p.message}</p>)}
+              <div style={{ marginTop: '1.6rem' }}>
+                {isD2C && (
+                  <div className="form-row">
+                    <label className="field-label">Email</label>
+                    <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+                  </div>
+                )}
+                <div className="form-row">
+                  <label className="field-label">Note for the seller (optional)</label>
+                  <textarea className="textarea" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
+                  <div className="muted" style={{ fontSize: '1.3rem', display: 'flex', justifyContent: 'space-between', gap: '1.2rem' }}>
+                    <span>Add a note for the seller about this order, like a delivery date or why you need this quantity.</span>
+                    <span>{`${note.length}/500`}</span>
+                  </div>
+                </div>
+              </div>
             </div>
             <div className="modal__foot">
               <button className="button button--secondary" onClick={() => setOverLimit(false)}>Reduce order</button>
-              <button className="button button--b2b" onClick={sendRequest}>Send order request</button>
+              <button className="button button--b2b" disabled={isD2C && !email.trim()} onClick={sendRequest}>Send order request</button>
             </div>
           </div>
         </div>

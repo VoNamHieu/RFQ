@@ -3,12 +3,15 @@
 //             is the cart subtotal (cart.cost.subtotalAmount: B2B prices, before
 //             tax, shipping and order-level discounts), set in the store currency
 //             and converted with presentmentCurrencyRate for buyers paying in another.
-//             Over the maximum value (`maxAction`), checkout is blocked, or — B2B
-//             only — the buyer can send the order for review instead.
+//             Over a maximum — the value or the quantity (`maxAction`, for both) —
+//             checkout is blocked, or the buyer can send the order for review
+//             instead (D2C: only with the d2cOrderRequests flag).
 //   product — rules, each a minimum, maximum and increment (case packs) on a set
-//             of products, checked per variant like Shopify's B2B quantity rules.
+//             of products. The minimum and maximum count every variant of a
+//             product together; the pack holds for each variant.
 //             Over a rule's maximum (`maxAction`, for all its rules), checkout is
-//             blocked, or — B2B only — the buyer can send the order for review.
+//             blocked, or the buyer can send the order for review (D2C: only
+//             with the d2cOrderRequests flag).
 //             A rule picks all products, collections, products, or product tags,
 //             vendors or product types (matched against the catalog when checked).
 //             Rules are in order: a product in more than one rule of a limit
@@ -88,6 +91,7 @@
 import { COLLECTIONS } from './data/constants.js';
 import { money } from './format.js';
 import { scopeCollections, TODAY } from './pricing.js';
+import { versionFlags } from '../shared/versions.js';
 
 export const LIMIT_KINDS = {
   order: { label: 'Order limit', description: 'A minimum or maximum order value or total quantity.' },
@@ -126,10 +130,14 @@ function toInput(s, field) {
 export const settingOf = (l, field) => (l.settings && isSetting(l.settings[field]) ? l.settings[field] : INHERIT);
 const ruleSetting = (r, field) => (isSetting(r[field]) ? r[field] : INHERIT);
 // The key a setting competes on: a maximum sent for review competes with other
-// review maximums ('threshold'), not with blocking ones — a buyer can have both.
-const orderKey = (l, field) => (field === 'maxValue' && l.maxAction === 'review' ? 'threshold' : field);
+// review maximums ('threshold' for the value, 'thresholdQty' for the quantity),
+// not with blocking ones — a buyer can have both.
+const REVIEW_KEYS = { maxValue: 'threshold', maxQty: 'thresholdQty' };
+const orderKey = (l, field) => (REVIEW_KEYS[field] && l.maxAction === 'review' ? REVIEW_KEYS[field] : field);
 // What a maximum order value counts: one order, or every order in a week or month.
-export const PERIODS = ['order', 'week', 'month'];
+// Weekly and monthly maximums only with the limitPeriods flag (versions.js); without
+// it a saved one counts per order.
+export const PERIODS = versionFlags().limitPeriods ? ['order', 'week', 'month'] : ['order'];
 const periodOf = (l, field) => (field === 'maxValue' && PERIODS.includes(l.period) ? l.period : 'order');
 // The key a setting competes on, with its period: 'maxValue', 'threshold@month', …
 const settingKey = (l, field) => {
@@ -160,7 +168,7 @@ export function newLimit(kind) {
     kind,
     status: 'Active',
     ...Object.fromEntries(ORDER_FIELDS.map((k) => [k, null])),
-    maxAction: 'block', // over the maximum value: 'block' checkout, or 'review' (B2B)
+    maxAction: 'block', // over a maximum (order value or quantity): 'block' checkout, or 'review'
     period: 'order', // the maximum value counts each order, or every order in a week or month
     audienceType: 'b2b',
     storeWide: true,
@@ -202,6 +210,9 @@ const newer = (a, pa, b, pb) => {
 export const turnLimitOn = (limits, limit) => [...limits.filter((l) => l.id !== limit.id), { ...limit, status: 'Active', turnedOnAt: TODAY }];
 
 export const isD2CLimit = (l) => l.audienceType === 'd2c';
+// Whether the limit's maximum can send an order for review: D2C only with the
+// d2cOrderRequests flag (versions.js), else it blocks checkout.
+export const canReview = (l) => !isD2CLimit(l) || !!versionFlags().d2cOrderRequests;
 const PICKED_TARGETS = ['specific', 'tags'];
 
 // A stored limit holds settings; a draft holds strings (or, saved before settings, numbers).
@@ -224,7 +235,7 @@ const toNumber = (v) => (v === '' || v == null || Number.isNaN(Number(v)) ? null
 export function normalizeLimit(input) {
   const d = isStored(input) ? toDraft(input) : input;
   const l = { ...d, name: (d.name || '').trim(), message: (d.message || '').trim(), startDate: d.startDate || null, endDate: d.endDate || null };
-  l.maxAction = l.maxAction === 'review' && !isD2CLimit(l) ? 'review' : 'block';
+  l.maxAction = l.maxAction === 'review' && canReview(l) ? 'review' : 'block';
   if (l.kind === 'order') l.period = PERIODS.includes(l.period) ? l.period : 'order';
   else delete l.period;
   if (l.kind === 'order') {
@@ -249,7 +260,8 @@ export function normalizeLimit(input) {
 export const upgradeLimits = (limits) =>
   limits.map((l) => {
     const x = l.kind === 'review' ? { ...l, kind: 'order', maxValue: l.threshold, maxAction: 'review' } : l;
-    return isStored(x) ? { maxAction: 'block', ...x } : normalizeLimit({ maxAction: 'block', ...x });
+    if (!isStored(x)) return normalizeLimit({ maxAction: 'block', ...x });
+    return { maxAction: 'block', ...x, ...(canReview(x) ? {} : { maxAction: 'block' }) };
   });
 
 export const limitKey = (companyId, locationId) => `${companyId}::${locationId}`;
@@ -302,6 +314,7 @@ const ORDER_TEXT = {
   threshold: [(v) => `Orders over ${money(v)} need your review`, 'No review maximum'],
   minQty: [(v) => `At least ${units(v)} per order`, 'No minimum quantity'],
   maxQty: [(v) => `At most ${units(v)} per order`, 'No maximum quantity'],
+  thresholdQty: [(v) => `Orders over ${units(v)} need your review`, 'No review maximum quantity'],
 };
 const PERIOD_TEXT = {
   maxValue: [(v, p) => `Maximum ${money(v)} per ${p}`, (p) => `No ${p}ly maximum`],
@@ -386,8 +399,8 @@ export function defaultLimitMessage(l) {
   const v = (k) => num(settingOf(l, k));
   if (v('minValue')) return `Your order must be at least ${money(v('minValue'))} to check out.`;
   if (v('maxValue') != null) {
-    const p = l.period && l.period !== 'order' ? l.period : null;
-    if (p) {
+    const p = periodOf(l, 'maxValue');
+    if (p !== 'order') {
       return l.maxAction === 'review'
         ? `Your limit is ${money(v('maxValue'))} a ${p}. Reduce your order or send an order request.`
         : `Your orders can’t add up to more than ${money(v('maxValue'))} a ${p}.`;
@@ -397,7 +410,11 @@ export function defaultLimitMessage(l) {
       : `Orders can’t be more than ${money(v('maxValue'))}.`;
   }
   if (v('minQty')) return `Your order needs at least ${units(v('minQty'))}.`;
-  if (v('maxQty') != null) return `Orders can’t have more than ${units(v('maxQty'))}.`;
+  if (v('maxQty') != null) {
+    return l.maxAction === 'review'
+      ? `Your current limit is ${units(v('maxQty'))}. Reduce your order or send an order request.`
+      : `Orders can’t have more than ${units(v('maxQty'))}.`;
+  }
   return '';
 }
 
@@ -564,9 +581,10 @@ export const productRuleFor = (db, companyId, locationId, sku) => quantities(pro
 export const productRuleForCustomer = (db, customer, sku) => quantities(productEntry(effectiveRulesForCustomer(db, customer), sku));
 
 // The maximum sent for review in effect at a location for a period ('order',
-// 'week' or 'month'), or null: { limit, value }.
-export function reviewMaximumFor(db, companyId, locationId, period = 'order') {
-  const e = effectiveRules(db, companyId, locationId).settings[period === 'order' ? 'threshold' : `threshold@${period}`];
+// 'week' or 'month'), or null: { limit, value }. `basis` 'qty': the order quantity's.
+export function reviewMaximumFor(db, companyId, locationId, period = 'order', basis = 'value') {
+  const key = basis === 'qty' ? 'thresholdQty' : period === 'order' ? 'threshold' : `threshold@${period}`;
+  const e = effectiveRules(db, companyId, locationId).settings[key];
   return e && e.mode === 'set' ? { limit: e.limit, value: e.value } : null;
 }
 
@@ -629,9 +647,14 @@ export function spentSoFar(orders, day = TODAY) {
 
 // What's wrong with a cart under the limits in effect for a location (for D2C, a
 // customer) — what the Cart and Checkout Validation function returns as errors.
-// `lines`: [{ sku, title, qty }], one per variant; `subtotal` at the buyer's prices. A 'review' problem
-// (an order value, or a product's maximum: with its `sku`) blocks checkout too, but
-// in the cart the buyer can send the order as an order request instead.
+// `lines`: [{ sku, title, qty }], one per variant (`title`: the product's); `subtotal`
+// at the buyer's prices. A product's minimum and maximum count all its variants
+// together; its pack holds for each variant. Problems come in the order buyers see
+// them: the order's (minimum value, maximum value, minimum quantity, maximum
+// quantity), then products' (minimum, maximum, pack); then the 'review' ones — a
+// product's maximum (with its `sku`), then the order value's and the order
+// quantity's (`basis` 'qty'). A review problem blocks checkout too, but in the
+// cart the buyer can send the order as an order request instead.
 // `spent`: what the buyer ordered so far this week and month (spentSoFar), for
 // weekly and monthly maximums. A merchant's own message is used when the limit
 // sets one thing; with several, buyers see the message for the one they broke.
@@ -643,7 +666,7 @@ function cartProblemsIn(rec, lines, subtotal, spent = {}) {
   const totalQty = lines.reduce((n, l) => n + l.qty, 0);
   const problems = [];
   const setting = (key) => (rec.settings[key]?.mode === 'set' ? rec.settings[key] : null);
-  const add = (type, e, text, value, period = 'order') => problems.push({ type, limit: e.limit, message: ownMessage(e.limit) || text, value, period });
+  const add = (type, e, text, value, period = 'order', extra = {}) => problems.push({ type, limit: e.limit, message: ownMessage(e.limit) || text, value, period, ...extra });
 
   const minValue = setting('minValue');
   if (minValue && subtotal < minValue.value) add('minValue', minValue, `Your order must be at least ${money(minValue.value)} to check out. Add ${money(minValue.value - subtotal)} more.`);
@@ -660,22 +683,35 @@ function cartProblemsIn(rec, lines, subtotal, spent = {}) {
   if (minQty && totalQty < minQty.value) add('minQty', minQty, `Your order needs at least ${units(minQty.value)}. Add ${units(minQty.value - totalQty)} more.`);
   const maxQty = setting('maxQty');
   if (maxQty && totalQty > maxQty.value) add('maxQty', maxQty, `Orders can’t have more than ${units(maxQty.value)}.`);
+  // A product's variants together, with each variant's quantity for the pack.
+  const byProduct = new Map();
   lines.forEach((line) => {
-    const e = productEntry(rec, line.sku);
+    const p = byProduct.get(line.sku) || { sku: line.sku, title: line.title, qty: 0, each: [] };
+    p.qty += line.qty;
+    p.each.push(line.qty);
+    byProduct.set(line.sku, p);
+  });
+  const PRODUCT_ORDER = ['min', 'max', 'pack'];
+  const productProblems = [];
+  const productReviews = [];
+  byProduct.forEach((p) => {
+    const e = productEntry(rec, p.sku);
     const q = quantities(e);
     if (!q) return;
     // Errors show for the whole cart, not on a line — so the merchant's own message
-    // is prefixed with the line it's about. Each field names the limit it came from.
-    const addLine = (fieldE, text) => problems.push({ type: 'product', limit: fieldE.limit, message: fieldE.limit.message ? `${line.title}: ${fieldE.limit.message}` : text });
-    if (q.min != null && line.qty < q.min) addLine(e.min, `${line.title}: order at least ${q.min}.`);
-    else if (q.max != null && line.qty > q.max && !q.review) addLine(e.max, `${line.title}: order at most ${q.max}.`);
-    else if (q.increment > 1 && line.qty % q.increment) addLine(e.increment, `${line.title} is sold in packs of ${q.increment}.`);
-    // Over a maximum sent for review, the line can go as an order request (`sku`, `item`).
-    if (q.review && line.qty > q.max) {
-      const own = e.max.limit.message ? `${line.title}: ${e.max.limit.message}` : null;
-      problems.push({ type: 'review', limit: e.max.limit, message: own || `${line.title}: you can order up to ${q.max} without review. Reduce it or send an order request.`, value: q.max, period: 'order', sku: line.sku, item: line.title });
+    // is prefixed with the product it's about. Each field names the limit it came from.
+    const addLine = (fieldE, field, text) => productProblems.push({ type: 'product', field, limit: fieldE.limit, message: fieldE.limit.message ? `${p.title}: ${fieldE.limit.message}` : text });
+    if (q.min != null && p.qty < q.min) addLine(e.min, 'min', `${p.title}: order at least ${q.min}.`);
+    else if (q.max != null && p.qty > q.max && !q.review) addLine(e.max, 'max', `${p.title}: order at most ${q.max}.`);
+    else if (q.increment > 1 && p.each.some((n) => n % q.increment)) addLine(e.increment, 'pack', `${p.title} is sold in packs of ${q.increment}.`);
+    // Over a maximum sent for review, the product can go as an order request (`sku`, `item`).
+    if (q.review && p.qty > q.max) {
+      const own = e.max.limit.message ? `${p.title}: ${e.max.limit.message}` : null;
+      productReviews.push({ type: 'review', limit: e.max.limit, message: own || `${p.title}: you can order up to ${q.max} without review. Reduce it or send an order request.`, value: q.max, period: 'order', sku: p.sku, item: p.title });
     }
   });
+  productProblems.sort((a, b) => PRODUCT_ORDER.indexOf(a.field) - PRODUCT_ORDER.indexOf(b.field));
+  problems.push(...productProblems, ...productReviews);
   const threshold = setting('threshold');
   if (threshold && subtotal > threshold.value) add('review', threshold, `Your current limit is ${money(threshold.value)}. Reduce your order or send an order request.`, threshold.value);
   ['week', 'month'].forEach((p) => {
@@ -685,6 +721,10 @@ function cartProblemsIn(rec, lines, subtotal, spent = {}) {
       add('review', t, `Your orders this ${p} come to ${money(sofar(p))}. With this one you’d be at ${money(total)}, over the ${money(t.value)} a ${p} you can order without review. Reduce your order or send an order request.`, t.value, p);
     }
   });
+  const thresholdQty = setting('thresholdQty');
+  if (thresholdQty && totalQty > thresholdQty.value) {
+    add('review', thresholdQty, `Your current limit is ${units(thresholdQty.value)}. Reduce your order or send an order request.`, thresholdQty.value, 'order', { basis: 'qty' });
+  }
   return problems;
 }
 

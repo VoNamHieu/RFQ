@@ -1,12 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { useStore } from '../store.jsx';
-import { LIMIT_KINDS, limitErrors, defaultLimitMessage, normalizeLimit, limitOverlaps, productRules, ruleSkus } from '../limits.js';
+import { LIMIT_KINDS, limitErrors, defaultLimitMessage, normalizeLimit, limitOverlaps, productRules, ruleSkus, canReview } from '../limits.js';
 import { LimitOverlapMessage } from './LimitOverlapList.jsx';
 import { LimitRulesCard } from './LimitRulesCard.jsx';
 import { SelectCompaniesModal, CustomerTargetsBox, companyPicks } from './AssignmentCard.jsx';
 import { Modal, useWcId, PageHeader } from '../../shared/wc.jsx';
 import { limitCatalog, withCatalog } from '../limitCatalog.js';
 import { contractsHolding, contractNames, newlyBroken } from '../agreements.js';
+import { versionFlags } from '../../shared/versions.js';
 
 const str = (v) => (v == null ? '' : String(v));
 
@@ -53,12 +54,13 @@ export function LimitEditor() {
   };
 
   // Who it's for, like pricing: Company-based B2B or D2C Wholesale. Switching side
-  // clears the other side's picks; D2C can't send an order for review, so its
+  // clears the other side's picks; without D2C order requests (canReview), a D2C
   // maximum blocks checkout.
   const isD2C = draft.audienceType === 'd2c';
+  const reviewable = canReview(draft);
   const setSide = (side) =>
     side === 'd2c'
-      ? patch({ audienceType: 'd2c', companyIds: [], locationKeys: [], maxAction: 'block' })
+      ? patch({ audienceType: 'd2c', companyIds: [], locationKeys: [], ...(canReview({ audienceType: 'd2c' }) ? {} : { maxAction: 'block' }) })
       : patch({ audienceType: 'b2b', customerTarget: 'all', customerTargetIds: [] });
   const side = (value, label) => (
     <button type="button" className="wc-plain-button wc-segmented__item" aria-pressed={(isD2C ? 'd2c' : 'b2b') === value} onClick={() => setSide(value)}>
@@ -113,7 +115,6 @@ export function LimitEditor() {
     : [];
   const ruleField = (i, key, label) => (
     <s-number-field
-      data-field={`rule-${i}-${key}`}
       label={label}
       min={key === 'min' ? 0 : 1}
       step={1}
@@ -126,11 +127,10 @@ export function LimitEditor() {
     />
   );
 
-  // Over a maximum (the order value, or a product rule's): block checkout, or — B2B
-  // only — let the buyer send an order request.
+  // Over a maximum (the order value or quantity, or a product rule's): block
+  // checkout, or let the buyer send an order request (see canReview).
   const maxActionChoice = (label) => (
     <s-choice-list
-      data-field="maxAction"
       label={label}
       name={`${scopeName}-max-action`}
       onChange={(e) => {
@@ -149,7 +149,6 @@ export function LimitEditor() {
 
   const numberField = (key, label, opts = {}) => (
     <s-number-field
-      data-field={key}
       label={label}
       min={opts.step === 1 && !key.startsWith('min') ? 1 : 0}
       step={opts.step}
@@ -195,7 +194,6 @@ export function LimitEditor() {
               </s-paragraph>
             </s-stack>
             <s-text-field
-              data-field="name"
               label="Name"
               required
               value={draft.name}
@@ -220,7 +218,6 @@ export function LimitEditor() {
                 <s-paragraph color="subdued" fontSize="small">
                   The cart subtotal at the {isD2C ? 'customer’s' : 'buyer’s B2B'} prices, before tax, shipping and order discounts. In your store currency, converted for buyers who pay in another.
                 </s-paragraph>
-                {!isD2C && str(draft.maxValue) !== '' && maxActionChoice('When an order is over the maximum')}
               </s-stack>
               <s-stack gap="small-200">
                 <s-heading>Order quantity</s-heading>
@@ -232,6 +229,7 @@ export function LimitEditor() {
                   All items in the cart added together.
                 </s-paragraph>
               </s-stack>
+              {reviewable && (str(draft.maxValue) !== '' || str(draft.maxQty) !== '') && maxActionChoice('When an order is over the maximum')}
               {errors.order && (
                 <s-paragraph tone="critical" id="order-limits">
                   {errors.order}
@@ -244,7 +242,7 @@ export function LimitEditor() {
         {draft.kind === 'product' && (
           <>
             {moved.length ? (
-              <s-banner tone="info" heading="Some products follow another rule now" data-field="rules-moved">
+              <s-banner tone="info" heading="Some products follow another rule now">
                 {`Compared with the saved limit, ${moved.length} product${moved.length === 1 ? '' : 's'} now take${moved.length === 1 ? 's' : ''} ${moved.length === 1 ? 'its' : 'their'} quantities from a different rule: ${someTitles(moved)}. Check them before you save.`}
               </s-banner>
             ) : null}
@@ -257,14 +255,13 @@ export function LimitEditor() {
               db={catalogDb}
               startOpen={draft.id ? null : 0}
             >
-              {!isD2C && rules.some((r) => str(r.max) !== '') && maxActionChoice('When a product is over its maximum')}
+              {reviewable && rules.some((r) => str(r.max) !== '') && maxActionChoice('When a product is over its maximum')}
             </LimitRulesCard>
           </>
         )}
 
         <s-section heading="Buyer message">
           <s-text-area
-            data-field="message"
             label="Message buyers see"
             rows={2}
             value={draft.message || ''}
@@ -303,7 +300,6 @@ export function LimitEditor() {
             ) : (
               <>
                 <s-choice-list
-                  data-field="appliesTo"
                   label="Applies to"
                   labelAccessibilityVisibility="exclusive"
                   name={scopeName}
@@ -325,7 +321,6 @@ export function LimitEditor() {
                     {/* Like the pricing editor's: opens on click / Enter, not on focus —
                         closing the modal hands focus back to this field. */}
                     <s-search-field
-                      data-field="targets"
                       label="Search companies"
                       labelAccessibilityVisibility="exclusive"
                       placeholder="Search companies"
@@ -361,14 +356,12 @@ export function LimitEditor() {
             <s-grid gridTemplateColumns="@container (inline-size > 400px) 1fr 1fr, 1fr" gap="small">
               {/* Date fields commit on change (typing emits partial dates on input). */}
               <s-date-field
-                data-field="startDate"
                 label="Start date"
                 value={draft.startDate || ''}
                 onChange={(e) => patch({ startDate: e.currentTarget.value })}
                 details="Leave empty to start right away."
               />
               <s-date-field
-                data-field="endDate"
                 label="End date"
                 value={draft.endDate || ''}
                 onChange={(e) => patch({ endDate: e.currentTarget.value })}
@@ -379,11 +372,11 @@ export function LimitEditor() {
           </s-query-container>
         </s-section>
 
-        {/* A maximum order value per week or month, so splitting an order doesn't get around it. */}
-        {draft.kind === 'order' && (
+        {/* A maximum order value per week or month, so splitting an order doesn't get
+            around it. Hidden behind the limitPeriods flag (versions.js) for now. */}
+        {draft.kind === 'order' && versionFlags().limitPeriods && (
           <s-section heading="Advanced">
             <s-select
-              data-field="period"
               label="Count the maximum order value"
               value={draft.period || 'order'}
               onChange={(e) => patch({ period: e.currentTarget.value })}
@@ -398,7 +391,7 @@ export function LimitEditor() {
       </s-stack>
 
       <s-section slot="aside">
-        <s-select data-field="status" label="Status" value={draft.status} onChange={(e) => patch({ status: e.currentTarget.value })}>
+        <s-select label="Status" value={draft.status} onChange={(e) => patch({ status: e.currentTarget.value })}>
           <s-option value="Active">Active</s-option>
           <s-option value="Inactive">Inactive</s-option>
         </s-select>
