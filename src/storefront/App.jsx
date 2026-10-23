@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useStore } from './store.jsx';
-import { IS_DEMO } from '../shared/persistence.js';
 import { withVersion, versionFlags, activeVersion, DEFAULT_VERSION } from '../shared/versions.js';
 import { Header } from './components/Header.jsx';
 import { Footer } from './components/Footer.jsx';
@@ -125,9 +124,8 @@ export function App() {
       <CartDrawer />
       <QuoteRequestModal />
       <Toast />
-      {/* The walkthrough stage shows the admin beside this page itself. */}
-      {!IS_DEMO && <AppSwitch />}
-      {!IS_DEMO && <AdminDock />}
+      <AppSwitch />
+      <AdminDock />
     </>
   );
 }

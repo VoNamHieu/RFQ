@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useReducer } from 'react';
 import { accountForEmail, productBySku, b2bPriceFor } from './data/products.js';
-import { ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, HELD_ORDERS_KEY, IS_DEMO } from '../shared/persistence.js';
+import { ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, HELD_ORDERS_KEY } from '../shared/persistence.js';
 
 // Storefront state machine. Deliberately small — three pages (home / product /
 // account) plus the cross-cutting bits a Dawn storefront needs: a cart, a
@@ -63,8 +63,9 @@ function reducer(state, action) {
     // Over an order maximum sent for review: the cart goes to the merchant as an order request
     // (a draft order) instead of checking out (see Order limits in the B2B app). The
     // buyer lands on the B2B Portal, where it waits for review at the top of Orders.
+    // A D2C customer has no B2B Portal, so stays on the page.
     case 'SUBMIT_FOR_REVIEW':
-      return { ...state, cart: [], cartOpen: false, view: 'account', accountSection: 'portal', toast: 'Order request sent' };
+      return { ...state, cart: [], cartOpen: false, ...(state.session?.companyKey ? { view: 'account', accountSection: 'portal' } : {}), toast: 'Order request sent' };
     case 'TOGGLE_CART':
       return { ...state, cartOpen: action.open ?? !state.cartOpen };
     case 'OPEN_QUOTE':
@@ -148,11 +149,6 @@ export function StoreProvider({ children }) {
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, []);
-  // The B2B app's order-limit walkthrough drives this storefront from its stage:
-  // only in demo mode (?demo=1).
-  useEffect(() => {
-    if (IS_DEMO) window.__qsDemo = { dispatch, state };
-  });
   return <StoreContext.Provider value={{ state, dispatch }}>{children}</StoreContext.Provider>;
 }
 

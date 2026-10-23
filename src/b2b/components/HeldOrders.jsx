@@ -33,8 +33,9 @@ export function heldReason(order, db) {
   const location = company && (company.locations || []).find((l) => (order.locationId ? l.id === order.locationId : l.name === order.location));
   if (!location) return order.reason || 'Held for your review';
   const held = order.heldAt;
-  // A product over its maximum: what it broke when it was held.
+  // A product, or the order quantity, over its maximum: what it broke when it was held.
   if (held?.sku) return `${held.item} over the maximum of ${held.value} · ${held.limitName}`;
+  if (held?.basis === 'qty') return `Over the ${held.value}-unit maximum · ${held.limitName}`;
   // A weekly or monthly maximum counts this order on top of the location's other
   // orders in that period.
   const period = held?.period || 'order';
@@ -50,6 +51,9 @@ export function heldReason(order, db) {
   if (max && max.value === held.value && max.limit.id === held.limitId) return `Over the ${money(held.value)}${per} maximum · ${max.limit.name}`;
   return `Held over ${money(held.value)}${per} · now ${now}`;
 }
+
+// What the buyer wrote with the order request (Note for the seller), shown where the merchant decides.
+export const buyerMessageText = (order) => (order.buyerMessage ? `Buyer’s note: “${order.buyerMessage}”` : null);
 
 // Held first, then newest — so what's waiting sits on top of an order list.
 export const heldFirst = (a, b) => Number(isHeld(b)) - Number(isHeld(a)) || String(b.date).localeCompare(String(a.date));

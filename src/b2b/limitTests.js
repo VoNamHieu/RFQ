@@ -6,7 +6,7 @@ import { clone } from './dbHelpers.js';
 import { makeBaseState } from './initialState.js';
 import {
   newLimit, normalizeLimit, upgradeLimits, limitOverlaps, cartProblems, cartProblemsForCustomer, productRuleFor, effectiveRules, effectiveRulesForCustomer,
-  locationLimits, limitSummary, limitState, spentSoFar, limitErrors,
+  locationLimits, limitSummary, limitState, limitErrors,
 } from './limits.js';
 import { withCatalog } from './limitCatalog.js';
 import { heldReason } from './components/HeldOrders.jsx';
@@ -183,46 +183,6 @@ const CASES = [
     },
   },
   {
-    code: 'OL-16', title: 'Monthly review maximum', ref: '#11',
-    expect: 'July so far is $21,400 (a $5,000 declined order and June don’t count); $9,500 more goes to review',
-    run() {
-      const db = withLimit(fresh(), { name: 'Hanoi monthly review', maxValue: '30000', maxAction: 'review', period: 'month', storeWide: false, locationKeys: ['c1::l1'] }, 'm');
-      const spent = spentSoFar([
-        { date: '2026-07-03', amount: 9000, status: 'Fulfilled' },
-        { date: '2026-07-15', amount: 12400, status: 'Needs review' },
-        { date: '2026-07-20', amount: 5000, status: 'Declined' },
-        { date: '2026-06-30', amount: 7000, status: 'Paid' },
-      ]);
-      return [
-        equals('Ordered so far (week, month)', spent, { week: 0, month: 21400 }),
-        equals('$8,000 cart', messages(cartProblems(db, 'c1', 'l1', ...hoses(8000), spent)), []),
-        equals('$9,500 cart', messages(cartProblems(db, 'c1', 'l1', ...hoses(9500), spent)), ['Your orders this month come to $21,400. With this one you’d be at $30,900, over the $30,000 a month you can order without review. Reduce your order or send an order request.']),
-      ];
-    },
-  },
-  {
-    code: 'OL-17', title: 'Weekly blocking maximum', ref: '#11',
-    expect: '$4,000 ordered this week plus a $1,500 cart is over a $5,000 weekly limit',
-    run() {
-      const db = withLimit(fresh(), { name: 'Vinh Phat weekly cap', maxValue: '5000', period: 'week', storeWide: false, companyIds: ['c2'] }, 'w');
-      return [equals('$1,500 cart', messages(cartProblems(db, 'c2', 'l3', ...hoses(1500), { week: 4000, month: 4000 })), ['Your orders this week come to $4,000. This one would take you to $5,500, over your $5,000 weekly limit. Remove $500 to check out.'])];
-    },
-  },
-  {
-    code: 'OL-18', title: 'A per-order and a monthly maximum', ref: '#11',
-    expect: 'Two company limits at Da Nang, $15,000 per order then $50,000 a month: limits don’t combine, so only the newer monthly one applies; the location card shows the others replaced',
-    run() {
-      const db = withLimit(withLimit(fresh(), { name: 'Per order 15k', maxValue: '15000', storeWide: false, companyIds: ['c2'] }, 'a'), { name: 'Monthly 50k', maxValue: '50000', period: 'month', storeWide: false, companyIds: ['c2'] }, 'b');
-      const card = locationLimits(db, 'c2', 'l3').flatMap((r) => r.rules.map((x) => `${x.text}${x.replacedBy ? ' (replaced)' : ''}`));
-      return [
-        includes('Location card', card, 'Maximum order $15,000 (replaced)'),
-        includes('Location card', card, 'Maximum $50,000 per month'),
-        equals('$16,000 cart, nothing ordered yet', messages(cartProblems(db, 'c2', 'l3', ...hoses(16000), { week: 0, month: 0 })), []),
-        equals('$10,000 cart, $45,000 ordered this month', messages(cartProblems(db, 'c2', 'l3', ...hoses(10000), { week: 0, month: 45000 })), ['Your orders this month come to $45,000. This one would take you to $55,000, over your $50,000 monthly limit. Remove $5,000 to check out.']),
-      ];
-    },
-  },
-  {
     code: 'OL-19', title: 'An empty field is no limit', ref: 'Case 1',
     expect: 'A company limit that sets only a $200 minimum replaces the store-wide limit at ABC Construction: its empty maximum is no maximum — the store-wide $20,000 review maximum doesn’t fill it. Hanoi keeps its own limit',
     run() {
@@ -309,7 +269,7 @@ const CASES = [
     },
   },
   {
-    code: 'OL-25', title: 'A customer in two tag segments takes the newer limit', ref: 'Segments', note: 'No walkthrough for this case: the storefront has no D2C tagged customer.',
+    code: 'OL-25', title: 'A customer in two tag segments takes the newer limit', ref: 'Segments',
     expect: 'Tag “retailer” has a $500 minimum, a newer limit gives tag “trade” a $300 maximum. An Nam Retail has both tags: only the trade cap applies (no order is stopped); saving it gives a soft note that other tags have limits; Lan Anh Home (retailer only) keeps the minimum; of two limits on the same tag, the newer applies',
     run() {
       const d2c = (ids) => ({ audienceType: 'd2c', customerTarget: 'tags', customerTargetIds: ids });

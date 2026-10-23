@@ -137,7 +137,9 @@ export function agreementForSession(session) {
     pricing: ag.pricing.length ? ag.pricing.join(', ') : null,
     // Buyer wording for a maximum sent for review; the rest read the same for both sides.
     limits: limits.map((l) => limitRules(l, db)
-      .map((r) => (r.key?.startsWith('threshold') && r.value != null
+      .map((r) => (r.key === 'thresholdQty' && r.value != null
+        ? `Orders over ${r.value} units are sent for approval`
+        : r.key?.startsWith('threshold') && r.value != null
         ? `Orders over ${money(r.value).replace(/\.00$/, '')}${r.key.includes('@') ? ` a ${r.key.split('@')[1]}` : ''} are sent for approval`
         : r.text))
       .join(' · ')),
@@ -162,7 +164,7 @@ function spentForSession(session) {
 
 // The buyer's order limits, for the product page to show and count the order
 // against: each setting in force as a number, by its key — minValue, maxValue,
-// threshold (the maximum sent for review), minQty, maxQty, and the weekly and
+// threshold and thresholdQty (the maximums sent for review), minQty, maxQty, and the weekly and
 // monthly maximums ('maxValue@week', 'threshold@month', …) — with what the buyer
 // ordered so far this week and month (`spent`, see spentSoFar). Null when none applies.
 export function orderLimitsForSession(session) {
