@@ -36,8 +36,8 @@ export function CartDrawer() {
   });
   const subtotal = lines.reduce((s, l) => s + l.price * l.qty, 0);
   // Order limits, as the validation function would report them: anything but a
-  // review problem blocks checkout — the cart shows nothing; Check out stays on and
-  // says why in a dialog. Over a maximum sent for review, Check out asks the buyer to
+  // review problem blocks checkout — the cart says why as soon as it opens; Check out
+  // stays on and says why in a dialog. Over a maximum sent for review, Check out asks the buyer to
   // reduce the order or send it as an order request — a draft order the merchant
   // reviews in the B2B app. One line per variant, named by the product: a product
   // limit counts all its variants together (its pack holds for each variant).
@@ -103,6 +103,11 @@ export function CartDrawer() {
         </div>
         {lines.length > 0 && (
           <div className="drawer__foot">
+            {blocking.length > 0 && (
+              <div className="limit-notice" role="alert">
+                <ul>{blocking.map((p, i) => <li key={i}>{p.message}</li>)}</ul>
+              </div>
+            )}
             <div className="summary-row"><span>Subtotal</span><strong>{money(subtotal)}</strong></div>
             <p className="muted" style={{ fontSize: '1.3rem', marginTop: 0 }}>Taxes and shipping calculated at checkout.</p>
             <button className="button button--full" onClick={checkout}>
