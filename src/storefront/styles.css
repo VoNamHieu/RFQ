@@ -641,7 +641,7 @@ h3 { font-size: 1.8rem; }
 }
 
 /* ── Order limits (cart problems + product quantity rules) ───────────────── */
-.limit-notice { background: #fff4e5; border: 0.1rem solid #f1c48a; color: #6b4300; padding: 1.2rem 1.4rem; font-size: 1.35rem; margin-bottom: 1.6rem; }
+.limit-notice { background: #fef3f2; border: 0.1rem solid #fda29b; color: #b42318; padding: 1.2rem 1.4rem; font-size: 1.35rem; margin-bottom: 1.6rem; }
 .limit-notice ul { margin: 0; padding-left: 1.8rem; }
 .limit-notice li + li { margin-top: 0.4rem; }
 /* Order limits on the product page: one block, a row for this product and one for
