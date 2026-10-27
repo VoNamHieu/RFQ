@@ -6,8 +6,9 @@ import { Modal } from '../../shared/wc.jsx';
 
 // Orders a maximum (order limits: an order value, or a product's) held back for review: status 'Needs review',
 // `heldAt` = what it broke then ({ value, limitId, limitName }, plus `sku` and `item` for a product). The buyer couldn't check out, so the order waits as a
-// draft order until the merchant approves it (it becomes a real order) or
-// declines it. Listed on app home and in the location / company orders.
+// draft order until the merchant approves it (an invoice goes to the buyer: 'Invoice
+// sent', a real order once they check out from it) or declines it. Listed on app
+// home and in the location / company orders.
 export const isHeld = (o) => o.status === 'Needs review';
 
 // Held orders across every company, the longest-waiting first.

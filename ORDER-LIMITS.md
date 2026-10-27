@@ -109,9 +109,11 @@ merchant quyết định. Dữ liệu mẫu có hai đơn: #1045 (ABC Constructi
 | **Trang location → Order history** | Banner cảnh báo phía trên bảng: "Order #… for $… is waiting for your review", kèm lý do và hai nút. Trong bảng, đơn chờ duyệt ghim lên đầu, có dòng lý do dưới mã đơn. |
 | **Trang company → tab Orders** | Đơn chờ duyệt ghim lên đầu, có dòng lý do và hai nút ở cột cuối. |
 
-- **Approve:** draft order được hoàn tất thành đơn thật, trạng thái chuyển sang **Unfulfilled**.
+- **Approve:** buyer nhận email invoice. Đơn vẫn là draft order, trạng thái chuyển sang **Invoice sent** và rời khỏi
+  danh sách chờ duyệt. Buyer check out từ invoice thì draft order mới thành order thật, trạng thái **Unfulfilled**.
+  Buyer chưa check out (chưa đọc email…) thì đơn giữ nguyên **Invoice sent**.
 - **Decline:** hỏi lại trước khi làm. Draft bị huỷ, buyer được báo, có thể sửa đơn rồi gửi lại. Trạng thái chuyển sang
-  **Declined**.
+  **Declined**, và đơn biến mất khỏi tab Orders của company.
   - Trong modal xác nhận có checkbox **Add a message for the buyer**: tick thì hiện ô **Message to the buyer** (không bắt
     buộc, tối đa 500 ký tự) để giải thích vì sao từ chối.
   - Lời nhắn hiện trên thẻ đơn bị từ chối ở storefront (B2B Portal → Orders, mục "Message from the seller").
@@ -146,9 +148,12 @@ Rule mẫu cho Watson Co · Phố Thái Hà (`quatnap.of@gmail.com`):
 **My account → B2B Portal → Orders**
 - Trang **Orders** là của Shopify, app không thêm dòng vào đó được, nên đơn gửi duyệt nằm trên trang của app: panel
   **Orders** trong B2B Portal (trước là "Recent orders"), chung với các đơn thường. Chỉ buyer B2B có đơn gửi duyệt.
-- Mỗi đơn một thẻ có status: đơn thường giữ status của Shopify (Fulfilled…); đơn gửi duyệt là **Waiting for review**
-  hoặc **Declined**, kèm ngày, sản phẩm, số tiền và lý do ("Over your $10,000 limit" / "…monthly limit"). Đơn được
-  duyệt đã thành order, nên hiện là order đó kèm dòng "Approved after review". Chỉ order thật có nút Request a quote.
+- Mỗi đơn một thẻ có status: đơn thường giữ status của Shopify (Fulfilled…); đơn gửi duyệt là **Waiting for review**,
+  **Awaiting checkout** hoặc **Declined**, kèm ngày, sản phẩm, số tiền và lý do ("Over your $10,000 limit" /
+  "…monthly limit").
+- Đơn được duyệt là **Awaiting checkout**, có nút **Complete checkout** (cùng link với invoice trong email), nên buyer
+  không cần tìm lại email. Check out xong thì đơn thành order, status **Unfulfilled**. Order đã có trong tài khoản thì
+  hiện là order đó kèm dòng "Approved after review". Chỉ order thật có nút Request a quote.
 - Đơn mới xếp trước. Hàng nút **xem theo status**: All · Waiting for review · Fulfilled · Declined… (chỉ những status
   đang có, kèm số đơn); bấm một nút thì chỉ hiện đơn có status đó.
 - Gửi đơn đi duyệt xong, buyer được đưa tới B2B Portal.

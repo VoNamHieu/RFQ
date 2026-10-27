@@ -275,12 +275,13 @@ export function injectOrderRequests(db, requests) {
 
 // The orders held for the merchant's review (over a maximum sent for review) and
 // what became of them, as the buyer's B2B Portal on the storefront lists them
-// (Orders): `status` 'waiting', 'approved' or 'declined', the location each is for,
+// (Orders): `status` 'waiting', 'invoiced' (approved, its invoice sent: a draft order
+// until the buyer checks out from it), 'approved' (a real order now) or 'declined', the location each is for,
 // who sent it, what's in it (a count; the storefront keeps the lines of a request
 // it sent), the maximum it went over and, once declined, the merchant's message to
 // the buyer (`message`, null without one). `requestId`: the storefront request it
 // came from.
-const REVIEW_STATUS = (o) => (o.status === 'Needs review' ? 'waiting' : o.status === 'Declined' ? 'declined' : 'approved');
+const REVIEW_STATUS = (o) => (o.status === 'Needs review' ? 'waiting' : o.status === 'Invoice sent' ? 'invoiced' : o.status === 'Declined' ? 'declined' : 'approved');
 export function storefrontHeldOrders(db) {
   return (db.companies || []).flatMap((c) => (c.orders || [])
     .filter((o) => o.status === 'Needs review' || o.heldAt)

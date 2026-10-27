@@ -8,7 +8,7 @@ import { ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, HELD_ORDERS_KEY } from '../shared
 // flow that is this project's storefront touchpoint.
 
 const initialState = {
-  view: 'home', // 'home' | 'product' | 'account' | 'register'
+  view: 'home', // 'home' | 'product' | 'cart' | 'account' | 'register'
   accountSection: null, // the account section to open on (the B2B Portal's Orders, after an order request is sent)
   currentSku: null,
   session: null, // null = guest (D2C); else DEMO_ACCOUNT (logged-in B2B buyer)
@@ -41,7 +41,7 @@ function reducer(state, action) {
     // (not applied vs. approved B2B buyer) — see DEMO_ACCOUNTS.
     case 'LOGIN': {
       const account = accountForEmail(action.email);
-      return { ...state, session: account, quotes: account.quotes || [], toast: 'Signed in' };
+      return { ...state, session: account, quotes: account.quotes || [], cart: account.cart || state.cart, toast: 'Signed in' };
     }
     case 'LOGOUT':
       return { ...state, session: null, quotes: [], view: state.view === 'account' ? 'home' : state.view, toast: 'Signed out' };
@@ -60,6 +60,9 @@ function reducer(state, action) {
     }
     case 'REMOVE_LINE':
       return { ...state, cart: state.cart.filter((_, i) => i !== action.index) };
+    // The cart drawer's Demo case (prototype-only): a whole new cart.
+    case 'SET_CART':
+      return { ...state, cart: action.cart };
     // Over an order maximum sent for review: the cart goes to the merchant as an order request
     // (a draft order) instead of checking out (see Order limits in the B2B app). The
     // buyer lands on the B2B Portal, where it waits for review at the top of Orders.

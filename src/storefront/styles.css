@@ -288,6 +288,27 @@ h3 { font-size: 1.8rem; }
 .summary-row { display: flex; justify-content: space-between; font-size: 1.6rem; margin-bottom: 1.4rem; }
 .summary-row strong { font-weight: 700; }
 
+/* ── Cart page (main-cart-items + main-cart-footer) ───────────────────────── */
+.cart-page__head { display: flex; align-items: baseline; justify-content: space-between; gap: 2rem; margin-bottom: 3.2rem; }
+.cart-page__head .link { font-size: 1.5rem; }
+.cart-page--empty { text-align: center; }
+.cart-page--empty .button { margin-top: 2.4rem; }
+.cart-page .limit-notice { margin-bottom: 3.2rem; }
+/* Columns: Product (media + info) · Quantity · Total. */
+.cart-items__head, .cart-item { display: grid; column-gap: 2rem; }
+.cart-items__head { grid-template-columns: 1fr 18rem 12rem; font-size: 1.1rem; letter-spacing: 0.1rem; text-transform: uppercase; color: var(--color-muted); padding-bottom: 1.8rem; border-bottom: 0.1rem solid var(--color-border); }
+.cart-items__head span:last-child, .cart-item__total { text-align: right; }
+.cart-item { grid-template-columns: 10rem 1fr 18rem 12rem; grid-template-areas: "media info qty total"; row-gap: 1.2rem; padding: 2.4rem 0; border-bottom: 0.1rem solid var(--color-border); }
+.cart-item__media { grid-area: media; width: 10rem; height: 10rem; background: var(--color-surface-2); }
+.cart-item__media img { width: 100%; height: 100%; object-fit: cover; }
+.cart-item__info { grid-area: info; display: grid; gap: 0.6rem; align-content: start; font-size: 1.5rem; }
+.cart-item__name { font-size: 1.6rem; cursor: pointer; }
+.cart-item__name:hover { text-decoration: underline; text-underline-offset: 0.3rem; }
+.cart-item__qty { grid-area: qty; display: flex; align-items: center; gap: 1.2rem; align-self: start; }
+.cart-item__total { grid-area: total; font-size: 1.6rem; }
+.cart-page__footer { display: flex; justify-content: flex-end; margin-top: 4rem; }
+.cart-page__summary { width: 100%; max-width: 36rem; }
+
 /* ── Footer ───────────────────────────────────────────────────────────────── */
 .footer { border-top: 0.1rem solid var(--color-border); margin-top: 4rem; background: #fff; }
 .footer__cols { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 3rem; padding: 5rem 0 3rem; }
@@ -312,6 +333,9 @@ h3 { font-size: 1.8rem; }
 .dev-switch--end { left: auto; right: 1.6rem; }
 /* Clear of the cart drawer's Check out button while the cart is open. */
 .dev-switch--end.dev-switch--beside-cart { right: calc(min(40rem, 92vw) + 1.6rem); }
+/* The B2B demo account's cart cases, at the top of the cart drawer. */
+.demo-case { display: grid; gap: 0.6rem; padding: 1.2rem; margin-bottom: 0.8rem; border: 0.1rem dashed var(--color-border-strong); border-radius: var(--radius); font-size: 1.3rem; color: var(--color-muted); }
+.demo-case .select { padding: 0.8rem 1rem; font-size: 1.4rem; }
 
 /* Prototype-only: the B2B app's Order limits screen docked bottom-right, beside the
    cart drawer while it's open so both stay in view. */
@@ -638,12 +662,28 @@ h3 { font-size: 1.8rem; }
   .reg-grid { grid-template-columns: 1fr; }
   .reg-card { padding: 2rem; }
   .reg-intro h1 { font-size: 2.8rem; }
+  /* Cart page: Quantity goes under the product's info. */
+  .cart-items__head { grid-template-columns: 1fr auto; }
+  .cart-items__head span:nth-child(2) { display: none; }
+  .cart-item { grid-template-columns: 8rem 1fr auto; grid-template-areas: "media info total" "media qty qty"; row-gap: 1.6rem; }
+  .cart-item__media { width: 8rem; height: 8rem; }
+  .cart-page__summary { max-width: none; }
 }
 
 /* ── Order limits (cart problems + product quantity rules) ───────────────── */
-.limit-notice { background: #fef3f2; border: 0.1rem solid #fda29b; color: #b42318; padding: 1.2rem 1.4rem; font-size: 1.35rem; margin-bottom: 1.6rem; }
-.limit-notice ul { margin: 0; padding-left: 1.8rem; }
+/* The order's limits: an icon, each message on its own line, then what to do next. */
+.limit-notice { display: grid; grid-template-columns: 1.8rem minmax(0, 1fr); gap: 1rem; align-items: start; background: #fef3f2; color: #b42318; border-radius: 0.8rem; padding: 1.2rem 1.4rem; font-size: 1.35rem; line-height: 1.45; margin-bottom: 1.6rem; }
+.limit-notice svg { width: 1.8rem; height: 1.8rem; margin-top: 0.1rem; }
+.limit-notice ul { margin: 0; padding: 0; list-style: none; }
 .limit-notice li + li { margin-top: 0.4rem; }
+.limit-notice p { margin: 0.4rem 0 0; font-size: 1.25rem; opacity: 0.85; }
+/* A product's limits under its line (cart drawer and cart page), across the info,
+   quantity and total columns: red when it blocks checkout, blue for review. */
+.line-limit { grid-column: 2 / -1; display: grid; gap: 0.4rem; font-size: 1.3rem; color: #b42318; }
+.line-limit p { margin: 0; }
+.line-limit .line-limit--review { color: var(--b2b); }
+/* Above a Check out that's off, when the cart could go as an order request once fixed. */
+.checkout-hint { font-size: 1.3rem; margin: 0 0 1.2rem; }
 /* Order limits on the product page: one block, a row for this product and one for
    the order (cart + quantity picked), live as it changes. A row is grey while it's
    fine, amber when it can't check out like this, blue when the seller will review it. */

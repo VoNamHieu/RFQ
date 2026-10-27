@@ -3,6 +3,7 @@ import { useStore } from '../store.jsx';
 import { DEMO_ACCOUNTS, BUSINESS_SUMMARY, QUOTE_STATUS, REQUEST_STATUS, agreementForSession, orderRequestsForSession } from '../data/products.js';
 import { ApplyForm } from '../components/ApplyForm.jsx';
 import { readRegistrationForm } from '../../shared/registrationForm.js';
+import { addInvoiceCheckout } from '../../shared/persistence.js';
 import { money } from '../utils.js';
 import { PinIcon, MailIcon, ChevronRightIcon, ChevronDownIcon, CardIcon, BoxIcon, CloseIcon } from '../components/icons.jsx';
 
@@ -213,10 +214,12 @@ function Portal({ session, company, application, requests, go, dispatch }) {
 
 // The portal's Orders: the account's orders and its order requests — orders over
 // the buyer's limit sent to the seller for review (see orderRequestsForSession) —
-// in one list, newest first, each with its status. An approved request became an
-// order, so it's that order, marked as approved after review. The status views
+// in one list, newest first, each with its status. An approved request waits for
+// the buyer to check out from the invoice the seller sent (Awaiting checkout ·
+// Complete checkout); checked out, it's an order. One the account has is that order,
+// marked as approved after review. The status views
 // (All, Waiting for review, Fulfilled…, each with its count) show one status.
-const STATUS_ORDER = ['Waiting for review', 'Approved', 'Unfulfilled', 'Paid', 'Fulfilled', 'Declined'];
+const STATUS_ORDER = ['Waiting for review', 'Awaiting checkout', 'Unfulfilled', 'Paid', 'Fulfilled', 'Declined'];
 const statusRank = (status) => (STATUS_ORDER.includes(status) ? STATUS_ORDER.indexOf(status) : STATUS_ORDER.length);
 // A day as a number: account orders say "Aug 28, 2026", requests 2026-08-28.
 const dayValue = (s) => new Date(/^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T00:00:00` : s).getTime() || 0;
@@ -235,10 +238,11 @@ function PortalOrders({ orders, requests, go, dispatch }) {
       // A request sent from this storefront has its lines; one from the B2B app, a count.
       const listed = Array.isArray(r.lines);
       return {
-        // Waiting for review it's still a request; decided, it has its order number.
-        key: r.number || r.id, title: r.number && r.status !== 'waiting' ? `Order ${r.number}` : 'Order request', day: dayValue(r.date), date: requestDate(r.date), status: st.label, tone: st.tone, total: r.amount,
+        // Waiting for review or for checkout it's still a request; after, it has its order number.
+        key: r.number || r.id, title: r.number && !['waiting', 'invoiced'].includes(r.status) ? `Order ${r.number}` : 'Order request', day: dayValue(r.date), date: requestDate(r.date), status: st.label, tone: st.tone, total: r.amount,
         lines: listed ? r.lines.map((l) => `${l.title} ×${l.qty}`) : [], count: listed ? null : r.lines, note: requestReason(r), order: null,
         message: r.status === 'declined' ? r.message || null : null,
+        invoice: r.status === 'invoiced' ? r.number : null,
       };
     }),
   ].sort((a, b) => b.day - a.day);
@@ -293,6 +297,18 @@ function PortalOrders({ orders, requests, go, dispatch }) {
                     <span className="acct-order-message-label">Message from the seller</span>
                     <p>{it.message}</p>
                   </div>
+                )}
+                {/* Approved: check out from the seller's invoice (the link in its email). */}
+                {it.invoice && (
+                  <button
+                    className="acct-btn"
+                    onClick={() => {
+                      addInvoiceCheckout(it.invoice);
+                      dispatch({ type: 'TOAST', message: 'Order placed (demo only)' });
+                    }}
+                  >
+                    Complete checkout
+                  </button>
                 )}
               </article>
             ))}

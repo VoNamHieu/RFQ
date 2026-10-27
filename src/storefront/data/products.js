@@ -4,11 +4,11 @@
 // product key the cart, product page and quote requests use: the first variant's
 // SKU, or the handle when the store has none. `list` is the D2C price.
 import storeCatalog from './shopifyProducts.json';
-import { productRuleFor, productRuleForCustomer, cartProblems, cartProblemsForCustomer, effectiveRules, effectiveRulesForCustomer, limitLevel, limitRules, limitState, upgradeLimits, spentSoFar } from '../../b2b/limits.js';
+import { productRuleFor, productRuleForCustomer, cartProblems, cartProblemsForCustomer, effectiveRules, effectiveRulesForCustomer, limitLevel, limitRules, limitState, upgradeLimits, spentSoFar, turnLimitOn } from '../../b2b/limits.js';
 import { TODAY } from '../../b2b/pricing.js';
 import { dbSeed } from '../../b2b/data/db.js';
 import { versionFlags } from '../../shared/versions.js';
-import { publishedOrderLimits, publishedContracts, publishedHeldOrders, readOrderRequests } from '../../shared/persistence.js';
+import { publishOrderLimits, publishedOrderLimits, publishedContracts, publishedHeldOrders, readOrderRequests, readInvoiceCheckouts } from '../../shared/persistence.js';
 import { storefrontContracts } from '../../b2b/agreements.js';
 import { normalizeDb, storefrontHeldOrders } from '../../b2b/dbHelpers.js';
 import { money } from '../utils.js';
@@ -90,8 +90,9 @@ export function productRuleForSession(sku, session) {
 
 // ── Order requests ──────────────────────────────────────────────────────────
 // The buyer's order requests at their location — orders over a maximum sent for the
-// merchant's review — and what became of each: 'waiting', 'approved' or 'declined'
-// (REQUEST_STATUS). From the orders held for review the B2B app last published (its
+// merchant's review — and what became of each: 'waiting', 'invoiced' (approved: the
+// buyer checks out from the invoice), 'approved' (checked out: a real order) or
+// 'declined' (REQUEST_STATUS). From the orders held for review the B2B app last published (its
 // sample ones until it has, e.g. ABC Hanoi's #1045), the requests this storefront
 // sent that it hasn't picked up yet, and the account's earlier ones. A held order
 // that came from one of this storefront's requests keeps the request's lines.
@@ -99,7 +100,8 @@ export function productRuleForSession(sku, session) {
 // Shown with the account's orders on the B2B Portal.
 export const REQUEST_STATUS = {
   waiting: { label: 'Waiting for review', tone: 'amber' },
-  approved: { label: 'Approved', tone: 'green' },
+  invoiced: { label: 'Awaiting checkout', tone: 'amber' },
+  approved: { label: 'Unfulfilled', tone: 'blue' },
   declined: { label: 'Declined', tone: null },
 };
 let seedHeld = null;
@@ -108,8 +110,11 @@ export function orderRequestsForSession(session) {
   const here = (x) => x.companyId === session.companyKey && x.locationId === session.locationId;
   const requests = readOrderRequests().filter(here);
   const held = (publishedHeldOrders() ?? (seedHeld ||= storefrontHeldOrders(normalizeDb(dbSeed)))).filter(here);
+  // Checked out from the invoice here, before the B2B app has marked the order placed.
+  const checkedOut = readInvoiceCheckouts();
+  const status = (h) => (h.status === 'invoiced' && checkedOut.includes(h.id) ? 'approved' : h.status || 'waiting');
   return [
-    ...held.map((h) => ({ ...(requests.find((r) => r.id === h.requestId) || h), number: h.id, status: h.status || 'waiting' })),
+    ...held.map((h) => ({ ...(requests.find((r) => r.id === h.requestId) || h), number: h.id, status: status(h) })),
     ...requests.filter((r) => !held.some((h) => h.requestId === r.id)).map((r) => ({ ...r, status: 'waiting' })),
     ...(session.orderRequests || []).filter((r) => !held.some((h) => h.id === r.number)),
   ];
@@ -188,6 +193,24 @@ export function cartProblemsForSession(lines, subtotal, session) {
     : cartProblemsForCustomer(limitsDb(), asCustomer(session), lines, subtotal, spent);
 }
 
+// A cart line for a product's first variant.
+const cartLine = (sku, qty) => ({ sku, variantId: productBySku(sku)?.variants[0]?.id, qty });
+
+// Prototype-only: the B2B demo account's cart cases (the cart drawer's Demo case).
+// Each sets the cart and turns ABC Hanoi's order maximum ($800, Block checkout —
+// ol7) on or off, saved like an edit in the B2B app so the app shows it too.
+export const CART_CASES = [
+  { id: 'product', label: 'Product blocks + product review', lines: [['701242784-HAALAND', 6], ['701242784-FODEN', 6]], orderMaximum: false },
+  { id: 'order', label: 'Order blocks + product review', lines: [['701242784-HAALAND', 5], ['701242784-FODEN', 6]], orderMaximum: true },
+];
+export function applyCartCase(c) {
+  const limits = publishedOrderLimits() || dbSeed.limits;
+  const max = limits.find((l) => l.id === 'ol7');
+  if (c.orderMaximum) publishOrderLimits(turnLimitOn(limits, max || dbSeed.limits.find((l) => l.id === 'ol7')));
+  else if (max) publishOrderLimits(limits.map((l) => (l.id === 'ol7' ? { ...l, status: 'Inactive' } : l)));
+  return c.lines.map(([sku, qty]) => cartLine(sku, qty));
+}
+
 // ── Demo accounts ────────────────────────────────────────────────────────────
 // Two sign-ins, one per B2B state, so both sides of the account page can be
 // checked without editing code. The login screen lists them for developers.
@@ -236,6 +259,9 @@ export const DEMO_ACCOUNTS = [
     get orders() { return ACCOUNT_ORDERS; },
     get quotes() { return ACCOUNT_QUOTES; },
     get orderRequests() { return ACCOUNT_ORDER_REQUESTS; },
+    // The cart signing in starts with: 6 of each jersey, over ABC's maximum of 5 —
+    // Haaland's blocks checkout, Foden's goes for review (limits ol5, ol6).
+    get cart() { return CART_CASES[0].lines.map(([sku, qty]) => cartLine(sku, qty)); },
   },
 ];
 
