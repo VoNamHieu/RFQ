@@ -671,7 +671,7 @@ function cartProblemsIn(rec, lines, subtotal, spent = {}) {
   const minValue = setting('minValue');
   if (minValue && subtotal < minValue.value) add('minValue', minValue, `Your order must be at least ${money(minValue.value)} to check out. Add ${money(minValue.value - subtotal)} more.`);
   const maxValue = setting('maxValue');
-  if (maxValue && subtotal > maxValue.value) add('maxValue', maxValue, `Orders can’t be more than ${money(maxValue.value)}. Remove ${money(subtotal - maxValue.value)} to check out.`);
+  if (maxValue && subtotal > maxValue.value) add('maxValue', maxValue, `Orders can’t be more than ${money(maxValue.value)}. Remove ${money(subtotal - maxValue.value)} to check out.`, maxValue.value);
   // Weekly and monthly maximums: this order on top of what was ordered in the period.
   const sofar = (p) => Number(spent[p]) || 0;
   ['week', 'month'].forEach((p) => {
@@ -682,7 +682,7 @@ function cartProblemsIn(rec, lines, subtotal, spent = {}) {
   const minQty = setting('minQty');
   if (minQty && totalQty < minQty.value) add('minQty', minQty, `Your order needs at least ${units(minQty.value)}. Add ${units(minQty.value - totalQty)} more.`);
   const maxQty = setting('maxQty');
-  if (maxQty && totalQty > maxQty.value) add('maxQty', maxQty, `Orders can’t have more than ${units(maxQty.value)}.`);
+  if (maxQty && totalQty > maxQty.value) add('maxQty', maxQty, `Orders can’t have more than ${units(maxQty.value)}.`, maxQty.value);
   // A product's variants together, with each variant's quantity for the pack.
   const byProduct = new Map();
   lines.forEach((line) => {

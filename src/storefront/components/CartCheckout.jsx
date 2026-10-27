@@ -16,15 +16,20 @@ export function LineLimits({ problems }) {
 }
 
 // The order's own limits above the lines (orderProblems). When the cart could go as
-// an order request (`review`), they say to fix them first.
-export function OrderLimits({ problems, review }) {
+// an order request (`review`), they say to fix them first — over a maximum the
+// products for review fit under (`keepForReview`), by lowering the others.
+export function OrderLimits({ problems, review, keepForReview = false }) {
   if (!problems.length) return null;
   return (
     <div className="limit-notice" role="alert">
       <WarningIcon />
       <div>
         <ul>{problems.map((p, i) => <li key={i}>{p.message}</li>)}</ul>
-        {review && <p>{`Fix ${problems.length > 1 ? 'these' : 'this'} first to send an order request.`}</p>}
+        {keepForReview ? (
+          <p>Consider removing products that can’t go for review, then send an order request.</p>
+        ) : review ? (
+          <p>{`Fix ${problems.length > 1 ? 'these' : 'this'} first to send an order request.`}</p>
+        ) : null}
       </div>
     </div>
   );
@@ -87,6 +92,14 @@ export function useCartCheckout() {
         return { review: p.type === 'review', message: own.charAt(0).toUpperCase() + own.slice(1) + first };
       });
   };
+  // Over an order maximum that blocks, with products that can go for review and
+  // others that can't: lowering the others keeps the ones for review (OrderLimits)
+  // — when those alone fit under every maximum the order is over.
+  const reviewSkus = new Set(reviews.filter((p) => p.sku).map((p) => p.sku));
+  const forReview = lines.filter((l) => reviewSkus.has(l.sku));
+  const overMax = orderProblems.filter((p) => p.type === 'maxValue' || p.type === 'maxQty');
+  const fits = (p) => p.period === 'order' && (p.type === 'maxValue' ? forReview.reduce((s, l) => s + l.price * l.qty, 0) : forReview.reduce((n, l) => n + l.qty, 0)) <= p.value;
+  const keepForReview = forReview.length > 0 && forReview.length < lines.length && overMax.length > 0 && overMax.every(fits);
   // Check out is off while a limit blocks; when the cart could then go as an order
   // request, the footer says what to do first — unless the order's own limits show,
   // which say it themselves (OrderLimits).
@@ -154,5 +167,5 @@ export function useCartCheckout() {
     </>
   );
 
-  return { lines, subtotal, blocking, orderProblems, lineProblems, review, checkoutHint, checkout, dialogs };
+  return { lines, subtotal, blocking, orderProblems, lineProblems, review, keepForReview, checkoutHint, checkout, dialogs };
 }
