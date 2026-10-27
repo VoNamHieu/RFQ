@@ -20,8 +20,9 @@ const REQUIRED = ['name', 'order', 'targets'];
 const isRequired = (k) => REQUIRED.includes(k) || /^rule-\d+(-products)?$/.test(k);
 
 // Create / edit one order limit — an in-frame page in the Order limits view (see
-// the OPEN_LIMIT_EDITOR action). Name, what it sets, who it applies to; status in
-// the aside. Limits never combine, so an empty field is no limit.
+// the OPEN_LIMIT_EDITOR action). Name, who it applies to (it decides what the
+// settings below offer), what it sets; status in the aside. Limits never combine,
+// so an empty field is no limit.
 export function LimitEditor() {
   const { state, dispatch } = useStore();
   const draft = state.limitEditor.draft;
@@ -206,72 +207,6 @@ export function LimitEditor() {
           </s-stack>
         </s-section>
 
-        {draft.kind === 'order' && (
-          <s-section>
-            <s-stack gap="base">
-              <s-stack gap="small-200">
-                <s-heading>Order value</s-heading>
-                <s-grid gridTemplateColumns="repeat(2, minmax(0, 1fr))" gap="small">
-                  {numberField('minValue', 'Minimum', { money: true })}
-                  {numberField('maxValue', 'Maximum', { money: true })}
-                </s-grid>
-                <s-paragraph color="subdued" fontSize="small">
-                  The cart subtotal at the {isD2C ? 'customer’s' : 'buyer’s B2B'} prices, before tax, shipping and order discounts. In your store currency, converted for buyers who pay in another.
-                </s-paragraph>
-              </s-stack>
-              <s-stack gap="small-200">
-                <s-heading>Order quantity</s-heading>
-                <s-grid gridTemplateColumns="repeat(2, minmax(0, 1fr))" gap="small">
-                  {numberField('minQty', 'Minimum', { step: 1, suffix: 'units' })}
-                  {numberField('maxQty', 'Maximum', { step: 1, suffix: 'units' })}
-                </s-grid>
-                <s-paragraph color="subdued" fontSize="small">
-                  All items in the cart added together.
-                </s-paragraph>
-              </s-stack>
-              {reviewable && (str(draft.maxValue) !== '' || str(draft.maxQty) !== '') && maxActionChoice('When an order is over the maximum')}
-              {errors.order && (
-                <s-paragraph tone="critical" id="order-limits">
-                  {errors.order}
-                </s-paragraph>
-              )}
-            </s-stack>
-          </s-section>
-        )}
-
-        {draft.kind === 'product' && (
-          <>
-            {moved.length ? (
-              <s-banner tone="info" heading="Some products follow another rule now">
-                {`Compared with the saved limit, ${moved.length} product${moved.length === 1 ? '' : 's'} now take${moved.length === 1 ? 's' : ''} ${moved.length === 1 ? 'its' : 'their'} quantities from a different rule: ${someTitles(moved)}. Check them before you save.`}
-              </s-banner>
-            ) : null}
-            <LimitRulesCard
-              rules={rules}
-              setRules={(next) => patch({ rules: next })}
-              ruleField={ruleField}
-              errors={errors}
-              products={limitProducts}
-              db={catalogDb}
-              startOpen={draft.id ? null : 0}
-            >
-              {reviewable && rules.some((r) => str(r.max) !== '') && maxActionChoice('When a product is over its maximum')}
-            </LimitRulesCard>
-          </>
-        )}
-
-        <s-section heading="Buyer message">
-          <s-text-area
-            label="Message buyers see"
-            rows={2}
-            value={draft.message || ''}
-            onInput={(e) => patch({ message: e.currentTarget.value })}
-            placeholder={defaultLimitMessage(normalizeLimit(draft))}
-            details="Shown in the cart and at checkout when an order breaks this limit. Leave it empty to use the suggested message. When the limit sets more than one thing, buyers see the suggested message for the one they broke."
-            autocomplete="off"
-          />
-        </s-section>
-
         <s-section heading="Applies to">
           <s-stack gap="small">
             <div className="wc-segmented" role="group" aria-label="Applies to">
@@ -349,6 +284,72 @@ export function LimitEditor() {
               </>
             )}
           </s-stack>
+        </s-section>
+
+        {draft.kind === 'order' && (
+          <s-section>
+            <s-stack gap="base">
+              <s-stack gap="small-200">
+                <s-heading>Order value</s-heading>
+                <s-grid gridTemplateColumns="repeat(2, minmax(0, 1fr))" gap="small">
+                  {numberField('minValue', 'Minimum', { money: true })}
+                  {numberField('maxValue', 'Maximum', { money: true })}
+                </s-grid>
+                <s-paragraph color="subdued" fontSize="small">
+                  The cart subtotal at the {isD2C ? 'customer’s' : 'buyer’s B2B'} prices, before tax, shipping and order discounts. In your store currency, converted for buyers who pay in another.
+                </s-paragraph>
+              </s-stack>
+              <s-stack gap="small-200">
+                <s-heading>Order quantity</s-heading>
+                <s-grid gridTemplateColumns="repeat(2, minmax(0, 1fr))" gap="small">
+                  {numberField('minQty', 'Minimum', { step: 1, suffix: 'units' })}
+                  {numberField('maxQty', 'Maximum', { step: 1, suffix: 'units' })}
+                </s-grid>
+                <s-paragraph color="subdued" fontSize="small">
+                  All items in the cart added together.
+                </s-paragraph>
+              </s-stack>
+              {reviewable && (str(draft.maxValue) !== '' || str(draft.maxQty) !== '') && maxActionChoice('When an order is over the maximum')}
+              {errors.order && (
+                <s-paragraph tone="critical" id="order-limits">
+                  {errors.order}
+                </s-paragraph>
+              )}
+            </s-stack>
+          </s-section>
+        )}
+
+        {draft.kind === 'product' && (
+          <>
+            {moved.length ? (
+              <s-banner tone="info" heading="Some products follow another rule now">
+                {`Compared with the saved limit, ${moved.length} product${moved.length === 1 ? '' : 's'} now take${moved.length === 1 ? 's' : ''} ${moved.length === 1 ? 'its' : 'their'} quantities from a different rule: ${someTitles(moved)}. Check them before you save.`}
+              </s-banner>
+            ) : null}
+            <LimitRulesCard
+              rules={rules}
+              setRules={(next) => patch({ rules: next })}
+              ruleField={ruleField}
+              errors={errors}
+              products={limitProducts}
+              db={catalogDb}
+              startOpen={draft.id ? null : 0}
+            >
+              {reviewable && rules.some((r) => str(r.max) !== '') && maxActionChoice('When a product is over its maximum')}
+            </LimitRulesCard>
+          </>
+        )}
+
+        <s-section heading="Buyer message">
+          <s-text-area
+            label="Message buyers see"
+            rows={2}
+            value={draft.message || ''}
+            onInput={(e) => patch({ message: e.currentTarget.value })}
+            placeholder={defaultLimitMessage(normalizeLimit(draft))}
+            details="Shown in the cart and at checkout when an order breaks this limit. Leave it empty to use the suggested message. When the limit sets more than one thing, buyers see the suggested message for the one they broke."
+            autocomplete="off"
+          />
         </s-section>
 
         <s-section heading="Dates">

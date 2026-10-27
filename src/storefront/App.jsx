@@ -7,6 +7,7 @@ import { CartDrawer } from './components/CartDrawer.jsx';
 import { QuoteRequestModal } from './components/QuoteRequestModal.jsx';
 import { Home } from './screens/Home.jsx';
 import { Product } from './screens/Product.jsx';
+import { Cart } from './screens/Cart.jsx';
 import { Account } from './screens/Account.jsx';
 import { BusinessAccount } from './screens/BusinessAccount.jsx';
 
@@ -14,6 +15,7 @@ function CurrentView() {
   const { state } = useStore();
   switch (state.view) {
     case 'product': return <Product />;
+    case 'cart': return <Cart />;
     case 'home':
     default: return <Home />;
   }

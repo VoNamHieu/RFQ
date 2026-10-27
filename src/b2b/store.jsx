@@ -34,7 +34,7 @@ import {
   injectOrderRequests,
   storefrontHeldOrders,
 } from './dbHelpers.js';
-import { publishOrderLimits, publishedOrderLimits, publishContracts, publishHeldOrders, readOrderRequests, removeOrderRequests, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY } from '../shared/persistence.js';
+import { publishOrderLimits, publishedOrderLimits, publishContracts, publishHeldOrders, readOrderRequests, removeOrderRequests, readInvoiceCheckouts, removeInvoiceCheckouts, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, INVOICE_CHECKOUTS_KEY } from '../shared/persistence.js';
 
 // The B2B god file rebuilt #app from a single `state` on every action. Here that
 // is a reducer over a view state machine + the mutable demo db. The db helpers,
@@ -1048,9 +1048,10 @@ function reducer(state, action) {
       return { ...state, db };
     }
     // ----- Orders held by an order maximum sent for review (order limits) -----
-    // Approving completes the held draft order into a real order; declining cancels
-    // it (the buyer is told, and can change the order and submit it again) — with
-    // the merchant's message to the buyer, if they wrote one (`declineMessage`).
+    // Approving sends the buyer an invoice for the held draft order: it stays a
+    // draft order ('Invoice sent') until they check out from it (INVOICE_CHECKOUTS).
+    // Declining cancels it (the buyer is told, and can change the order and submit it
+    // again) — with the merchant's message to the buyer, if they wrote one (`declineMessage`).
     case 'APPROVE_ORDER':
     case 'DECLINE_ORDER': {
       const approve = action.type === 'APPROVE_ORDER';
@@ -1059,9 +1060,22 @@ function reducer(state, action) {
       const o = c?.orders?.find((x) => x.id === action.orderId);
       if (!o) return state;
       const message = !approve && action.message ? action.message : null;
-      Object.assign(o, approve ? { status: 'Unfulfilled', shopifyStatus: 'Unfulfilled' } : { status: 'Declined', shopifyStatus: 'Cancelled', declineMessage: message });
-      c.activity = [{ when: 'Today', what: `Order ${o.id} ${approve ? 'approved' : 'declined'} after review${message ? ', with a message to the buyer' : ''}` }, ...(c.activity || [])];
-      return { ...state, db, toast: `Order ${o.id} ${approve ? 'approved' : 'declined'}` };
+      Object.assign(o, approve ? { status: 'Invoice sent', shopifyStatus: 'Draft order' } : { status: 'Declined', shopifyStatus: 'Cancelled', declineMessage: message });
+      c.activity = [{ when: 'Today', what: `Order ${o.id} ${approve ? 'approved after review, invoice sent to the buyer' : `declined after review${message ? ', with a message to the buyer' : ''}`}` }, ...(c.activity || [])];
+      return { ...state, db, toast: approve ? `Order ${o.id} approved · invoice sent` : `Order ${o.id} declined` };
+    }
+    // The buyer checked out from the invoice (on the storefront): the draft order
+    // becomes a real order.
+    case 'INVOICE_CHECKOUTS': {
+      const db = clone(state.db);
+      let placed = 0;
+      db.companies.forEach((c) => (c.orders || []).forEach((o) => {
+        if (o.status !== 'Invoice sent' || !action.ids.includes(o.id)) return;
+        Object.assign(o, { status: 'Unfulfilled', shopifyStatus: 'Unfulfilled' });
+        c.activity = [{ when: 'Today', what: `Order ${o.id} placed by the buyer from the invoice` }, ...(c.activity || [])];
+        placed++;
+      }));
+      return placed ? { ...state, db } : state;
     }
     // ----- Agreements (see agreements.js) -----
     // The editor is a page in the Agreements view; opened from a company's
@@ -1144,6 +1158,8 @@ function reducer(state, action) {
       const limit = normalizeLimit(state.limitEditor.draft);
       const isNew = !limit.id;
       if (isNew) Object.assign(limit, { id: `ol${Date.now()}`, createdAt: TODAY });
+      // Latest updates on the Order limits list: saved or turned on/off.
+      limit.updatedAt = TODAY;
       const limits = state.db.limits || [];
       const before = limits.find((l) => l.id === limit.id);
       // Saved from off to on, it's the newest limit, as when turned on in the list.
@@ -1171,7 +1187,7 @@ function reducer(state, action) {
       const limit = all.find((l) => l.id === action.id);
       const on = !!limit && limit.status !== 'Active';
       // Turned back on, it's the newest limit (turnLimitOn).
-      const limits = on ? turnLimitOn(all, limit) : all.map((l) => (l.id === action.id ? { ...l, status: 'Inactive' } : l));
+      const limits = on ? turnLimitOn(all, { ...limit, updatedAt: TODAY }) : all.map((l) => (l.id === action.id ? { ...l, status: 'Inactive', updatedAt: TODAY } : l));
       return { ...state, db: { ...state.db, limits }, toast: on ? 'Limit turned on' : 'Limit turned off' };
     }
     case 'TOAST':
@@ -1216,6 +1232,7 @@ export function StoreProvider({ children }) {
   useEffect(() => {
     const onStorage = (e) => {
       if (e.key === ORDER_REQUESTS_KEY) dispatch({ type: 'SYNC_ORDER_REQUESTS', requests: readOrderRequests() });
+      if (e.key === INVOICE_CHECKOUTS_KEY) dispatch({ type: 'INVOICE_CHECKOUTS', ids: readInvoiceCheckouts() });
       if (e.key === ORDER_LIMITS_KEY && Array.isArray(publishedOrderLimits())) dispatch({ type: 'SYNC_LIMITS', limits: upgradeLimits(publishedOrderLimits()) });
     };
     window.addEventListener('storage', onStorage);
@@ -1224,6 +1241,11 @@ export function StoreProvider({ children }) {
   useEffect(() => {
     const done = state.db.companies.flatMap((c) => c.orders || []).filter((o) => o.requestId && o.status !== 'Needs review');
     if (done.length) removeOrderRequests(done.map((o) => o.requestId));
+    // Invoice checkouts are done once their order is placed; one for an order that
+    // isn't waiting on its invoice here (this app reloaded since) is dropped too.
+    const invoiced = state.db.companies.flatMap((c) => c.orders || []).filter((o) => o.status === 'Invoice sent').map((o) => o.id);
+    const checkouts = readInvoiceCheckouts();
+    if (checkouts.length) removeInvoiceCheckouts(checkouts.filter((id) => !invoiced.includes(id)));
   }, [state.db.companies]);
   return <StoreContext.Provider value={{ state, dispatch }}>{children}</StoreContext.Provider>;
 }

@@ -129,7 +129,7 @@ const CASES = [
     run() {
       const db = withLimit(fresh(), { kind: 'product', name: 'Store packs of 6', rules: [allProducts({ increment: '6' })] }, 'six');
       return [
-        equals('Product entries kept for Hanoi', Object.keys(effectiveRules(db, 'c1', 'l1').products), ['*', 'FIL-XL', 'FIL-STD']),
+        equals('Product entries kept for Hanoi', Object.keys(effectiveRules(db, 'c1', 'l1').products), ['*', 'FIL-XL', 'FIL-STD', '701242784-HAALAND', '701242784-FODEN']),
         equals('Cart: 10 hoses', messages(cartProblems(db, 'c1', 'l1', ...hoses(1450))), ['Reinforced hose is sold in packs of 6.']),
         equals('Industrial filter, XL pack', productRuleFor(db, 'c1', 'l1', 'FIL-XL').increment, 12),
       ];

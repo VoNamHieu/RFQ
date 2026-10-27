@@ -698,9 +698,10 @@ function cartProblemsIn(rec, lines, subtotal, spent = {}) {
     const e = productEntry(rec, p.sku);
     const q = quantities(e);
     if (!q) return;
-    // Errors show for the whole cart, not on a line — so the merchant's own message
-    // is prefixed with the product it's about. Each field names the limit it came from.
-    const addLine = (fieldE, field, text) => productProblems.push({ type: 'product', field, limit: fieldE.limit, message: fieldE.limit.message ? `${p.title}: ${fieldE.limit.message}` : text });
+    // Errors can show for the whole cart, not on a line — so the merchant's own message
+    // is prefixed with the product it's about (`sku`, for a cart that shows it under the
+    // product's line). Each field names the limit it came from.
+    const addLine = (fieldE, field, text) => productProblems.push({ type: 'product', field, sku: p.sku, limit: fieldE.limit, message: fieldE.limit.message ? `${p.title}: ${fieldE.limit.message}` : text });
     if (q.min != null && p.qty < q.min) addLine(e.min, 'min', `${p.title}: order at least ${q.min}.`);
     else if (q.max != null && p.qty > q.max && !q.review) addLine(e.max, 'max', `${p.title}: order at most ${q.max}.`);
     else if (q.increment > 1 && p.each.some((n) => n % q.increment)) addLine(e.increment, 'pack', `${p.title} is sold in packs of ${q.increment}.`);

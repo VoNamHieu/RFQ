@@ -392,6 +392,18 @@ const limits = [
     storeWide: false, companyIds: ['c1', 'c2'], locationKeys: [], message: '' },
   { id: 'ol4', createdAt: '2026-04-21', name: 'ABC Hanoi review', kind: 'order', status: 'Active', maxAction: 'review', settings: orderSettings({ minValue: set(500), maxValue: set(10000) }),
     storeWide: false, companyIds: [], locationKeys: ['c1::l1'], message: '' },
+  // Two storefront jerseys for ABC: over 5, one blocks checkout and one goes for
+  // review — the B2B demo account's cart starts over both (DEMO_ACCOUNTS).
+  { id: 'ol5', createdAt: '2026-07-20', name: 'Haaland jersey maximum', kind: 'product', status: 'Active', maxAction: 'block',
+    rules: [{ id: 'r1', scopeType: 'products', collection: '', selectedProducts: ['701242784-HAALAND'], min: inherit(), max: set(5), increment: inherit() }],
+    storeWide: false, companyIds: ['c1'], locationKeys: [], message: '' },
+  { id: 'ol6', createdAt: '2026-07-20', name: 'Foden jersey review', kind: 'product', status: 'Active', maxAction: 'review',
+    rules: [{ id: 'r1', scopeType: 'products', collection: '', selectedProducts: ['701242784-FODEN'], min: inherit(), max: set(5), increment: inherit() }],
+    storeWide: false, companyIds: ['c1'], locationKeys: [], message: '' },
+  // Off until the storefront cart's demo case "Order blocks + product review" turns
+  // it on (CART_CASES): newer, it replaces ABC Hanoi review there.
+  { id: 'ol7', createdAt: '2026-07-20', name: 'ABC Hanoi order maximum', kind: 'order', status: 'Inactive', maxAction: 'block', settings: orderSettings({ maxValue: set(800) }),
+    storeWide: false, companyIds: [], locationKeys: ['c1::l1'], message: '' },
 ];
 
 // Agreements (see agreements.js). ABC's CT-301 is live and its terms are the ones

@@ -112,6 +112,8 @@ export function Product() {
     rule && { label: 'This product', ...productRow(rule, qty) },
     orderLimits && { label: 'Your order', ...orderRow(orderLimits, subtotal, units) },
   ].filter(Boolean);
+  // Buy Now goes straight to checkout, so a limit that blocks checkout (a 'warn' row) turns it off.
+  const blocked = rows.some((r) => r.tone === 'warn');
 
   const addToCart = () => {
     if (!inStock || offPack) return;
@@ -206,6 +208,12 @@ export function Product() {
           <div className="buy-stack">
             <button className="button button--full" disabled={!inStock || offPack} onClick={addToCart}>
               {inStock ? 'Add to cart' : 'Out of stock'}
+            </button>
+            <button className="button button--secondary button--full" disabled={!inStock || blocked} onClick={() => dispatch({ type: 'TOAST', message: 'Demo only' })}>
+              Buy Now
+            </button>
+            <button className="button button--secondary button--full" onClick={() => dispatch({ type: 'NAVIGATE', view: 'cart' })}>
+              Open cart page
             </button>
             <button className="button button--b2b button--full" onClick={() => dispatch({ type: 'OPEN_QUOTE', sku: product.sku })}>
               <QuoteIcon style={{ width: '1.9rem', height: '1.9rem' }} /> Request a quote

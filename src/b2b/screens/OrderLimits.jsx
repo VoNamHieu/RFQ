@@ -125,7 +125,7 @@ export function OrderLimits() {
               <s-table-header listSlot="primary">Name</s-table-header>
               <s-table-header listSlot="labeled">Type</s-table-header>
               <s-table-header listSlot="labeled">Applies to</s-table-header>
-              <s-table-header listSlot="labeled">Created date</s-table-header>
+              <s-table-header listSlot="labeled">Latest updates</s-table-header>
               <s-table-header listSlot="secondary">Status</s-table-header>
               <s-table-header listSlot="inline">
                 <s-text accessibilityVisibility="exclusive">Actions</s-text>
@@ -148,7 +148,7 @@ export function OrderLimits() {
                     <s-table-cell>
                       <s-text color={isLimitAssigned(l) ? undefined : 'subdued'}>{limitTargetsLabel(l, state.db)}</s-text>
                     </s-table-cell>
-                    <s-table-cell>{l.createdAt ? fmtDay(l.createdAt) : '—'}</s-table-cell>
+                    <s-table-cell>{l.updatedAt || l.createdAt ? fmtDay(l.updatedAt || l.createdAt) : '—'}</s-table-cell>
                     <s-table-cell>
                       <s-badge tone={STATE_TONE[limitState(l)]}>{limitState(l)}</s-badge>
                     </s-table-cell>

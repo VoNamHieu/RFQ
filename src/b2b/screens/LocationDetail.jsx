@@ -16,6 +16,7 @@ const ORDER_TONE = {
   Fulfilled: 'success',
   Paid: 'success',
   'Needs review': 'warning',
+  'Invoice sent': 'info',
   Cancelled: 'critical',
   'Draft order': 'info',
   Unfulfilled: 'attention',

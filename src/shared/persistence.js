@@ -65,6 +65,16 @@ export function removeOrderRequests(ids) {
   const left = readOrderRequests().filter((r) => !ids.includes(r.id));
   if (left.length !== readOrderRequests().length) writeJSON(ORDER_REQUESTS_KEY, left);
 }
+// Invoices ↔ B2B app: an approved held order is a draft order with an invoice sent
+// to the buyer. The buyer checks out from it on the storefront (the order number
+// lands here); the B2B app then marks that order placed and clears it.
+export const INVOICE_CHECKOUTS_KEY = 'qsInvoiceCheckouts';
+export const readInvoiceCheckouts = () => readJSON(INVOICE_CHECKOUTS_KEY) || [];
+export const addInvoiceCheckout = (orderId) => writeJSON(INVOICE_CHECKOUTS_KEY, [...readInvoiceCheckouts(), orderId]);
+export function removeInvoiceCheckouts(ids) {
+  const left = readInvoiceCheckouts().filter((id) => !ids.includes(id));
+  if (left.length !== readInvoiceCheckouts().length) writeJSON(INVOICE_CHECKOUTS_KEY, left);
+}
 
 // One-shot read of the RFQ→B2B handoff. Cached at module scope so it is safe to
 // call more than once (React StrictMode double-invokes lazy initializers, and a
@@ -82,7 +92,7 @@ export function consumeHandoff() {
 // "Reset sample data" — clear the shared demo state + any pending handoff and
 // reload back to seed (legacy resetDemoData / the top-bar "Reset data" button).
 export function resetDemo() {
-  removeKeys(DEMO_STATE_KEY, HANDOFF_KEY, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, CONTRACTS_KEY, HELD_ORDERS_KEY);
+  removeKeys(DEMO_STATE_KEY, HANDOFF_KEY, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, CONTRACTS_KEY, HELD_ORDERS_KEY, INVOICE_CHECKOUTS_KEY);
   try {
     window.location.reload();
   } catch {
