@@ -9,7 +9,7 @@ import { money } from '../utils.js';
 // Check out works as in the cart drawer (useCartCheckout).
 export function Cart() {
   const { dispatch } = useStore();
-  const { lines, subtotal, blocking, orderProblems, lineProblems, review, keepForReview, checkoutHint, checkout, dialogs } = useCartCheckout();
+  const { lines, subtotal, blocking, orderProblems, orderReviews, lineProblems, review, keepForReview, checkoutHint, checkout, dialogs } = useCartCheckout();
   const shop = () => dispatch({ type: 'NAVIGATE', view: 'home' });
 
   if (!lines.length) {
@@ -28,7 +28,7 @@ export function Cart() {
         <a className="link" onClick={shop}>Continue shopping</a>
       </div>
 
-      <OrderLimits problems={orderProblems} review={!!review} keepForReview={keepForReview} />
+      <OrderLimits problems={orderProblems} reviews={orderReviews} review={!!review} keepForReview={keepForReview} />
 
       <div className="cart-items">
         <div className="cart-items__head">

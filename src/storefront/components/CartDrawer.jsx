@@ -11,7 +11,7 @@ import { CloseIcon } from './icons.jsx';
 // account, a Demo case picks a cart and the limits it needs (CART_CASES).
 export function CartDrawer() {
   const { state, dispatch } = useStore();
-  const { lines, subtotal, blocking, orderProblems, lineProblems, review, keepForReview, checkoutHint, checkout, dialogs } = useCartCheckout();
+  const { lines, subtotal, blocking, orderProblems, orderReviews, lineProblems, review, keepForReview, checkoutHint, checkout, dialogs } = useCartCheckout();
   const [cartCase, setCartCase] = useState('');
   if (!state.cartOpen) return null;
   const close = () => dispatch({ type: 'TOGGLE_CART', open: false });
@@ -61,7 +61,7 @@ export function CartDrawer() {
         </div>
         {lines.length > 0 && (
           <div className="drawer__foot">
-            <OrderLimits problems={orderProblems} review={!!review} keepForReview={keepForReview} />
+            <OrderLimits problems={orderProblems} reviews={orderReviews} review={!!review} keepForReview={keepForReview} />
             <div className="summary-row"><span>Subtotal</span><strong>{money(subtotal)}</strong></div>
             <p className="muted" style={{ fontSize: '1.3rem', marginTop: 0 }}>Taxes and shipping calculated at checkout.</p>
             {checkoutHint && <p className="checkout-hint">{checkoutHint}</p>}
