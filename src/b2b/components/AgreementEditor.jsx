@@ -1,31 +1,24 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useStore } from '../store.jsx';
 import { kindOf, scopeLabel, baseInScope, policyPriceBreakdown, resolveDetail, withContractPricing } from '../pricing.js';
-import { limitSummary, isD2CLimit, newConflicts, blockingOf, notesOf } from '../limits.js';
-import { LimitConflictList } from './LimitConflictList.jsx';
-import { withCatalog } from './LimitEditor.jsx';
+import { limitSummary, isD2CLimit, contractLimitConflicts } from '../limits.js';
 import {
   agreementChanges,
-  limitsAfterAgreement,
   companyAfterAgreement,
   isLive,
   liveStatus,
   fmtDay,
-  sharedLocations,
   namesOf,
   joinAnd,
-  takeoverParts,
   sameAgreement,
   termWarnings,
-  agreementClashes,
+  overlapHandover,
   contractPricingAfter,
-  contractDatesAfter,
-  followsContractDates,
-  termDateWarnings,
-  coverFrom,
+  addsLaterLocations,
   canCreateAgreement,
   defaultStartDate,
   agreementScopeLabel,
+  agreementAppliesToLabel,
   agreementDatesLabel,
   appliesAt,
 } from '../agreements.js';
@@ -33,19 +26,18 @@ import { TODAY } from '../pricing.js';
 import { PricingCombobox } from './PricingCombobox.jsx';
 import { PricePreviewDialog } from './PricePreviewDialog.jsx';
 import { SelectCompaniesModal, companyPicks } from './AssignmentCard.jsx';
-import { Modal, PageHeader } from '../../shared/wc.jsx';
+import { Modal, PageHeader, useWcId } from '../../shared/wc.jsx';
 
 // Create / edit a company's agreement — an in-frame page in the Agreements view
 // (OPEN_AGREEMENT_EDITOR). Terms are picked from the Pricing and Order limits
 // libraries; who gets them is all of the company's locations or some, picked like a
 // pricing's or order limit's companies (one company per contract). An inactive one
 // is activated here; an active agreement saves as its next version, applied at once.
-// A location is in one contract at a time: an inactive one can't overlap the Active or
-// Scheduled ones at its locations (clashesAt) — where Active ones apply, it takes those
-// locations over when it starts, after they end. Drafts don't clash with each other.
-// Any location can be picked; saving says which contracts it overlaps, to change one
-// of them. Created from Contracts, the company is picked here too (`pickCompany`);
-// otherwise only its locations are.
+// A location is in one contract at a time: activating one, or saving a version of it,
+// over the Active or Scheduled ones at its locations (clashesAt) first says what
+// happens to them in the Overlaps box — those locations are this one's from its start
+// date (handOver). A draft is saved overlapping anything. Created from Contracts, the
+// company is picked here too (`pickCompany`); otherwise only its locations are.
 export function AgreementEditor() {
   const { state, dispatch } = useStore();
   const draft = state.agreementEditor.draft;
@@ -58,32 +50,31 @@ export function AgreementEditor() {
   const live = isLive(saved);
   const started = saved?.status === 'Active';
   const startsLater = liveStatus(draft) === 'Scheduled';
-  // What it does when it starts to the Active contracts at its locations ("replaces
-  // CT-301", "takes Hanoi from CT-310"); '' when there are none.
-  const takeover = started ? '' : joinAnd(takeoverParts(state.db, draft));
   // How the company's pricing and limits change when it goes live: a started one's
   // live version comes off and the new one goes on; otherwise it takes effect.
   const change = started ? { off: saved, on: draft } : { start: draft };
   const [tried, setTried] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  // Activate / Save as version over Active or Scheduled contracts at its locations.
+  const [overlapBox, setOverlapBox] = useState(false);
   const [companyModal, setCompanyModal] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const scopeTipId = useWcId('scope-tip');
   const patch = (p) => dispatch({ type: 'AGREEMENT_EDITOR_PATCH', patch: p });
-  // A term taken out drops its "Use the contract’s dates" too.
-  const setTerms = (p) => {
-    const terms = { ...draft.terms, ...p };
-    const ids = [...terms.base, ...terms.quantity, ...terms.limits];
-    patch({ terms, followDates: (draft.followDates || []).filter((id) => ids.includes(id)) });
-  };
-  const setFollow = (id, on) =>
-    patch({ followDates: on ? [...new Set([...(draft.followDates || []), id])] : (draft.followDates || []).filter((x) => x !== id) });
+  const setTerms = (p) => patch({ terms: { ...draft.terms, ...p } });
   const close = () => dispatch({ type: 'CLOSE_AGREEMENT_EDITOR' });
   // Any company can get one. A new contract's untouched start date follows the Active
   // and Scheduled contracts at its locations.
   const canPick = (c) => (pickCompany ? c.id === draft.companyId || canCreateAgreement(state.db, c.id) : c.id === draft.companyId);
   const followStart = (companyId, locationIds) =>
     !saved && draft.startDate === defaultStartDate(state.db, draft.companyId, draft.locationIds) ? { startDate: defaultStartDate(state.db, companyId, locationIds) } : {};
-  const setCompany = (id, locationIds) => patch({ companyId: id, locationIds, ...followStart(id, locationIds) });
+  // "Automatically apply this contract to locations added later": ticked by default
+  // for all locations, unticked for some; the merchant can change either.
+  const laterFor = (locationIds) => ({ applyLater: locationIds === null });
+  // Hidden while the company has Auto-add locations off; it keeps its value, so turning
+  // Auto-add back on shows it as it was.
+  const laterShown = !company || !!company.autoAddLocations;
+  const setCompany = (id, locationIds) => patch({ companyId: id, locationIds, ...laterFor(locationIds), ...followStart(id, locationIds) });
   // The contract's company and locations as the picker's picks: the whole company,
   // or `companyId::locationId` keys for some of its locations.
   const picks = companyPicks(
@@ -97,19 +88,26 @@ export function AgreementEditor() {
       const id = picked.find((x) => x !== draft.companyId) || picked[0] || (pickCompany ? '' : draft.companyId);
       const locationIds = !id ? null : companyIds.includes(id) ? null : locationKeys.filter((k) => k.startsWith(`${id}::`)).map((k) => k.split('::')[1]);
       if (id !== draft.companyId) setCompany(id, locationIds);
-      else patch({ locationIds, ...followStart(id, locationIds) });
+      else patch({ locationIds, ...((locationIds === null) !== (draft.locationIds === null) ? laterFor(locationIds) : {}), ...followStart(id, locationIds) });
     },
   );
 
-  const b2b = state.db.policies.filter((p) => p.audienceType !== 'd2c');
+  // Only Active (turned on) pricing and limits are offered; one picked before it was
+  // turned off stays listed, so it can be taken out.
+  const picked = [...draft.terms.base, ...draft.terms.quantity, ...draft.terms.limits];
+  const b2b = state.db.policies.filter((p) => p.audienceType !== 'd2c' && (p.status !== 'Inactive' || picked.includes(p.id)));
   const bases = b2b.filter((p) => kindOf(p) === 'base');
-  // The store's default for all companies, picked as a base pricing: while the
-  // contract runs it can't be turned off or deleted — for every company on it.
-  const defaultBase = draft.terms.base.includes(state.db.defaults?.b2bPolicyId) ? bases.find((p) => p.id === state.db.defaults.b2bPolicyId) : null;
   const quantities = b2b.filter((p) => kindOf(p) === 'quantity');
   // Store-wide limits already reach every company and D2C ones never reach one, so
   // they aren't offered here.
-  const limits = (state.db.limits || []).filter((l) => !l.storeWide && !isD2CLimit(l));
+  const limits = (state.db.limits || []).filter((l) => !l.storeWide && !isD2CLimit(l) && (l.status === 'Active' || picked.includes(l.id)));
+  // The limits picked for it that contradict each other (a warning: it still saves).
+  // Worked out again only when the limits change.
+  const limitConflicts = useMemo(
+    () => contractLimitConflicts(state.db, pickedOf(draft.terms.limits, state.db.limits)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.db.limits, state.db.products, draft.terms.limits],
+  );
 
   const errors = {};
   if (!draft.companyId) errors.company = 'Choose a company';
@@ -125,41 +123,56 @@ export function AgreementEditor() {
   else if (!started && draft.startDate < TODAY) errors.startDate = 'Can’t be before today';
   if (draft.endDate && draft.startDate && draft.endDate < draft.startDate) errors.endDate = 'Must be after the start date';
   else if (draft.endDate && draft.endDate < TODAY) errors.endDate = 'This date has passed';
-  // A location is in one contract at a time (clashesAt): overlapping an Active or
-  // Scheduled contract there keeps it from being saved at all, not only activated —
-  // saving says so.
-  const clash = company ? agreementClashes(state.db, draft, started) : [];
-  const clashLine = (a) => {
-    const shared = sharedLocations(company, a, draft);
-    const where = shared.length ? namesOf(shared) : company.name;
-    const is = shared.length <= 1 ? 'is' : 'are';
-    if (a.status === 'Scheduled') return `${where} ${is} in ${a.number} from ${fmtDay(a.startDate)}${a.endDate ? ` until ${fmtDay(a.endDate)}` : ''}`;
-    if (started) return `${where} ${is} already in ${a.number}`;
-    return a.endDate ? `${where} ${is} in ${a.number} until ${fmtDay(a.endDate)}` : `${where} ${is} in ${a.number}, which has no end date`;
-  };
-  if (clash.length) errors.overlap = `${clash.map(clashLine).join('. ')}. A location can be in one contract at a time.`;
   const valid = !Object.keys(errors).length;
   const shown = (k) => (tried ? errors[k] : undefined);
 
-  // Activating, or saving a live agreement, changes what the company gets — confirm first.
-  const goLive = () => (valid ? setConfirm(true) : setTried(true));
-  const save = () => (draft.companyId && !errors.overlap && (valid || (draft.name || '').trim()) ? dispatch({ type: 'SAVE_AGREEMENT' }) : setTried(true));
+  // A location is in one contract at a time (clashesAt): going live over Active or
+  // Scheduled contracts there moves those locations to this one (overlapHandover).
+  // A live one's earlier saves already did for the ones it still overlaps the same
+  // way: only new overlaps open the Overlaps box.
+  const handover = company ? overlapHandover(state.db, draft, started) : [];
+  const handedOver = live ? overlapHandover(state.db, saved, started) : [];
+  const overlapsNow = handover.filter((h) => {
+    const was = handedOver.find((x) => x.old.id === h.old.id);
+    return !was || was.from !== h.from || h.shared.some((l) => !was.shared.some((x) => x.id === l.id));
+  });
+  // One line per contract: where it overlaps, and its dates there — "Hanoi is in
+  // CT-301 until Aug 20, 2026.", "Can Tho is in CT-304 from Feb 1, 2027 until Jan 31,
+  // 2028.". The box says what saving does.
+  const overlapLine = ({ old, shared }) => {
+    const where = shared.length ? namesOf(shared) : company.name;
+    const is = shared.length <= 1 ? 'is' : 'are';
+    if (old.status === 'Scheduled') return `${where} ${is} in ${old.number} from ${fmtDay(old.startDate)}${old.endDate ? ` until ${fmtDay(old.endDate)}` : ''}.`;
+    return old.endDate ? `${where} ${is} in ${old.number} until ${fmtDay(old.endDate)}.` : `${where} ${is} in ${old.number}, which has no end date.`;
+  };
+  // Five lines at most: past that, the last one counts the rest.
+  const overlapLines = overlapsNow.length > 5
+    ? [...overlapsNow.slice(0, 4).map(overlapLine), `… and ${overlapsNow.length - 4} more`]
+    : overlapsNow.map(overlapLine);
+
+  // Activating, or saving a live agreement, changes what the company gets — confirm
+  // first (in the Overlaps box when it overlaps other contracts).
+  const goLive = () => (!valid ? setTried(true) : overlapsNow.length ? setOverlapBox(true) : setConfirm(true));
+  const save = () => (draft.companyId && (valid || (draft.name || '').trim()) ? dispatch({ type: 'SAVE_AGREEMENT' }) : setTried(true));
   const nextVersion = (saved?.version || 0) + 1;
   // Saving a live contract unchanged would only add an empty version.
   const unchanged = live && sameAgreement(saved, draft, state.db);
-  // The order-limit conflicts going live would cause (the live version — or the
-  // contracts it takes locations over from — come off first).
-  const goLiveConflicts = confirm ? newConflicts(withCatalog(state.db), limitsAfterAgreement(state.db, change)) : [];
-  // Terms that won't apply for the whole contract (turned off, or dated).
+  // Only "Automatically apply this contract to locations added later" changed: the
+  // confirm says just what that does (nothing is applied now).
+  const onlyLater =
+    live && addsLaterLocations(saved) !== addsLaterLocations(draft) && sameAgreement(saved, { ...draft, applyLater: addsLaterLocations(saved) }, state.db);
+  // Terms that won't apply for the whole contract: turned off. (Their own dates don't count.)
   const warnings = confirm ? termWarnings(state.db, draft) : [];
   const when = startsLater ? `on ${fmtDay(draft.startDate)}` : 'right away';
-  const until = draft.endDate ? ` They come off after ${fmtDay(draft.endDate)}, unless you extend it.` : '';
+  // The Activate / Save as version box and an Inactive one's Status: "ABC gets these
+  // terms right away, until Oct 31, 2026."
+  const getsTerms = `${company?.name || 'The company'} gets these terms ${when}${draft.endDate ? `, until ${fmtDay(draft.endDate)}` : ''}.`;
   // Overview: the contract at a glance, from the draft, so unsaved edits count.
   const count = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
   const covered = contractProducts(state.db, draft);
   const overview = [
     ['organization', 'Company', company?.name || 'Not picked'],
-    ['location', 'Applies to', company ? agreementScopeLabel(company, draft) || 'No locations' : '—'],
+    ['location', 'Applies to', company ? (agreementScopeLabel(company, draft) ? agreementAppliesToLabel(company, draft) : 'No locations') : '—'],
     ['calendar', 'Dates', agreementDatesLabel(draft)],
     ['receipt-dollar', 'Pricing', `${draft.terms.base.length} base · ${draft.terms.quantity.length} quantity`],
     ['order', 'Order limits', count(draft.terms.limits.length, 'limit')],
@@ -177,18 +190,6 @@ export function AgreementEditor() {
     />
     <s-page>
       <s-stack gap="base">
-        {shown('overlap') && (
-          <s-banner tone="critical" heading={`Overlaps ${joinAnd(clash.map((a) => a.number))}`}>
-            <s-stack gap="small-200">
-              <s-unordered-list>
-                {clash.map((a) => (
-                  <s-list-item key={a.id}>{`${clashLine(a)}.`}</s-list-item>
-                ))}
-              </s-unordered-list>
-              <s-paragraph>{`To save, adjust one of them: change this contract’s dates or locations, or change ${joinAnd(clash.map((a) => a.number))}.`}</s-paragraph>
-            </s-stack>
-          </s-banner>
-        )}
         <s-section>
           <s-text-field
             label="Contract name"
@@ -225,9 +226,7 @@ export function AgreementEditor() {
               </s-grid>
             </s-query-container>
             <s-paragraph color="subdued" fontSize="small">
-              {takeover
-                ? `It starts and ends on its own. On the start date it ${takeover}. After the end date, ${who} goes back to the pricing and limits outside the contract.`
-                : `It starts and ends on its own. After the end date, ${who} goes back to the pricing and limits outside the contract.`}
+              {`It starts and ends on its own. After the end date, ${who} goes back to the pricing and limits outside the contract.`}
             </s-paragraph>
           </s-stack>
         </s-section>
@@ -245,12 +244,13 @@ export function AgreementEditor() {
                 onChange={(ids) => setTerms({ base: ids })}
                 optionLabel={(p) => `${p.name} · Priority ${p.priority ?? 0}`}
               />
-              {defaultBase ? (
+              {/* One line for any base pricing picked: while the contract runs, its
+                  pricing changes only through it. */}
+              {draft.terms.base.length ? (
                 <s-paragraph color="subdued" fontSize="small">
-                  {`${defaultBase.name} is your default pricing for all companies. While this contract runs, it can’t be turned off or deleted — and that applies to every company using it as their default.`}
+                  While this contract runs, its pricing can’t be turned off or deleted.
                 </s-paragraph>
               ) : null}
-              <DatesCheck draft={draft} terms={pickedOf(draft.terms.base, state.db.policies)} onToggle={setFollow} />
             </s-stack>
             <s-stack gap="small-200">
               <s-heading>Quantity pricing</s-heading>
@@ -263,7 +263,6 @@ export function AgreementEditor() {
                 onChange={(ids) => setTerms({ quantity: ids })}
                 optionLabel={(p) => `${p.name} · ${scopeLabel(p)}`}
               />
-              <DatesCheck draft={draft} terms={pickedOf(draft.terms.quantity, state.db.policies)} onToggle={setFollow} />
             </s-stack>
             <s-stack gap="small-200">
               <s-heading>Order limits</s-heading>
@@ -277,7 +276,15 @@ export function AgreementEditor() {
                 optionLabel={(l) => `${l.name} · ${limitSummary(l, state.db)}`}
                 emptyText="No order limits to add. Store-wide limits already apply to every company."
               />
-              <DatesCheck draft={draft} terms={pickedOf(draft.terms.limits, state.db.limits)} onToggle={setFollow} />
+              {limitConflicts.length ? (
+                <s-banner tone="warning" heading="Some of these limits contradict each other">
+                  <s-unordered-list>
+                    {limitConflicts.map((c, i) => (
+                      <s-list-item key={i}>{c}</s-list-item>
+                    ))}
+                  </s-unordered-list>
+                </s-banner>
+              ) : null}
             </s-stack>
             {shown('terms') && (
               <s-paragraph tone="critical" id="agreement-terms">
@@ -287,13 +294,23 @@ export function AgreementEditor() {
           </s-stack>
         </s-section>
 
-        <s-section heading="Applies to">
+        <s-section>
           <s-stack gap="small-200">
-            {pickCompany && (
-              <s-text color="subdued" fontSize="small">
-                A location can be in one contract at a time: this one can’t overlap the Active or Scheduled contracts at its locations.
-              </s-text>
-            )}
+            <s-stack direction="inline" gap="small-400" alignItems="center">
+              <s-heading>Applies to</s-heading>
+              {pickCompany && (
+                <>
+                  <span style={{ display: 'inline-flex', cursor: 'help' }}>
+                    <s-icon type="info" color="subdued" interestFor={scopeTipId} />
+                  </span>
+                  <s-tooltip id={scopeTipId}>
+                    <s-paragraph fontSize="small">
+                      A location can be in one contract at a time: this one can’t overlap the Active or Scheduled contracts at its locations.
+                    </s-paragraph>
+                  </s-tooltip>
+                </>
+              )}
+            </s-stack>
             {/* Like the pricing and order limit editors: opens on click / Enter, not on
                 focus — closing the modal hands focus back to this field. */}
             <s-search-field
@@ -320,9 +337,17 @@ export function AgreementEditor() {
                 ))}
               </s-stack>
             ) : null}
-            {(shown('company') || shown('scope') || shown('overlap')) && (
+            {/* Here and in the company modal, while the company auto-adds locations. */}
+            {laterShown && (
+              <s-checkbox
+                label="Automatically apply this contract to locations added later"
+                checked={addsLaterLocations(draft)}
+                onChange={(e) => patch({ applyLater: e.currentTarget.checked })}
+              />
+            )}
+            {(shown('company') || shown('scope')) && (
               <s-paragraph tone="critical" id="agreement-scope">
-                {shown('company') || shown('scope') || shown('overlap')}
+                {shown('company') || shown('scope')}
               </s-paragraph>
             )}
           </s-stack>
@@ -334,22 +359,11 @@ export function AgreementEditor() {
           <div>
             <s-badge tone={started ? 'success' : live ? 'info' : undefined}>{live ? `${saved.status} · version ${saved.version}` : 'Inactive'}</s-badge>
           </div>
-          {/* While the Overlaps banner is up it can't be saved, so nothing on what saving does. */}
-          {shown('overlap') ? (
-            live ? null : (
-              <s-paragraph color="subdued" fontSize="small">
-                Nothing is applied yet.
-              </s-paragraph>
-            )
-          ) : (
-            <s-paragraph color="subdued" fontSize="small">
-              {live
-                ? `Saving gives ${company?.name} your changes ${when}, as version ${nextVersion}.`
-                : takeover
-                  ? `Nothing is applied yet. Once activated, it ${takeover} ${startsLater ? `on ${fmtDay(draft.startDate)}` : 'right away'}.`
-                  : `Nothing is applied yet. Activate to give ${who} these terms ${startsLater ? `from ${fmtDay(draft.startDate)}` : 'right away'}.`}
-            </s-paragraph>
-          )}
+          <s-paragraph color="subdued" fontSize="small">
+            {live
+              ? `Saving gives ${company?.name} your changes ${when}, as version ${nextVersion}.`
+              : `Nothing is applied yet. ${getsTerms}`}
+          </s-paragraph>
         </s-stack>
       </s-section>
       <s-section slot="aside" heading="Overview">
@@ -381,52 +395,73 @@ export function AgreementEditor() {
         onToggleLocation={picks.toggleLocation}
         onClose={() => setCompanyModal(false)}
         single
+        // The same checkbox as under Applies to.
+        applyLater={addsLaterLocations(draft)}
+        onApplyLaterChange={laterShown ? (on) => patch({ applyLater: on }) : undefined}
+        laterLabel="Automatically apply this contract to locations added later"
+        laterDetails=""
       />
 
-      {confirm && (
-        <Modal onClose={() => setConfirm(false)} heading={live ? `Save ${draft.number} as version ${nextVersion}?` : `Activate ${draft.number}?`}>
+      {overlapBox && (
+        <Modal onClose={() => setOverlapBox(false)} heading={`Overlaps ${joinAnd(overlapsNow.map((h) => h.old.number))}`}>
           <s-stack gap="small">
-            <s-paragraph>
-              {live
-                ? `${agreementChanges(saved, draft, state.db)}. ${company?.name} gets the new terms ${when}.${until}`
-                : takeover
-                  ? `Its pricing and order limits are assigned to ${company?.name} ${when}: it ${takeover}.${until}`
-                  : `Its pricing and order limits are assigned to ${company?.name} ${when}.${until}`}
-            </s-paragraph>
-            {warnings.length ? (
-              <>
-                <s-paragraph>These terms won’t apply for the whole contract:</s-paragraph>
-                <s-unordered-list>
-                  {warnings.map((w) => (
-                    <s-list-item key={w}>{w}</s-list-item>
-                  ))}
-                </s-unordered-list>
-              </>
-            ) : null}
-            {/* Order limits that would stop orders block it; notes don't. */}
-            {blockingOf(goLiveConflicts).length ? (
-              <>
-                <s-paragraph>{`${startsLater ? 'When it starts, its' : 'Its'} order limits would stop orders, so it can’t be ${live ? 'saved' : 'activated'}. Change the limits first:`}</s-paragraph>
-                <LimitConflictList conflicts={blockingOf(goLiveConflicts)} />
-              </>
-            ) : null}
-            {notesOf(goLiveConflicts).length ? (
-              <>
-                <s-paragraph>{startsLater ? 'When it starts, how its order limits work with others:' : 'How its order limits work with others:'}</s-paragraph>
-                <LimitConflictList conflicts={notesOf(goLiveConflicts)} />
-              </>
-            ) : null}
+            <s-paragraph>{`These overlap with ${draft.number}:`}</s-paragraph>
+            <s-unordered-list>
+              {overlapLines.map((line) => (
+                <s-list-item key={line}>{line}</s-list-item>
+              ))}
+            </s-unordered-list>
+            <s-paragraph>If you save, the contract that starts later runs where they overlap, and the other one ends or gives up those locations.</s-paragraph>
           </s-stack>
           <s-button
             slot="primary-action"
             variant="primary"
-            disabled={blockingOf(goLiveConflicts).length > 0}
+            onClick={() => {
+              setOverlapBox(false);
+              dispatch({ type: 'SAVE_AGREEMENT', activate: true });
+            }}
+          >
+            Save
+          </s-button>
+          <s-button slot="secondary-actions" onClick={() => setOverlapBox(false)}>
+            Cancel
+          </s-button>
+        </Modal>
+      )}
+      {confirm && (
+        <Modal onClose={() => setConfirm(false)} heading={live ? `Save ${draft.number} as version ${nextVersion}?` : `Activate ${draft.number}?`}>
+          {onlyLater ? (
+            <s-paragraph>
+              {addsLaterLocations(draft)
+                ? `From now on, locations added to ${company?.name} join ${draft.number} automatically.`
+                : `From now on, locations added to ${company?.name} won’t join ${draft.number} automatically. Locations already in it stay.`}
+            </s-paragraph>
+          ) : (
+            <s-stack gap="small">
+              <s-paragraph>
+                {live ? `${agreementChanges(saved, draft, state.db)}. ${getsTerms}` : getsTerms}
+              </s-paragraph>
+              {warnings.length ? (
+                <>
+                  <s-paragraph>These terms won’t apply for the whole contract:</s-paragraph>
+                  <s-unordered-list>
+                    {warnings.map((w) => (
+                      <s-list-item key={w}>{w}</s-list-item>
+                    ))}
+                  </s-unordered-list>
+                </>
+              ) : null}
+            </s-stack>
+          )}
+          <s-button
+            slot="primary-action"
+            variant="primary"
             onClick={() => {
               setConfirm(false);
               dispatch({ type: 'SAVE_AGREEMENT', activate: true });
             }}
           >
-            {live ? 'Save and apply' : 'Activate'}
+            {onlyLater ? 'Save' : live ? 'Save and apply' : 'Activate'}
           </s-button>
           <s-button slot="secondary-actions" onClick={() => setConfirm(false)}>
             Cancel
@@ -439,31 +474,6 @@ export function AgreementEditor() {
 }
 
 const pickedOf = (ids, list) => ids.map((id) => (list || []).find((x) => x.id === id)).filter(Boolean);
-
-// Picked terms whose own dates don't cover the contract (from its start, or from
-// today once it has started), each with the choice to apply it on the contract's
-// dates here instead — off unless ticked. One already on them stays listed so it
-// can be switched back.
-function DatesCheck({ draft, terms, onToggle }) {
-  const from = coverFrom(draft);
-  const rows = terms
-    .map((x) => ({ x, gaps: termDateWarnings(x, draft, from) }))
-    .filter(({ x, gaps }) => gaps.length || followsContractDates(draft, x.id));
-  if (!rows.length) return null;
-  return (
-    <s-stack gap="small-200">
-      {rows.map(({ x, gaps }) => (
-        <s-checkbox
-          key={x.id}
-          label={`Use the contract’s dates for ${x.name}`}
-          details={gaps.length ? `${gaps.join('. ')}.` : undefined}
-          checked={followsContractDates(draft, x.id)}
-          onChange={(e) => onToggle(x.id, e.currentTarget.checked)}
-        />
-      ))}
-    </s-stack>
-  );
-}
 
 // The products the contract's pricing covers: a base pricing's product scope, a
 // quantity pricing's.
@@ -486,8 +496,7 @@ function ContractPricePreview({ draft, change, products, onClose }) {
   const company = companyAfterAgreement(state.db, change, draft.companyId);
   const locations = (company?.locations || []).filter((l) => appliesAt(company, draft, l.id));
   const location = locations.find((l) => l.id === locationId) || locations[0] || null;
-  // Resolved with this contract in force, so its pricing comes first (on the
-  // contract's dates where ticked).
+  // Resolved with this contract in force, so its pricing comes first, on its dates.
   const entries = withContractPricing(
     contractPricingAfter(state.db, change, draft),
     () =>
@@ -495,7 +504,6 @@ function ContractPricePreview({ draft, change, products, onClose }) {
         const d = resolveDetail(company, p, state.db.policies, undefined, location);
         return { product: p, shopify: p.list, final: d.price, decidedBy: d.decidedBy, priority: d.policy ? d.policy.priority ?? 0 : null };
       }),
-    contractDatesAfter(state.db, change, draft),
   );
   const hasPricing = draft.terms.base.length || draft.terms.quantity.length;
 

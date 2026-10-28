@@ -35,7 +35,9 @@ export function CartDrawer() {
   // One line per variant (product limits count each variant on its own), named
   // with the variant when the product has several.
   const lineTitle = (l) => (l.product?.variants?.length > 1 && l.variant ? `${l.product.title} (${l.variant.title})` : l.product?.title || l.sku);
-  const problems = cartProblemsForSession(lines.map((l) => ({ sku: l.sku, title: lineTitle(l), qty: l.qty })), subtotal, state.session);
+  // With each line's unit price, so an order limit and a product's limit that contradict
+  // are settled for this order (see cartProblems).
+  const problems = cartProblemsForSession(lines.map((l) => ({ sku: l.sku, title: lineTitle(l), qty: l.qty, price: l.price })), subtotal, state.session);
   const blocking = problems.filter((p) => p.type !== 'review');
   const review = problems.find((p) => p.type === 'review');
   const close = () => dispatch({ type: 'TOGGLE_CART', open: false });

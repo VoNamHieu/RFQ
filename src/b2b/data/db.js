@@ -6,8 +6,7 @@ const defaults = { b2bPolicyId: null, wholesalePolicyId: null };
 
 // Upcoming only (Contracts): two of CT-301's terms are out of their own dates on the
 // demo's "today", Jul 28, 2026 — VLV-40 Contract Price ended Jul 20, Pallet Breaks
-// starts Aug 5 — so the company's Contract tab marks them and the buyer's Contract
-// card on the storefront leaves them out. Current keeps them undated.
+// starts Aug 5 — yet in CT-301 they apply on its dates. Current keeps them undated.
 const contractCase = (dates) => (versionFlags().agreements ? { validityType: 'dated', ...dates } : {});
 
 // Each product carries its variants. The FIRST variant is the default and its

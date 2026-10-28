@@ -9,8 +9,9 @@ const LEVEL_LABEL = { location: 'This location', company: 'Company', store: 'Sto
 // A location's order limits: every active limit that reaches it (its own, its
 // company's, store-wide), most specific first, read off the location's record. A
 // setting a more specific limit replaces here is struck through and names the
-// limit that wins; a product rule that lost only some fields lists those. One a
-// contract gives here is badged with it, as pricing is.
+// limit that wins — or the contract, when a contract's limit replaces it. A product
+// rule that lost only some fields lists those. One a contract gives here is badged
+// with it, as pricing is.
 export function LocationLimitsCard({ company, location }) {
   const { state, dispatch } = useStore();
   const addId = useWcId('add-limit');
@@ -72,7 +73,8 @@ export function LocationLimitsCard({ company, location }) {
                   <s-badge tone={level === 'location' ? 'info' : undefined}>{LEVEL_LABEL[level]}</s-badge>
                 </s-grid>
                 {rules.map((r) =>
-                  r.replacedBy ? (
+                  // Replaced by a contract's limit: shown like any other rule.
+                  r.replacedBy && !r.replacedByContract ? (
                     <s-stack key={r.text} gap="none">
                       <s-paragraph fontSize="small" color="subdued">
                         <s>{r.text}</s>
@@ -84,7 +86,7 @@ export function LocationLimitsCard({ company, location }) {
                     <s-stack key={r.text} gap="none">
                       <s-paragraph fontSize="small">{r.text}</s-paragraph>
                       {r.partly.map((p) => (
-                        <s-paragraph key={p.field} fontSize="small" color="subdued">{`${p.label} replaced here by ${p.by?.name || 'another limit'}`}</s-paragraph>
+                        <s-paragraph key={p.field} fontSize="small" color="subdued">{`${p.label} replaced here by ${p.contract || p.by?.name || 'another limit'}`}</s-paragraph>
                       ))}
                     </s-stack>
                   ) : (

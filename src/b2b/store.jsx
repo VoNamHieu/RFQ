@@ -3,8 +3,7 @@ import { shopifyCompanies } from './data/directory.js';
 import { policyUsageCount, slotIds, hasOwnSlot, TODAY, setContractPricing } from './pricing.js';
 import { newRule, newBaseBuilder, newQuantityBuilder, builderDraft } from './builders.js';
 import { buildInitialState } from './initialState.js';
-import { newLimit, normalizeLimit, upgradeLimits, toDraft, warmPriceIndex, isD2CLimit } from './limits.js';
-import { withCatalog } from './limitCatalog.js';
+import { newLimit, normalizeLimit, upgradeLimits, toDraft, isD2CLimit } from './limits.js';
 import { versionFlags } from '../shared/versions.js';
 import {
   newAgreement,
@@ -17,15 +16,19 @@ import {
   addVersion,
   closeAgreement,
   takeEffect,
+  handOver,
   defaultStartDate,
   duplicateAgreement,
   liveContractPricing,
-  liveContractDates,
   newlyBroken,
   recordTermEdit,
   dropTerm,
   recordContractNumber,
+  stampContractLimits,
   storefrontContracts,
+  replaceOutsideContracts,
+  replaceLimitOutsideContracts,
+  joinLaterLocations,
 } from './agreements.js';
 import { todayISO, registrationDuplicates, isD2CRegistration } from './registrations.js';
 import {
@@ -453,7 +456,8 @@ function reducer(state, action) {
           else if (!known.locations) known.locations = sc.location;
         });
       const added = picked.map((l) => ({ ...fromShopifyLocation(l), buyers: c.contacts.filter((ct) => ct.locations === l.name).length }));
-      c.locations = [...(c.locations || []), ...added];
+      // They join the company's contracts that apply to locations added later.
+      joinLaterLocations(db, c, added);
       return { ...state, db, toast: added.length === 1 ? 'Location added' : `${added.length} locations added` };
     }
     // Removes locations from the app only (Shopify keeps them, unless already deleted
@@ -670,7 +674,8 @@ function reducer(state, action) {
             .filter((c) => names.includes(c.location) || (withUnplaced && !c.location))
             .map((c) => ({ name: c.name, email: c.email, role: c.role, access: c.access, locations: c.location }));
         if (existing) {
-          existing.locations = [...(existing.locations || []), ...picked.map(fromShopifyLocation)];
+          // They join the company's contracts that apply to locations added later.
+          joinLaterLocations(db, existing, picked.map(fromShopifyLocation));
           existing.autoAddLocations = autoAdd;
           const known = new Set((existing.contacts || []).map((c) => c.email));
           existing.contacts = [...(existing.contacts || []), ...contactsAt(picked.map((l) => l.name), false).filter((c) => !known.has(c.email))];
@@ -744,7 +749,8 @@ function reducer(state, action) {
       if (!linked || !linked.autoAddLocations) return { ...state, shopifyNewLocations, toast: 'Location created' };
       const db = clone(state.db);
       const c = db.companies.find((x) => x.id === linked.id);
-      c.locations = [...(c.locations || []), fromShopifyLocation(loc)];
+      // It joins the company's contracts that apply to locations added later.
+      joinLaterLocations(db, c, [fromShopifyLocation(loc)]);
       c.activity = [{ when: 'Today', what: `${name} added automatically from Shopify` }, ...(c.activity || [])];
       return { ...state, db, shopifyNewLocations, toast: 'Location added' };
     }
@@ -880,16 +886,6 @@ function reducer(state, action) {
         }
         return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: 'Pricing saved' };
       }
-      // Saved as a new pricing (a pricing live contracts hold): the changes go to a copy
-      // that isn't assigned anywhere yet, and this one stays as it is — in the contracts
-      // and everywhere else it's used.
-      if (action.asNew) {
-        const copy = JSON.parse(JSON.stringify(existing));
-        Object.assign(copy, draft, { id: demoPolicyId(db) });
-        if (copy.name === existing.name) copy.name = `Copy of ${existing.name}`;
-        db.policies.push(copy);
-        return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: 'Saved as a new pricing' };
-      }
       // Editing an existing profile. If it is SHARED (assigned beyond the company
       // we are editing from) and we are editing from a company scope, fork an
       // account-specific copy so the edit does not silently change every assignee
@@ -916,6 +912,31 @@ function reducer(state, action) {
       const picked = state.editorContext?.locationIds ?? null;
       const wanted = (l) => !picked || picked.includes(l.id);
       const later = state.editorContext?.applyLater === true;
+      // Saved as a new pricing (a pricing live contracts hold): who it serves, as picked
+      // here, first (the Active contracts' companies and locations stay on it); then the
+      // changes go to a copy that takes its place everywhere outside the Active
+      // contracts, and this one stays as it is, only in the contracts.
+      if (action.asNew) {
+        // Switched to D2C Wholesale: the changes go to a new D2C pricing, and this one
+        // stays as it is (Company-based B2B, in its contracts, assigned as before). D2C
+        // pricing doesn't reach companies, so the copy takes no one's place there.
+        if (draft.audienceType === 'd2c' && existing.audienceType !== 'd2c') {
+          const copy = JSON.parse(JSON.stringify(existing));
+          Object.assign(copy, draft, { id: demoPolicyId(db) });
+          if (copy.name === existing.name) copy.name = `Copy of ${existing.name}`;
+          db.policies.push(copy);
+          applyAssignment(db, copy.id, draft);
+          return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: 'Saved as a new pricing' };
+        }
+        if (!state.editorContext?.companyId) applyAssignment(db, existing.id, draft);
+        else if (pickLocations) syncCompanyLocations(scopeCompany, kind, existing.id, wanted, draft.priority, later);
+        const copy = JSON.parse(JSON.stringify(existing));
+        Object.assign(copy, draft, { id: demoPolicyId(db) });
+        if (copy.name === existing.name) copy.name = `Copy of ${existing.name}`;
+        db.policies.push(copy);
+        replaceOutsideContracts(db, existing.id, copy.id);
+        return { ...state, db, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null, toast: 'Saved as a new pricing' };
+      }
       if (scopeCompany && sharedElsewhere && !action.applyToAll) {
         const fork = JSON.parse(JSON.stringify(existing));
         Object.assign(fork, draft, { id: demoPolicyId(db), type: 'Account-specific' });
@@ -1095,6 +1116,7 @@ function reducer(state, action) {
       // follows the Active contracts at those locations.
       if (action.locationIds && action.locationIds.length < (company.locations || []).length) {
         fresh.locationIds = action.locationIds;
+        fresh.applyLater = false;
         fresh.startDate = defaultStartDate(state.db, company.id, fresh.locationIds);
       }
       const draft = found ? clone(found) : fresh;
@@ -1112,8 +1134,7 @@ function reducer(state, action) {
       const db = clone(state.db);
       const draft = clone(action.draft || state.agreementEditor.draft);
       draft.name = (draft.name || '').trim();
-      // Only its own terms can be on its dates.
-      draft.followDates = (draft.followDates || []).filter((id) => [...draft.terms.base, ...draft.terms.quantity, ...draft.terms.limits].includes(id));
+      draft.updatedAt = new Date().toISOString();
       const prev = draft.id ? (db.agreements || []).find((a) => a.id === draft.id) : null;
       const wasLive = isLive(prev);
       const goLive = wasLive || !!action.activate;
@@ -1124,6 +1145,9 @@ function reducer(state, action) {
       if (goLive) {
         // Live terms come off first; they go back on if it's (still) in its dates.
         if (prev?.status === 'Active') unapplyAgreement(db, prev);
+        // Over Active or Scheduled contracts at its locations (the Overlaps box): those
+        // locations are its from its start date, or today once it has started.
+        handOver(db, draft, prev?.status === 'Active');
         const status = liveStatus(draft);
         if (status === 'Scheduled') draft.status = 'Scheduled';
         else if (prev?.status === 'Active') applyAgreement(db, draft);
@@ -1156,7 +1180,7 @@ function reducer(state, action) {
     case 'DELETE_AGREEMENT':
       return {
         ...state,
-        db: { ...state.db, agreements: (state.db.agreements || []).filter((a) => !(a.id === action.id && a.status === 'Inactive')) },
+        db: { ...state.db, agreements: (state.db.agreements || []).filter((a) => !(a.id === action.id && (a.status === 'Inactive' || a.status === 'Scheduled'))) },
         agreementEditor: state.agreementEditor?.draft.id === action.id ? null : state.agreementEditor,
         toast: 'Contract deleted',
       };
@@ -1173,16 +1197,29 @@ function reducer(state, action) {
       return { ...state, ...(state.limitEditor?.returnTo || {}), limitEditor: null };
     case 'SAVE_LIMIT': {
       const limit = normalizeLimit(state.limitEditor.draft);
-      // Saved as a new limit (one live contracts hold): the changes go to a copy that
-      // isn't assigned anywhere yet, and this one stays as it is — in the contracts and
-      // everywhere else it applies.
+      // Saved as a new limit (one live contracts hold): who it applies to, as picked
+      // here, first (the Active contracts' companies and locations stay on it); then the
+      // changes go to a copy that takes its place everywhere outside the Active
+      // contracts, and this one stays as it is, only in the contracts.
       if (action.asNew) {
-        const before = (state.db.limits || []).find((l) => l.id === limit.id);
-        const copy = { ...limit, id: `ol${Date.now()}`, storeWide: false, companyIds: [], locationKeys: [], contractDatesAt: [] };
-        if (before && copy.name === before.name) copy.name = `Copy of ${before.name}`;
+        const db = clone(state.db);
+        const old = db.limits.find((l) => l.id === limit.id);
+        // Switched to D2C Wholesale: the changes go to a new D2C limit, and this one
+        // stays as it is (Company-based B2B, in its contracts, applying where it did).
+        if (isD2CLimit(limit) && !isD2CLimit(old)) {
+          const copy = { ...limit, id: `ol${Date.now()}`, contractAt: {}, updatedAt: new Date().toISOString() };
+          if (copy.name === old.name) copy.name = `Copy of ${old.name}`;
+          db.limits.push(copy);
+          return { ...state, db, ...(state.limitEditor.returnTo || {}), limitEditor: null, toast: 'Saved as a new order limit' };
+        }
+        Object.assign(old, { storeWide: !!limit.storeWide, companyIds: limit.companyIds || [], locationKeys: limit.locationKeys || [] });
+        const copy = { ...limit, id: `ol${Date.now()}`, contractAt: {}, updatedAt: new Date().toISOString() };
+        if (copy.name === old.name) copy.name = `Copy of ${old.name}`;
+        db.limits.push(copy);
+        replaceLimitOutsideContracts(db, old.id, copy.id);
         return {
           ...state,
-          db: { ...state.db, limits: [...(state.db.limits || []), copy] },
+          db,
           ...(state.limitEditor.returnTo || {}),
           limitEditor: null,
           toast: 'Saved as a new order limit',
@@ -1190,6 +1227,8 @@ function reducer(state, action) {
       }
       const isNew = !limit.id;
       if (isNew) limit.id = `ol${Date.now()}`;
+      // When it was last saved: between two limits that contradict on a product, the newer applies.
+      limit.updatedAt = new Date().toISOString();
       const limits = state.db.limits || [];
       const db = { ...state.db, limits: isNew ? [...limits, limit] : limits.map((l) => (l.id === limit.id ? limit : l)), agreements: clone(state.db.agreements || []) };
       // Switched to D2C Wholesale, it comes off every contract holding it; live ones
@@ -1226,20 +1265,25 @@ function reducer(state, action) {
 // that would take one off where it applies, turn it off or delete it is turned
 // down (the screens lock those actions first; this catches every other way).
 const CONTRACT_ACTIONS = new Set(['SAVE_AGREEMENT', 'END_AGREEMENT', 'RENEW_AGREEMENT', 'DELETE_AGREEMENT', 'DELETE_COMPANY', 'DELETE_LOCATIONS', 'SET_EMPTY_MODE', 'SYNC_LIMITS']);
-function guardedReducer(state, action) {
+function checkedReducer(state, action) {
   const next = reducer(state, action);
   if (next.db === state.db || CONTRACT_ACTIONS.has(action.type) || !versionFlags().agreements) return next;
   const broken = newlyBroken(state.db, next.db);
   return broken.length ? { ...state, toast: `Part of ${broken[0].number} · edit the contract to change it` } : next;
+}
+// Where Active contracts give order limits follows every change (stampContractLimits).
+function guardedReducer(state, action) {
+  const next = checkedReducer(state, action);
+  return next.db === state.db ? next : { ...next, db: stampContractLimits(next.db) };
 }
 
 const StoreContext = createContext(null);
 
 export function StoreProvider({ children }) {
   const [state, dispatch] = useReducer(guardedReducer, undefined, buildInitialState);
-  // Live contracts' pricing applies first (on the contract's dates where ticked): the
-  // engine reads it before this render.
-  setContractPricing(liveContractPricing(state.db), liveContractDates(state.db));
+  // Live contracts' pricing applies first, on the contract's dates: the engine reads it
+  // before this render.
+  setContractPricing(liveContractPricing(state.db));
   // Order limits reach the storefront (and other windows of this app); order
   // requests come back from it, even while this tab is open. A request the
   // merchant approved or declined is done, so it doesn't come back on reload (see
@@ -1264,16 +1308,6 @@ export function StoreProvider({ children }) {
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, []);
-  // The prices order-limit checks read are worked out ahead, when the pricings,
-  // the catalog or the companies change (in production a background job), so
-  // saving a limit never waits for them.
-  useEffect(() => {
-    if (!versionFlags().orderLimits) return undefined;
-    const run = () => warmPriceIndex(withCatalog(state.db));
-    const idle = typeof window.requestIdleCallback === 'function';
-    const id = idle ? window.requestIdleCallback(run) : setTimeout(run, 200);
-    return () => (idle ? window.cancelIdleCallback(id) : clearTimeout(id));
-  }, [state.db.policies, state.db.products, state.db.companies]);
   useEffect(() => {
     const done = state.db.companies.flatMap((c) => c.orders || []).filter((o) => o.requestId && o.status !== 'Needs review');
     if (done.length) removeOrderRequests(done.map((o) => o.requestId));

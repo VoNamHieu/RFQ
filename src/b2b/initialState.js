@@ -6,7 +6,7 @@ import { DEMO_STATE_KEY, readJSON, consumeHandoff, readOrderRequests, publishedO
 import { versionFlags } from '../shared/versions.js';
 import { upgradeLimits } from './limits.js';
 import { normalizeDb, injectRfqCompany, applyQuotePricingTransfer, injectOrderRequests } from './dbHelpers.js';
-import { syncContractDates, seedSnapshots } from './agreements.js';
+import { syncContractDates, seedSnapshots, stampContractLimits } from './agreements.js';
 
 // Prototype: the storefront docks this app's Order limits screen (?embed=limits),
 // without the admin frame, so a limit change shows in its cart right away.
@@ -64,7 +64,7 @@ export function makeBaseState() {
     // The seeded registrations came in through the form, so it already exists. It starts
     // unpublished so Home shows the "form isn't published" warning without any clicks.
     // Contracts start and expire by date (the daily job, run once on load here).
-    db: syncContractDates(seedSnapshots(normalizeDb({ ...dbSeed, registrations: registrationSeed, hasRegistrationForm: true, registrationFormPublished: false, rfqAppInstalled: true }))),
+    db: stampContractLimits(syncContractDates(seedSnapshots(normalizeDb({ ...dbSeed, registrations: registrationSeed, hasRegistrationForm: true, registrationFormPublished: false, rfqAppInstalled: true })))),
     toast: null,
   };
 }
@@ -79,7 +79,7 @@ export function buildInitialState() {
   // Order limits as last saved (they're shared with the storefront), and order
   // requests buyers sent from it, waiting for review.
   const limits = publishedOrderLimits();
-  if (Array.isArray(limits)) s.db.limits = upgradeLimits(limits);
+  if (Array.isArray(limits)) s.db = stampContractLimits({ ...s.db, limits: upgradeLimits(limits) });
   injectOrderRequests(s.db, readOrderRequests());
   if (EMBEDDED === 'limits' && versionFlags().orderLimits) s.view = 'limits';
   // 2) One-shot handoff: open the specific company just handed over from RFQ.

@@ -151,7 +151,7 @@ const CONTRACT_EMAIL_TEMPLATES = {
   allow_contract_reminder_email: {
     title: 'Extension reminder',
     description: 'Email sent to admin before a contract ends',
-    detail: 'Extension reminder email is sent automatically to admin 30 days before a contract’s end date, or halfway through a contract shorter than 60 days, unless a next contract is set to take over or the contract has no terms. A contract shorter than 7 days gets none',
+    detail: 'Extension reminder email is sent automatically to admin 30 days before a contract’s end date, or halfway through a contract shorter than 60 days, unless a next contract is set to take over. A contract shorter than 7 days gets none',
     dynamicValues: CONTRACT_DYNAMIC_VALUES,
     preheaderFields: ADMIN_PREHEADER_FIELDS,
   },

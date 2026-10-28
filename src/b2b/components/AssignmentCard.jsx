@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Modal } from '../../shared/wc.jsx';
+import { joinAnd } from '../agreements.js';
 
 // "Who this pricing serves" — a Company-based B2B / D2C Wholesale segmented
 // switch. For B2B, a "Search companies" field opens a Select-companies modal where
@@ -70,9 +71,25 @@ function InlineCheckList({ items, selected, onSet, searchable, placeholder, empt
 // ticked company with 2+ locations lists them underneath (all ticked) so the
 // pricing can go to only some; ticking every location is the whole company. With
 // `onApplyLaterChange`, a checkbox says whether locations added later get it too
-// (`applyLater`) at the companies picked. `single`: one company only (a contract) —
+// (`applyLater`) at the companies picked (`laterLabel` / `laterDetails`: its text).
+// `single`: one company only (a contract) —
 // each company has a radio button instead, and picking one replaces the one before.
-export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompany, onToggleLocation, onClose, applyLater = true, onApplyLaterChange, single = false }) {
+// `keep`: what Active contracts give it to — companyId → { locationId (or
+// '__company'): contract number } — can't be unticked here.
+export function SelectCompaniesModal({
+  open,
+  companies,
+  tickedOf,
+  onToggleCompany,
+  onToggleLocation,
+  onClose,
+  applyLater = true,
+  onApplyLaterChange,
+  laterLabel = 'Automatically apply this pricing to locations added later',
+  laterDetails = 'This only applies to companies with “Automatically add new locations” turned on.',
+  single = false,
+  keep = {},
+}) {
   const [q, setQ] = useState('');
   const query = q.trim().toLowerCase();
   const shown = query ? companies.filter((c) => `${c.name} ${c.contact} ${c.email}`.toLowerCase().includes(query)) : companies;
@@ -98,6 +115,8 @@ export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompan
             shown.map((c, i) => {
               const ticked = tickedOf(c);
               const all = c.locs.length ? ticked.length === c.locs.length : ticked.length > 0;
+              const kept = keep[c.id] || {};
+              const allKept = Object.keys(kept).length > 0 && (!c.locs.length || c.locs.every((l) => kept[l.id]));
               return (
                 <React.Fragment key={c.id}>
                   {i > 0 ? <s-divider /> : null}
@@ -122,6 +141,7 @@ export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompan
                           accessibilityLabel={`Select ${c.name}`}
                           checked={all}
                           indeterminate={!all && ticked.length > 0}
+                          disabled={allKept}
                           onChange={(e) => {
                             const want = e.currentTarget.checked;
                             if (want === all) return; // a repeat event for the same click
@@ -142,6 +162,11 @@ export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompan
                         <s-text color="subdued" fontSize="small">
                           {`${c.nLoc} location${c.nLoc === 1 ? '' : 's'} · ${c.nContacts} contact${c.nContacts === 1 ? '' : 's'}`}
                         </s-text>
+                        {allKept ? (
+                          <s-text color="subdued" fontSize="small">
+                            {`Part of ${joinAnd([...new Set(Object.values(kept))])}`}
+                          </s-text>
+                        ) : null}
                       </s-stack>
                     </s-grid>
                     {/* Its locations, lined up with the text (checkbox + gap + avatar + gap). */}
@@ -153,6 +178,8 @@ export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompan
                               key={l.id}
                               label={l.name}
                               checked={ticked.includes(l.id)}
+                              disabled={!!kept[l.id]}
+                              details={kept[l.id] ? `Part of ${kept[l.id]}` : undefined}
                               onChange={(e) => onToggleLocation(c, l.id, e.currentTarget.checked)}
                             />
                           ))}
@@ -169,8 +196,8 @@ export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompan
           // Pinned to the bottom of the modal, always in view; the list scrolls under it.
           <div className="qs-modal-pinned-foot">
             <s-checkbox
-              label="Automatically apply this pricing to locations added later"
-              details="This only applies to companies with “Automatically add new locations” turned on."
+              label={laterLabel}
+              details={laterDetails || undefined}
               checked={applyLater}
               onChange={(e) => onApplyLaterChange(e.currentTarget.checked)}
             />
@@ -187,8 +214,10 @@ export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompan
 // Company and location picks for a "Select companies and locations" modal: a
 // company pick covers every location (including ones added later); location
 // picks are `companyId::locationId` keys. Shared by pricing assignment and order
-// limits. `onChange({ companyIds, locationKeys })` gets the new picks.
-export function companyPicks(db, companyIds, locationKeys, onChange) {
+// limits. `onChange({ companyIds, locationKeys })` gets the new picks. `keep`: what
+// Active contracts give it to (keptByContracts), which always stays picked.
+export function companyPicks(db, companyIds, locationKeys, onChange, keep = {}) {
+  const keptIds = (id) => Object.keys(keep[id] || {});
   const companies = (db.companies || []).map((c) => ({
     id: c.id,
     name: c.name,
@@ -205,7 +234,8 @@ export function companyPicks(db, companyIds, locationKeys, onChange) {
     return companyIds.includes(c.id) ? c.locs.map((l) => l.id) : c.locs.filter((l) => locationKeys.includes(keyOf(c, l.id))).map((l) => l.id);
   };
   // Set a company's ticked locations: all → a company pick; some → location picks.
-  const setTicked = (c, ids) => {
+  const setTicked = (c, picked) => {
+    const ids = [...new Set([...picked, ...keptIds(c.id)])];
     const all = c.locs.length ? ids.length === c.locs.length : ids.length > 0;
     const others = locationKeys.filter((k) => !k.startsWith(`${c.id}::`));
     onChange({
@@ -226,7 +256,9 @@ export function companyPicks(db, companyIds, locationKeys, onChange) {
     const names = c.locs.filter((l) => c.ticked.includes(l.id)).map((l) => l.name);
     return `${c.name} · ${names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ')}`;
   };
-  return { companies, tickedOf, setTicked, toggleCompany, toggleLocation, selectedCompanies, tagLabel };
+  // Every location of it (or the company) is kept: it can't be taken off at all.
+  const allKept = (c) => keptIds(c.id).length > 0 && (!c.locs.length || c.locs.every((l) => keptIds(c.id).includes(l.id)));
+  return { companies, tickedOf, setTicked, toggleCompany, toggleLocation, selectedCompanies, tagLabel, allKept };
 }
 
 // The D2C "Customers" box: all / logged-in / non-logged-in customers, or specific
@@ -282,7 +314,37 @@ export function CustomerTargetsBox({ db, target, ids, onTarget, onSetId, name = 
   );
 }
 
-export function AssignmentCard({ builder, patch, db, isNew, footer = null }) {
+// What Active contracts give a pricing or limit to (`keep`, see keptByContracts),
+// under its picks: "ABC Construction gets this pricing from CT-301. To take it off,
+// edit the contract." One line per contract.
+export function ContractKeptNote({ db, keep, what }) {
+  const byContract = new Map();
+  Object.entries(keep).forEach(([cid, at]) => {
+    const c = (db.companies || []).find((x) => x.id === cid);
+    if (!c) return;
+    Object.entries(at).forEach(([lid, number]) => {
+      if (!byContract.has(number)) byContract.set(number, new Map());
+      const of = byContract.get(number);
+      of.set(c, [...(of.get(c) || []), lid]);
+    });
+  });
+  if (!byContract.size) return null;
+  return [...byContract].map(([number, of]) => {
+    const labels = [...of].map(([c, ids]) => {
+      const locs = c.locations || [];
+      return !locs.length || locs.every((l) => ids.includes(l.id)) ? c.name : `${c.name} · ${joinAnd(locs.filter((l) => ids.includes(l.id)).map((l) => l.name))}`;
+    });
+    const one = labels.length === 1;
+    return (
+      <s-text key={number} color="subdued" fontSize="small">
+        {`${joinAnd(labels)} ${one ? 'gets' : 'get'} this ${what} from ${number}. To take ${one ? 'it' : 'them'} off, edit the contract.`}
+      </s-text>
+    );
+  });
+}
+
+// `keep`: what Active contracts give it to (keptByContracts) — it stays picked.
+export function AssignmentCard({ builder, patch, db, isNew, footer = null, keep = {} }) {
   const audience = builder.audienceType === 'd2c' ? 'd2c' : 'b2b';
   const target = builder.customerTarget && builder.customerTarget !== 'none' ? builder.customerTarget : 'all';
   const [companyModal, setCompanyModal] = useState(false);
@@ -300,11 +362,12 @@ export function AssignmentCard({ builder, patch, db, isNew, footer = null }) {
   const setTarget = (t) =>
     patch({ customerTarget: t, assignmentTargetIds: t === 'specific' || t === 'tags' ? builder.assignmentTargetIds || [] : [] });
 
-  const { companies, tickedOf, setTicked, toggleCompany, toggleLocation, selectedCompanies, tagLabel } = companyPicks(
+  const { companies, tickedOf, setTicked, toggleCompany, toggleLocation, selectedCompanies, tagLabel, allKept } = companyPicks(
     db,
     builder.b2bCompanyIds || [],
     builder.b2bLocationKeys || [],
     ({ companyIds, locationKeys }) => patch({ b2bCompanyIds: companyIds, b2bLocationKeys: locationKeys }),
+    keep,
   );
 
   // Segmented audience switch, full width with equal halves (see .wc-segmented).
@@ -342,12 +405,13 @@ export function AssignmentCard({ builder, patch, db, isNew, footer = null }) {
             {selectedCompanies.length ? (
               <s-stack direction="inline" gap="small-300">
                 {selectedCompanies.map((c) => (
-                  <s-clickable-chip key={c.id} removable accessibilityLabel={`Remove ${tagLabel(c)}`} onRemove={() => setTicked(c, [])}>
+                  <s-clickable-chip key={c.id} removable={!allKept(c)} accessibilityLabel={`Remove ${tagLabel(c)}`} onRemove={() => setTicked(c, [])}>
                     {tagLabel(c)}
                   </s-clickable-chip>
                 ))}
               </s-stack>
             ) : null}
+            <ContractKeptNote db={db} keep={keep} what="pricing" />
             {footer}
           </s-stack>
         ) : (
@@ -373,6 +437,7 @@ export function AssignmentCard({ builder, patch, db, isNew, footer = null }) {
         onToggleCompany={toggleCompany}
         onToggleLocation={toggleLocation}
         onClose={() => setCompanyModal(false)}
+        keep={keep}
         applyLater={builder.b2bApplyLater === true}
         onApplyLaterChange={(on) => patch({ b2bApplyLater: on })}
       />

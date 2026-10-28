@@ -22,7 +22,7 @@ const TWO_UP = '@container (inline-size > 400px) 1fr 1fr, 1fr';
 // Cards used by the pricing editor: status/dates, product scope, quantity discount
 // basis, and per-variant price overrides. Split out of PricingEditor for readability.
 // Active dates: timezone + start date/time, with an optional end date (god-file parity).
-// `note`: where contracts use their own dates for it instead.
+// `note`: the contracts it's in, which apply it on their own dates instead.
 export function ActiveDatesCard({ builder, patch, note = null }) {
   // Seed policies carry an endDate without an explicit flag — treat that as "has end".
   const hasEnd = builder.hasEndDate ?? !!builder.endDate;

@@ -31,14 +31,6 @@ export function createDriver({ frames, stage, cursor, ring, say, showPane, stopp
       await wait(100);
     }
   }
-  const maybe = async (app, pick, timeout) => {
-    try {
-      return await find(app, pick, '', timeout);
-    } catch (e) {
-      if (e === STOPPED) throw e;
-      return null;
-    }
-  };
 
   // ── The cursor ──────────────────────────────────────────────────────────────
   // Some web components lay out no box of their own (their children do): aim at
@@ -163,61 +155,14 @@ export function createDriver({ frames, stage, cursor, ring, say, showPane, stopp
         await type('admin', el, String(value), (v) => admin.patch({ rules: admin.draft().rules.map((r, j) => (j === i ? { ...r, [key]: v } : r)) }));
       }
     },
-    // Save (Create limit / Save). The editor checks the limit against the others
-    // as it's filled in. Notes (orders still go through) are shown, then it saves;
-    // when it would stop orders, Save is blocked — shown and returned unsaved.
-    // { saved, blocked: [text], notes: [text] }
+    // Save (Create limit / Save). Limits always save; saved once the editor closes.
+    // { saved }
     async save() {
-      await wait(500); // the editor's check runs a moment after the last change
-      const items = (name) => [...doc('admin').querySelectorAll(`[data-field="${name}"] s-list-item`)].map(text);
-      const blocked = items('conflicts-blocking');
-      const notes = items('conflicts-notes');
       const label = admin.draft()?.id ? 'Save' : 'Create limit';
       const btn = await find('admin', byText('s-button', label), `the ${label} button`);
-      if (blocked.length) {
-        const banner = doc('admin').querySelector('[data-field="conflicts-blocking"]');
-        await point('admin', banner);
-        highlight('admin', banner);
-        say(`Admin · can’t save: ${blocked[0]}`);
-        await wait(3200);
-        await point('admin', btn); // Save is off until the limit changes
-        await wait(500);
-        return { saved: false, blocked, notes };
-      }
-      if (notes.length) {
-        const banner = doc('admin').querySelector('[data-field="conflicts-notes"]');
-        await point('admin', banner);
-        highlight('admin', banner);
-        say(`Admin · note: ${notes[0]}`);
-        await wait(2400);
-      }
       await click('admin', btn);
       await wait(300);
-      return { saved: true, blocked, notes };
-    },
-    // A blocked limit: set it to Inactive and save it, or leave without saving.
-    async turnOff() {
-      say('Admin · set it to Inactive, then save');
-      await admin.choose('status', { status: 'Inactive' });
-      return admin.save();
-    },
-    // Turn a limit on (or off) from the list. When that would stop orders it's
-    // refused: the reason is shown and returned. { blocked: [text] }
-    async toggle(name, on = true) {
-      say(`Admin · turn “${name}” ${on ? 'on' : 'off'} from the list`);
-      await admin.list();
-      const row = await find('admin', (d) => [...d.querySelectorAll('s-table-row')].find((r) => r.textContent.includes(name)), `“${name}” in the list`);
-      await click('admin', row.querySelector('s-button'));
-      const close = await maybe('admin', byText('s-button', 'Close'), 1500);
-      const blocked = close ? [...doc('admin').querySelectorAll('s-modal s-list-item')].map(text) : [];
-      if (close) {
-        const why = doc('admin').querySelector('s-modal s-unordered-list');
-        if (why) highlight('admin', why);
-        say(`Admin · can’t turn it ${on ? 'on' : 'off'}: ${blocked[0] || ''}`);
-        await wait(3200);
-        await click('admin', close);
-      }
-      return { blocked };
+      return { saved: !state('admin').limitEditor };
     },
     async cancel() {
       const btn = await find('admin', byText('s-button', 'Cancel'), 'Cancel');

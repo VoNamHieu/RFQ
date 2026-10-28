@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { LIMIT_KINDS, limitSummary, limitTargetsLabel, isLimitAssigned, isD2CLimit, newConflicts, productRules, limitState, blockingOf, notesOf } from '../limits.js';
-import { LimitEditor, DeleteLimitConflicts, deleteCheck, withCatalog } from '../components/LimitEditor.jsx';
-import { LimitConflictList } from '../components/LimitConflictList.jsx';
+import { LIMIT_KINDS, limitSummary, limitTargetsLabel, isLimitAssigned, isD2CLimit, productRules, limitState } from '../limits.js';
+import { LimitEditor } from '../components/LimitEditor.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import { Modal, IndexFiltersBar, useWcId } from '../../shared/wc.jsx';
 import { contractsHolding } from '../agreements.js';
@@ -30,7 +29,6 @@ export function OrderLimits() {
   const [type, setType] = useState('all');
   const [search, setSearch] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
-  const [confirmToggle, setConfirmToggle] = useState(null);
   const [showLock, lockModal] = useContractLock();
   const rowId = useWcId('limit');
   const createId = useWcId('create-limit');
@@ -88,17 +86,7 @@ export function OrderLimits() {
     .filter((l) => (type === 'all' || l.kind === type) && (!q || l.name.toLowerCase().includes(q)))
     .sort((a, b) => a.name.localeCompare(b.name));
   const edit = (l) => dispatch({ type: 'OPEN_LIMIT_EDITOR', limit: l });
-  // Turning a limit on (or off, when it covered a clash) can make limits conflict,
-  // as saving can. Conflicts that stop orders block it until the limits change;
-  // notes are shown first and don't.
-  const toggle = (l) => {
-    const on = l.status !== 'Active';
-    const next = all.map((x) => (x.id === l.id ? { ...x, status: on ? 'Active' : 'Inactive' } : x));
-    const found = newConflicts(withCatalog(state.db), next, on ? l.id : null);
-    if (found.length) setConfirmToggle({ limit: l, on, blocking: blockingOf(found), notes: notesOf(found) });
-    else dispatch({ type: 'TOGGLE_LIMIT_STATUS', id: l.id });
-  };
-  const delCheck = confirmDelete ? deleteCheck(state.db, confirmDelete.id) : null;
+  const toggle = (l) => dispatch({ type: 'TOGGLE_LIMIT_STATUS', id: l.id });
 
   return (
     <s-page heading="Order limits">
@@ -227,13 +215,11 @@ export function OrderLimits() {
               Buyers it applies to ({limitTargetsLabel(confirmDelete, state.db)}) can check out without it right away. This can’t be undone.
             </s-paragraph>
             <DraftsLosingIt db={state.db} id={confirmDelete.id} />
-            <DeleteLimitConflicts check={delCheck} />
           </s-stack>
           <s-button
             slot="primary-action"
             variant="primary"
             tone="critical"
-            disabled={delCheck.blocking.length > 0}
             onClick={() => {
               dispatch({ type: 'DELETE_LIMIT', id: confirmDelete.id });
               setConfirmDelete(null);
@@ -247,46 +233,6 @@ export function OrderLimits() {
         </Modal>
       )}
 
-      {confirmToggle && (
-        <Modal
-          onClose={() => setConfirmToggle(null)}
-          heading={`${confirmToggle.blocking.length ? 'Can’t turn' : 'Turn'} ${confirmToggle.on ? 'on' : 'off'} ${confirmToggle.limit.name}${confirmToggle.blocking.length ? '' : '?'}`}
-        >
-          <s-stack gap="small">
-            {confirmToggle.blocking.length ? (
-              <>
-                <s-paragraph>
-                  {confirmToggle.on
-                    ? 'It would stop orders. Change it so these orders can go through, then turn it on:'
-                    : 'Without it, other limits stop orders. Change those limits first:'}
-                </s-paragraph>
-                <LimitConflictList conflicts={confirmToggle.blocking} />
-              </>
-            ) : null}
-            {confirmToggle.notes.length ? (
-              <>
-                <s-paragraph>{confirmToggle.on ? 'How it works with other limits:' : 'Without it:'}</s-paragraph>
-                <LimitConflictList conflicts={confirmToggle.notes} />
-              </>
-            ) : null}
-          </s-stack>
-          {confirmToggle.blocking.length ? null : (
-            <s-button
-              slot="primary-action"
-              variant="primary"
-              onClick={() => {
-                dispatch({ type: 'TOGGLE_LIMIT_STATUS', id: confirmToggle.limit.id });
-                setConfirmToggle(null);
-              }}
-            >
-              {confirmToggle.on ? 'Turn on' : 'Turn off'}
-            </s-button>
-          )}
-          <s-button slot="secondary-actions" onClick={() => setConfirmToggle(null)}>
-            {confirmToggle.blocking.length ? 'Close' : 'Cancel'}
-          </s-button>
-        </Modal>
-      )}
       {lockModal}
     </s-page>
   );

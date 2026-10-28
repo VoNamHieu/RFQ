@@ -17,16 +17,13 @@ import {
   contractGiving,
   contractNames,
   appliesAt,
+  keptByContracts,
   termChanged,
-  termDateWarnings,
   openContractsHolding,
   lastTermOf,
-  followsContractDates,
-  coverFrom,
-  joinAnd,
 } from '../agreements.js';
 import { builderDraft } from '../builders.js';
-import { useContractLock, LeavingContracts } from './ContractLock.jsx';
+import { useContractLock, LeavingContracts, SwitchToD2CAsNew } from './ContractLock.jsx';
 
 // Main column + aside side by side once the editor is wide enough (Polaris React
 // InlineGrid columns={{ xs: '1fr', md: '2fr 1fr' }}); two fields side by side
@@ -51,6 +48,10 @@ export function PricingEditor({ asPage = false }) {
   const [showLock, lockModal] = useContractLock();
   // Save-time confirmation when the pricing switched Company-based B2B ↔ D2C Wholesale.
   const [sideConfirm, setSideConfirm] = useState(false);
+  // Switched to D2C Wholesale while live contracts hold it: only Save as new pricing.
+  const [d2cConfirm, setD2cConfirm] = useState(false);
+  // Changes that would take it off where an Active contract applies: only Save as new pricing.
+  const [breakConfirm, setBreakConfirm] = useState(false);
   // Save dialog for a shared pricing: a separate copy for here, unless ticked to apply to all.
   const [applyAll, setApplyAll] = useState(false);
   // Preview by location, from the several-locations note under "Who this pricing serves".
@@ -201,15 +202,15 @@ export function PricingEditor({ asPage = false }) {
       ? companiesAssigned > 0 || savedUsage.globals.includes('All Companies')
       : savedUsage.customers + savedUsage.tags > 0 || savedUsage.globals.includes('All customers');
 
-  // Switched to D2C Wholesale: it comes off every contract holding it (Active,
-  // Scheduled or Inactive) — the switch dialog says so, and names the ones it leaves
-  // with no terms.
+  // Switched to D2C Wholesale: with live contracts holding it, it saves only as a new
+  // D2C pricing (this one stays as it is). Only drafts holding it: the switch dialog
+  // names them, and the ones it leaves with no terms.
   const toD2C = sideChanged && builder.audienceType === 'd2c';
   const leaving = toD2C ? openContractsHolding(state.db, builder.id) : [];
   const emptied = toD2C ? lastTermOf(state.db, builder.id) : [];
   // Live contracts holding it: editing what it sets adds a version to them; it must
-  // stay on and keep reaching every location they apply to (changing that goes
-  // through them). `breaks`: the ones these choices would leave without it.
+  // stay on and keep reaching every location they apply to. `breaks`: the ones these
+  // choices would leave without it — then the changes save only as a new pricing.
   const held = isNew ? [] : contractsHolding(state.db, builder.id);
   const breaks = held.filter((ag) => {
     if (toD2C) return false;
@@ -224,38 +225,37 @@ export function PricingEditor({ asPage = false }) {
     if (showCompanyLocations && scopeCompany.id === c.id) return !(!scopeLocationIds || locs.every((l) => scopeLocationIds.includes(l.id)));
     return false;
   });
+  // The companies and locations Active contracts give it to: they stay in "Who this
+  // pricing serves" (taking it off them goes through the contract).
+  const kept = isNew ? {} : keptByContracts(state.db, builder.id);
   // Opened from a company or location a live contract gives it to: it can't be swapped
   // there for a separate copy, so a change applies everywhere it's used.
   const contractHere = scopeCompany && !isNew ? contractGiving(state.db, scopeCompany, builder.id, scopeLoc?.id || null) : null;
   // Saving onto it adds a version to the live contracts holding it (when what it sets,
-  // or its name, changed): confirm first. Dates that leave part of a contract from
-  // today on uncovered are warned about there.
+  // or its name, changed — not its dates: in a contract it follows the contract's):
+  // confirm first.
   const draft = builderDraft(builder);
   const versionsContracts = !toD2C && held.length > 0 && !!savedPolicy && termChanged(state.db, savedPolicy, draft, false);
-  // Not for contracts that use their own dates for it; those are named under its dates.
-  const onContractDates = held.filter((ag) => followsContractDates(ag, builder.id));
-  const dateWarnings = versionsContracts
-    ? held.filter((ag) => !followsContractDates(ag, builder.id)).flatMap((ag) => termDateWarnings(draft, ag, coverFrom(ag), ag.number))
-    : [];
-  // Which contracts it versions, and the dates warning: shown in whichever save dialog
-  // is up (contract, fork or switching side), so a save only ever asks once.
+  // Which contracts it versions: shown in whichever save dialog is up (contract, fork
+  // or switching side), so a save only ever asks once.
   const oneContract = held.length === 1;
   const contractList = oneContract ? contractNames(state.db, held) : `${held.length} contracts: ${contractNames(state.db, held)}`;
   const versionedWhere = oneContract ? 'the contract' : 'each of them';
-  const dateWarningBanner = dateWarnings.length ? (
-    <s-banner tone="warning" heading="It won’t apply for the whole contract">
-      <s-unordered-list>
-        {dateWarnings.map((w) => (
-          <s-list-item key={w}>{w}</s-list-item>
-        ))}
-      </s-unordered-list>
-    </s-banner>
-  ) : null;
 
   const onSave = () => {
-    if (noLocationPicked || breaks.length) return;
+    if (noLocationPicked) return;
     if (!builder.name?.trim()) {
       setNameMissing(true);
+      return;
+    }
+    // The changes can't go onto it while it's part of those contracts; they can be
+    // saved as a new pricing (it keeps the whole setup).
+    if (breaks.length) {
+      setBreakConfirm(true);
+      return;
+    }
+    if (toD2C && held.length) {
+      setD2cConfirm(true);
       return;
     }
     if (sideChanged && (hadAssignments || leaving.length)) {
@@ -275,11 +275,12 @@ export function PricingEditor({ asPage = false }) {
   // "Who this pricing serves": the library's assignment card, or a company's locations.
   const whoServes = (
     <>
-      {showAssignment && <AssignmentCard builder={builder} patch={patch} db={state.db} isNew={isNew} footer={catalogNote} />}
+      {showAssignment && <AssignmentCard builder={builder} patch={patch} db={state.db} isNew={isNew} footer={catalogNote} keep={kept} />}
       {showCompanyLocations && (
         <CompanyLocationsCard
           company={scopeCompany}
           locationIds={scopeLocationIds}
+          keep={kept[scopeCompany.id] || {}}
           onChange={(ids) => dispatch({ type: 'EDITOR_CONTEXT_PATCH', patch: { locationIds: ids } })}
           applyLater={state.editorContext?.applyLater === true}
           onApplyLaterChange={(on) => dispatch({ type: 'EDITOR_CONTEXT_PATCH', patch: { applyLater: on } })}
@@ -292,11 +293,7 @@ export function PricingEditor({ asPage = false }) {
   const editorTitle = isNew ? `Create ${isQuantity ? 'quantity' : 'base'} pricing` : `Edit pricing: ${builder.name}`;
   const editorBody = (
     <s-stack gap="base">
-          {breaks.length ? (
-            <s-banner tone="critical" heading={`Part of ${contractNames(state.db, breaks)}`}>
-              <s-paragraph>It has to stay on and keep reaching every location the contract applies to. To change that, edit the contract.</s-paragraph>
-            </s-banner>
-          ) : held.length ? (
+          {held.length ? (
             <s-banner tone="warning" heading={`Part of ${contractNames(state.db, held)}`}>
               <s-paragraph>A change to what it sets updates the contract, kept as a new version. To turn it off or delete it, edit the contract.</s-paragraph>
             </s-banner>
@@ -402,7 +399,7 @@ export function PricingEditor({ asPage = false }) {
                   <ActiveDatesCard
                     builder={builder}
                     patch={patch}
-                    note={onContractDates.length ? `In ${joinAnd(onContractDates.map((a) => a.number))} it uses the contract’s dates, not these.` : null}
+                    note={held.length ? `In contracts (${held.map((a) => a.number).join(', ')}), it follows the contract’s dates.` : null}
                   />
                 </>
               ) : (
@@ -449,8 +446,8 @@ export function PricingEditor({ asPage = false }) {
               {' clears that selection. Only the companies you picked receive it.'}
             </s-paragraph>
           )}
-          {/* To D2C: contracts don't reach D2C pricing, so it comes off them. */}
-          <LeavingContracts leaving={leaving} emptied={emptied} />
+          {/* To D2C: contracts don't reach D2C pricing, so it comes off the drafts holding it. */}
+          <LeavingContracts db={state.db} leaving={leaving} emptied={emptied} />
           </s-stack>
           <s-button
             slot="primary-action"
@@ -464,6 +461,44 @@ export function PricingEditor({ asPage = false }) {
           </s-button>
           <s-button slot="secondary-actions" onClick={() => setSideConfirm(false)}>
             Cancel
+          </s-button>
+        </Modal>
+      )}
+      {/* No Cancel: closing it (X) saves nothing. */}
+      {d2cConfirm && (
+        <Modal onClose={() => setD2cConfirm(false)} heading="Change who this pricing serves?">
+          <SwitchToD2CAsNew db={state.db} name={savedPolicy.name} what="pricing" held={held} />
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            onClick={() => {
+              setD2cConfirm(false);
+              dispatch({ type: 'SAVE_EDITOR', asNew: true });
+            }}
+          >
+            Save as new pricing
+          </s-button>
+        </Modal>
+      )}
+      {/* No Cancel: closing it (X) saves nothing. */}
+      {breakConfirm && (
+        <Modal onClose={() => setBreakConfirm(false)} heading={`Save changes to ${savedPolicy.name}?`}>
+          <s-paragraph>
+            {`${savedPolicy.name} is part of ${contractNames(state.db, breaks)}, and these changes would take it off where ${
+              breaks.length === 1 ? 'the contract applies' : 'those contracts apply'
+            }. Save them as a new pricing instead: it takes ${savedPolicy.name}’s place for every company and location outside ${
+              breaks.length === 1 ? 'the contract' : 'these contracts'
+            }, and ${savedPolicy.name} stays as it is, only in ${breaks.length === 1 ? 'the contract' : 'these contracts'}.`}
+          </s-paragraph>
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            onClick={() => {
+              setBreakConfirm(false);
+              dispatch({ type: 'SAVE_EDITOR', asNew: true });
+            }}
+          >
+            Save as new pricing
           </s-button>
         </Modal>
       )}
@@ -497,10 +532,7 @@ export function PricingEditor({ asPage = false }) {
             )}
             {/* Ticked, it saves onto the pricing: the contracts holding it get a version. */}
             {applyAll && versionsContracts && (
-              <>
-                <s-paragraph>{`It’s also assigned to ${contractList}. Applying to all adds a new version to ${versionedWhere}.`}</s-paragraph>
-                {dateWarningBanner}
-              </>
+              <s-paragraph>{`It’s also assigned to ${contractList}. Applying to all adds a new version to ${versionedWhere}.`}</s-paragraph>
             )}
           </s-stack>
           <s-button
@@ -524,11 +556,10 @@ export function PricingEditor({ asPage = false }) {
         <Modal onClose={() => setContractConfirm(false)} heading={`Save changes to ${savedPolicy.name}?`}>
           <s-stack gap="small">
             <s-paragraph>
-              {`${savedPolicy.name} is assigned to ${contractList}. Changing it adds a new version to ${versionedWhere}. You can also save your changes as a new pricing, not assigned anywhere yet, and keep ${savedPolicy.name} as it is for ${oneContract ? 'the contract' : 'these contracts'}.`}
+              {`${savedPolicy.name} is assigned to ${contractList}. Changing it adds a new version to ${versionedWhere}. You can also save your changes as a new pricing: it takes ${savedPolicy.name}’s place for every company and location outside ${oneContract ? 'the contract' : 'these contracts'}, and ${savedPolicy.name} stays as it is, only in ${oneContract ? 'the contract' : 'these contracts'}.`}
             </s-paragraph>
             {/* Opened from the company its contract gives it to, and shared beyond it. */}
             {sharedElsewhere && <s-paragraph>{`It’s also assigned to ${sharedWith}. Override changes it for them too.`}</s-paragraph>}
-            {dateWarningBanner}
           </s-stack>
           <s-button
             slot="primary-action"
@@ -560,7 +591,7 @@ export function PricingEditor({ asPage = false }) {
           <PageHeader
             heading={editorTitle}
             backAction={{ content: 'Back', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }}
-            primaryAction={{ content: isNew ? 'Create pricing' : 'Save', onAction: onSave, disabled: noLocationPicked || breaks.length > 0 }}
+            primaryAction={{ content: isNew ? 'Create pricing' : 'Save', onAction: onSave, disabled: noLocationPicked }}
             secondaryActions={[{ content: 'Cancel', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }]}
           />
           <s-page>{editorBody}</s-page>
@@ -699,7 +730,7 @@ function MultiCatalogNote({ onPreview }) {
 
 // "Who this pricing serves" from a company page: which of the company's locations
 // get it (see LocationScopePicker).
-function CompanyLocationsCard({ company, locationIds, onChange, applyLater, onApplyLaterChange, footer = null }) {
+function CompanyLocationsCard({ company, locationIds, keep, onChange, applyLater, onApplyLaterChange, footer = null }) {
   return (
     <s-section>
       <s-stack gap="small">
@@ -714,6 +745,7 @@ function CompanyLocationsCard({ company, locationIds, onChange, applyLater, onAp
         <LocationScopePicker
           company={company}
           locationIds={locationIds}
+          keep={keep}
           onChange={onChange}
           titleHidden
           separate

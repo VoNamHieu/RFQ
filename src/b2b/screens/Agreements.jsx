@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { canCreateAgreement, agreementScopeLabel, agreementTermCount, agreementDatesLabel, expiringSoon, daysUntil, noTerms, PAST_STATUSES } from '../agreements.js';
+import { canCreateAgreement, agreementAppliesToLabel, agreementTermCount, agreementDatesLabel, expiringSoon, daysUntil, PAST_STATUSES } from '../agreements.js';
 import { AgreementEditor } from '../components/AgreementEditor.jsx';
 import { ContractVersionModal } from '../components/ContractVersionModal.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
@@ -30,8 +30,8 @@ export function Agreements() {
 
   const all = state.db.agreements || [];
   const companyOf = (id) => state.db.companies.find((c) => c.id === id);
-  // Any company can get a new one (picked in the editor); it just can't overlap the
-  // Active or Scheduled contracts at its locations.
+  // Any company can get a new one (picked in the editor), overlapping its other
+  // contracts or not.
   const free = state.db.companies.filter((c) => canCreateAgreement(state.db, c.id));
   const create = { content: 'Create contract', onAction: () => dispatch({ type: 'OPEN_AGREEMENT_EDITOR' }), disabled: !free.length };
   const createButton = (
@@ -62,7 +62,7 @@ export function Agreements() {
             </s-stack>
           </s-table-cell>
           <s-table-cell>{company?.name || '—'}</s-table-cell>
-          <s-table-cell>{company ? agreementScopeLabel(company, a) : '—'}</s-table-cell>
+          <s-table-cell>{company ? agreementAppliesToLabel(company, a) : '—'}</s-table-cell>
           <s-table-cell>
             <s-stack gap="small-500">
               <s-text>{agreementDatesLabel(a)}</s-text>
@@ -76,10 +76,7 @@ export function Agreements() {
           <s-table-cell>{agreementTermCount(state.db, a)}</s-table-cell>
           <s-table-cell>{a.version ? `v${a.version}` : '—'}</s-table-cell>
           <s-table-cell>
-            <s-stack direction="inline" gap="small-200">
-              <s-badge tone={wcTone(STATUS_TONE[a.status])}>{a.status}</s-badge>
-              {noTerms(a) ? <s-badge tone="warning">No terms</s-badge> : null}
-            </s-stack>
+            <s-badge tone={wcTone(STATUS_TONE[a.status])}>{a.status}</s-badge>
           </s-table-cell>
         </s-table-row>
       );

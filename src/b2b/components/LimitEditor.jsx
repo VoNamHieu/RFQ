@@ -1,25 +1,21 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useStore } from '../store.jsx';
-import { LIMIT_KINDS, limitErrors, defaultLimitMessage, normalizeLimit, limitConflicts, newConflicts, productRules, newProductRule, inheritedSetting, blockingOf, notesOf, isD2CLimit } from '../limits.js';
+import { LIMIT_KINDS, limitErrors, defaultLimitMessage, normalizeLimit, productRules, newProductRule, inheritedSetting, isD2CLimit } from '../limits.js';
 import { money } from '../format.js';
-import { LimitConflictList } from './LimitConflictList.jsx';
 import { ProductScopeFields } from './pricingEditorCards.jsx';
-import { SelectCompaniesModal, CustomerTargetsBox, companyPicks } from './AssignmentCard.jsx';
+import { SelectCompaniesModal, CustomerTargetsBox, companyPicks, ContractKeptNote } from './AssignmentCard.jsx';
 import { Modal, useWcId, PageHeader } from '../../shared/wc.jsx';
 import { limitCatalog, withCatalog } from '../limitCatalog.js';
 import {
   contractsHolding,
+  keptByContracts,
   contractNames,
   newlyBroken,
   termChanged,
-  termDateWarnings,
   openContractsHolding,
   lastTermOf,
-  followsContractDates,
-  coverFrom,
-  joinAnd,
 } from '../agreements.js';
-import { useContractLock, LeavingContracts, DraftsLosingIt } from './ContractLock.jsx';
+import { useContractLock, LeavingContracts, DraftsLosingIt, SwitchToD2CAsNew } from './ContractLock.jsx';
 
 const str = (v) => (v == null ? '' : String(v));
 // An empty field's placeholder: what the buyers get from the wider limits (see inheritedSetting).
@@ -36,32 +32,9 @@ const isRequired = (k) => REQUIRED.includes(k) || /^rule-\d+(-products)?$/.test(
 
 // Create / edit one order limit — an in-frame page in the Order limits view (see
 // the OPEN_LIMIT_EDITOR action). Settings in the main column; status and who it
-// applies to in the aside, like the pricing editor.
-// Deleting a limit: what it leaves between other limits (it can stop covering a
-// clash). Ones that stop orders block the delete until those limits change.
-// Shared with the list.
-export function deleteCheck(db, id) {
-  const left = newConflicts(withCatalog(db), (db.limits || []).filter((l) => l.id !== id));
-  return { blocking: blockingOf(left), notes: notesOf(left) };
-}
-export function DeleteLimitConflicts({ check }) {
-  return (
-    <>
-      {check.blocking.length ? (
-        <>
-          <s-paragraph>Without it, other limits stop orders. Change those limits before deleting it:</s-paragraph>
-          <LimitConflictList conflicts={check.blocking} />
-        </>
-      ) : null}
-      {check.notes.length ? (
-        <>
-          <s-paragraph>Without it:</s-paragraph>
-          <LimitConflictList conflicts={check.notes} />
-        </>
-      ) : null}
-    </>
-  );
-}
+// applies to in the aside, like the pricing editor. Limits that contradict each
+// other aren't checked or shown here: where they apply, the limit checks settle them
+// (limits.js buildRecord, cartProblems).
 
 export function LimitEditor() {
   const { state, dispatch } = useStore();
@@ -74,6 +47,10 @@ export function LimitEditor() {
   const [contractConfirm, setContractConfirm] = useState(false);
   // Save dialog for switching it to D2C Wholesale while contracts hold it.
   const [sideConfirm, setSideConfirm] = useState(false);
+  // Switched to D2C Wholesale while live contracts hold it: only Save as new limit.
+  const [d2cConfirm, setD2cConfirm] = useState(false);
+  // Changes that would stop it applying where an Active contract applies: only Save as new limit.
+  const [breakConfirm, setBreakConfirm] = useState(false);
   // Turning it off or deleting it while live contracts hold it goes through them.
   const [showLock, lockModal] = useContractLock();
   const scopeName = useWcId('limit-scope');
@@ -85,12 +62,14 @@ export function LimitEditor() {
   const allErrors = limitErrors(draft);
   const errors = Object.fromEntries(Object.entries(allErrors).filter(([k]) => tried || !isRequired(k)));
   // Live contracts holding it: editing what it sets adds a version to them; it must
-  // stay on and keep reaching where they apply (changing that goes through them).
+  // stay on and keep reaching where they apply. `breaks`: the ones the changes would
+  // leave without it — then they save only as a new limit.
   const held = isNew ? [] : contractsHolding(state.db, draft.id);
   const saved = isNew ? null : (state.db.limits || []).find((l) => l.id === draft.id) || null;
   const edited = normalizeLimit(draft);
-  // Switched to D2C Wholesale: it comes off every contract holding it (Active,
-  // Scheduled or Inactive) — a dialog says so first, naming the ones left with no terms.
+  // Switched to D2C Wholesale: with live contracts holding it, it saves only as a new
+  // D2C limit (this one stays as it is). Only drafts holding it: a dialog names them
+  // first, and the ones left with no terms.
   const toD2C = !!saved && !isD2CLimit(saved) && isD2CLimit(edited);
   const leaving = toD2C ? openContractsHolding(state.db, draft.id) : [];
   const emptied = toD2C ? lastTermOf(state.db, draft.id) : [];
@@ -98,43 +77,19 @@ export function LimitEditor() {
     ? newlyBroken(state.db, { ...state.db, limits: (state.db.limits || []).map((l) => (l.id === draft.id ? edited : l)) })
     : [];
   // Saving onto it adds a version to the live contracts holding it (when what it sets,
-  // or its name, changed): confirm first. Dates that leave part of a contract from
-  // today on uncovered are warned about there.
+  // or its name, changed — not its dates: in a contract it follows the contract's):
+  // confirm first.
   const versionsContracts = !toD2C && held.length > 0 && !!saved && termChanged(state.db, saved, edited, true);
-  // Not for contracts that use their own dates for it; those are named under its dates.
-  const onContractDates = held.filter((ag) => followsContractDates(ag, draft.id));
-  const dateWarnings = versionsContracts
-    ? held.filter((ag) => !followsContractDates(ag, draft.id)).flatMap((ag) => termDateWarnings(edited, ag, coverFrom(ag), ag.number))
-    : [];
-  // What saving it would do with the other limits, worked out a moment after each
-  // change. Conflicts that stop orders block saving: change the limit, or set it
-  // to Inactive. Notes (orders still go through) don't.
-  const [check, setCheck] = useState({ blocking: [], notes: [] });
   const hasErrors = Object.keys(allErrors).length > 0;
-  useEffect(() => {
-    if (hasErrors) {
-      setCheck({ blocking: [], notes: [] });
-      return undefined;
-    }
-    const t = setTimeout(() => {
-      const found = limitConflicts(withCatalog(state.db), draft);
-      setCheck({ blocking: blockingOf(found), notes: notesOf(found) });
-    }, 250);
-    return () => clearTimeout(t);
-  }, [draft, state.db, hasErrors]);
-  // The ones this limit is part of, or only ones it leaves between other limits.
-  const ownBlock = check.blocking.some((c) => (c.ids || []).includes(draft.id || 'new'));
   const save = () => {
-    if (breaks.length) return undefined;
     if (hasErrors) return setTried(true);
-    const found = limitConflicts(withCatalog(state.db), draft);
-    if (blockingOf(found).length) return setCheck({ blocking: blockingOf(found), notes: notesOf(found) });
+    if (breaks.length) return setBreakConfirm(true);
+    if (toD2C && held.length) return setD2cConfirm(true);
     if (leaving.length) return setSideConfirm(true);
     if (versionsContracts) return setContractConfirm(true);
     return dispatch({ type: 'SAVE_LIMIT' });
   };
   const locked = (verb) => showLock({ name: saved?.name || draft.name, count: held.length, verb });
-  const delCheck = confirmDelete ? deleteCheck(state.db, draft.id) : null;
 
   // Who it's for, like pricing: Company-based B2B or D2C Wholesale. Switching side
   // clears the other side's picks; D2C can't send an order for review, so its
@@ -155,8 +110,15 @@ export function LimitEditor() {
     patch({ customerTargetIds: on ? [...new Set([...cur, id])] : cur.filter((x) => x !== id) });
   };
 
-  const picks = companyPicks(state.db, draft.companyIds || [], draft.locationKeys || [], ({ companyIds, locationKeys }) =>
-    patch({ companyIds, locationKeys }),
+  // The companies and locations Active contracts give it to: they stay in "Applies
+  // to" (taking it off them goes through the contract).
+  const kept = isNew ? {} : keptByContracts(state.db, draft.id);
+  const picks = companyPicks(
+    state.db,
+    draft.companyIds || [],
+    draft.locationKeys || [],
+    ({ companyIds, locationKeys }) => patch({ companyIds, locationKeys }),
+    kept,
   );
 
   // The other limits (without this one's saved version), the same while editing so
@@ -208,7 +170,7 @@ export function LimitEditor() {
     <PageHeader
       heading={isNew ? `Create ${kind.label.toLowerCase()}` : `Edit limit: ${draft.name}`}
       backAction={{ content: 'Order limits', onAction: close }}
-      primaryAction={{ content: isNew ? 'Create limit' : 'Save', onAction: save, disabled: breaks.length > 0 || check.blocking.length > 0 }}
+      primaryAction={{ content: isNew ? 'Create limit' : 'Save', onAction: save }}
       secondaryActions={[
         ...(isNew ? [] : [{ content: 'Delete', destructive: true, onAction: () => (held.length ? locked('delete') : setConfirmDelete(true)) }]),
         { content: 'Cancel', onAction: close },
@@ -216,29 +178,9 @@ export function LimitEditor() {
     />
     <s-page>
       <s-stack gap="base">
-        {breaks.length ? (
-          <s-banner tone="critical" heading={`Part of ${contractNames(state.db, breaks)}`}>
-            <s-paragraph>It has to stay on and keep applying where the contract applies. To change that, or to delete it, edit the contract.</s-paragraph>
-          </s-banner>
-        ) : held.length ? (
+        {held.length ? (
           <s-banner tone="warning" heading={`Part of ${contractNames(state.db, held)}`}>
             <s-paragraph>A change to what it sets updates the contract, kept as a new version. To turn it off or delete it, edit the contract.</s-paragraph>
-          </s-banner>
-        ) : null}
-        {check.blocking.length ? (
-          <s-banner data-field="conflicts-blocking" tone="critical" heading={ownBlock ? 'This limit stops orders, so it can’t be saved' : 'Saving this would leave other limits that stop orders'}>
-            <s-stack gap="small-200">
-              <LimitConflictList conflicts={check.blocking} />
-              <s-paragraph>{ownBlock ? 'Change it so these orders can go through, or set its status to Inactive.' : 'Change those limits first.'}</s-paragraph>
-            </s-stack>
-          </s-banner>
-        ) : null}
-        {check.notes.length ? (
-          <s-banner data-field="conflicts-notes" tone="warning" heading="How it works with other limits">
-            <s-stack gap="small-200">
-              <LimitConflictList conflicts={check.notes} />
-              <s-paragraph>These don’t stop orders, so you can save.</s-paragraph>
-            </s-stack>
           </s-banner>
         ) : null}
         <s-section>
@@ -436,12 +378,13 @@ export function LimitEditor() {
                     {picks.selectedCompanies.length ? (
                       <s-stack direction="inline" gap="small-300">
                         {picks.selectedCompanies.map((c) => (
-                          <s-clickable-chip key={c.id} removable accessibilityLabel={`Remove ${picks.tagLabel(c)}`} onRemove={() => picks.setTicked(c, [])}>
+                          <s-clickable-chip key={c.id} removable={!picks.allKept(c)} accessibilityLabel={`Remove ${picks.tagLabel(c)}`} onRemove={() => picks.setTicked(c, [])}>
                             {picks.tagLabel(c)}
                           </s-clickable-chip>
                         ))}
                       </s-stack>
                     ) : null}
+                    <ContractKeptNote db={state.db} keep={kept} what="limit" />
                     {errors.targets && (
                       <s-paragraph tone="critical" id="limit-targets">
                         {errors.targets}
@@ -475,9 +418,9 @@ export function LimitEditor() {
               />
             </s-grid>
           </s-query-container>
-          {onContractDates.length ? (
+          {held.length ? (
             <s-paragraph color="subdued" fontSize="small">
-              {`In ${joinAnd(onContractDates.map((a) => a.number))} it uses the contract’s dates, not these.`}
+              {`In contracts (${held.map((a) => a.number).join(', ')}), it follows the contract’s dates.`}
             </s-paragraph>
           ) : null}
         </s-section>
@@ -533,6 +476,7 @@ export function LimitEditor() {
         onToggleCompany={picks.toggleCompany}
         onToggleLocation={picks.toggleLocation}
         onClose={() => setCompanyModal(false)}
+        keep={kept}
       />
 
       {confirmDelete && (
@@ -540,9 +484,8 @@ export function LimitEditor() {
           <s-stack gap="small">
             <s-paragraph>Buyers it applies to can check out without it right away. This can’t be undone.</s-paragraph>
             <DraftsLosingIt db={state.db} id={draft.id} />
-            <DeleteLimitConflicts check={delCheck} />
           </s-stack>
-          <s-button slot="primary-action" variant="primary" tone="critical" disabled={delCheck.blocking.length > 0} onClick={() => dispatch({ type: 'DELETE_LIMIT', id: draft.id })}>
+          <s-button slot="primary-action" variant="primary" tone="critical" onClick={() => dispatch({ type: 'DELETE_LIMIT', id: draft.id })}>
             Delete limit
           </s-button>
           <s-button slot="secondary-actions" onClick={() => setConfirmDelete(false)}>
@@ -553,7 +496,7 @@ export function LimitEditor() {
 
       {sideConfirm && (
         <Modal onClose={() => setSideConfirm(false)} heading="Change who this limit applies to?">
-          <LeavingContracts leaving={leaving} emptied={emptied} />
+          <LeavingContracts db={state.db} leaving={leaving} emptied={emptied} />
           <s-button
             slot="primary-action"
             variant="primary"
@@ -569,6 +512,44 @@ export function LimitEditor() {
           </s-button>
         </Modal>
       )}
+      {/* No Cancel: closing it (X) saves nothing. */}
+      {d2cConfirm && (
+        <Modal onClose={() => setD2cConfirm(false)} heading="Change who this limit applies to?">
+          <SwitchToD2CAsNew db={state.db} name={saved.name} what="limit" held={held} />
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            onClick={() => {
+              setD2cConfirm(false);
+              dispatch({ type: 'SAVE_LIMIT', asNew: true });
+            }}
+          >
+            Save as new limit
+          </s-button>
+        </Modal>
+      )}
+      {/* No Cancel: closing it (X) saves nothing. */}
+      {breakConfirm && (
+        <Modal onClose={() => setBreakConfirm(false)} heading={`Save changes to ${saved.name}?`}>
+          <s-paragraph>
+            {`${saved.name} is part of ${contractNames(state.db, breaks)}, and these changes would stop it applying where ${
+              breaks.length === 1 ? 'the contract applies' : 'those contracts apply'
+            }. Save them as a new order limit instead: it takes ${saved.name}’s place for every company and location outside ${
+              breaks.length === 1 ? 'the contract' : 'these contracts'
+            }, and ${saved.name} stays as it is, only in ${breaks.length === 1 ? 'the contract' : 'these contracts'}.`}
+          </s-paragraph>
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            onClick={() => {
+              setBreakConfirm(false);
+              dispatch({ type: 'SAVE_LIMIT', asNew: true });
+            }}
+          >
+            Save as new limit
+          </s-button>
+        </Modal>
+      )}
       {lockModal}
 
       {/* No Cancel: closing it (X) saves nothing. */}
@@ -577,18 +558,9 @@ export function LimitEditor() {
           <s-stack gap="small">
             <s-paragraph>
               {held.length === 1
-                ? `${saved.name} is assigned to ${contractNames(state.db, held)}. Changing it adds a new version to the contract. You can also save your changes as a new order limit, not assigned anywhere yet, and keep ${saved.name} as it is for the contract.`
-                : `${saved.name} is assigned to ${held.length} contracts: ${contractNames(state.db, held)}. Changing it adds a new version to each of them. You can also save your changes as a new order limit, not assigned anywhere yet, and keep ${saved.name} as it is for these contracts.`}
+                ? `${saved.name} is assigned to ${contractNames(state.db, held)}. Changing it adds a new version to the contract. You can also save your changes as a new order limit: it takes ${saved.name}’s place for every company and location outside the contract, and ${saved.name} stays as it is, only in the contract.`
+                : `${saved.name} is assigned to ${held.length} contracts: ${contractNames(state.db, held)}. Changing it adds a new version to each of them. You can also save your changes as a new order limit: it takes ${saved.name}’s place for every company and location outside these contracts, and ${saved.name} stays as it is, only in these contracts.`}
             </s-paragraph>
-            {dateWarnings.length ? (
-              <s-banner tone="warning" heading="It won’t apply for the whole contract">
-                <s-unordered-list>
-                  {dateWarnings.map((w) => (
-                    <s-list-item key={w}>{w}</s-list-item>
-                  ))}
-                </s-unordered-list>
-              </s-banner>
-            ) : null}
           </s-stack>
           <s-button
             slot="primary-action"

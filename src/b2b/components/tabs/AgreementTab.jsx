@@ -4,33 +4,27 @@ import { useStore } from '../../store.jsx';
 import { scopeLabel, TODAY } from '../../pricing.js';
 import {
   openAgreements,
+  lastChange,
   nextAgreements,
   agreementClashes,
   sharedLocations,
   namesOf,
   canCreateAgreement,
   takenOver,
-  takeoverParts,
   joinAnd,
   overlaps,
   agreementScopeLabel,
+  agreementAppliesToLabel,
   agreementTermLines,
-  limitsAfterAgreement,
   agreementDatesLabel,
   expiringSoon,
   daysUntil,
   extendedEndDate,
   isLive,
-  noTerms,
-  termDateBadges,
-  followsContractDates,
   fmtDay,
   PAST_STATUSES,
 } from '../../agreements.js';
-import { newConflicts } from '../../limits.js';
-import { LimitConflictList } from '../LimitConflictList.jsx';
 import { ContractVersionModal } from '../ContractVersionModal.jsx';
-import { withCatalog } from '../LimitEditor.jsx';
 import { Modal, wcTone } from '../../../shared/wc.jsx';
 
 const STATUS_TONE = { Active: 'success', Scheduled: 'info', Inactive: undefined, Expired: undefined, Ended: undefined };
@@ -67,8 +61,7 @@ function Fact({ icon, label, value }) {
 
 // One kind of term (base pricing, quantity pricing, order limits) as a bordered
 // list: a header with its count, then a row per term — name over its detail, and
-// a side badge (a base pricing's priority). `flags`: where its own dates don't cover
-// the contract ("Ends Aug 10, 2026"), beside its name.
+// a side badge (a base pricing's priority).
 function TermGroup({ icon, title, rows }) {
   return (
     <s-box border="base" borderRadius="base" overflow="hidden">
@@ -86,18 +79,7 @@ function TermGroup({ icon, title, rows }) {
             <s-box paddingBlock="small-200" paddingInline="small">
               <s-grid gridTemplateColumns="minmax(0, 1fr) auto" alignItems="center" gap="small">
                 <s-stack gap="small-500">
-                  {r.flags?.length ? (
-                    <s-stack direction="inline" gap="small-200" alignItems="center">
-                      <s-text fontWeight="medium">{r.name}</s-text>
-                      {r.flags.map((f) => (
-                        <s-badge key={f} tone="warning">
-                          {f}
-                        </s-badge>
-                      ))}
-                    </s-stack>
-                  ) : (
-                    <s-text fontWeight="medium">{r.name}</s-text>
-                  )}
+                  <s-text fontWeight="medium">{r.name}</s-text>
                   <s-text color="subdued" fontSize="small">
                     {r.detail}
                   </s-text>
@@ -183,28 +165,18 @@ function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onV
   const { state } = useStore();
   const terms = agreementTermLines(state.db, ag);
   const live = isLive(ag);
-  const scope = agreementScopeLabel(company, ag);
-  // A next contract: what it does to the Active ones at its locations when it starts.
-  const takeover = ag.status === 'Active' ? '' : joinAnd(takeoverParts(state.db, ag));
-  const when = ag.startDate > TODAY ? `on ${fmtDay(ag.startDate)}` : 'right away';
+  const scope = agreementAppliesToLabel(company, ag);
+  // A next contract: when it starts — "Starts Feb 1, 2027, not applied yet."; a draft
+  // starting today or earlier: "Not applied yet."
   const note =
-    ag.status === 'Scheduled'
-      ? takeover
-        ? `On ${fmtDay(ag.startDate)} it ${takeover}.`
-        : `Starts ${fmtDay(ag.startDate)}, not applied yet.`
+    ag.status === 'Scheduled' || (ag.status === 'Inactive' && ag.startDate > TODAY)
+      ? `Starts ${fmtDay(ag.startDate)}, not applied yet.`
       : ag.status === 'Inactive'
-        ? takeover
-          ? `Not applied yet. Once activated, it ${takeover} ${when}.`
-          : 'Not applied yet.'
+        ? 'Not applied yet.'
         : null;
   const summary = [scope, agreementDatesLabel(ag), ag.version ? `Version ${ag.version}` : null].filter(Boolean).join(' · ');
   const history = ag.history || [];
   const title = `${ag.number} · ${ag.name || 'Untitled contract'}`;
-  // A term whose own dates don't cover the contract is marked — it stays in the
-  // contract, nothing is blocked and no version is added. One applied on the
-  // contract's dates instead says so in its detail.
-  const flags = (x) => termDateBadges(x, ag);
-  const detail = (x, d) => (followsContractDates(ag, x.id) ? `${d} · Uses the contract’s dates` : d);
 
   return (
     <s-stack gap="base">
@@ -221,7 +193,6 @@ function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onV
             <s-stack direction="inline" gap="small-200" alignItems="center">
               <s-text fontWeight="semibold">{title}</s-text>
               <s-badge tone={wcTone(STATUS_TONE[ag.status])}>{ag.status}</s-badge>
-              {noTerms(ag) ? <s-badge tone="warning">No terms</s-badge> : null}
             </s-stack>
             {open ? null : (
               <s-text color="subdued" fontSize="small">
@@ -236,11 +207,13 @@ function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onV
               <s-button tone="critical" variant="tertiary" onClick={() => onEnd(ag)}>
                 End contract
               </s-button>
-            ) : (
+            ) : null}
+            {/* Inactive or Scheduled: nothing is applied yet, so it can be deleted. */}
+            {ag.status !== 'Active' ? (
               <s-button tone="critical" variant="tertiary" onClick={() => onDelete(ag)}>
                 Delete contract
               </s-button>
-            )}
+            ) : null}
             <s-button onClick={() => onDuplicate(ag)}>Duplicate</s-button>
             {live ? (
               <s-button onClick={() => onEdit(ag)}>Edit</s-button>
@@ -273,17 +246,17 @@ function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onV
                 <TermGroup
                   icon="receipt-dollar"
                   title="Base pricing"
-                  rows={terms.base.map((p) => ({ key: p.id, name: p.name, detail: detail(p, scopeLabel(p)), side: `Priority ${p.priority ?? 0}`, flags: flags(p) }))}
+                  rows={terms.base.map((p) => ({ key: p.id, name: p.name, detail: scopeLabel(p), side: `Priority ${p.priority ?? 0}` }))}
                 />
                 <TermGroup
                   icon="discount"
                   title="Quantity pricing"
-                  rows={terms.quantity.map((p) => ({ key: p.id, name: p.name, detail: detail(p, scopeLabel(p)), flags: flags(p) }))}
+                  rows={terms.quantity.map((p) => ({ key: p.id, name: p.name, detail: scopeLabel(p) }))}
                 />
                 <TermGroup
                   icon="order"
                   title="Order limits"
-                  rows={terms.limits.map(({ limit, summary: s }) => ({ key: limit.id, name: limit.name, detail: detail(limit, s), flags: flags(limit) }))}
+                  rows={terms.limits.map(({ limit, summary: s }) => ({ key: limit.id, name: limit.name, detail: s }))}
                 />
               </s-stack>
               {history.length ? <VersionTimeline history={history} onView={(version) => onView(ag, version)} /> : null}
@@ -306,7 +279,10 @@ export function AgreementTab({ company }) {
   const [renewing, setRenewing] = useState(null); // { ag, endDate } while renewing
   const [allPast, setAllPast] = useState(false);
   const [flipped, setFlipped] = useState([]); // contracts opened or closed from how they start
-  const contracts = openAgreements(state.db, company.id);
+  // Active ones first, then the rest; each by latest change, newest first.
+  const contracts = openAgreements(state.db, company.id).sort(
+    (a, b) => (b.status === 'Active') - (a.status === 'Active') || lastChange(b).localeCompare(lastChange(a)),
+  );
   const isOpen = (id) => (contracts.length === 1) !== flipped.includes(id);
   // Most recently over first: by the date of its last history entry (when it ended or expired).
   const past = (state.db.agreements || [])
@@ -320,8 +296,6 @@ export function AgreementTab({ company }) {
   // A new contract starts with all locations, from the day after the Active and
   // Scheduled contracts there end (defaultStartDate).
   const createContract = () => dispatch({ type: 'OPEN_AGREEMENT_EDITOR', companyId: company.id, returnTo });
-  // The order-limit conflicts ending it would leave (its limits can stop covering a clash).
-  const endConflicts = ending?.status === 'Active' ? newConflicts(withCatalog(state.db), limitsAfterAgreement(state.db, { off: ending })) : [];
 
   const pastCard = past.length ? (
     <s-section heading="Past contracts">
@@ -380,12 +354,6 @@ export function AgreementTab({ company }) {
 
   return (
     <s-stack gap="base">
-      {/* A live contract left with no terms (No terms): it keeps running, giving nothing. */}
-      {contracts.filter(noTerms).map((a) => (
-        <s-banner key={`no-terms-${a.id}`} tone="warning" heading={`${a.number} has no terms`}>
-          <s-paragraph>{`It has no pricing or order limits left, so it gives ${whereOf(a)} nothing. Add pricing or an order limit to it, or end the contract.`}</s-paragraph>
-        </s-banner>
-      ))}
       {/* The renewal reminder, per contract: shown from reminderDays before the end
           date, unless a next contract is set to take over. */}
       {expiring.map((a) => {
@@ -468,12 +436,6 @@ export function AgreementTab({ company }) {
                     staying.length ? `: ${joinAnd(staying.map((a) => a.number))} ${staying.length === 1 ? 'stays' : 'stay'} in place` : ''
                   }.`}
             </s-paragraph>
-            {endConflicts.length ? (
-              <>
-                <s-paragraph>Without them, these order limits conflict:</s-paragraph>
-                <LimitConflictList conflicts={endConflicts} />
-              </>
-            ) : null}
           </s-stack>
           <s-button
             slot="primary-action"
@@ -494,7 +456,11 @@ export function AgreementTab({ company }) {
 
       {deleting && (
         <Modal onClose={() => setDeleting(null)} heading={`Delete ${deleting.number}?`}>
-          <s-paragraph>{`The contract is deleted. Nothing changes for ${company.name}.`}</s-paragraph>
+          <s-paragraph>
+            {deleting.status === 'Scheduled'
+              ? `It won’t start on ${fmtDay(deleting.startDate)} and is removed with its history. Nothing changes for ${company.name}.`
+              : `The contract is deleted. Nothing changes for ${company.name}.`}
+          </s-paragraph>
           <s-button
             slot="primary-action"
             variant="primary"

@@ -4,7 +4,7 @@
 // product key the cart, product page and quote requests use: the first variant's
 // SKU, or the handle when the store has none. `list` is the D2C price.
 import storeCatalog from './shopifyProducts.json';
-import { productRuleFor, productRuleForCustomer, cartProblems, cartProblemsForCustomer, limitLevel, limitRules, limitState, upgradeLimits, spentSoFar } from '../../b2b/limits.js';
+import { productRuleFor, productRuleForCustomer, cartProblems, cartProblemsForCustomer, limitLevel, limitRules, upgradeLimits, spentSoFar } from '../../b2b/limits.js';
 import { TODAY } from '../../b2b/pricing.js';
 import { dbSeed } from '../../b2b/data/db.js';
 import { versionFlags } from '../../shared/versions.js';
@@ -96,8 +96,8 @@ export function agreementForSession(session) {
   const ag = contracts.find((a) => a.companyId === session.companyKey && (!a.locationIds || a.locationIds.includes(session.locationId)));
   if (!ag) return null;
   const db = limitsDb();
-  // In its own dates, or on the contract's (`followIds`).
-  const applies = (l) => limitState(l) === 'Active' || ((ag.followIds || []).includes(l.id) && l.status === 'Active');
+  // Turned on: it applies on the contract's dates, whatever its own.
+  const applies = (l) => l.status === 'Active';
   const limits = db.limits.filter(
     (l) => ag.limitIds.includes(l.id) && applies(l) && ['company', 'location'].includes(limitLevel(l, session.companyKey, session.locationId)),
   );

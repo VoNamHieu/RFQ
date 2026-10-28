@@ -1,13 +1,13 @@
 import React from 'react';
 import { useStore } from '../store.jsx';
-import { openAgreements, appliesAt, agreementDatesLabel, noTerms } from '../agreements.js';
+import { openAgreements, appliesAt, agreementDatesLabel } from '../agreements.js';
 import { wcTone } from '../../shared/wc.jsx';
 
 const STATUS_TONE = { Active: 'success', Scheduled: 'info', Inactive: undefined };
 
 // A location's contracts: the Active one here, the Scheduled ones set up to follow
 // it and any drafts for it (Active first). A new one can always be created for this
-// location — it just can't overlap the Active or Scheduled ones.
+// location.
 export function LocationContractCard({ company, location }) {
   const { state, dispatch } = useStore();
   const here = openAgreements(state.db, company.id).filter((a) => appliesAt(company, a, location.id));
@@ -37,10 +37,7 @@ export function LocationContractCard({ company, location }) {
                 <div>
                   <s-link onClick={open}>{`${a.number} · ${a.name || 'Untitled contract'}`}</s-link>
                 </div>
-                <s-stack direction="inline" gap="small-200">
-                  <s-badge tone={wcTone(STATUS_TONE[a.status])}>{a.status}</s-badge>
-                  {noTerms(a) ? <s-badge tone="warning">No terms</s-badge> : null}
-                </s-stack>
+                <s-badge tone={wcTone(STATUS_TONE[a.status])}>{a.status}</s-badge>
               </s-grid>
               <s-paragraph fontSize="small" color="subdued">
                 {agreementDatesLabel(a)}
