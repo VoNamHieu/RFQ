@@ -70,14 +70,29 @@ function InlineCheckList({ items, selected, onSet, searchable, placeholder, empt
 // ticked company with 2+ locations lists them underneath (all ticked) so the
 // pricing can go to only some; ticking every location is the whole company. With
 // `onApplyLaterChange`, a checkbox says whether locations added later get it too
-// (`applyLater`) at the companies picked. With `needsLocation` (order limits), a
-// company with no locations can't be picked.
-export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompany, onToggleLocation, onClose, applyLater = true, onApplyLaterChange, needsLocation = false }) {
+// (`applyLater`) at the companies picked (`laterLabel` / `laterDetails`: its text).
+// `single`: one company only (a contract) —
+// each company has a radio button instead, and picking one replaces the one before.
+// With `needsLocation` (order limits), a company with no locations can't be picked.
+export function SelectCompaniesModal({
+  open,
+  companies,
+  tickedOf,
+  onToggleCompany,
+  onToggleLocation,
+  onClose,
+  applyLater = true,
+  onApplyLaterChange,
+  laterLabel = 'Automatically apply this pricing to locations added later',
+  laterDetails = 'This only applies to companies with “Automatically add new locations” turned on.',
+  single = false,
+  needsLocation = false,
+}) {
   const [q, setQ] = useState('');
   const query = q.trim().toLowerCase();
   const shown = query ? companies.filter((c) => `${c.name} ${c.contact} ${c.email}`.toLowerCase().includes(query)) : companies;
   return (
-    <Modal open={open} onClose={onClose} heading="Select companies and locations">
+    <Modal open={open} onClose={onClose} heading={single ? 'Select company and locations' : 'Select companies and locations'}>
       <s-stack gap="small">
         <s-search-field
           label="Search"
@@ -103,19 +118,35 @@ export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompan
                   {i > 0 ? <s-divider /> : null}
                   <s-box paddingBlock="small">
                     <s-grid gridTemplateColumns="auto auto 1fr" gap="small" alignItems="center">
-                      <s-checkbox
-                        accessibilityLabel={`Select ${c.name}`}
-                        checked={all}
-                        indeterminate={!all && ticked.length > 0}
-                        disabled={needsLocation && !c.locs.length}
-                        onChange={(e) => {
-                          const want = e.currentTarget.checked;
-                          if (want === all) return; // a repeat event for the same click
-                          onToggleCompany(c);
-                          // Clicking a partly ticked company clears it (as before), so untick the box.
-                          if (want && ticked.length) e.currentTarget.checked = false;
-                        }}
-                      />
+                      {single ? (
+                        // Its own one-choice list (so the locations can sit under it), kept
+                        // in step by remounting when it's picked or not.
+                        <s-choice-list
+                          key={`${c.id}-${ticked.length > 0}`}
+                          label={`Select ${c.name}`}
+                          labelAccessibilityVisibility="exclusive"
+                          name={`select-company-${c.id}`}
+                          onChange={(e) => {
+                            if (e.currentTarget.values?.[0] === c.id && !ticked.length) onToggleCompany(c);
+                          }}
+                        >
+                          <s-choice value={c.id} selected={ticked.length > 0} accessibilityLabel={`Select ${c.name}`} />
+                        </s-choice-list>
+                      ) : (
+                        <s-checkbox
+                          accessibilityLabel={`Select ${c.name}`}
+                          checked={all}
+                          indeterminate={!all && ticked.length > 0}
+                          disabled={needsLocation && !c.locs.length}
+                          onChange={(e) => {
+                            const want = e.currentTarget.checked;
+                            if (want === all) return; // a repeat event for the same click
+                            onToggleCompany(c);
+                            // Clicking a partly ticked company clears it (as before), so untick the box.
+                            if (want && ticked.length) e.currentTarget.checked = false;
+                          }}
+                        />
+                      )}
                       <s-avatar size="base" initials={initialsOf(c.name)} alt={c.name} />
                       <s-stack gap="small-500">
                         <s-text fontWeight="semibold">{c.name}</s-text>
@@ -154,8 +185,8 @@ export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompan
           // Pinned to the bottom of the modal, always in view; the list scrolls under it.
           <div className="qs-modal-pinned-foot">
             <s-checkbox
-              label="Automatically apply this pricing to locations added later"
-              details="This only applies to companies with “Automatically add new locations” turned on."
+              label={laterLabel}
+              details={laterDetails || undefined}
               checked={applyLater}
               onChange={(e) => onApplyLaterChange(e.currentTarget.checked)}
             />
@@ -190,7 +221,8 @@ export function companyPicks(db, companyIds, locationKeys, onChange) {
     return companyIds.includes(c.id) ? c.locs.map((l) => l.id) : c.locs.filter((l) => locationKeys.includes(keyOf(c, l.id))).map((l) => l.id);
   };
   // Set a company's ticked locations: all → a company pick; some → location picks.
-  const setTicked = (c, ids) => {
+  const setTicked = (c, picked) => {
+    const ids = [...new Set(picked)];
     const all = c.locs.length ? ids.length === c.locs.length : ids.length > 0;
     const others = locationKeys.filter((k) => !k.startsWith(`${c.id}::`));
     onChange({

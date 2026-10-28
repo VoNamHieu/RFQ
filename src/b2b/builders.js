@@ -68,3 +68,16 @@ export function newQuantityBuilder() {
     quantityBasis: 'all_selected', // all_selected | per_product | per_variant
   };
 }
+
+// What saving a builder stores: conditional rules with no chosen value or no real
+// adjustment pruned (legacy validConditionalRule), and explicitEnabled derived from
+// the overrides.
+export function builderDraft(b) {
+  const conditionalRules = (b.conditionalRules || []).filter(
+    (r) =>
+      (r.conditions || []).some((c) =>
+        Array.isArray(c.values) ? c.values.filter(Boolean).length : c.value != null && c.value !== '',
+      ) && r.rule && r.rule !== 'keep',
+  );
+  return { ...b, conditionalRules, explicitEnabled: Object.keys(b.variantAdjustments || {}).length > 0 };
+}

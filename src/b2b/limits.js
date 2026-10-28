@@ -51,10 +51,11 @@
 // One resolver, one record. resolveBuyer turns the limits that reach a buyer on a
 // day into that buyer's effective rules: each setting with the value in force and
 // where it comes from (limit, level), and each product's minimum, maximum and
-// pack. One limit applies, whole: the most specific (location > company >
-// store-wide; for D2C a specific customer > a customer tag > all, logged-in or
-// non-logged-in customers), then the newest (the one that started applying last:
-// created or turned back on, or its start date when that's later — see newer).
+// pack. One limit applies, whole: the most specific (an Active contract's >
+// location > company > store-wide; for D2C a specific customer > a customer tag >
+// all, logged-in or non-logged-in customers), then the newest (the one that started
+// applying last: created or turned back on, or its start date when that's later —
+// see newer).
 // For order limits that's one limit per buyer; for product limits one
 // per product — a limit replaces another only for the products both have. Settings
 // are never combined: what the winner leaves empty isn't taken from the limit it
@@ -82,12 +83,14 @@
 // replaces the other there (two order limits; two product limits, for the products
 // both have), plus an order limit's maximum quantity below a product limit's
 // minimum (the two kinds both apply). They're notes, never a block: the
-// merchant can adjust one of the two. Shown when saving a limit, turning one on
-// and activating a contract.
+// merchant can adjust one of the two. Shown when saving a limit and turning one
+// on; a contract's editor checks the limits picked for it against each other
+// (contractLimitConflicts).
 //
 // A limit can have dates: it applies from its start date through its end date
 // (both optional, YYYY-MM-DD). Turned on with a start date still to come it is
-// Upcoming; after its end date, Expired (limitState).
+// Upcoming; after its end date, Expired (limitState). Where an Active contract gives
+// it, it applies on the contract's dates instead.
 import { COLLECTIONS } from './data/constants.js';
 import { money } from './format.js';
 import { scopeCollections, TODAY } from './pricing.js';
@@ -477,15 +480,27 @@ const LEVEL_RANK = { location: 3, company: 2, store: 1, customer: 3, tag: 2, eve
 const atLocation = (companyId, locationId) => (l) => limitLevel(l, companyId, locationId);
 const customerKey = (cu) => (cu ? `cu:${cu.id || ''}:${[...(cu.tags || [])].sort().join(',')}` : 'guest');
 
+// The Active contract giving a limit here, by number (`contractAt`: location keys, or
+// `companyId::*` for all of a company's — agreements.js stampContractLimits), else
+// null. There it applies on the contract's dates, whatever its own, and outranks
+// every other limit: rank 4, above a location's own.
+const contractAtBuyer = (limit, buyerKey) => {
+  const key = String(buyerKey || '').split('|')[0];
+  const at = limit.contractAt || {};
+  return at[key] || at[`${key.split('::')[0]}::*`] || null;
+};
+const CONTRACT_RANK = 4;
+
 // ── The resolver ─────────────────────────────────────────────────────────────
-// The limits that reach a buyer on a day, with how specific each is (rank) and
-// where it is in the list (`pos`, for newer).
-function reachFor(db, levelOf, at) {
+// The limits that reach a buyer on a day, with how specific each is (rank), the
+// contract giving it there (`contract`) and where it is in the list (`pos`, for newer).
+function reachFor(db, levelOf, at, buyerKey) {
   const reach = [];
   (db.limits || []).forEach((limit, pos) => {
-    if (limitState(limit, at) !== 'Active') return;
+    const contract = contractAtBuyer(limit, buyerKey);
+    if (contract ? limit.status !== 'Active' : limitState(limit, at) !== 'Active') return;
     const level = levelOf(limit);
-    if (level) reach.push({ limit, level, rank: LEVEL_RANK[level], pos });
+    if (level) reach.push({ limit, level, contract, rank: contract ? CONTRACT_RANK : LEVEL_RANK[level], pos });
   });
   return reach;
 }
@@ -493,34 +508,35 @@ function reachFor(db, levelOf, at) {
 // The one that applies: the most specific, then the newest.
 const winnerOf = (list) => list.reduce((w, x) => (!w || x.rank > w.rank || (x.rank === w.rank && newer(x.limit, x.pos, w.limit, w.pos)) ? x : w), null);
 
-// A buyer's effective rules on a day:
-//   order      { limit, level } — the order limit that applies, or null
+// A buyer's effective rules on a day (`contract`: the contract giving the limit
+// there, else null):
+//   order      { limit, level, contract } — the order limit that applies, or null
 //   settings   { minValue, maxValue, threshold, minQty, maxQty } — its settings:
-//              { mode, value, limit, level } (missing: it leaves it empty)
+//              { mode, value, limit, level, contract } (missing: it leaves it empty)
 //   products   { '*': entry, [sku]: entry } — for each product a rule names, and
 //              for the rest ('*'), the product limit that applies and its rule for
-//              the product: { limit, level, min, max, increment } (a field missing
-//              when the rule leaves it empty)
-//   reach      [{ limit, level }] — every limit in force there
-function buildRecord(db, levelOf, at) {
-  const reach = reachFor(db, levelOf, at);
+//              the product: { limit, level, contract, min, max, increment } (a field
+//              missing when the rule leaves it empty)
+//   reach      [{ limit, level, contract }] — every limit in force there
+function buildRecord(db, levelOf, at, buyerKey) {
+  const reach = reachFor(db, levelOf, at, buyerKey);
   const order = winnerOf(reach.filter((x) => x.limit.kind === 'order'));
   const settings = {};
   if (order) {
     ORDER_FIELDS.forEach((field) => {
       const s = settingOf(order.limit, field);
       const key = settingKey(order.limit, field);
-      if (s.mode !== 'inherit') settings[key] = { key, mode: s.mode, value: num(s), limit: order.limit, level: order.level };
+      if (s.mode !== 'inherit') settings[key] = { key, mode: s.mode, value: num(s), limit: order.limit, level: order.level, contract: order.contract };
     });
   }
   // Rules are in order: a product takes the first rule of a limit that has it, and
   // a rule on all products takes every product left (coverage).
   const productLimits = reach.filter((x) => x.limit.kind === 'product').map((x) => ({ ...x, cov: coverage(x.limit, db) }));
   const entryOf = (w, r) => {
-    const e = { limit: w.limit, level: w.level };
+    const e = { limit: w.limit, level: w.level, contract: w.contract };
     PRODUCT_FIELDS.forEach((field) => {
       const s = ruleSetting(r, field);
-      if (s.mode !== 'inherit') e[field] = { mode: s.mode, value: num(s), limit: w.limit, level: w.level };
+      if (s.mode !== 'inherit') e[field] = { mode: s.mode, value: num(s), limit: w.limit, level: w.level, contract: w.contract };
     });
     return e;
   };
@@ -531,7 +547,12 @@ function buildRecord(db, levelOf, at) {
     const w = winnerOf(productLimits.filter((x) => x.cov.bySku.has(sku) || x.cov.all));
     products[sku] = entryOf(w, w.cov.bySku.get(sku) || w.cov.all);
   });
-  return { reach: reach.map(({ limit, level }) => ({ limit, level })), order: order && { limit: order.limit, level: order.level }, settings, products };
+  return {
+    reach: reach.map(({ limit, level, contract }) => ({ limit, level, contract })),
+    order: order && { limit: order.limit, level: order.level, contract: order.contract },
+    settings,
+    products,
+  };
 }
 
 // Records are kept per version of the limits (a new list on every change).
@@ -541,7 +562,7 @@ function resolveBuyer(db, buyerKey, levelOf, at = TODAY) {
   if (!records.has(limits)) records.set(limits, new Map());
   const kept = records.get(limits);
   const k = `${buyerKey}|${at}`;
-  if (!kept.has(k)) kept.set(k, buildRecord(db, levelOf, at));
+  if (!kept.has(k)) kept.set(k, buildRecord(db, levelOf, at, buyerKey));
   return kept.get(k);
 }
 export const effectiveRules = (db, companyId, locationId, at) => resolveBuyer(db, limitKey(companyId, locationId), atLocation(companyId, locationId), at);
@@ -588,7 +609,8 @@ export function reviewMaximumFor(db, companyId, locationId, period = 'order', ba
   return e && e.mode === 'set' ? { limit: e.limit, value: e.value } : null;
 }
 
-// Every limit in force at a location, most specific first, with what it sets. An
+// Every limit in force at a location, most specific first (a contract's first), with
+// the contract giving it there (`contract`) and what it sets. An
 // order limit another one replaces there names it on each setting (`replacedBy`).
 // A product rule names the limit that applies to its products instead: on the rule
 // when one limit took them all, else per limit (`partly`: { key, by, label } — the
@@ -597,9 +619,10 @@ export function locationLimits(db, companyId, locationId) {
   const rec = effectiveRules(db, companyId, locationId);
   const titleOf = (sku) => (db.products || []).find((p) => p.sku === sku)?.title || sku;
   return rec.reach
-    .map(({ limit, level }) => ({
+    .map(({ limit, level, contract }) => ({
       limit,
       level,
+      contract,
       rules: limitRules(limit, db).map((entry) => {
         if (entry.key) return { ...entry, replacedBy: rec.order && rec.order.limit.id !== limit.id ? rec.order.limit : null };
         const losses = entry.targets
@@ -613,8 +636,9 @@ export function locationLimits(db, companyId, locationId) {
         return { ...entry, replacedBy: null, partly };
       }),
     }))
-    .sort((a, b) => LEVEL_RANK[b.level] - LEVEL_RANK[a.level]);
+    .sort((a, b) => rankOf(b) - rankOf(a));
 }
+const rankOf = (x) => (x.contract ? CONTRACT_RANK : LEVEL_RANK[x.level]);
 
 // The day a week (Monday) or month starts, for a day (YYYY-MM-DD), and the day the next one starts.
 const shiftDay = (iso, days) => {
@@ -824,7 +848,7 @@ function levelAtPlace(l, p) {
 // " for customers tagged VIP".
 function whereText(places) {
   if (places.length === 1 && places[0].noun === 'store') return ' store-wide';
-  const prep = ['company', 'location'].includes(places[0]?.noun) ? 'at' : 'for';
+  const prep = ['company', 'location'].includes(places[0]?.noun) ? 'at' : places[0]?.noun === 'contract' ? 'in' : 'for';
   if (places.length <= 3) return ` ${prep} ${andList(places.map((p) => p.label))}`;
   const counts = new Map();
   places.forEach((p) => counts.set(p.noun, (counts.get(p.noun) || 0) + 1));
@@ -1009,6 +1033,28 @@ export function overlapsOf(db, nextLimits, ids) {
   });
 }
 
+// ── A contract's limits against each other ──────────────────────────────────
+// The limits picked for a contract that overlap, as lines for its editor (a
+// warning: it still saves). In one contract they apply at the same places, at the
+// same rank, on the contract's dates — so, as anywhere, two order limits don't
+// combine (the newest applies), two product limits don't for the products both have,
+// and an order maximum below a product minimum stops orders. Limits that are off
+// don't count.
+export function contractLimitConflicts(db, limits) {
+  const list = db.limits || [];
+  const pos = (l) => list.findIndex((x) => x.id === l.id);
+  const live = limits.filter((l) => l.status === 'Active');
+  const places = [{ label: 'this contract', noun: 'contract', a: 'contract', b: 'contract' }];
+  const out = [];
+  live.forEach((a, i) =>
+    live.slice(i + 1).forEach((b) => {
+      const found = pairNotes(db, a, b, places, { a: quote(a), b: quote(b) }, newer(a, pos(a), b, pos(b)), TODAY, pos);
+      out.push(...found.lines.map(capFirst));
+    }),
+  );
+  return out;
+}
+
 // ── Validation ──────────────────────────────────────────────────────────────
 // Problems that keep a draft from being saved, keyed by field.
 export function limitErrors(d) {
@@ -1020,8 +1066,12 @@ export function limitErrors(d) {
   const allowed = (k, v) => (isMin(k) ? v >= 0 : v > 0);
   const bad = (k) => d[k] !== '' && d[k] != null && !allowed(k, Number(d[k]));
   if (!(d.name || '').trim()) e.name = 'Name is required';
-  if (d.startDate && d.endDate && d.endDate < d.startDate) e.endDate = 'Must be after the start date';
-  else if (d.endDate && d.endDate < TODAY) e.endDate = 'This date has passed';
+  // A contract limit has no dates, and applies where its contracts do (Applies to
+  // isn't checked below).
+  if (!d.forContracts) {
+    if (d.startDate && d.endDate && d.endDate < d.startDate) e.endDate = 'Must be after the start date';
+    else if (d.endDate && d.endDate < TODAY) e.endDate = 'This date has passed';
+  }
   if (d.kind === 'order') {
     ORDER_FIELDS.forEach((k) => { if (bad(k)) e[k] = isMin(k) ? 'Enter 0 or more' : 'Enter a number above 0'; });
     ['minQty', 'maxQty'].forEach((k) => {
@@ -1059,6 +1109,7 @@ export function limitErrors(d) {
       }
     });
   }
+  if (d.forContracts) return e;
   if (isD2CLimit(d)) {
     if (PICKED_TARGETS.includes(d.customerTarget) && !(d.customerTargetIds || []).length) {
       e.targets = d.customerTarget === 'tags' ? 'Pick at least one customer tag' : 'Pick at least one customer';

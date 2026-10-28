@@ -116,8 +116,9 @@ const REGISTRATION_EMAIL_TEMPLATES = {
 };
 
 // Contract emails (Upcoming version): to the buyers at the locations a contract
-// applies to when it starts, 30 days before it ends, when it ends and when it's
-// renewed; and to you 30 days before it ends.
+// applies to when it starts, when its renewal reminder starts (reminderDays in
+// agreements.js), when it ends and when it's extended; and to you when the reminder
+// starts.
 const CONTRACT_EMAIL_TEMPLATES = {
   allow_contract_started_email: {
     title: 'Contract started',
@@ -128,8 +129,8 @@ const CONTRACT_EMAIL_TEMPLATES = {
   },
   allow_contract_ending_email: {
     title: 'Contract ending soon',
-    description: 'Email sent to the company’s buyers 30 days before a contract ends',
-    detail: 'Contract ending soon email is sent automatically to the buyers at the locations a contract applies to, 30 days before its end date',
+    description: 'Email sent to the company’s buyers before a contract ends',
+    detail: 'Contract ending soon email is sent automatically to the buyers at the locations a contract applies to, 30 days before its end date, or halfway through a contract shorter than 60 days. A contract shorter than 7 days gets none',
     dynamicValues: CONTRACT_DYNAMIC_VALUES,
     preheaderFields: BUYER_PREHEADER_FIELDS,
   },
@@ -141,16 +142,16 @@ const CONTRACT_EMAIL_TEMPLATES = {
     preheaderFields: BUYER_PREHEADER_FIELDS,
   },
   allow_contract_renewed_email: {
-    title: 'Contract renewed',
-    description: 'Email sent to the company’s buyers when you renew a contract',
-    detail: 'Contract renewed email is sent automatically to the buyers at the locations a contract applies to, when you renew it',
+    title: 'Contract extended',
+    description: 'Email sent to the company’s buyers when you extend a contract',
+    detail: 'Contract extended email is sent automatically to the buyers at the locations a contract applies to, when you extend it',
     dynamicValues: CONTRACT_DYNAMIC_VALUES,
     preheaderFields: BUYER_PREHEADER_FIELDS,
   },
   allow_contract_reminder_email: {
-    title: 'Renewal reminder',
-    description: 'Email sent to admin 30 days before a contract ends',
-    detail: 'Renewal reminder email is sent automatically to admin 30 days before a contract’s end date, unless a next contract is set to take over',
+    title: 'Extension reminder',
+    description: 'Email sent to admin before a contract ends',
+    detail: 'Extension reminder email is sent automatically to admin 30 days before a contract’s end date, or halfway through a contract shorter than 60 days, unless a next contract is set to take over. A contract shorter than 7 days gets none',
     dynamicValues: CONTRACT_DYNAMIC_VALUES,
     preheaderFields: ADMIN_PREHEADER_FIELDS,
   },
@@ -256,7 +257,7 @@ export const DEMO_EMAIL_TEMPLATES = {
       '<br>',
       'Your contract {contract_number} · {contract_name} with {store_name} ends on {end_date}.',
       '<br>',
-      'After that, {company_name} orders at our standard business prices and order limits, unless the contract is renewed.',
+      'After that, {company_name} orders at our standard business prices and order limits, unless the contract is extended.',
       '<br>',
       'If you have any questions, contact us at {store_email}.',
       '<br>',
@@ -282,11 +283,11 @@ export const DEMO_EMAIL_TEMPLATES = {
     recipientName: '{customer_name}',
   },
   allow_contract_renewed_email: {
-    subject: 'Your contract {contract_number} is renewed until {end_date}',
+    subject: 'Your contract {contract_number} is extended until {end_date}',
     emailBody: body(
       'Dear {first_name},',
       '<br>',
-      'Your contract {contract_number} · {contract_name} with {store_name} is renewed until {end_date}.',
+      'Your contract {contract_number} · {contract_name} with {store_name} is extended until {end_date}.',
       '<br>',
       'Your contract prices and order limits stay the same.',
       '<br>',
@@ -302,7 +303,7 @@ export const DEMO_EMAIL_TEMPLATES = {
     emailBody: body(
       'Contract {contract_number} · {contract_name} with {company_name} ends on {end_date}.',
       '<br>',
-      'Go to B2B Quote Snap to renew it or set up the next contract. After the end date, {company_name} goes back to the pricing and limits outside the contract.',
+      'Go to B2B Quote Snap to extend it or set up the next contract. After the end date, {company_name} goes back to the pricing and limits outside the contract.',
     ),
     adminRecipient: 'wholesale@221baker.com',
     cc: '',

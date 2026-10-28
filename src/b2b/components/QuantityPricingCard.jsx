@@ -2,18 +2,27 @@ import React from 'react';
 import { useStore } from '../store.jsx';
 import { companyQuantityEntries, locationOnlyEntries, pricingLocationsLabel, policyStatus, scopeTypeLabel } from '../pricing.js';
 import { LocationOnlyActions, ApplyLaterSwitch, PricingName } from './BasePricingCard.jsx';
-import { contractGiving, lockedTip } from '../agreements.js';
+import { contractGiving, contractsGiving } from '../agreements.js';
+import { useContractLock } from './ContractLock.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
-import { wcTone, useWcId } from '../../shared/wc.jsx';
+import { wcTone } from '../../shared/wc.jsx';
 import quantityPricingArt from '../assets/quantity-pricing-empty.webp';
 
 export function QuantityPricingCard({ company }) {
   const { state, dispatch } = useStore();
-  const tipId = useWcId('qty-row');
-  // A company can hold several quantity pricings (lowest priority applies first).
-  // The company's own list plus pricing only some locations get (labelled with them),
-  // in priority order — the stable sort keeps the company's own tie-breaks.
-  const entries = [...companyQuantityEntries(company, state.db.policies), ...locationOnlyEntries(company, state.db.policies, 'quantity')].sort((a, b) => a.priority - b.priority);
+  const [showLock, lockModal] = useContractLock();
+  // The live contract giving a row's pricing (on the company, or on its locations).
+  const contractOf = (entry) =>
+    entry.locations
+      ? entry.locations.map((l) => contractGiving(state.db, company, entry.policy.id, l.id)).find(Boolean) || null
+      : contractGiving(state.db, company, entry.policy.id);
+  // A company can hold several quantity pricings (lowest priority applies first, after
+  // a live contract's). The company's own list plus pricing only some locations get
+  // (labelled with them), in the order they apply — the stable sort keeps the
+  // company's own tie-breaks.
+  const entries = [...companyQuantityEntries(company, state.db.policies), ...locationOnlyEntries(company, state.db.policies, 'quantity')].sort(
+    (a, b) => !!contractOf(b) - !!contractOf(a) || a.priority - b.priority,
+  );
   const policies = entries.map((e) => e.policy);
   const openAdd = () => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, kind: 'quantity', mode: 'add' });
   const autoApply = !!company.autoAddLocations;
@@ -60,10 +69,7 @@ export function QuantityPricingCard({ company }) {
           {entries.map((entry) => {
             const policy = entry.policy;
             const st = policyStatus(policy, state.db);
-            // The live contract giving it (on the company, or on its locations).
-            const ag = entry.locations
-              ? entry.locations.map((l) => contractGiving(state.db, company, policy.id, l.id)).find(Boolean) || null
-              : contractGiving(state.db, company, policy.id);
+            const ag = contractOf(entry);
             return (
               <s-table-row key={policy.id}>
                 <s-table-cell>
@@ -83,7 +89,7 @@ export function QuantityPricingCard({ company }) {
                 </s-table-cell>
                 <s-table-cell>
                   {entry.locations ? (
-                    <LocationOnlyActions company={company} kind="quantity" entry={entry} />
+                    <LocationOnlyActions company={company} kind="quantity" entry={entry} onLocked={showLock} />
                   ) : (
                     <s-stack direction="inline" gap="small-400" justifyContent="end" alignItems="center">
                       <s-button icon="edit" variant="tertiary" accessibilityLabel="Edit pricing" onClick={() => dispatch({ type: 'OPEN_EDITOR', policy, context: { mode: 'edit', companyId: company.id } })} />
@@ -92,11 +98,12 @@ export function QuantityPricingCard({ company }) {
                         variant="tertiary"
                         tone="critical"
                         accessibilityLabel="Remove"
-                        disabled={!!ag}
-                        interestFor={ag ? `${tipId}-${policy.id}` : undefined}
-                        onClick={() => dispatch({ type: 'REMOVE_COMPANY_QUANTITY', companyId: company.id, policyId: policy.id })}
+                        onClick={() => {
+                          const held = contractsGiving(state.db, company, policy.id);
+                          if (held.length) showLock({ name: policy.name, count: held.length, verb: 'remove' });
+                          else dispatch({ type: 'REMOVE_COMPANY_QUANTITY', companyId: company.id, policyId: policy.id });
+                        }}
                       />
-                      {ag ? <s-tooltip id={`${tipId}-${policy.id}`}>{lockedTip([ag], 'remove')}</s-tooltip> : null}
                     </s-stack>
                   )}
                 </s-table-cell>
@@ -110,6 +117,7 @@ export function QuantityPricingCard({ company }) {
           Add quantity pricing
         </s-button>
       </s-box>
+      {lockModal}
     </s-section>
   );
 }

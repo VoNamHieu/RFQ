@@ -6,8 +6,9 @@ import { clone } from './dbHelpers.js';
 import { makeBaseState } from './initialState.js';
 import {
   newLimit, normalizeLimit, upgradeLimits, limitOverlaps, cartProblems, cartProblemsForCustomer, productRuleFor, effectiveRules, effectiveRulesForCustomer,
-  locationLimits, limitSummary, limitState, limitErrors,
+  locationLimits, limitSummary, limitState, limitErrors, contractLimitConflicts,
 } from './limits.js';
+import { stampContractLimits } from './agreements.js';
 import { withCatalog } from './limitCatalog.js';
 import { heldReason } from './components/HeldOrders.jsx';
 import { quantityProblem } from '../storefront/quantityProblem.js';
@@ -21,6 +22,14 @@ const fresh = () => {
 };
 const draftOf = (d) => ({ ...newLimit(d.kind || 'order'), ...d });
 const withLimit = (db, d, id) => ({ ...db, limits: [...db.limits, { ...normalizeLimit(draftOf(d)), id }] });
+// The same limits as plain company limits: "Filter case packs" no longer comes from
+// CT-301 at ABC (for cases about limits outside contracts).
+const outside = (db) => ({ ...db, limits: db.limits.map((l) => ({ ...l, contractAt: {} })) });
+// A limit CT-301 (ABC Construction, all locations) gives, as when it's in the contract.
+const inContract = (db, d, id) => {
+  const agreements = db.agreements.map((a) => (a.number === 'CT-301' ? { ...a, terms: { ...a.terms, limits: [...a.terms.limits, id] } } : a));
+  return stampContractLimits({ ...withLimit(db, { storeWide: false, companyIds: ['c1'], ...d }, id), agreements });
+};
 const warningsFor = (db, d) => limitOverlaps(db, draftOf(d)).map((o) => o.text);
 const rule = (sku, o) => ({ id: `r_${sku}`, scopeType: 'products', collection: '', selectedProducts: [sku], min: null, max: null, increment: null, ...o });
 const allProducts = (o) => ({ id: 'r_all', scopeType: 'all', collection: '', selectedProducts: [], min: null, max: null, increment: null, ...o });
@@ -54,7 +63,7 @@ const CASES = [
     expect: 'Hanoi “max 100” replaces the company’s min 12 and packs of 12 for the filter — nothing is combined, so 5 filters are fine there; saving it notes which limit applies',
     run() {
       const d = { kind: 'product', name: 'Hanoi filter cap', storeWide: false, locationKeys: ['c1::l1'], rules: [rule('FIL-XL', { max: '100' })] };
-      const base = fresh();
+      const base = outside(fresh());
       const db = withLimit(base, d, 'cap');
       return [
         equals('Industrial filter, XL at Hanoi', quantities(productRuleFor(db, 'c1', 'l1', 'FIL-XL')), { min: null, max: 100, pack: 1 }),
@@ -67,7 +76,7 @@ const CASES = [
     code: 'OL-03', title: 'Lift a pack size at one location', ref: 'Set to none',
     expect: 'Pack set to none (1) at Hanoi replaces the company rule for the filter, its minimum of 12 too: 5 or 13 filters check out there; Bac Ninh still sells in packs of 12',
     run() {
-      const db = withLimit(fresh(), { kind: 'product', name: 'Hanoi loose filters', storeWide: false, locationKeys: ['c1::l1'], rules: [rule('FIL-XL', { increment: '1' })] }, 'loose');
+      const db = withLimit(outside(fresh()), { kind: 'product', name: 'Hanoi loose filters', storeWide: false, locationKeys: ['c1::l1'], rules: [rule('FIL-XL', { increment: '1' })] }, 'loose');
       const card = locationLimits(db, 'c1', 'l1').find((r) => r.limit.name === 'Filter case packs');
       return [
         equals('Industrial filter, XL at Hanoi', quantities(productRuleFor(db, 'c1', 'l1', 'FIL-XL')), null),
@@ -112,7 +121,7 @@ const CASES = [
     code: 'OL-06', title: 'Two company rules on one product', ref: 'Gap 1',
     expect: 'The newer company limit (minimum 24) replaces the company’s min 12 / packs of 12 for the filter, its pack size too, so 30 filters check out. Saving it notes it; the same rule for Hanoi only notes it’s more specific',
     run() {
-      const base = fresh();
+      const base = outside(fresh());
       const d = { kind: 'product', name: 'Big filter minimum', storeWide: false, companyIds: ['c1'], rules: [rule('FIL-XL', { min: '24' })] };
       const db = withLimit(base, d, 'big');
       return [
@@ -255,7 +264,7 @@ const CASES = [
     code: 'OL-24', title: 'The newer limit wins a product at the same level', ref: 'Case 2',
     expect: 'A newer company pack of 6 replaces the company rule for the filter, its minimum of 12 too (nothing is combined); a newer store-wide one doesn’t — the company’s is more specific. Both are noted on save',
     run() {
-      const base = fresh();
+      const base = outside(fresh());
       const d = { kind: 'product', name: 'ABC filter packs of 6', storeWide: false, companyIds: ['c1'], rules: [rule('FIL-XL', { increment: '6' })] };
       const wide = { ...d, name: 'Store filter packs of 6', storeWide: true, companyIds: [] };
       const db = withLimit(base, d, 'six');
@@ -286,6 +295,40 @@ const CASES = [
         includes('Soft note on save', warningsFor(withLimit(base, retail, 'rm'), trade), 'Other customer tags already have order limits (retailer). A customer with several tags gets only the newest of these limits, so check them if they may overlap.'),
         equals('…no clash', limitOverlaps(withLimit(base, retail, 'rm'), draftOf(trade)).filter((o) => o.stops).length, 0),
         equals('Same tag twice: the newer $300 applies', effectiveRulesForCustomer(twice, customer('w1')).settings.minValue.value, 300),
+      ];
+    },
+  },
+  {
+    code: 'OL-26', title: 'A contract’s limits win at its locations', ref: 'Contracts',
+    expect: 'At Hanoi (CT-301): the contract’s $1,000 minimum applies, not Hanoi’s own order limit; a Hanoi rule on Industrial filter, XL doesn’t replace the contract’s case packs; a contract limit past its own end date still applies',
+    run() {
+      const base = fresh();
+      const mins = inContract(base, { name: 'Contract minimum', minValue: '1000' }, 'cmin');
+      const capped = withLimit(base, { kind: 'product', name: 'Hanoi filter cap', storeWide: false, locationKeys: ['c1::l1'], rules: [rule('FIL-XL', { max: '100' })] }, 'cap');
+      const dated = inContract(base, { name: 'Contract minimum', minValue: '1000', endDate: '2026-07-01' }, 'cmin');
+      const order = effectiveRules(mins, 'c1', 'l1').order;
+      return [
+        equals('Order limit at Hanoi', `${order?.limit.name} · ${order?.contract}`, 'Contract minimum · CT-301'),
+        equals('Minimum order at Hanoi', effectiveRules(mins, 'c1', 'l1').settings.minValue?.value, 1000),
+        equals('Industrial filter, XL at Hanoi', quantities(productRuleFor(capped, 'c1', 'l1', 'FIL-XL')), { min: 12, max: null, pack: 12 }),
+        equals('Location card, first', `${locationLimits(capped, 'c1', 'l1')[0]?.limit.name} · ${locationLimits(capped, 'c1', 'l1')[0]?.contract}`, 'Filter case packs · CT-301'),
+        equals('Contract minimum past its own end date', effectiveRules(dated, 'c1', 'l1').settings.minValue?.value, 1000),
+        equals('The same, outside the contract', effectiveRules(outside(dated), 'c1', 'l1').order?.limit.name, 'ABC Hanoi review'),
+      ];
+    },
+  },
+  {
+    code: 'OL-27', title: 'Two limits in one contract', ref: 'Contracts',
+    expect: 'Two order limits in CT-301: the newer applies, and the contract editor notes it; a 6-unit maximum with the contract’s case packs of 12 is noted as stopping orders',
+    run() {
+      let db = inContract(fresh(), { name: 'Contract minimum A', minValue: '800' }, 'ca');
+      db = inContract(db, { name: 'Contract minimum B', minValue: '600' }, 'cb');
+      const pick = (d, ids) => ids.map((id) => d.limits.find((l) => l.id === id));
+      const small = inContract(fresh(), { name: 'Contract small orders', maxQty: '6' }, 'csmall');
+      return [
+        equals('Order limit at Hanoi', effectiveRules(db, 'c1', 'l1').order?.limit.name, 'Contract minimum B'),
+        includes('Contract editor', contractLimitConflicts(db, pick(db, ['ca', 'cb'])), '“Contract minimum B” replaces “Contract minimum A” in this contract'),
+        includes('Contract editor', contractLimitConflicts(small, pick(small, ['olc3', 'csmall'])), 'can’t be ordered in this contract'),
       ];
     },
   },

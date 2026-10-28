@@ -1,20 +1,20 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { canCreateAgreement, agreementScopeLabel, agreementTermCount, agreementDatesLabel, expiringSoon, daysUntil, PAST_STATUSES } from '../agreements.js';
+import { canCreateAgreement, agreementAppliesToLabel, agreementTermCount, agreementDatesLabel, expiringSoon, daysUntil, PAST_STATUSES } from '../agreements.js';
 import { AgreementEditor } from '../components/AgreementEditor.jsx';
 import { ContractVersionModal } from '../components/ContractVersionModal.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
-import { Modal, IndexFiltersBar, useWcId, wcTone } from '../../shared/wc.jsx';
+import { IndexFiltersBar, useWcId, wcTone } from '../../shared/wc.jsx';
 
 const STATUS_TABS = [
   { id: 'all', label: 'All' },
   { id: 'Active', label: 'Active' },
   { id: 'Scheduled', label: 'Scheduled' },
-  { id: 'Draft', label: 'Draft' },
+  { id: 'Inactive', label: 'Inactive' },
   { id: 'Expired', label: 'Expired' },
   { id: 'Ended', label: 'Ended' },
 ];
-const STATUS_TONE = { Active: 'success', Scheduled: 'info', Draft: undefined, Expired: undefined, Ended: undefined };
+const STATUS_TONE = { Active: 'success', Scheduled: 'info', Inactive: undefined, Expired: undefined, Ended: undefined };
 
 // Every company's agreement in one list. A row opens the company's Agreement tab —
 // a past one opens as it was, read-only; the editor opens as a page here
@@ -23,8 +23,6 @@ export function Agreements() {
   const { state, dispatch } = useStore();
   const [status, setStatus] = useState('all');
   const [search, setSearch] = useState('');
-  const [picking, setPicking] = useState(false);
-  const [companyId, setCompanyId] = useState('');
   const [viewing, setViewing] = useState(null);
   const rowId = useWcId('agreement');
 
@@ -32,10 +30,10 @@ export function Agreements() {
 
   const all = state.db.agreements || [];
   const companyOf = (id) => state.db.companies.find((c) => c.id === id);
-  // One Active contract and one next one per company: only companies without a next
-  // one can get a new one.
+  // Any company can get a new one (picked in the editor), overlapping its other
+  // contracts or not.
   const free = state.db.companies.filter((c) => canCreateAgreement(state.db, c.id));
-  const create = { content: 'Create contract', onAction: () => { setCompanyId(free[0]?.id || ''); setPicking(true); }, disabled: !free.length };
+  const create = { content: 'Create contract', onAction: () => dispatch({ type: 'OPEN_AGREEMENT_EDITOR' }), disabled: !free.length };
   const createButton = (
     <s-button slot="primary-action" variant="primary" disabled={create.disabled} onClick={create.onAction}>
       {create.content}
@@ -64,7 +62,7 @@ export function Agreements() {
             </s-stack>
           </s-table-cell>
           <s-table-cell>{company?.name || '—'}</s-table-cell>
-          <s-table-cell>{company ? agreementScopeLabel(company, a) : '—'}</s-table-cell>
+          <s-table-cell>{company ? agreementAppliesToLabel(company, a) : '—'}</s-table-cell>
           <s-table-cell>
             <s-stack gap="small-500">
               <s-text>{agreementDatesLabel(a)}</s-text>
@@ -84,34 +82,6 @@ export function Agreements() {
       );
     });
 
-  const picker = picking && (
-    <Modal onClose={() => setPicking(false)} heading="Create contract">
-      <s-select
-        label="Company"
-        value={companyId}
-        onChange={(e) => setCompanyId(e.currentTarget.value)}
-        details="A company has one contract in force and can have one next contract set up ahead. Companies that already have a next one aren’t listed."
-      >
-        {free.map((c) => (
-          <s-option key={c.id} value={c.id}>
-            {c.name}
-          </s-option>
-        ))}
-      </s-select>
-      <s-button
-        slot="primary-action"
-        variant="primary"
-        disabled={!companyId}
-        onClick={() => { setPicking(false); dispatch({ type: 'OPEN_AGREEMENT_EDITOR', companyId }); }}
-      >
-        Continue
-      </s-button>
-      <s-button slot="secondary-actions" onClick={() => setPicking(false)}>
-        Cancel
-      </s-button>
-    </Modal>
-  );
-
   if (!all.length) {
     return (
       <s-page heading="Contracts">
@@ -121,7 +91,6 @@ export function Agreements() {
             A contract holds a company’s pricing and order limits. Activating it applies them together, and every change is kept as a version.
           </EmptyBlock>
         </s-section>
-        {picker}
       </s-page>
     );
   }
@@ -162,8 +131,16 @@ export function Agreements() {
           ) : null}
         </s-section>
       </s-stack>
-      {picker}
-      {viewing && <ContractVersionModal ag={viewing} onClose={() => setViewing(null)} />}
+      {viewing && (
+        <ContractVersionModal
+          ag={viewing}
+          onClose={() => setViewing(null)}
+          onDuplicate={(ag) => {
+            setViewing(null);
+            dispatch({ type: 'OPEN_AGREEMENT_EDITOR', duplicateOf: ag.id });
+          }}
+        />
+      )}
     </s-page>
   );
 }

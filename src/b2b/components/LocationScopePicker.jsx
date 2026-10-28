@@ -15,10 +15,12 @@ export function LocationScopePicker({ company, locationIds, onChange, title = 'A
   const some = Array.isArray(locationIds);
   const picked = some ? locationIds : [];
   // Idempotent: sets the location on/off from the checkbox's checked state.
-  const setPicked = (id, on) => {
-    const next = on ? [...new Set([...picked, id])] : picked.filter((x) => x !== id);
-    onChange(locations.length > 0 && locations.every((l) => next.includes(l.id)) ? null : next);
+  // Specific locations; every location → all (null).
+  const pick = (ids) => {
+    const next = [...new Set(ids)];
+    return locations.length > 0 && locations.every((l) => next.includes(l.id)) ? null : next;
   };
+  const setPicked = (id, on) => onChange(pick(on ? [...picked, id] : picked.filter((x) => x !== id)));
 
   const laterBox = onApplyLaterChange && company?.autoAddLocations && (
     <s-checkbox
@@ -61,10 +63,12 @@ export function LocationScopePicker({ company, locationIds, onChange, title = 'A
         labelAccessibilityVisibility="exclusive"
         name={`${name}-${value}`}
         onChange={(e) => {
-          if (e.currentTarget.values?.[0] === value) onChange(value === 'some' ? picked : null);
+          if (e.currentTarget.values?.[0] === value) onChange(value === 'some' ? pick(picked) : null);
         }}
       >
-        <s-choice value={value} selected={selected}>{label}</s-choice>
+        <s-choice value={value} selected={selected}>
+          {label}
+        </s-choice>
       </s-choice-list>
     );
     return (
@@ -86,7 +90,7 @@ export function LocationScopePicker({ company, locationIds, onChange, title = 'A
         onChange={(e) => {
           const v = e.currentTarget.values?.[0];
           if (!v) return;
-          onChange(v === 'some' ? picked : null);
+          onChange(v === 'some' ? pick(picked) : null);
         }}
       >
         <s-choice value="all" selected={!some}>

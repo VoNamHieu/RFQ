@@ -18,13 +18,37 @@ export function policyById(policies, id) {
   return (policies || []).find((p) => p.id === id) || null;
 }
 
+// ── Contract pricing first (Upcoming) ───────────────────────────────────────
+// A pricing an Active contract gives a company or location applies there before
+// every other one, whatever its priority (it beats priority 0); among themselves,
+// contract pricings go by priority. Which ones those are is derived from the
+// contracts (agreements.js liveContractPricing) and handed over by the store:
+// holder id (company or location) → pricing ids. Empty without Contracts. There it
+// applies on the contract's dates, whatever its own.
+let contractPricing = {};
+export function setContractPricing(map) {
+  contractPricing = map || {};
+}
+// Resolve with other contracts in force — e.g. a contract's price preview, as if
+// it applied. Restores the live ones after.
+export function withContractPricing(map, fn) {
+  const live = contractPricing;
+  contractPricing = map || {};
+  try {
+    return fn();
+  } finally {
+    contractPricing = live;
+  }
+}
+const fromContract = (holder, id) => !!holder?.id && (contractPricing[holder.id] || []).includes(id);
+
 // ── Company base / quantity lists (resolution order) ─────────────────────────
 // A company (or location) holds a LIST per kind: pricing.base and pricing.quantity
 // are both [{id, priority}]. Priority is a property of the PROFILE (its "Priority
-// 0-99" field), not a per-company number: lower applies first. On a tie a SCOPED
-// profile (covers only some SKUs — e.g. a quote pricing) beats an all-products
-// one, then insertion order. Dangling ids dropped; a legacy scalar id normalized
-// to a one-item list.
+// 0-99" field), not a per-company number: lower applies first. A live contract's
+// pricing comes before all of them (see above). On a tie a SCOPED profile (covers
+// only some SKUs — e.g. a quote pricing) beats an all-products one, then insertion
+// order. Dangling ids dropped; a legacy scalar id normalized to a one-item list.
 function slotEntries(holder, policies, kind) {
   let list = holder?.pricing?.[kind];
   if (!list) return [];
@@ -37,16 +61,18 @@ function slotEntries(holder, policies, kind) {
     .map((e, idx) => {
       const id = (e && e.id) || e;
       const policy = policyById(policies, id);
-      return { id, idx, priority: Number(policy?.priority) || 0, policy };
+      return { id, idx, priority: Number(policy?.priority) || 0, policy, byContract: fromContract(holder, id) };
     })
     .filter((e) => e.policy)
-    .sort((a, b) => a.priority - b.priority || spec(a.id) - spec(b.id) || a.idx - b.idx);
+    .sort((a, b) => b.byContract - a.byContract || a.priority - b.priority || spec(a.id) - spec(b.id) || a.idx - b.idx);
 }
 
 // Usable for resolution right now: not Inactive, and inside its dated window if
-// it has one. Scheduled/expired bases step aside so the next priority applies.
-export function basePriceableNow(policy) {
+// it has one. Scheduled/expired bases step aside so the next priority applies. At
+// a `holder` a contract gives it to, its own dates don't count (the contract's do).
+export function basePriceableNow(policy, holder = null) {
   if (!policy || policy.status === 'Inactive') return false;
+  if (fromContract(holder, policy.id)) return true;
   // Dated window (god-file model): active from startDate, optionally until endDate.
   // Backward compatible with seed policies that carry startDate/endDate directly.
   if (policy.startDate && policy.startDate > TODAY) return false;
@@ -115,7 +141,7 @@ export function slotIds(holder, kind) {
 export function companyActiveBasePolicies(company, policies) {
   return companyBaseEntries(company, policies)
     .map((e) => e.policy)
-    .filter(basePriceableNow);
+    .filter((p) => basePriceableNow(p, company));
 }
 export function companyActiveQuantityPolicies(company, policies) {
   return companyQuantityEntries(company, policies)

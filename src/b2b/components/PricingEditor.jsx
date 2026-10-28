@@ -8,11 +8,12 @@ import { LocationScopePicker } from './LocationScopePicker.jsx';
 import { versionFlags } from '../../shared/versions.js';
 import { COLLECTIONS } from '../data/constants.js';
 import { money } from '../format.js';
-import { ActiveDatesCard, ProductScopeCard, QuantityProductsCard, VolumeBasisCard, ProductOverridesCard } from './pricingEditorCards.jsx';
+import { ActiveDatesCard, ProductScopeCard, QuantityProductsCard, VolumeBasisCard, ProductOverridesCard, TermUseSwitch, ContractsCard, ContractSaveMessage } from './pricingEditorCards.jsx';
 import { PricePreviewDialog } from './PricePreviewDialog.jsx';
 import { AssignmentCard } from './AssignmentCard.jsx';
 import { policyUsageCount, policyUsageDetail, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, locationCatalog } from '../pricing.js';
-import { contractsHolding, contractGiving, contractNames, appliesAt, lockedTip } from '../agreements.js';
+import { contractsHolding, termChanged, isContractTerm, contractsLabelOf, leftEmpty, openContractsHolding } from '../agreements.js';
+import { builderDraft } from '../builders.js';
 
 // Main column + aside side by side once the editor is wide enough (Polaris React
 // InlineGrid columns={{ xs: '1fr', md: '2fr 1fr' }}); two fields side by side
@@ -30,6 +31,8 @@ const TWO_UP = '@container (inline-size > 400px) 1fr 1fr, 1fr';
 export function PricingEditor({ asPage = false }) {
   const { state, dispatch } = useStore();
   const [forkConfirm, setForkConfirm] = useState(false);
+  // Save dialog for a contract pricing running contracts hold: each gets a version.
+  const [contractConfirm, setContractConfirm] = useState(false);
   // Save-time confirmation when the pricing switched Company-based B2B ↔ D2C Wholesale.
   const [sideConfirm, setSideConfirm] = useState(false);
   // Save dialog for a shared pricing: a separate copy for here, unless ticked to apply to all.
@@ -38,6 +41,8 @@ export function PricingEditor({ asPage = false }) {
   const [catalogPreview, setCatalogPreview] = useState(false);
   // Set by a save with an empty name; the Name field shows the error while it's empty.
   const [nameMissing, setNameMissing] = useState(false);
+  // Set by a save that would leave running contracts with no terms (see leftEmpty).
+  const [emptyContracts, setEmptyContracts] = useState([]);
   const builder = state.builder;
   const tipId = useWcId('pricing-editor');
   // Overlay mode only: lock body scroll and close on Escape while open.
@@ -58,6 +63,8 @@ export function PricingEditor({ asPage = false }) {
 
   const isNew = !builder.id;
   const isQuantity = builder.priceKind === 'quantity';
+  // A contract pricing: no dates, status or who it serves — its contracts decide.
+  const forContracts = isContractTerm(builder);
   const patch = (p) => dispatch({ type: 'BUILDER_PATCH', patch: p });
   // The editor has two tabs, like the god file: Settings (the pricing config) and
   // Appearance (how it shows on the storefront).
@@ -71,7 +78,13 @@ export function PricingEditor({ asPage = false }) {
   // "Who this pricing serves" applies only to the library flow (create/edit from
   // Pricing). Opened from a Company or Location page, the target is
   // already fixed, so the card is hidden there — matching the god file's locked state.
-  const showAssignment = !state.editorContext?.companyId;
+  const showAssignment = !forContracts && !state.editorContext?.companyId;
+  // Regular or contract pricing (Upcoming), in Pricing details: set when it's created
+  // in the library — not from a company or location page — and locked once saved.
+  // From the contract editor it's Contract, locked. Contract hides Active dates, Who
+  // this pricing serves and Rule status right away.
+  const showUse = !!versionFlags().agreements && (forContracts || !state.editorContext?.companyId);
+  const useLocked = !isNew || !!state.editorContext?.addToAgreement;
   // From a Location page, "here" is that location's own list.
   const scopeLoc =
     scopeCompany && state.editorContext?.locationId
@@ -182,31 +195,32 @@ export function PricingEditor({ asPage = false }) {
       ? companiesAssigned > 0 || savedUsage.globals.includes('All Companies')
       : savedUsage.customers + savedUsage.tags > 0 || savedUsage.globals.includes('All customers');
 
-  // Live contracts holding it: editing what it sets adds a version to them; it must
-  // stay on and keep reaching every location they apply to (changing that goes
-  // through them). `breaks`: the ones these choices would leave without it.
-  const held = isNew ? [] : contractsHolding(state.db, builder.id);
-  const breaks = held.filter((ag) => {
-    if (builder.status === 'Inactive') return true;
-    if (ag.status !== 'Active') return false;
-    if (builder.audienceType === 'd2c') return true;
-    const c = state.db.companies.find((x) => x.id === ag.companyId);
-    if (!c) return false;
-    const locs = (c.locations || []).filter((l) => appliesAt(c, ag, l.id));
-    if (showAssignment) {
-      return !((builder.b2bCompanyIds || []).includes(c.id) || (locs.length && locs.every((l) => (builder.b2bLocationKeys || []).includes(`${c.id}::${l.id}`))));
-    }
-    if (showCompanyLocations && scopeCompany.id === c.id) return !(!scopeLocationIds || locs.every((l) => scopeLocationIds.includes(l.id)));
-    return false;
-  });
-  // Opened from a company or location a live contract gives it to: it can't be swapped
-  // there for a separate copy, so a change applies everywhere it's used.
-  const contractHere = scopeCompany && !isNew ? contractGiving(state.db, scopeCompany, builder.id, scopeLoc?.id || null) : null;
+  // A contract pricing the running contracts keep (still picked in its Contracts
+  // card): a change to what it sets, or to its name, adds a version to each of them —
+  // confirmed first.
+  const contractIds = builder.contractIds || [];
+  const held = forContracts && !isNew ? contractsHolding(state.db, builder.id).filter((a) => contractIds.includes(a.id)) : [];
+  const versionsContracts = held.length > 0 && !!savedPolicy && termChanged(state.db, savedPolicy, builderDraft(builder), false);
+  // Contracts added and removed in its Contracts card (a saved one): saving asks first.
+  const savedIn = forContracts && !isNew ? openContractsHolding(state.db, builder.id) : [];
+  const addedTo = forContracts && !isNew ? (state.db.agreements || []).filter((a) => contractIds.includes(a.id) && !savedIn.includes(a)) : [];
+  const removedFrom = savedIn.filter((a) => !contractIds.includes(a.id));
+  // Its contracts, picked here — not when it's created from the contract editor (it
+  // goes into that one).
+  const showContracts = forContracts && !state.editorContext?.addToAgreement;
 
   const onSave = () => {
-    if (noLocationPicked || breaks.length) return;
+    if (noLocationPicked) return;
     if (!builder.name?.trim()) {
       setNameMissing(true);
+      return;
+    }
+    // A running contract it's the only term of can't lose it (it can be ended instead).
+    const empty = forContracts && !isNew ? leftEmpty(state.db, builder.id, contractIds) : [];
+    setEmptyContracts(empty);
+    if (empty.length) return;
+    if (versionsContracts || addedTo.length || removedFrom.length) {
+      setContractConfirm(true);
       return;
     }
     if (sideChanged && hadAssignments) {
@@ -220,9 +234,18 @@ export function PricingEditor({ asPage = false }) {
     else dispatch({ type: 'SAVE_EDITOR' });
   };
 
-  // "Who this pricing serves": the library's assignment card, or a company's locations.
+  // "Who this pricing serves": the library's assignment card, or a company's locations
+  // — for a contract pricing, its contracts.
   const whoServes = (
     <>
+      {showContracts && (
+        <ContractsCard
+          db={state.db}
+          ids={contractIds}
+          onChange={(ids) => patch({ contractIds: ids })}
+          empty={emptyContracts.filter((a) => !contractIds.includes(a.id))}
+        />
+      )}
       {showAssignment && <AssignmentCard builder={builder} patch={patch} db={state.db} isNew={isNew} footer={catalogNote} />}
       {showCompanyLocations && (
         <CompanyLocationsCard
@@ -238,22 +261,14 @@ export function PricingEditor({ asPage = false }) {
   );
 
   const editorTitle = isNew ? `Create ${isQuantity ? 'quantity' : 'base'} pricing` : `Edit pricing: ${builder.name}`;
+  // A saved regular pricing can be copied as a contract pricing (Upcoming); the copy opens.
+  const canDuplicate = !isNew && !forContracts && !!versionFlags().agreements;
+  const duplicate = () => dispatch({ type: 'DUPLICATE_PRICING_FOR_CONTRACTS', id: builder.id });
   const editorBody = (
     <s-stack gap="base">
-          {breaks.length ? (
-            <s-banner tone="critical" heading={`Part of ${contractNames(state.db, breaks)}`}>
-              <s-paragraph>It has to stay on and keep reaching every location the contract applies to. To change that, edit the contract.</s-paragraph>
-            </s-banner>
-          ) : held.length ? (
-            <s-banner tone="warning" heading={`Part of ${contractNames(state.db, held)}`}>
-              <s-paragraph>A change to what it sets updates the contract, kept as a new version. To turn it off or delete it, edit the contract.</s-paragraph>
-            </s-banner>
-          ) : null}
           {sharedElsewhere && (
             <s-banner tone="info">
-              {contractHere
-                ? `This pricing is also assigned to ${sharedWith}. It’s part of ${contractHere.number}, so saving applies to all of them.`
-                : `This pricing is also assigned to ${sharedWith}. Saving will offer to fork a copy for ${scopeName} or apply to all.`}
+              {`This pricing is also assigned to ${sharedWith}. Saving will offer to fork a copy for ${scopeName} or apply to all.`}
             </s-banner>
           )}
 
@@ -299,6 +314,16 @@ export function PricingEditor({ asPage = false }) {
                           Priority orders pricing within a company or location. Company/Location and customer/tag precedence isn’t replaced by it.
                         </s-tooltip>
                       </s-stack>
+                      {showUse && (
+                        <TermUseSwitch
+                          forContracts={forContracts}
+                          locked={useLocked}
+                          onChange={(on) => patch({ forContracts: on })}
+                          labels={['Regular pricing', 'Contract pricing']}
+                          regularDetails="A long-term product price that stays active until you change or turn it off."
+                          contractDetails="A product price that applies only during a contract and ends with it."
+                        />
+                      )}
                       <s-text-field
                         label="Name"
                         required
@@ -346,8 +371,9 @@ export function PricingEditor({ asPage = false }) {
                   {/* Quantity pricing: who it serves comes after how it prices. */}
                   {isQuantity && whoServes}
 
-                  {/* Scheduling last, matching the god-file editor order. */}
-                  <ActiveDatesCard builder={builder} patch={patch} />
+                  {/* Scheduling last, matching the god-file editor order. A contract
+                      pricing has no dates: it applies on its contracts'. */}
+                  {!forContracts && <ActiveDatesCard builder={builder} patch={patch} />}
                 </>
               ) : (
                 <AppearanceTab builder={builder} patch={patch} kindWord={kindWord} product={state.db.products[0]} />
@@ -356,8 +382,15 @@ export function PricingEditor({ asPage = false }) {
 
             {/* Aside (god-file builder-side): status, resolution, summary. */}
             <s-stack gap="base">
-              <RuleStatusCard builder={builder} patch={patch} held={held} />
-              <SummaryCard builder={builder} isQuantity={isQuantity} assignedTo={assignedTo} products={state.db.products} locations={reach} />
+              {!forContracts && <RuleStatusCard builder={builder} patch={patch} />}
+              <SummaryCard
+                builder={builder}
+                isQuantity={isQuantity}
+                assignedTo={forContracts ? contractsLabelOf(state.db, contractIds) : assignedTo}
+                forContracts={forContracts}
+                products={state.db.products}
+                locations={reach}
+              />
             </s-stack>
           </s-grid>
           </s-query-container>
@@ -368,6 +401,7 @@ export function PricingEditor({ asPage = false }) {
     <>
       {sideConfirm && (
         <Modal onClose={() => setSideConfirm(false)} heading="Change who this pricing serves?">
+          <s-stack gap="small">
           {savedSide === 'b2b' ? (
             <s-paragraph>
               {'This pricing is set up for '}
@@ -387,6 +421,7 @@ export function PricingEditor({ asPage = false }) {
               {' clears that selection. Only the companies you picked receive it.'}
             </s-paragraph>
           )}
+          </s-stack>
           <s-button
             slot="primary-action"
             variant="primary"
@@ -405,18 +440,11 @@ export function PricingEditor({ asPage = false }) {
       {forkConfirm && (
         <Modal onClose={() => setForkConfirm(false)} heading={`Save changes to ${builder.name}`}>
           <s-stack gap="small">
-            {contractHere ? (
-              <s-paragraph>
-                {`${builder.name} is shared with ${sharedWith}. It’s part of ${contractHere.number}, so it can’t be replaced by a separate copy for ${scopeName}: your changes apply everywhere it’s used (${sharedCount + 1}).`}
-              </s-paragraph>
-            ) : (
             <s-paragraph>
               {`${builder.name} is shared with ${sharedWith}. Save as a separate pricing for `}
               <s-text fontWeight="semibold">{scopeName}</s-text>
               {` — the others keep ${builder.name}.`}
             </s-paragraph>
-            )}
-            {!contractHere && (
             <s-box padding="small" border="base" borderRadius="base">
               <s-checkbox
                 label={allNoun ? `Apply to all ${sharedCount + 1} ${allNoun} instead` : `Apply everywhere it’s used instead (${sharedCount + 1})`}
@@ -429,7 +457,6 @@ export function PricingEditor({ asPage = false }) {
                 onChange={(e) => setApplyAll(e.currentTarget.checked)}
               />
             </s-box>
-            )}
           </s-stack>
           <s-button
             slot="primary-action"
@@ -437,12 +464,30 @@ export function PricingEditor({ asPage = false }) {
             onClick={() => {
               setForkConfirm(false);
               // Unticked: a separate copy for here (the default path forks).
-              dispatch({ type: 'SAVE_EDITOR', applyToAll: applyAll || !!contractHere });
+              dispatch({ type: 'SAVE_EDITOR', applyToAll: applyAll });
             }}
           >
             Save
           </s-button>
           <s-button slot="secondary-actions" onClick={() => setForkConfirm(false)}>
+            Cancel
+          </s-button>
+        </Modal>
+      )}
+      {contractConfirm && (
+        <Modal onClose={() => setContractConfirm(false)} heading={`Save changes to ${savedPolicy.name}?`}>
+          <ContractSaveMessage db={state.db} keeping={held} changed={versionsContracts} added={addedTo} removed={removedFrom} />
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            onClick={() => {
+              setContractConfirm(false);
+              dispatch({ type: 'SAVE_EDITOR' });
+            }}
+          >
+            Save and apply
+          </s-button>
+          <s-button slot="secondary-actions" onClick={() => setContractConfirm(false)}>
             Cancel
           </s-button>
         </Modal>
@@ -454,9 +499,13 @@ export function PricingEditor({ asPage = false }) {
         <>
           <PageHeader
             heading={editorTitle}
+            titleMetadata={forContracts ? <s-badge>Contract pricing</s-badge> : null}
             backAction={{ content: 'Back', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }}
-            primaryAction={{ content: isNew ? 'Create pricing' : 'Save', onAction: onSave, disabled: noLocationPicked || breaks.length > 0 }}
-            secondaryActions={[{ content: 'Cancel', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }]}
+            primaryAction={{ content: isNew ? 'Create pricing' : 'Save', onAction: onSave, disabled: noLocationPicked }}
+            secondaryActions={[
+              canDuplicate && { content: 'Duplicate as contract pricing', onAction: duplicate },
+              { content: 'Cancel', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) },
+            ]}
           />
           <s-page>{editorBody}</s-page>
         </>
@@ -479,7 +528,9 @@ export function PricingEditor({ asPage = false }) {
             }}
           >
             <s-heading fontSize="large">{editorTitle}</s-heading>
+            {forContracts ? <s-badge>Contract pricing</s-badge> : null}
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+              {canDuplicate && <s-button onClick={duplicate}>Duplicate as contract pricing</s-button>}
               <s-button onClick={() => dispatch({ type: 'CLOSE_EDITOR' })}>Cancel</s-button>
               <s-button variant="primary" onClick={onSave} disabled={noLocationPicked}>{isNew ? 'Create pricing' : 'Save'}</s-button>
               <s-button variant="tertiary" icon="x" accessibilityLabel="Close" onClick={() => dispatch({ type: 'CLOSE_EDITOR' })} />
@@ -497,10 +548,8 @@ export function PricingEditor({ asPage = false }) {
 }
 
 // Rule status (god-file ruleStatusCard), shown in the aside: an on/off toggle.
-// `held`: live contracts holding it — it can't be turned off outside them.
-function RuleStatusCard({ builder, patch, held = [] }) {
+function RuleStatusCard({ builder, patch }) {
   const on = (builder.status || 'Active') !== 'Inactive';
-  const locked = on && held.length > 0;
   return (
     <s-section>
       <s-stack gap="small-200">
@@ -509,15 +558,10 @@ function RuleStatusCard({ builder, patch, held = [] }) {
             <s-heading>Rule status</s-heading>
             <s-badge tone={on ? 'success' : undefined}>{on ? 'Active' : 'Inactive'}</s-badge>
           </s-stack>
-          <s-button disabled={locked} onClick={() => patch({ status: on ? 'Inactive' : 'Active' })}>
+          <s-button onClick={() => patch({ status: on ? 'Inactive' : 'Active' })}>
             {on ? 'Turn off' : 'Turn on'}
           </s-button>
         </s-grid>
-        {locked && (
-          <s-text color="subdued" fontSize="small">
-            {lockedTip(held, 'turn off')}
-          </s-text>
-        )}
       </s-stack>
     </s-section>
   );
@@ -628,7 +672,8 @@ function CompanyLocationsCard({ company, locationIds, onChange, applyLater, onAp
 // Settings summary (production's SettingsSummaryCard): what this pricing is and
 // who gets it at a glance, then — for base pricing — Preview prices: what buyers
 // pay with these settings, unsaved edits included.
-function SummaryCard({ builder, isQuantity, assignedTo, products, locations }) {
+// A contract pricing: who it's assigned to is its contracts; no audience or dates.
+function SummaryCard({ builder, isQuantity, assignedTo, forContracts = false, products, locations }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const count = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
   const rules = (builder.conditionalRules || []).length;
@@ -642,11 +687,11 @@ function SummaryCard({ builder, isQuantity, assignedTo, products, locations }) {
     ['receipt-dollar', 'Type', isQuantity ? 'Quantity pricing' : 'Base pricing'],
     ['product', 'Products', isQuantity || rules || overrides ? scopeLabel(builder) : 'Shopify prices'],
     ['discount', 'Calculation', calculation],
-    ['team', 'Serves', builder.audienceType === 'd2c' ? 'D2C Wholesale' : 'Company-based B2B'],
+    forContracts ? null : ['team', 'Serves', builder.audienceType === 'd2c' ? 'D2C Wholesale' : 'Company-based B2B'],
     ['person', 'Assigned to', assignedTo],
     ['star', 'Priority', String(builder.priority ?? 0)],
-    ['calendar', 'Start', builder.startDate ? `${dayLabel(builder.startDate)} ${builder.startTime || '12:00 AM'}` : 'Immediately'],
-    hasEnd ? ['calendar', 'End', `${dayLabel(builder.endDate)} ${builder.endTime || '12:00 AM'}`] : null,
+    forContracts ? null : ['calendar', 'Start', builder.startDate ? `${dayLabel(builder.startDate)} ${builder.startTime || '12:00 AM'}` : 'Immediately'],
+    hasEnd && !forContracts ? ['calendar', 'End', `${dayLabel(builder.endDate)} ${builder.endTime || '12:00 AM'}`] : null,
   ].filter(Boolean);
   return (
     <s-section>

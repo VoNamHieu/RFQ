@@ -1,34 +1,34 @@
 import React, { useState } from 'react';
 import { EmptyBlock } from '../../../shared/EmptyBlock.jsx';
 import { useStore } from '../../store.jsx';
-import { scopeLabel } from '../../pricing.js';
+import { scopeLabel, TODAY } from '../../pricing.js';
 import {
-  activeAgreement,
-  nextAgreement,
+  openAgreements,
+  lastChange,
+  nextAgreements,
+  agreementClashes,
+  sharedLocations,
+  canCreateAgreement,
+  takenOver,
+  joinAnd,
+  overlaps,
   agreementScopeLabel,
+  agreementAppliesToLabel,
   agreementTermLines,
   agreementDatesLabel,
   expiringSoon,
   daysUntil,
-  addYear,
-  addDay,
+  extendedEndDate,
   isLive,
   fmtDay,
+  overlapLines,
+  overlapsHeading,
   PAST_STATUSES,
 } from '../../agreements.js';
 import { ContractVersionModal } from '../ContractVersionModal.jsx';
 import { Modal, wcTone } from '../../../shared/wc.jsx';
 
-const STATUS_TONE = { Active: 'success', Scheduled: 'info', Draft: undefined, Expired: undefined, Ended: undefined };
-
-function Section({ title, children }) {
-  return (
-    <s-stack gap="small-200">
-      <s-heading>{title}</s-heading>
-      {children}
-    </s-stack>
-  );
-}
+const STATUS_TONE = { Active: 'success', Scheduled: 'info', Inactive: undefined, Expired: undefined, Ended: undefined };
 
 function Line({ main, side, onClick }) {
   return (
@@ -43,47 +43,179 @@ function Line({ main, side, onClick }) {
   );
 }
 
-// One contract, read like the contract it is: what it covers, who it applies to
-// and its version history (a version opens as it was). `replacing`: the Active
-// contract this next one takes over from.
-function ContractCard({ ag, company, replacing, heading, onEdit, onEnd, onDelete, onView }) {
+// A key fact under the contract's title: a small tile with an icon and label.
+function Fact({ icon, label, value }) {
+  return (
+    <s-box background="subdued" borderRadius="base" padding="small">
+      <s-stack gap="small-400">
+        <s-stack direction="inline" gap="small-300" alignItems="center">
+          <s-icon type={icon} color="subdued" size="small" />
+          <s-text color="subdued" fontSize="small">
+            {label}
+          </s-text>
+        </s-stack>
+        <s-text fontWeight="semibold">{value}</s-text>
+      </s-stack>
+    </s-box>
+  );
+}
+
+// One kind of term (base pricing, quantity pricing, order limits) as a bordered
+// list: a header with its count, then a row per term — name over its detail, and
+// a side badge (a base pricing's priority).
+function TermGroup({ icon, title, rows }) {
+  return (
+    <s-box border="base" borderRadius="base" overflow="hidden">
+      <s-box background="subdued" paddingBlock="small-300" paddingInline="small">
+        <s-stack direction="inline" gap="small-200" alignItems="center">
+          <s-icon type={icon} color="subdued" />
+          <s-text fontWeight="semibold">{title}</s-text>
+          <s-badge>{String(rows.length)}</s-badge>
+        </s-stack>
+      </s-box>
+      {rows.length ? (
+        rows.map((r) => (
+          <React.Fragment key={r.key}>
+            <s-divider />
+            <s-box paddingBlock="small-200" paddingInline="small">
+              <s-grid gridTemplateColumns="minmax(0, 1fr) auto" alignItems="center" gap="small">
+                <s-stack gap="small-500">
+                  <s-text fontWeight="medium">{r.name}</s-text>
+                  <s-text color="subdued" fontSize="small">
+                    {r.detail}
+                  </s-text>
+                </s-stack>
+                {r.side ? <s-badge>{r.side}</s-badge> : <span />}
+              </s-grid>
+            </s-box>
+          </React.Fragment>
+        ))
+      ) : (
+        <>
+          <s-divider />
+          <s-box paddingBlock="small-200" paddingInline="small">
+            <s-text color="subdued">None</s-text>
+          </s-box>
+        </>
+      )}
+    </s-box>
+  );
+}
+
+// Lists that grow over time (version history, past contracts) show the newest
+// SHOWN; the link shows the rest, and hides them again.
+const SHOWN = 3;
+function ShowAllLink({ total, all, onToggle }) {
+  return total > SHOWN ? <s-link onClick={onToggle}>{all ? 'Show less' : `Show all (${total})`}</s-link> : null;
+}
+
+// The version history as a timeline, newest first. A version that kept a snapshot
+// opens as it was.
+function VersionTimeline({ history, onView }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? history : history.slice(0, SHOWN);
+  return (
+    <s-stack gap="small">
+      <s-heading>Version history</s-heading>
+      <div>
+        {shown.map((h, i) => {
+          const last = i === shown.length - 1;
+          return (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '12px minmax(0, 1fr)', columnGap: 12 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <span
+                  style={{
+                    width: 10,
+                    height: 10,
+                    marginTop: 5,
+                    borderRadius: '50%',
+                    flex: '0 0 auto',
+                    background: i === 0 ? 'var(--p-color-bg-fill-brand)' : 'var(--p-color-bg-surface)',
+                    border: `2px solid ${i === 0 ? 'var(--p-color-bg-fill-brand)' : 'var(--p-color-input-border)'}`,
+                  }}
+                />
+                {last ? null : <span style={{ flex: 1, width: 2, marginBlock: 4, background: 'var(--p-color-border)' }} />}
+              </div>
+              <div style={{ paddingBottom: last ? 0 : 16, minWidth: 0 }}>
+                <s-stack gap="small-500">
+                  <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
+                    {h.snapshot ? <s-link onClick={() => onView(h.version)}>{`Version ${h.version}`}</s-link> : <s-text fontWeight="medium">{`Version ${h.version}`}</s-text>}
+                    <s-text color="subdued" fontSize="small">
+                      {fmtDay(h.date)}
+                    </s-text>
+                  </s-grid>
+                  <s-text color="subdued">{h.note}</s-text>
+                </s-stack>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {/* Lined up with the entries' text, past the dots. */}
+      <div style={{ paddingLeft: 24 }}>
+        <ShowAllLink total={history.length} all={all} onToggle={() => setAll(!all)} />
+      </div>
+    </s-stack>
+  );
+}
+
+// One contract as a collapsible row. Closed: its name, status, where it applies,
+// dates and version. Open: what isn't applied yet, its key facts, terms and version
+// history, with its actions.
+function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onView, onDuplicate }) {
   const { state } = useStore();
   const terms = agreementTermLines(state.db, ag);
   const live = isLive(ag);
-  const none = <s-paragraph color="subdued">None</s-paragraph>;
-  const scope = agreementScopeLabel(company, ag);
-  const status =
-    ag.status === 'Active'
-      ? `Version ${ag.version} · applies to ${scope} · ${agreementDatesLabel(ag)}`
-      : ag.status === 'Scheduled'
-        ? replacing
-          ? `Version ${ag.version} · replaces ${replacing.number} on ${fmtDay(ag.startDate)} · applies to ${scope} · ${agreementDatesLabel(ag)}`
-          : `Version ${ag.version} · applies to ${scope} · starts ${fmtDay(ag.startDate)}, not applied yet`
-        : replacing
-          ? `Draft · would replace ${replacing.number} from ${fmtDay(ag.startDate)} · would apply to ${scope} · not applied yet`
-          : `Draft · would apply to ${scope} · ${agreementDatesLabel(ag)} · not applied yet`;
+  const scope = agreementAppliesToLabel(company, ag);
+  // A next contract: when it starts — "Starts Feb 1, 2027, not applied yet."; a draft
+  // starting today or earlier: "Not applied yet."
+  const note =
+    ag.status === 'Scheduled' || (ag.status === 'Inactive' && ag.startDate > TODAY)
+      ? `Starts ${fmtDay(ag.startDate)}, not applied yet.`
+      : ag.status === 'Inactive'
+        ? 'Not applied yet.'
+        : null;
+  const summary = [scope, agreementDatesLabel(ag), ag.version ? `Version ${ag.version}` : null].filter(Boolean).join(' · ');
+  const history = ag.history || [];
+  const title = `${ag.number} · ${ag.name || 'Untitled contract'}`;
 
   return (
-    <s-section heading={heading}>
-      <s-stack gap="base">
-        <s-grid gridTemplateColumns="1fr auto" alignItems="start" gap="small">
-          <s-stack gap="small-400">
+    <s-stack gap="base">
+      <s-grid gridTemplateColumns="auto minmax(0, 1fr) auto" alignItems="center" gap="small-200">
+        <s-button
+          variant="tertiary"
+          icon={open ? 'chevron-down' : 'chevron-right'}
+          accessibilityLabel={open ? `Collapse ${ag.number}` : `Expand ${ag.number}`}
+          onClick={onToggle}
+        />
+        {/* The title toggles too; the chevron is its keyboard-reachable control. */}
+        <div role="presentation" onClick={onToggle} style={{ cursor: 'pointer', minWidth: 0 }}>
+          <s-stack gap="small-500">
             <s-stack direction="inline" gap="small-200" alignItems="center">
-              <s-heading fontSize="large">{`${ag.number} · ${ag.name || 'Untitled contract'}`}</s-heading>
+              <s-text fontWeight="semibold">{title}</s-text>
               <s-badge tone={wcTone(STATUS_TONE[ag.status])}>{ag.status}</s-badge>
             </s-stack>
-            <s-paragraph color="subdued">{status}</s-paragraph>
+            {open ? null : (
+              <s-text color="subdued" fontSize="small">
+                {summary}
+              </s-text>
+            )}
           </s-stack>
+        </div>
+        {open ? (
           <s-stack direction="inline" gap="small-200">
             {live ? (
               <s-button tone="critical" variant="tertiary" onClick={() => onEnd(ag)}>
                 End contract
               </s-button>
-            ) : (
+            ) : null}
+            {/* Inactive or Scheduled: nothing is applied yet, so it can be deleted. */}
+            {ag.status !== 'Active' ? (
               <s-button tone="critical" variant="tertiary" onClick={() => onDelete(ag)}>
-                Delete draft
+                Delete contract
               </s-button>
-            )}
+            ) : null}
+            <s-button onClick={() => onDuplicate(ag)}>Duplicate</s-button>
             {live ? (
               <s-button onClick={() => onEdit(ag)}>Edit</s-button>
             ) : (
@@ -92,62 +224,95 @@ function ContractCard({ ag, company, replacing, heading, onEdit, onEnd, onDelete
               </s-button>
             )}
           </s-stack>
-        </s-grid>
+        ) : (
+          <span />
+        )}
+      </s-grid>
 
-        <s-divider />
-        <Section title="Base pricing">
-          {terms.base.length ? terms.base.map((p) => <Line key={p.id} main={p.name} side={`Priority ${p.priority ?? 0} · ${scopeLabel(p)}`} />) : none}
-        </Section>
-        <Section title="Quantity pricing">
-          {terms.quantity.length ? terms.quantity.map((p) => <Line key={p.id} main={p.name} side={scopeLabel(p)} />) : none}
-        </Section>
-        <Section title="Order limits">
-          {terms.limits.length ? terms.limits.map(({ limit, summary }) => <Line key={limit.id} main={limit.name} side={summary} />) : none}
-        </Section>
+      {open ? (
+        <s-stack gap="base">
+          {note ? <s-paragraph color="subdued">{note}</s-paragraph> : null}
+          <s-query-container>
+            <s-grid gridTemplateColumns="@container (inline-size > 480px) 1fr 1fr 1fr, 1fr" gap="small">
+              <Fact icon="clock" label="Version" value={ag.version ? String(ag.version) : '—'} />
+              <Fact icon="location" label="Applies to" value={scope} />
+              <Fact icon="calendar" label="Dates" value={agreementDatesLabel(ag)} />
+            </s-grid>
+          </s-query-container>
 
-        {ag.history?.length ? (
-          <>
-            <s-divider />
-            <Section title="Version history">
-              {ag.history.map((h, i) => (
-                <Line key={i} main={`Version ${h.version} · ${h.note}`} side={fmtDay(h.date)} onClick={h.snapshot ? () => onView(ag, h.version) : undefined} />
-              ))}
-            </Section>
-          </>
-        ) : null}
-      </s-stack>
-    </s-section>
+          <s-query-container>
+            <s-grid gridTemplateColumns={history.length ? '@container (inline-size > 760px) 2fr 1fr, 1fr' : '1fr'} gap="large">
+              <s-stack gap="small">
+                <s-heading>Terms</s-heading>
+                <TermGroup
+                  icon="receipt-dollar"
+                  title="Base pricing"
+                  rows={terms.base.map((p) => ({ key: p.id, name: p.name, detail: scopeLabel(p), side: `Priority ${p.priority ?? 0}` }))}
+                />
+                <TermGroup
+                  icon="discount"
+                  title="Quantity pricing"
+                  rows={terms.quantity.map((p) => ({ key: p.id, name: p.name, detail: scopeLabel(p) }))}
+                />
+                <TermGroup
+                  icon="order"
+                  title="Order limits"
+                  rows={terms.limits.map(({ limit, summary: s }) => ({ key: limit.id, name: limit.name, detail: s }))}
+                />
+              </s-stack>
+              {history.length ? <VersionTimeline history={history} onView={(version) => onView(ag, version)} /> : null}
+            </s-grid>
+          </s-query-container>
+        </s-stack>
+      ) : null}
+    </s-stack>
   );
 }
 
-// A company's contracts: the Active one (or the next one, when none is Active), the
-// next one set up beside it, and the past ones.
+// A company's contracts: every one that isn't over (Active, Scheduled ones that don't
+// overlap at a location, and any number of drafts), each collapsed until opened — a
+// company's only contract starts open — then the past ones.
 export function AgreementTab({ company }) {
   const { state, dispatch } = useStore();
   const [ending, setEnding] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [viewing, setViewing] = useState(null); // { ag, version }
-  const [renewTo, setRenewTo] = useState(null); // the new end date while renewing
-  const active = activeAgreement(state.db, company.id);
-  const next = nextAgreement(state.db, company.id);
-  const main = active || next;
-  const past = (state.db.agreements || []).filter((a) => a.companyId === company.id && PAST_STATUSES.includes(a.status));
+  const [renewing, setRenewing] = useState(null); // { ag, endDate } while renewing
+  const [allPast, setAllPast] = useState(false);
+  const [flipped, setFlipped] = useState([]); // contracts opened or closed from how they start
+  // Active ones first, then the rest; each by latest change, newest first.
+  const contracts = openAgreements(state.db, company.id).sort(
+    (a, b) => (b.status === 'Active') - (a.status === 'Active') || lastChange(b).localeCompare(lastChange(a)),
+  );
+  const isOpen = (id) => (contracts.length === 1) !== flipped.includes(id);
+  // Most recently over first: by the date of its last history entry (when it ended or expired).
+  const past = (state.db.agreements || [])
+    .filter((a) => a.companyId === company.id && PAST_STATUSES.includes(a.status))
+    .sort((a, b) => String(b.history?.[0]?.date || '').localeCompare(String(a.history?.[0]?.date || '')));
   const returnTo = { view: 'company', selectedCompany: company.id, companyTab: 'agreement' };
   const edit = (ag) => dispatch({ type: 'OPEN_AGREEMENT_EDITOR', agreementId: ag.id, returnTo });
+  const duplicate = (ag) => dispatch({ type: 'OPEN_AGREEMENT_EDITOR', duplicateOf: ag.id, returnTo });
   const view = (ag, version) => setViewing({ ag, version });
+  const toggle = (id) => setFlipped((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  // A new contract starts with all locations, from the day after the Active and
+  // Scheduled contracts there end (defaultStartDate).
+  const createContract = () => dispatch({ type: 'OPEN_AGREEMENT_EDITOR', companyId: company.id, returnTo });
 
   const pastCard = past.length ? (
     <s-section heading="Past contracts">
       <s-stack gap="small-200">
-        {past.map((a) => (
+        {(allPast ? past : past.slice(0, SHOWN)).map((a) => (
           <Line key={a.id} main={`${a.number} · ${a.name}`} side={`${a.status} ${fmtDay(a.history?.[0]?.date)} · version ${a.version}`} onClick={() => view(a, a.version)} />
         ))}
+        <ShowAllLink total={past.length} all={allPast} onToggle={() => setAllPast(!allPast)} />
       </s-stack>
     </s-section>
   ) : null;
-  const viewModal = viewing && <ContractVersionModal ag={viewing.ag} version={viewing.version} onClose={() => setViewing(null)} />;
+  const viewModal = viewing && (
+    <ContractVersionModal ag={viewing.ag} version={viewing.version} onClose={() => setViewing(null)} onDuplicate={duplicate} />
+  );
 
-  if (!main) {
+  if (!contracts.length) {
     return (
       <s-stack gap="base">
         <s-section>
@@ -164,56 +329,105 @@ export function AgreementTab({ company }) {
     );
   }
 
-  const days = active && expiringSoon(active, state.db) ? daysUntil(active.endDate) : null;
-  const renewError = renewTo != null && !(renewTo > active.endDate) ? 'Must be after the current end date' : undefined;
-  const cardProps = { company, onEdit: edit, onEnd: setEnding, onDelete: setDeleting, onView: view };
+  const expiring = contracts.filter((a) => expiringSoon(a, state.db));
+  // Extending into a contract set up to start at its locations is allowed: a yellow
+  // Overlaps banner says so — the one that starts later runs there from its start date
+  // (takeEffect), and this one ends or gives up those locations then.
+  const renewOverlaps = renewing
+    ? agreementClashes(state.db, renewing.ag, true, { ...renewing.ag, endDate: renewing.endDate })
+        .filter((a) => a.status === 'Scheduled')
+        .map((a) => ({ old: a, shared: sharedLocations(company, a, renewing.ag) }))
+    : [];
+  const renewError = renewing && !(renewing.endDate > renewing.ag.endDate) ? 'Must be after the current end date' : undefined;
+  // Where an ending contract's terms come off: the company, or the locations it has.
+  const whereOf = (ag) => (agreementScopeLabel(company, ag) === 'All locations' ? company.name : agreementScopeLabel(company, ag));
+  // Ending an Active contract: Scheduled ones at its locations still start. Ending a
+  // Scheduled one: the Active ones it would have taken over from stay.
+  const stillStarting = ending ? nextAgreements(state.db, company.id).filter((n) => n.status === 'Scheduled' && n.id !== ending.id && overlaps(company, n, ending)) : [];
+  const staying = ending?.status === 'Scheduled' ? takenOver(state.db, ending) : [];
 
   return (
     <s-stack gap="base">
-      {/* The renewal reminder: shown from RENEW_NOTICE_DAYS before the end date,
-          unless a next contract is set to take over. */}
-      {days != null && (
-        <s-banner tone="warning" heading={`${active.number} ends ${days === 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`}`}>
-          <s-paragraph>{`After ${fmtDay(active.endDate)}, ${company.name} goes back to the pricing and limits outside the contract. Renew it to keep these terms.`}</s-paragraph>
-          <s-button slot="secondary-actions" onClick={() => setRenewTo(addYear(active.endDate))}>
-            Renew
-          </s-button>
-        </s-banner>
-      )}
-      <ContractCard ag={main} {...cardProps} />
-      {active && next && (
-        <ContractCard
-          ag={next}
-          replacing={!active.endDate || next.startDate <= addDay(active.endDate) ? active : null}
-          heading="Next contract"
-          {...cardProps}
-        />
-      )}
+      {/* The renewal reminder, per contract: shown from reminderDays before the end
+          date, unless a next contract is set to take over. */}
+      {expiring.map((a) => {
+        const days = daysUntil(a.endDate);
+        return (
+          <s-banner key={a.id} tone="warning" heading={`${a.number} ends ${days === 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`}`}>
+            <s-paragraph>{`After ${fmtDay(a.endDate)}, ${whereOf(a)} goes back to the pricing and limits outside the contract. Extend it to keep these terms.`}</s-paragraph>
+            <s-button slot="secondary-actions" onClick={() => setRenewing({ ag: a, endDate: extendedEndDate(a) })}>
+              Extend
+            </s-button>
+          </s-banner>
+        );
+      })}
+
+      <s-section>
+        <s-stack gap="small">
+          <s-grid gridTemplateColumns="1fr auto" alignItems="center" gap="small-200">
+            <s-heading>{`Contracts (${contracts.length})`}</s-heading>
+            <s-button disabled={!canCreateAgreement(state.db, company.id)} onClick={createContract}>
+              Create contract
+            </s-button>
+          </s-grid>
+          {contracts.map((a, i) => (
+            <React.Fragment key={a.id}>
+              {i > 0 && <s-divider />}
+              <ContractRow
+                ag={a}
+                company={company}
+                open={isOpen(a.id)}
+                onToggle={() => toggle(a.id)}
+                onEdit={edit}
+                onEnd={setEnding}
+                onDelete={setDeleting}
+                onView={view}
+                onDuplicate={duplicate}
+              />
+            </React.Fragment>
+          ))}
+        </s-stack>
+      </s-section>
 
       {pastCard}
       {viewModal}
 
-      {renewTo != null && (
-        <Modal onClose={() => setRenewTo(null)} heading={`Renew ${active.number}`}>
-          <s-date-field
-            label="New end date"
-            value={renewTo}
-            onChange={(e) => setRenewTo(e.currentTarget.value)}
-            error={renewError}
-            details={`The terms stay the same. Saved as version ${active.version + 1}.`}
-          />
+      {renewing && (
+        <Modal onClose={() => setRenewing(null)} heading={`Extend ${renewing.ag.number}`}>
+          <s-stack gap="base">
+            <s-date-field
+              label="New end date"
+              value={renewing.endDate}
+              onChange={(e) => setRenewing({ ...renewing, endDate: e.currentTarget.value })}
+              error={renewError}
+              details={`The terms stay the same. Saved as version ${renewing.ag.version + 1}.`}
+            />
+            {renewOverlaps.length ? (
+              <s-banner tone="warning" heading={overlapsHeading(renewOverlaps.length)}>
+                <s-stack gap="small-200">
+                  <s-paragraph>{`These overlap with ${renewing.ag.number}:`}</s-paragraph>
+                  <s-unordered-list>
+                    {overlapLines(company, renewOverlaps).map((line) => (
+                      <s-list-item key={line}>{line}</s-list-item>
+                    ))}
+                  </s-unordered-list>
+                  <s-paragraph>If you extend it, the contract that starts later runs where they overlap, and the other one ends or gives up those locations.</s-paragraph>
+                </s-stack>
+              </s-banner>
+            ) : null}
+          </s-stack>
           <s-button
             slot="primary-action"
             variant="primary"
-            disabled={!!renewError || !renewTo}
+            disabled={!!renewError || !renewing.endDate}
             onClick={() => {
-              dispatch({ type: 'RENEW_AGREEMENT', id: active.id, endDate: renewTo });
-              setRenewTo(null);
+              dispatch({ type: 'RENEW_AGREEMENT', id: renewing.ag.id, endDate: renewing.endDate });
+              setRenewing(null);
             }}
           >
-            Renew
+            Extend
           </s-button>
-          <s-button slot="secondary-actions" onClick={() => setRenewTo(null)}>
+          <s-button slot="secondary-actions" onClick={() => setRenewing(null)}>
             Cancel
           </s-button>
         </Modal>
@@ -224,8 +438,12 @@ export function AgreementTab({ company }) {
           <s-stack gap="small">
             <s-paragraph>
               {ending.status === 'Active'
-                ? `Its pricing and order limits come off ${company.name} right away. Anything assigned outside the contract stays.${next?.status === 'Scheduled' ? ` ${next.number} still starts on ${fmtDay(next.startDate)}.` : ''}`
-                : `It won’t start on ${fmtDay(ending.startDate)}, and nothing changes for ${company.name}${active ? `: ${active.number} stays in place` : ''}.`}
+                ? `Its pricing and order limits come off ${whereOf(ending)} right away. Anything assigned outside the contract stays.${stillStarting
+                    .map((n) => ` ${n.number} still starts on ${fmtDay(n.startDate)}.`)
+                    .join('')}`
+                : `It won’t start on ${fmtDay(ending.startDate)}, and nothing changes for ${company.name}${
+                    staying.length ? `: ${joinAnd(staying.map((a) => a.number))} ${staying.length === 1 ? 'stays' : 'stay'} in place` : ''
+                  }.`}
             </s-paragraph>
           </s-stack>
           <s-button
@@ -247,7 +465,11 @@ export function AgreementTab({ company }) {
 
       {deleting && (
         <Modal onClose={() => setDeleting(null)} heading={`Delete ${deleting.number}?`}>
-          <s-paragraph>{`The draft is deleted. Nothing changes for ${company.name}.`}</s-paragraph>
+          <s-paragraph>
+            {deleting.status === 'Scheduled'
+              ? `It won’t start on ${fmtDay(deleting.startDate)} and is removed with its history. Nothing changes for ${company.name}.`
+              : `The contract is deleted. Nothing changes for ${company.name}.`}
+          </s-paragraph>
           <s-button
             slot="primary-action"
             variant="primary"
@@ -257,7 +479,7 @@ export function AgreementTab({ company }) {
               setDeleting(null);
             }}
           >
-            Delete draft
+            Delete contract
           </s-button>
           <s-button slot="secondary-actions" onClick={() => setDeleting(null)}>
             Cancel

@@ -8,7 +8,8 @@ const LEVEL_LABEL = { location: 'This location', company: 'Company', store: 'Sto
 
 // A location's order limits: every active limit that reaches it (its own, its
 // company's, store-wide), most specific first, read off the location's record.
-// Each shows its name and level only.
+// Each shows its name and level only; one a contract gives here is badged with it,
+// as pricing is.
 export function LocationLimitsCard({ company, location }) {
   const { state, dispatch } = useStore();
   const addId = useWcId('add-limit');
@@ -58,13 +59,14 @@ export function LocationLimitsCard({ company, location }) {
         </s-popover>
 
         {rows.length ? (
-          rows.map(({ limit, level }, i) => (
+          rows.map(({ limit, level, contract }, i) => (
             <React.Fragment key={limit.id}>
               {i > 0 && <s-divider />}
               <s-grid gridTemplateColumns="1fr auto" alignItems="start" gap="small-200">
-                <div>
+                <s-stack direction="inline" gap="small-200" alignItems="center">
                   <s-link onClick={() => dispatch({ type: 'OPEN_LIMIT_EDITOR', limit, returnTo })}>{limit.name}</s-link>
-                </div>
+                  {contract ? <s-badge tone="info">{`Contract ${contract}`}</s-badge> : null}
+                </s-stack>
                 <s-badge tone={level === 'location' ? 'info' : undefined}>{LEVEL_LABEL[level]}</s-badge>
               </s-grid>
             </React.Fragment>

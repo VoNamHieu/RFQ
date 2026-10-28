@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
 import { resetDemo } from '../../shared/persistence.js';
+import { isContractTerm } from '../agreements.js';
 
 const APPROVED_APP = [
   { label: 'Assign the standard wholesale pricing', value: 'standard' },
@@ -90,7 +91,8 @@ export function Settings() {
                   <Options
                     options={[
                       { label: 'None', value: '' },
-                      ...state.db.policies.filter((p) => p.audienceType === 'b2b' && p.priceKind !== 'quantity').map((p) => ({ label: p.name, value: p.id })),
+                      // Contract pricing is given only by its contracts.
+                      ...state.db.policies.filter((p) => p.audienceType === 'b2b' && p.priceKind !== 'quantity' && !isContractTerm(p)).map((p) => ({ label: p.name, value: p.id })),
                     ]}
                   />
                 </s-select>

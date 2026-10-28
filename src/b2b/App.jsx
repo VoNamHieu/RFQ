@@ -119,7 +119,7 @@ export function App() {
                   label: `Order limits (${(state.db.limits || []).length})`,
                   url: '#/b2b/order-limits',
                   matches: state.view === 'limits',
-                  onClick: () => dispatch({ type: 'NAVIGATE', view: 'limits', patch: { limitEditor: null } }),
+                  onClick: () => dispatch({ type: 'NAVIGATE', view: 'limits', patch: { limitEditor: null, limitChooser: null } }),
                 }]
               : []),
             ...(flags.agreements

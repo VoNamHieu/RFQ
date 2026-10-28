@@ -6,6 +6,8 @@ import { money } from '../format.js';
 import { productVariants, applyAdjustment, locationCatalog, scopeCollections, conditionValueOptions } from '../pricing.js';
 import { VariantPicker } from './VariantPicker.jsx';
 import { CollectionPicker } from './CollectionPicker.jsx';
+import { PricingCombobox } from './PricingCombobox.jsx';
+import { assignableContracts, contractList, runningContractsLine } from '../agreements.js';
 
 // Timezone options mirror the B2B god file's Active dates card.
 const TIMEZONES = [
@@ -21,6 +23,127 @@ const TWO_UP = '@container (inline-size > 400px) 1fr 1fr, 1fr';
 
 // Cards used by the pricing editor: status/dates, product scope, quantity discount
 // basis, and per-variant price overrides. Split out of PricingEditor for readability.
+
+// Regular or contract pricing (or limit), in the pricing and limit editors.
+// `locked`: it can't change any more. Three looks to compare for now, picked by the
+// URL's `typeUi`: a segmented switch like "Who this pricing serves" with a line on
+// the one picked (default), two cards side by side (`tiles`), or a select (`select`).
+const TYPE_UI = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '').get('typeUi');
+export function TermUseSwitch({ forContracts, locked, onChange, labels, regularDetails, contractDetails }) {
+  if (TYPE_UI === 'select') {
+    return (
+      <s-select
+        label="Type"
+        value={forContracts ? 'contract' : 'regular'}
+        disabled={locked}
+        details={forContracts ? contractDetails : regularDetails}
+        onChange={(e) => onChange(e.currentTarget.value === 'contract')}
+      >
+        <s-option value="regular">{labels[0]}</s-option>
+        <s-option value="contract">{labels[1]}</s-option>
+      </s-select>
+    );
+  }
+  if (TYPE_UI === 'tiles') {
+    const tile = (on, label, details) => (
+      <button
+        type="button"
+        role="radio"
+        aria-checked={forContracts === on}
+        className="wc-plain-button wc-tile"
+        disabled={locked}
+        onClick={() => onChange(on)}
+      >
+        <span className="wc-tile__radio" aria-hidden="true" />
+        <span className="wc-tile__body">
+          <span className="wc-tile__title">{label}</span>
+          <span className="wc-tile__details">{details}</span>
+        </span>
+      </button>
+    );
+    return (
+      <div className="wc-tiles" role="radiogroup" aria-label="Type">
+        {tile(false, labels[0], regularDetails)}
+        {tile(true, labels[1], contractDetails)}
+      </div>
+    );
+  }
+  const item = (on, label) => (
+    <button
+      type="button"
+      className="wc-plain-button wc-segmented__item"
+      aria-pressed={forContracts === on}
+      disabled={locked}
+      onClick={() => onChange(on)}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <s-stack gap="small-200">
+      <div className="wc-segmented" role="group" aria-label="Type">
+        {item(false, labels[0])}
+        {item(true, labels[1])}
+      </div>
+      <s-text color="subdued" fontSize="small">
+        {forContracts ? contractDetails : regularDetails}
+      </s-text>
+    </s-stack>
+  );
+}
+
+// A contract pricing's or limit's contracts, in its editor where a regular one has
+// who it serves / Applies to: picked from the contracts that aren't over, as tags.
+// Saving puts it in them (and takes it off the others); running ones get a version.
+// `empty`: running contracts a save would leave with no terms (it was turned down).
+export function ContractsCard({ db, ids, onChange, empty = [] }) {
+  const companyName = (a) => (db.companies || []).find((c) => c.id === a.companyId)?.name || 'Company';
+  const contracts = assignableContracts(db).map((a) => ({ id: a.id, name: `${a.number} · ${companyName(a)}`, status: a.status }));
+  return (
+    <s-section heading="Contracts">
+      <s-stack gap="small-200">
+        <PricingCombobox
+          label="Contracts"
+          labelHidden
+          placeholder="Search contracts"
+          candidates={contracts}
+          selectedIds={ids}
+          onChange={onChange}
+          optionLabel={(a) => `${a.name} · ${a.status}`}
+        />
+        <s-text color="subdued" fontSize="small">
+          Running contracts get a new version when you save.
+        </s-text>
+        {empty.length ? (
+          <s-paragraph tone="critical" id="term-contracts">
+            {`${empty.map((a) => a.number).join(', ')} ${empty.length === 1 ? 'needs' : 'need'} at least one pricing or order limit. To stop ${
+              empty.length === 1 ? 'it' : 'them'
+            } instead, use End contract on the company’s Contract tab.`}
+          </s-paragraph>
+        ) : null}
+      </s-stack>
+    </s-section>
+  );
+}
+
+// The "Save changes to …?" box of a contract pricing or limit, its lines: the running
+// contracts keeping it (`keeping`, when what it sets or its name changed), and the
+// contracts it's added to and removed from in its Contracts card. Inactive ones there
+// get no version.
+export function ContractSaveMessage({ db, keeping, changed, added, removed }) {
+  if (!added.length && !removed.length) {
+    return <s-paragraph>{`${runningContractsLine(db, keeping)} ${keeping.length === 1 ? 'It gets' : 'Each gets'} a new version with these changes.`}</s-paragraph>;
+  }
+  return (
+    <s-stack gap="small">
+      {changed && keeping.length ? <s-paragraph>{runningContractsLine(db, keeping)}</s-paragraph> : null}
+      {added.length ? <s-paragraph>{`Added to: ${contractList(db, added)}`}</s-paragraph> : null}
+      {removed.length ? <s-paragraph>{`Removed from: ${contractList(db, removed)}`}</s-paragraph> : null}
+      <s-paragraph>Running contracts get a new version.</s-paragraph>
+    </s-stack>
+  );
+}
+
 // Active dates: timezone + start date/time, with an optional end date (god-file parity).
 export function ActiveDatesCard({ builder, patch }) {
   // Seed policies carry an endDate without an explicit flag — treat that as "has end".

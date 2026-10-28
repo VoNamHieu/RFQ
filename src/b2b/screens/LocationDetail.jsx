@@ -5,10 +5,12 @@ import { money } from '../format.js';
 
 import { AssignBuyerModal, GeneralModal, ShippingModal, PAYMENT_TERM_OPTIONS, TAX_SETTINGS, COUNTRY_NAMES } from '../components/LocationModals.jsx';
 import { LocationLimitsCard } from '../components/LocationLimitsCard.jsx';
+import { LocationContractCard } from '../components/LocationContractCard.jsx';
 import { DeleteLocationsModal } from '../components/tabs/LocationsTab.jsx';
 import { isHeld, heldReason, heldFirst, HeldOrderActions, buyerMessageText } from '../components/HeldOrders.jsx';
 import { PricingName } from '../components/BasePricingCard.jsx';
-import { contractGiving, lockedTip } from '../agreements.js';
+import { contractGiving } from '../agreements.js';
+import { useContractLock } from '../components/ContractLock.jsx';
 import { versionFlags } from '../../shared/versions.js';
 import { MenuButton, Tip, useWcId, wcTone, PageHeader, Tabs } from '../../shared/wc.jsx';
 
@@ -45,6 +47,7 @@ export function LocationDetail() {
   const [quotesPage, setQuotesPage] = useState(0);
   const [ordersPage, setOrdersPage] = useState(0);
   const ids = useWcId('loc');
+  const [showLock, lockModal] = useContractLock();
   if (!company || !location) return null;
   // Add / edit / remove pricing on this location (its own list of that kind — see
   // locationSlotArray), with the same row actions as the company page. Edit opens it
@@ -52,7 +55,8 @@ export function LocationDetail() {
   const addPricing = (kind) => {
     dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, locationId: location.id, kind, mode: 'add' });
   };
-  // A pricing a live contract gives this location comes off through the contract only.
+  // A pricing a live contract gives this location comes off through the contract only:
+  // Remove says where it comes from.
   const pricingActions = (policy, kind, ag) => (
     <s-stack direction="inline" gap="small-400" justifyContent="end" alignItems="center">
       <s-button
@@ -66,11 +70,12 @@ export function LocationDetail() {
         variant="tertiary"
         tone="critical"
         accessibilityLabel={`Remove ${policy.name}`}
-        disabled={!!ag}
-        interestFor={ag ? `${ids}-lock-${kind}-${policy.id}` : undefined}
-        onClick={() => dispatch({ type: 'REMOVE_LOCATION_PRICING', companyId: company.id, locationId: location.id, kind, policyId: policy.id })}
+        onClick={() =>
+          ag
+            ? showLock({ name: policy.name, verb: 'remove', message: `It comes from ${ag.number}. To take it off ${location.name}, edit the contract.` })
+            : dispatch({ type: 'REMOVE_LOCATION_PRICING', companyId: company.id, locationId: location.id, kind, policyId: policy.id })
+        }
       />
-      {ag ? <s-tooltip id={`${ids}-lock-${kind}-${policy.id}`}>{lockedTip([ag], 'remove')}</s-tooltip> : null}
     </s-stack>
   );
 
@@ -483,6 +488,9 @@ export function LocationDetail() {
                 </s-stack>
               </s-section>
 
+              {/* The contract that applies here (Contracts) */}
+              {versionFlags().agreements && <LocationContractCard company={company} location={location} />}
+
               {/* Order limits that reach this location, next to Shopify's own checkout settings */}
               {versionFlags().orderLimits && <LocationLimitsCard company={company} location={location} />}
             </s-stack>
@@ -502,6 +510,7 @@ export function LocationDetail() {
       {confirmDelete && (
         <DeleteLocationsModal company={company} locationIds={[location.id]} onClose={() => setConfirmDelete(false)} />
       )}
+      {lockModal}
     </s-page>
     </>
   );

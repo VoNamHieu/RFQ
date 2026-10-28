@@ -1,17 +1,21 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
 import { LIMIT_KINDS, limitTargetsLabel, isLimitAssigned, isD2CLimit, limitOverlaps, limitState } from '../limits.js';
-import { LimitEditor, withCatalog } from '../components/LimitEditor.jsx';
+import { LimitEditor, withCatalog, deleteLimitText } from '../components/LimitEditor.jsx';
 import { LimitOverlapMessage } from '../components/LimitOverlapList.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
-import { Modal, IndexFiltersBar, useWcId } from '../../shared/wc.jsx';
-import { contractsHolding, lockedTip, fmtDay } from '../agreements.js';
+import { Modal, IndexFiltersBar, useWcId, PageHeader } from '../../shared/wc.jsx';
+import { contractsHolding, fmtDay, isContractTerm, contractsLabel } from '../agreements.js';
+import { useContractLock, DraftsLosingIt } from '../components/ContractLock.jsx';
+import { versionFlags } from '../../shared/versions.js';
 
-// Tabs by who a limit is for, like the Pricing list; the kind is a filter.
+// Tabs by who a limit is for, like the Pricing list; the kind is a filter. Contract
+// limits have their own tab (Upcoming): Companies lists the regular B2B ones.
 const AUDIENCE = [
   { id: 'all', label: 'All' },
   { id: 'b2b', label: 'Companies' },
   { id: 'd2c', label: 'Customers' },
+  ...(versionFlags().agreements ? [{ id: 'contract', label: 'Contract' }] : []),
 ];
 // Status badge, by limitState: turned off, not started yet, applying, or past its end date.
 const STATE_TONE = { Active: 'success', Upcoming: 'info', Expired: undefined, Inactive: undefined };
@@ -20,57 +24,88 @@ const TYPE_CHOICES = [
   ...Object.entries(LIMIT_KINDS).map(([value, k]) => ({ label: k.label, value })),
 ];
 
+// Full-page "Select limit type" step shown before the editor, like Select
+// pricing type: pick a kind's card, then set it up. The back action returns to the list.
+function LimitTypeChooser({ onBack, onPick, backLabel = 'Order limits' }) {
+  return (
+    <>
+    <PageHeader heading="Select limit type" backAction={{ content: backLabel, onAction: onBack }} />
+    <s-page>
+      <s-query-container>
+        <s-grid gridTemplateColumns="@container (inline-size > 490px) 1fr 1fr, 1fr" gap="base">
+          {Object.entries(LIMIT_KINDS).map(([kind, k]) => (
+            <s-section key={kind}>
+              <s-stack gap="base">
+                <s-stack gap="small-300">
+                  <s-heading fontSize="large">{k.label}</s-heading>
+                  <s-paragraph color="subdued">{k.description}</s-paragraph>
+                </s-stack>
+                <s-stack direction="inline">
+                  <s-button onClick={() => onPick(kind)}>Create limit</s-button>
+                </s-stack>
+              </s-stack>
+            </s-section>
+          ))}
+        </s-grid>
+      </s-query-container>
+    </s-page>
+    </>
+  );
+}
+
 // Order limits library: every limit with what it sets and who it applies to.
-// Create limit opens a menu of the two kinds (each with its description, like
-// Add limit on a location page); the editor opens as a page here (OPEN_LIMIT_EDITOR).
+// Create limit opens the type chooser; the editor opens as a page here (OPEN_LIMIT_EDITOR).
 export function OrderLimits() {
   const { state, dispatch } = useStore();
   const [audience, setAudience] = useState('all');
   const [type, setType] = useState('all');
   const [search, setSearch] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [showLock, lockModal] = useContractLock();
   const [confirmToggle, setConfirmToggle] = useState(null);
+  const [chooserOpen, setChooserOpen] = useState(false);
   const rowId = useWcId('limit');
-  const createId = useWcId('create-limit');
 
   if (state.limitEditor) return <LimitEditor />;
+  // From the contract editor's "Create contract limit" (state.limitChooser): the kind,
+  // then a contract limit (set and locked) that goes into that contract; back returns there.
+  const fromContract = state.limitChooser;
+  if (fromContract) {
+    return (
+      <LimitTypeChooser
+        backLabel="Contract"
+        onBack={() => dispatch({ type: 'NAVIGATE', view: 'limits', patch: { limitChooser: null, ...(fromContract.returnTo || {}) } })}
+        onPick={(kind) =>
+          dispatch({ type: 'OPEN_LIMIT_EDITOR', kind, preset: { forContracts: true }, returnTo: fromContract.returnTo, addToAgreement: true })
+        }
+      />
+    );
+  }
+  // "Create limit" opens the type chooser first; picking a card opens the editor
+  // (where it's set as a regular or contract limit).
+  if (chooserOpen) {
+    return (
+      <LimitTypeChooser
+        onBack={() => setChooserOpen(false)}
+        onPick={(kind) => {
+          setChooserOpen(false);
+          dispatch({ type: 'OPEN_LIMIT_EDITOR', kind });
+        }}
+      />
+    );
+  }
 
   const all = state.db.limits || [];
-  const create = { content: 'Create limit', commandFor: createId };
-  // Popover + ActionList with help text: each kind's description stays under its name.
-  const createMenu = (
-    <s-popover id={createId} maxInlineSize="320px">
-      <s-box padding="small-200">
-        <s-stack gap="none">
-          {Object.entries(LIMIT_KINDS).map(([kind, k]) => (
-            <s-clickable
-              key={kind}
-              padding="small-200"
-              borderRadius="base"
-              commandFor={createId}
-              command="--hide"
-              onClick={() => dispatch({ type: 'OPEN_LIMIT_EDITOR', kind })}
-            >
-              <s-paragraph>{k.label}</s-paragraph>
-              <s-paragraph color="subdued" fontSize="small">
-                {k.description}
-              </s-paragraph>
-            </s-clickable>
-          ))}
-        </s-stack>
-      </s-box>
-    </s-popover>
-  );
+  const create = { content: 'Create limit', onAction: () => setChooserOpen(true) };
   if (!all.length) {
     return (
       <s-page heading="Order limits">
-        <s-button slot="primary-action" variant="primary" commandFor={createId}>
+        <s-button slot="primary-action" variant="primary" onClick={create.onAction}>
           {create.content}
         </s-button>
         <s-button slot="secondary-actions" onClick={() => dispatch({ type: 'NAVIGATE', view: 'limitTests' })}>
           Run tests
         </s-button>
-        {createMenu}
         <s-section>
           <EmptyBlock heading="Set rules for what buyers can order" action={create}>
             Require a minimum order, sell products in case packs, or review large orders before they go through. Apply a limit to B2B companies and locations, or to D2C wholesale customers.
@@ -81,8 +116,9 @@ export function OrderLimits() {
   }
 
   const q = search.trim().toLowerCase();
+  const tabOf = (l) => (isContractTerm(l) ? 'contract' : isD2CLimit(l) ? 'd2c' : 'b2b');
   const limits = all
-    .filter((l) => audience === 'all' || (isD2CLimit(l) ? 'd2c' : 'b2b') === audience)
+    .filter((l) => audience === 'all' || tabOf(l) === audience)
     .filter((l) => (type === 'all' || l.kind === type) && (!q || l.name.toLowerCase().includes(q)))
     .sort((a, b) => a.name.localeCompare(b.name));
   const edit = (l) => dispatch({ type: 'OPEN_LIMIT_EDITOR', limit: l });
@@ -96,14 +132,13 @@ export function OrderLimits() {
 
   return (
     <s-page heading="Order limits">
-      <s-button slot="primary-action" variant="primary" commandFor={createId}>
+      <s-button slot="primary-action" variant="primary" onClick={create.onAction}>
         {create.content}
       </s-button>
       {/* The order-limit test console (#/b2b/order-limit-tests). */}
       <s-button slot="secondary-actions" onClick={() => dispatch({ type: 'NAVIGATE', view: 'limitTests' })}>
         Run tests
       </s-button>
-      {createMenu}
       <s-stack gap="base">
         <s-paragraph color="subdued">Rules on what B2B buyers and D2C wholesale customers can check out, checked in the cart and at checkout.</s-paragraph>
 
@@ -135,18 +170,29 @@ export function OrderLimits() {
               {limits.map((l) => {
                 const isOff = l.status !== 'Active';
                 const id = `${rowId}-${l.id}`;
-                // Live contracts hold it: it can't be turned off or deleted outside them.
-                const held = contractsHolding(state.db, l.id);
+                // A contract limit: the contracts using it, no Turn off. Running
+                // contracts hold it: deleting it goes through them, so Delete opens
+                // the lock box instead.
+                const forContracts = isContractTerm(l);
+                const held = forContracts ? contractsHolding(state.db, l.id) : [];
+                const locked = (verb) => showLock({ name: l.name, count: held.length, verb });
                 return (
                   <s-table-row key={l.id} clickDelegate={`${id}-open`}>
                     <s-table-cell>
-                      <s-link id={`${id}-open`} onClick={() => edit(l)}>
-                        {l.name}
-                      </s-link>
+                      <s-stack direction="inline" gap="small-200" alignItems="center">
+                        <s-link id={`${id}-open`} onClick={() => edit(l)}>
+                          {l.name}
+                        </s-link>
+                        {forContracts ? <s-badge>Contract limit</s-badge> : null}
+                      </s-stack>
                     </s-table-cell>
                     <s-table-cell>{LIMIT_KINDS[l.kind].label}</s-table-cell>
                     <s-table-cell>
-                      <s-text color={isLimitAssigned(l) ? undefined : 'subdued'}>{limitTargetsLabel(l, state.db)}</s-text>
+                      {forContracts ? (
+                        <s-text>{contractsLabel(state.db, l.id)}</s-text>
+                      ) : (
+                        <s-text color={isLimitAssigned(l) ? undefined : 'subdued'}>{limitTargetsLabel(l, state.db)}</s-text>
+                      )}
                     </s-table-cell>
                     <s-table-cell>{l.updatedAt || l.createdAt ? fmtDay(l.updatedAt || l.createdAt) : '—'}</s-table-cell>
                     <s-table-cell>
@@ -154,18 +200,21 @@ export function OrderLimits() {
                     </s-table-cell>
                     <s-table-cell>
                       <s-stack direction="inline" gap="small-400" justifyContent="end">
-                        <s-button
-                          icon={isOff ? 'toggle-off' : 'toggle-on'}
-                          variant="tertiary"
-                          accessibilityLabel={isOff ? 'Turn on' : 'Turn off'}
-                          disabled={!isOff && held.length > 0}
-                          interestFor={`${id}-toggle-tip`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggle(l);
-                          }}
-                        />
-                        <s-tooltip id={`${id}-toggle-tip`}>{isOff ? 'Turn on' : held.length ? lockedTip(held, 'turn off') : 'Turn off'}</s-tooltip>
+                        {forContracts ? null : (
+                          <>
+                            <s-button
+                              icon={isOff ? 'toggle-off' : 'toggle-on'}
+                              variant="tertiary"
+                              accessibilityLabel={isOff ? 'Turn on' : 'Turn off'}
+                              interestFor={`${id}-toggle-tip`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggle(l);
+                              }}
+                            />
+                            <s-tooltip id={`${id}-toggle-tip`}>{isOff ? 'Turn on' : 'Turn off'}</s-tooltip>
+                          </>
+                        )}
                         <s-button
                           icon="edit"
                           variant="tertiary"
@@ -182,14 +231,14 @@ export function OrderLimits() {
                           variant="tertiary"
                           tone="critical"
                           accessibilityLabel="Delete limit"
-                          disabled={held.length > 0}
                           interestFor={`${id}-delete-tip`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            setConfirmDelete(l);
+                            if (held.length) locked('delete');
+                            else setConfirmDelete(l);
                           }}
                         />
-                        <s-tooltip id={`${id}-delete-tip`}>{held.length ? lockedTip(held, 'delete') : 'Delete limit'}</s-tooltip>
+                        <s-tooltip id={`${id}-delete-tip`}>Delete limit</s-tooltip>
                       </s-stack>
                     </s-table-cell>
                   </s-table-row>
@@ -210,9 +259,8 @@ export function OrderLimits() {
       {confirmDelete && (
         <Modal onClose={() => setConfirmDelete(null)} heading={`Delete ${confirmDelete.name}?`}>
           <s-stack gap="small">
-            <s-paragraph>
-              Buyers it applies to ({limitTargetsLabel(confirmDelete, state.db)}) can check out without it right away. This can’t be undone.
-            </s-paragraph>
+            <s-paragraph>{deleteLimitText(confirmDelete, state.db)}</s-paragraph>
+            <DraftsLosingIt db={state.db} id={confirmDelete.id} />
           </s-stack>
           <s-button
             slot="primary-action"
@@ -231,6 +279,7 @@ export function OrderLimits() {
         </Modal>
       )}
 
+      {lockModal}
       {confirmToggle && (
         <Modal onClose={() => setConfirmToggle(null)} heading={`Turn on ${confirmToggle.limit.name}?`}>
           <LimitOverlapMessage subject="it" />
