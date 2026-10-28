@@ -434,8 +434,24 @@ export const orderSeed = {
   c1: [
     {
       id: '#1045', location: 'Hanoi', buyer: 'John Nguyen', date: '2026-07-15', amount: 12400, lines: 3, po: 'PO-9821',
+      // Its products, at the negotiated prices, for the buyer's order page on the storefront.
+      items: [
+        { sku: '701242690-HAALAND', title: 'Manchester City Home Authentic Jersey 2026/27 With HAALAND 9 Printing in Gift Box', qty: 40, price: 130 },
+        { sku: '701242808', title: "Women's Manchester City Home Jersey 2026/27 With CHERKI 10 Printing", qty: 50, price: 90 },
+        { sku: '701242812-CHERKI', title: "Kids' Manchester City Home Jersey 2026/27 Long Sleeve With CHERKI 10 Printing", qty: 40, price: 67.5 },
+      ],
       pricing: 'ABC Hanoi Negotiated', pricingSource: 'Location price', source: 'Direct checkout',
       status: 'Needs review', shopifyStatus: 'Draft order', reason: 'Above the $10,000 maximum', heldBy: 'ol4', heldAt: { value: 10000, limitId: 'ol4', limitName: 'ABC Hanoi review' }
+    },
+    {
+      // Approved after review: the invoice is sent, waiting for the buyer to check out.
+      id: '#1047', location: 'Hanoi', buyer: 'John Nguyen', date: '2026-08-03', amount: 12200, lines: 2, po: 'PO-9840',
+      items: [
+        { sku: '701242784-CHERKI', title: 'Manchester City Home Jersey 2026/27 With CHERKI 10 Printing', qty: 80, price: 85 },
+        { sku: '701242808-GVARDIOL', title: "Women's Manchester City Home Jersey 2026/27 With GVARDIOL 24 Printing", qty: 60, price: 90 },
+      ],
+      pricing: 'ABC Hanoi Negotiated', pricingSource: 'Location price', source: 'Direct checkout',
+      status: 'Invoice sent', shopifyStatus: 'Draft order', reason: 'Above the $10,000 maximum', heldBy: 'ol4', heldAt: { value: 10000, limitId: 'ol4', limitName: 'ABC Hanoi review' }
     },
     {
       id: '#1044', location: 'Hanoi', buyer: 'Le Thu Ha', date: '2026-07-14', amount: 5860, lines: 2, po: 'PO-9814',

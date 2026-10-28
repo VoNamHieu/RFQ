@@ -202,6 +202,8 @@ const cartLine = (sku, qty) => ({ sku, variantId: productBySku(sku)?.variants[0]
 export const CART_CASES = [
   { id: 'product', label: 'Product blocks + product review', lines: [['701242784-HAALAND', 6], ['701242784-FODEN', 6]], orderMaximum: false },
   { id: 'order', label: 'Order blocks + product review', lines: [['701242784-HAALAND', 5], ['701242784-FODEN', 6]], orderMaximum: true },
+  // Over ABC Hanoi review's $10,000 order maximum, with a jersey no product limit covers.
+  { id: 'order-review', label: 'Order review (over $10,000)', lines: [['701242808-HAALAND', 120]], orderMaximum: false },
 ];
 export function applyCartCase(c) {
   const limits = publishedOrderLimits() || dbSeed.limits;
@@ -288,38 +290,52 @@ export function b2bPriceFor(sku, session) {
 // the Customer Account API (name, date, financial status, lines, total), quotes
 // from the app's own API (status, lines with the seller's unit price, and
 // whether the agreed price was saved back as reusable company pricing).
+// A past order's line: a catalog product (its title and image), at the price paid.
+const orderLine = (sku, quantity, price) => ({ sku, title: productBySku(sku)?.title || sku, quantity, price });
+const withTotal = (o) => ({ ...o, total: Math.round(o.lines.reduce((s, l) => s + l.price * l.quantity, 0) * 100) / 100 });
 export const ACCOUNT_ORDERS = [
   {
-    id: '#1042', date: 'Aug 28, 2026', status: 'Fulfilled', statusTone: 'green', total: 2610,
-    lines: [{ sku: 'HOS-12', title: 'Reinforced hose, 12m', quantity: 15 }, { sku: 'FIL-XL', title: 'Industrial filter, XL', quantity: 10 }],
+    id: '#1042', date: 'Aug 28, 2026', status: 'Fulfilled', statusTone: 'green',
+    lines: [
+      orderLine('701242784-CHERKI', 10, 85.85), orderLine('701242784-GVARDIOL', 8, 85.85), orderLine('701242808-FODEN', 6, 85.85),
+      orderLine('701242808-GVARDIOL', 6, 92.65), orderLine('701242809-HAALAND', 12, 64.6), orderLine('701242813', 5, 67.15),
+    ],
   },
   {
-    id: '#1017', date: 'Jul 09, 2026', status: 'Fulfilled', statusTone: 'green', total: 890,
-    lines: [{ sku: 'SEA-30', title: 'Sealant cartridge, 30 pack', quantity: 8 }],
+    id: '#1017', date: 'Jul 09, 2026', status: 'Fulfilled', statusTone: 'green',
+    lines: [orderLine('701242785-FODEN', 6, 92.65), orderLine('701237145-FODEN', 12, 25.84)],
+  },
+  {
+    // Paid, not shipped yet.
+    id: '#1039', date: 'Jun 28, 2026', status: 'Paid', statusTone: 'blue',
+    lines: [orderLine('701242690-FODEN', 20, 124), orderLine('701242785-FODEN', 20, 92), orderLine('701242808-HAALAND', 20, 90)],
   },
   {
     // An order request the seller approved (ACCOUNT_ORDER_REQUESTS): it became this order.
-    id: '#1036', date: 'Jun 22, 2026', status: 'Fulfilled', statusTone: 'green', total: 11250,
-    lines: [{ sku: 'FIL-XL', title: 'Industrial filter, XL', quantity: 96 }, { sku: 'HOS-12', title: 'Reinforced hose, 12m', quantity: 30 }],
+    id: '#1036', date: 'Jun 22, 2026', status: 'Fulfilled', statusTone: 'green',
+    lines: [orderLine('701242690-HAALAND', 60, 130.9), orderLine('701242808', 40, 92.65)],
   },
   {
-    id: '#0994', date: 'Jun 15, 2026', status: 'Fulfilled', statusTone: 'green', total: 1465,
-    lines: [{ sku: 'FIL-XL', title: 'Industrial filter, XL', quantity: 12 }, { sku: 'HOS-12', title: 'Reinforced hose, 12m', quantity: 4 }],
+    id: '#0994', date: 'Jun 15, 2026', status: 'Fulfilled', statusTone: 'green',
+    lines: [orderLine('701242812-CHERKI', 10, 68.85), orderLine('701242690', 4, 124.1)],
   },
-];
+].map(withTotal);
 
 // The account's earlier order requests the seller already decided on (the B2B
 // app's own held orders join them, see orderRequestsForSession): one approved —
 // it became order #1036 — and one declined, with the seller's message.
+const requestLines = (lines) => lines.map(({ sku, title, quantity, price }) => ({ sku, title, qty: quantity, price }));
+const declinedLines = [orderLine('701242690-FODEN', 80, 124.1), orderLine('701242813-FODEN', 60, 67.15)];
+const order1036 = ACCOUNT_ORDERS.find((o) => o.id === '#1036');
 export const ACCOUNT_ORDER_REQUESTS = [
   {
-    number: '#1036', status: 'approved', companyId: 'c1', locationId: 'l1', buyer: 'John Nguyen', date: '2026-06-22', amount: 11250, threshold: 10000, period: 'order',
-    lines: [{ sku: 'FIL-XL', title: 'Industrial filter, XL', qty: 96 }, { sku: 'HOS-12', title: 'Reinforced hose, 12m', qty: 30 }],
+    number: '#1036', status: 'approved', companyId: 'c1', locationId: 'l1', buyer: 'John Nguyen', date: '2026-06-22', amount: order1036.total, threshold: 10000, period: 'order',
+    lines: requestLines(order1036.lines),
   },
   {
-    number: '#1030', status: 'declined', companyId: 'c1', locationId: 'l1', buyer: 'John Nguyen', date: '2026-06-05', amount: 14800, threshold: 10000, period: 'order',
+    number: '#1030', status: 'declined', companyId: 'c1', locationId: 'l1', buyer: 'John Nguyen', date: '2026-06-05', amount: withTotal({ lines: declinedLines }).total, threshold: 10000, period: 'order',
     message: 'We can’t take an order this size before your credit review in July. Please split it into orders under $10,000.',
-    lines: [{ sku: 'FIL-XL', title: 'Industrial filter, XL', qty: 120 }, { sku: 'SEA-30', title: 'Sealant cartridge, 30 pack', qty: 40 }],
+    lines: requestLines(declinedLines),
   },
 ];
 

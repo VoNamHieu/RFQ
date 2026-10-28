@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useStore, unitPrice } from '../store.jsx';
 import { productBySku, productRuleForSession, cartProblemsForSession } from '../data/products.js';
 import { addOrderRequest } from '../../shared/persistence.js';
-import { CloseIcon, WarningIcon } from './icons.jsx';
+import { CloseIcon, InfoIcon, WarningIcon } from './icons.jsx';
 
 // A product's order limits under its cart line (lineProblems): red when it blocks
 // checkout, blue when the order can go as an order request.
@@ -15,22 +15,33 @@ export function LineLimits({ problems }) {
   );
 }
 
-// The order's own limits above the lines (orderProblems). When the cart could go as
-// an order request (`review`), they say to fix them first — over a maximum the
-// products for review fit under (`keepForReview`), by lowering the others.
-export function OrderLimits({ problems, review, keepForReview = false }) {
-  if (!problems.length) return null;
+// The order's own limits above the lines: in red the ones that block (orderProblems)
+// — when the cart could go as an order request (`review`), they say to fix them
+// first, over a maximum the products for review fit under (`keepForReview`) by
+// lowering the others — then in blue its maximums sent for review (orderReviews).
+export function OrderLimits({ problems, reviews = [], review, keepForReview = false }) {
+  if (!problems.length && !reviews.length) return null;
   return (
-    <div className="limit-notice" role="alert">
-      <WarningIcon />
-      <div>
-        <ul>{problems.map((p, i) => <li key={i}>{p.message}</li>)}</ul>
-        {keepForReview ? (
-          <p>Consider removing products that can’t go for review, then send an order request.</p>
-        ) : review ? (
-          <p>{`Fix ${problems.length > 1 ? 'these' : 'this'} first to send an order request.`}</p>
-        ) : null}
-      </div>
+    <div className="order-limits">
+      {problems.length > 0 && (
+        <div className="limit-notice" role="alert">
+          <WarningIcon />
+          <div>
+            <ul>{problems.map((p, i) => <li key={i}>{p.message}</li>)}</ul>
+            {keepForReview ? (
+              <p>Consider removing products that can’t go for review, then send an order request.</p>
+            ) : review ? (
+              <p>{`Fix ${problems.length > 1 ? 'these' : 'this'} first to send an order request.`}</p>
+            ) : null}
+          </div>
+        </div>
+      )}
+      {reviews.length > 0 && (
+        <div className="limit-notice limit-notice--review" role="status">
+          <InfoIcon />
+          <ul>{reviews.map((p, i) => <li key={i}>{p.message}</li>)}</ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -78,6 +89,8 @@ export function useCartCheckout() {
   // order value's, else the first product's (`sku`).
   const reviews = problems.filter((p) => p.type === 'review');
   const review = reviews.find((p) => !p.sku) || reviews[0];
+  // The order's own maximums sent for review (no `sku`), shown above the lines in blue.
+  const orderReviews = reviews.filter((p) => !p.sku);
   // A product's problems, blocking or sent for review, under its line: a minimum or
   // maximum under its first line (they count all its variants), a pack under each
   // variant not in packs. Without the product's name, which the line shows. When the
@@ -167,5 +180,5 @@ export function useCartCheckout() {
     </>
   );
 
-  return { lines, subtotal, blocking, orderProblems, lineProblems, review, keepForReview, checkoutHint, checkout, dialogs };
+  return { lines, subtotal, blocking, orderProblems, orderReviews, lineProblems, review, keepForReview, checkoutHint, checkout, dialogs };
 }

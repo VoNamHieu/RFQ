@@ -399,6 +399,7 @@ export function LimitEditor() {
       </s-section>
 
       <SelectCompaniesModal
+        needsLocation
         open={companyModal}
         companies={picks.companies}
         tickedOf={picks.tickedOf}

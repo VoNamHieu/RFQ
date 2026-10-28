@@ -294,7 +294,7 @@ export function storefrontHeldOrders(db) {
       buyer: o.buyer,
       date: o.date,
       amount: o.amount,
-      lines: o.lines,
+      lines: o.items || o.lines, // its products when the sample has them, else a count
       threshold: o.heldAt?.value ?? null,
       period: o.heldAt?.period || 'order',
       item: o.heldAt?.item ?? null,

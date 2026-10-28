@@ -70,8 +70,9 @@ function InlineCheckList({ items, selected, onSet, searchable, placeholder, empt
 // ticked company with 2+ locations lists them underneath (all ticked) so the
 // pricing can go to only some; ticking every location is the whole company. With
 // `onApplyLaterChange`, a checkbox says whether locations added later get it too
-// (`applyLater`) at the companies picked.
-export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompany, onToggleLocation, onClose, applyLater = true, onApplyLaterChange }) {
+// (`applyLater`) at the companies picked. With `needsLocation` (order limits), a
+// company with no locations can't be picked.
+export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompany, onToggleLocation, onClose, applyLater = true, onApplyLaterChange, needsLocation = false }) {
   const [q, setQ] = useState('');
   const query = q.trim().toLowerCase();
   const shown = query ? companies.filter((c) => `${c.name} ${c.contact} ${c.email}`.toLowerCase().includes(query)) : companies;
@@ -106,6 +107,7 @@ export function SelectCompaniesModal({ open, companies, tickedOf, onToggleCompan
                         accessibilityLabel={`Select ${c.name}`}
                         checked={all}
                         indeterminate={!all && ticked.length > 0}
+                        disabled={needsLocation && !c.locs.length}
                         onChange={(e) => {
                           const want = e.currentTarget.checked;
                           if (want === all) return; // a repeat event for the same click
