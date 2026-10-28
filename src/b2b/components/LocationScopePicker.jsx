@@ -9,22 +9,17 @@ import { useWcId } from '../../shared/wc.jsx';
 // add new locations" on, since only then are locations added later. `separate`
 // puts the location list right under Specific locations. Shared by the Assign
 // modal, the pricing editor and the agreement editor.
-// `keep`: locations Active contracts give it to — { locationId: contract number } —
-// which stay picked (can't be unticked).
-export function LocationScopePicker({ company, locationIds, onChange, title = 'Apply to', titleHidden = false, applyLater = false, onApplyLaterChange, separate = false, keep = {} }) {
+export function LocationScopePicker({ company, locationIds, onChange, title = 'Apply to', titleHidden = false, applyLater = false, onApplyLaterChange, separate = false }) {
   const name = useWcId('loc-scope');
   const locations = company?.locations || [];
   const some = Array.isArray(locationIds);
   const picked = some ? locationIds : [];
   // Idempotent: sets the location on/off from the checkbox's checked state.
-  // Specific locations, with the kept ones; every location → all (null).
+  // Specific locations; every location → all (null).
   const pick = (ids) => {
-    const next = [...new Set([...ids, ...Object.keys(keep)])];
+    const next = [...new Set(ids)];
     return locations.length > 0 && locations.every((l) => next.includes(l.id)) ? null : next;
   };
-  // All of them kept: it can't be narrowed to specific locations.
-  const allKept = locations.length > 0 && locations.every((l) => keep[l.id]);
-  const allKeptNote = allKept ? <s-text slot="details">{`Every location is part of ${[...new Set(Object.values(keep))].join(', ')}.`}</s-text> : null;
   const setPicked = (id, on) => onChange(pick(on ? [...picked, id] : picked.filter((x) => x !== id)));
 
   const laterBox = onApplyLaterChange && company?.autoAddLocations && (
@@ -47,8 +42,6 @@ export function LocationScopePicker({ company, locationIds, onChange, title = 'A
                 <s-checkbox
                   label={l.name}
                   checked={picked.includes(l.id)}
-                  disabled={!!keep[l.id]}
-                  details={keep[l.id] ? `Part of ${keep[l.id]}` : undefined}
                   onChange={(e) => setPicked(l.id, e.currentTarget.checked)}
                 />
               </s-box>
@@ -73,9 +66,8 @@ export function LocationScopePicker({ company, locationIds, onChange, title = 'A
           if (e.currentTarget.values?.[0] === value) onChange(value === 'some' ? pick(picked) : null);
         }}
       >
-        <s-choice value={value} selected={selected} disabled={value === 'some' && allKept}>
+        <s-choice value={value} selected={selected}>
           {label}
-          {value === 'some' ? allKeptNote : null}
         </s-choice>
       </s-choice-list>
     );
@@ -104,9 +96,8 @@ export function LocationScopePicker({ company, locationIds, onChange, title = 'A
         <s-choice value="all" selected={!some}>
           All locations
         </s-choice>
-        <s-choice value="some" selected={some} disabled={allKept}>
+        <s-choice value="some" selected={some}>
           Specific locations
-          {allKeptNote}
         </s-choice>
       </s-choice-list>
       {locationsBox}

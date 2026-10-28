@@ -2,15 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { useStore } from '../store.jsx';
 import { policyStatus, policyUsage, policyUsageCount } from '../pricing.js';
 import { Modal, IndexFiltersBar, useWcId, wcTone, PageHeader } from '../../shared/wc.jsx';
-import { contractsHolding } from '../agreements.js';
+import { contractsHolding, isContractTerm, contractsLabel } from '../agreements.js';
 import { useContractLock, DraftsLosingIt } from '../components/ContractLock.jsx';
+import { versionFlags } from '../../shared/versions.js';
 import basePricingArt from '../assets/base-pricing-empty.webp';
 import quantityPricingArt from '../assets/quantity-pricing-empty.webp';
 
+// Contract pricing has its own tab (Upcoming): Companies lists the regular B2B ones.
 const AUDIENCE = [
   { id: 'all', label: 'All' },
   { id: 'b2b', label: 'Companies' },
   { id: 'd2c', label: 'Customers' },
+  ...(versionFlags().agreements ? [{ id: 'contract', label: 'Contract' }] : []),
 ];
 
 const TYPE_CHOICES = [
@@ -24,9 +27,16 @@ const STATUS_CHOICES = [
   { label: 'Scheduled', value: 'scheduled' },
   { label: 'Inactive', value: 'inactive' },
 ];
+// Upcoming: regular and contract pricing apart, either first (each by name).
 const SORT_OPTIONS = [
   { label: 'Name', value: 'name', directionLabel: 'A–Z' },
   { label: 'Most assigned', value: 'assigned', directionLabel: 'Most first' },
+  ...(versionFlags().agreements
+    ? [
+        { label: 'Type', value: 'regular', directionLabel: 'Regular first' },
+        { label: 'Type', value: 'contract', directionLabel: 'Contract first' },
+      ]
+    : []),
 ];
 
 const PAGE_SIZE = 10;
@@ -100,7 +110,8 @@ export function PricingLibrary() {
   // Jump back to the first page whenever the result set changes.
   useEffect(() => { setPage(0); }, [audience, search, kind, statusFilter, sort]);
 
-  // "Create pricing" opens the type chooser first; picking a card opens the editor.
+  // "Create pricing" opens the type chooser first; picking a card opens the editor
+  // (where it's set as regular or contract pricing).
   if (chooserOpen) {
     return (
       <PricingTypeChooser
@@ -114,15 +125,21 @@ export function PricingLibrary() {
   }
 
   const q = search.trim().toLowerCase();
+  const tabOf = (p) => (isContractTerm(p) ? 'contract' : p.audienceType);
   let policies = state.db.policies.filter((p) => {
-    if (audience !== 'all' && p.audienceType !== audience) return false;
+    if (audience !== 'all' && tabOf(p) !== audience) return false;
     if (kind !== 'all' && (p.priceKind === 'quantity' ? 'quantity' : 'base') !== kind) return false;
     if (statusFilter !== 'all' && policyStatus(p, state.db).label.toLowerCase() !== statusFilter) return false;
     if (q && !p.name.toLowerCase().includes(q)) return false;
     return true;
   });
+  const contractFirst = (p) => (isContractTerm(p) === (sort === 'contract') ? 0 : 1);
   policies = [...policies].sort((a, b) =>
-    sort === 'assigned' ? policyUsageCount(b, state.db) - policyUsageCount(a, state.db) || a.name.localeCompare(b.name) : a.name.localeCompare(b.name),
+    sort === 'assigned'
+      ? policyUsageCount(b, state.db) - policyUsageCount(a, state.db) || a.name.localeCompare(b.name)
+      : sort === 'regular' || sort === 'contract'
+        ? contractFirst(a) - contractFirst(b) || a.name.localeCompare(b.name)
+        : a.name.localeCompare(b.name),
   );
 
   const total = policies.length;
@@ -138,21 +155,29 @@ export function PricingLibrary() {
     const st = policyStatus(p, state.db);
     const isOff = p.status === 'Inactive';
     const id = `${tipId}-${p.id}`;
-    // Live contracts hold it: turning it off or deleting it goes through them, so
-    // those buttons open the lock box instead.
-    const held = contractsHolding(state.db, p.id);
+    // A contract pricing: the contracts using it, no Turn off. Running contracts hold
+    // it: deleting it goes through them, so Delete opens the lock box instead.
+    const forContracts = isContractTerm(p);
+    const held = forContracts ? contractsHolding(state.db, p.id) : [];
     const locked = (verb) => showLock({ name: p.name, count: held.length, verb });
     return (
       // A row click opens the editor (delegated to the name link).
       <s-table-row key={p.id} clickDelegate={`${id}-open`}>
         <s-table-cell>
-          <s-link id={`${id}-open`} tone="neutral" onClick={() => openEditor(p)}>
-            <s-text fontWeight="semibold">{p.name}</s-text>
-          </s-link>
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            <s-link id={`${id}-open`} tone="neutral" onClick={() => openEditor(p)}>
+              <s-text fontWeight="semibold">{p.name}</s-text>
+            </s-link>
+            {forContracts ? <s-badge>Contract pricing</s-badge> : null}
+          </s-stack>
         </s-table-cell>
         <s-table-cell>{p.priceKind === 'quantity' ? 'Quantity pricing' : 'Base pricing'}</s-table-cell>
         <s-table-cell>
-          <s-badge tone={p.audienceType === 'b2b' ? 'info' : undefined}>{p.audienceType === 'b2b' ? 'Companies' : 'Customers'}</s-badge>
+          {forContracts ? (
+            <s-text>{contractsLabel(state.db, p.id)}</s-text>
+          ) : (
+            <s-badge tone={p.audienceType === 'b2b' ? 'info' : undefined}>{p.audienceType === 'b2b' ? 'Companies' : 'Customers'}</s-badge>
+          )}
         </s-table-cell>
         <s-table-cell>
           <s-badge tone={wcTone(st.tone)}>{st.label}</s-badge>
@@ -162,18 +187,21 @@ export function PricingLibrary() {
         </s-table-cell>
         <s-table-cell>
           <s-stack direction="inline" gap="small-400" justifyContent="end" alignItems="center">
-            <s-button
-              icon={isOff ? 'toggle-off' : 'toggle-on'}
-              variant="tertiary"
-              accessibilityLabel={isOff ? 'Turn on' : 'Turn off'}
-              interestFor={`${id}-toggle-tip`}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (!isOff && held.length) locked('turn off');
-                else dispatch({ type: 'TOGGLE_POLICY_STATUS', id: p.id });
-              }}
-            />
-            <s-tooltip id={`${id}-toggle-tip`}>{isOff ? 'Turn on' : 'Turn off'}</s-tooltip>
+            {forContracts ? null : (
+              <>
+                <s-button
+                  icon={isOff ? 'toggle-off' : 'toggle-on'}
+                  variant="tertiary"
+                  accessibilityLabel={isOff ? 'Turn on' : 'Turn off'}
+                  interestFor={`${id}-toggle-tip`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    dispatch({ type: 'TOGGLE_POLICY_STATUS', id: p.id });
+                  }}
+                />
+                <s-tooltip id={`${id}-toggle-tip`}>{isOff ? 'Turn on' : 'Turn off'}</s-tooltip>
+              </>
+            )}
             <s-button
               icon="edit"
               variant="tertiary"

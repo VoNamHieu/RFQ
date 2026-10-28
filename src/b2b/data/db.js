@@ -4,10 +4,16 @@ import { versionFlags } from '../../shared/versions.js';
 
 const defaults = { b2bPolicyId: null, wholesalePolicyId: null };
 
-// Upcoming only (Contracts): two of CT-301's terms are out of their own dates on the
-// demo's "today", Jul 28, 2026 — VLV-40 Contract Price ended Jul 20, Pallet Breaks
-// starts Aug 5 — yet in CT-301 they apply on its dates. Current keeps them undated.
-const contractCase = (dates) => (versionFlags().agreements ? { validityType: 'dated', ...dates } : {});
+// Upcoming only (Contracts): pricing and limits made for contracts (`forContracts`)
+// are used only in contracts, which decide who gets them and when. Ones also assigned
+// outside a contract are split: the regular one keeps those assignments, and the
+// contracts use a contract copy with the same name (SPLIT: regular id → its copy).
+// Current has no contracts: every pricing and limit is regular.
+const CONTRACTS = versionFlags().agreements;
+const forContracts = CONTRACTS ? { forContracts: true } : {};
+const SPLIT = { p1: 'pc1', p22: 'pc22', p23: 'pc23', p27: 'pc27', ol2: 'olc2', ol3: 'olc3' };
+// ABC's Distributor Tier 2 comes from CT-301.
+const abcTier2 = CONTRACTS ? SPLIT.p1 : 'p1';
 
 // Each product carries its variants. The FIRST variant is the default and its
 // id equals the product SKU, so per-SKU pricing (seed overrides, RFQ→B2B sync)
@@ -32,12 +38,12 @@ const products = [
 const companies = [
   {
     id: 'c1', name: 'ABC Construction', mainContact: 'John Nguyen', source: 'QuoteSnap RFQ',
-    pricing: { base: [{ id: 'p1', priority: 1 }, { id: 'p30', priority: 5 }, { id: 'p8', priority: 2 }, { id: 'p20', priority: 3 }, { id: 'p21', priority: 4 }, { id: 'p22', priority: 5 }, { id: 'p23', priority: 6 }, { id: 'p24', priority: 7 }, { id: 'p25', priority: 8 }, { id: 'p26', priority: 9 }, { id: 'p27', priority: 10 }, { id: 'p28', priority: 11 }, { id: 'p29', priority: 12 }], quantity: 'p6' }, revenue: 124000,
+    pricing: { base: [{ id: abcTier2, priority: 1 }, { id: 'p30', priority: 5 }, { id: 'p8', priority: 2 }, { id: 'p20', priority: 3 }, { id: 'p21', priority: 4 }, { id: 'p22', priority: 5 }, { id: 'p23', priority: 6 }, { id: 'p24', priority: 7 }, { id: 'p25', priority: 8 }, { id: 'p26', priority: 9 }, { id: 'p27', priority: 10 }, { id: 'p28', priority: 11 }, { id: 'p29', priority: 12 }], quantity: 'p6' }, revenue: 124000,
     locations: [
       // Demo: Hanoi has its own base list — the company's, plus a pricing assigned to
       // Hanoi only (p31), so pickers show it as "Hanoi · ABC Construction".
       { id: 'l1', name: 'Hanoi', ordering: 'Buys directly', terms: 'Net 30', lastOrder: '2026-07-15', buyers: 2,
-        pricing: { base: [{ id: 'p1', priority: 1 }, { id: 'p30', priority: 5 }, { id: 'p8', priority: 2 }, { id: 'p20', priority: 3 }, { id: 'p21', priority: 4 }, { id: 'p22', priority: 5 }, { id: 'p23', priority: 6 }, { id: 'p24', priority: 7 }, { id: 'p25', priority: 8 }, { id: 'p26', priority: 9 }, { id: 'p27', priority: 10 }, { id: 'p28', priority: 11 }, { id: 'p29', priority: 12 }, { id: 'p31', priority: 1 }], quantity: null } },
+        pricing: { base: [{ id: abcTier2, priority: 1 }, { id: 'p30', priority: 5 }, { id: 'p8', priority: 2 }, { id: 'p20', priority: 3 }, { id: 'p21', priority: 4 }, { id: 'p22', priority: 5 }, { id: 'p23', priority: 6 }, { id: 'p24', priority: 7 }, { id: 'p25', priority: 8 }, { id: 'p26', priority: 9 }, { id: 'p27', priority: 10 }, { id: 'p28', priority: 11 }, { id: 'p29', priority: 12 }, { id: 'p31', priority: 1 }], quantity: null } },
       // `catalog`: the collection its buyers can buy from (none = every product).
       { id: 'l2', name: 'Bac Ninh site', ordering: 'You approve first', terms: 'Due on receipt', lastOrder: '2026-06-28', buyers: 1, catalog: 'Contractor assortment' },
       // Demo: deleted in Shopify (so not in the Shopify directory) — the app keeps the
@@ -167,7 +173,7 @@ const policies = [
   // Demo: an account-specific price pointed only at Ball valve 40mm (VLV-40). It
   // loses to the higher-priority Distributor Tier 2, so it surfaces under "Also
   // covers this product" in Preview price — the "why isn't my pricing applied?" case.
-  { id: 'p30', name: 'VLV-40 Contract Price', type: 'Account-specific', status: 'Active', audienceType: 'b2b', priority: 5, priceKind: 'base', scopeType: 'products', collection: '', selectedProducts: ['VLV-40'], pricingRule: 'decrease', valueType: 'percentage', value: 20, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '', ...contractCase({ endDate: '2026-07-20' }) },
+  { id: 'p30', name: 'VLV-40 Contract Price', type: 'Account-specific', status: 'Active', audienceType: 'b2b', priority: 5, priceKind: 'base', scopeType: 'products', collection: '', selectedProducts: ['VLV-40'], pricingRule: 'decrease', valueType: 'percentage', value: 20, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '', ...forContracts },
   {
     id: 'p1', name: 'Distributor Tier 2', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 1,
     priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: ['FIL-XL', 'FIL-STD', 'SEA-30', 'HOS-12', 'VLV-40'],
@@ -220,7 +226,7 @@ const policies = [
     pricingRule: 'decrease', valueType: 'percentage', value: 10, variantAdjustments: {},
     volumeRanges: [{ id: 'r1', from: 1, to: 9, valueType: 'percentage', value: 0 }, { id: 'r2', from: 10, to: 49, valueType: 'percentage', value: 10 }, { id: 'r3', from: 50, to: null, valueType: 'percentage', value: 20 }],
     quantityBasis: 'all_selected', volumeBasis: 'base',
-    validityType: 'evergreen', startDate: '', endDate: '', ...contractCase({ startDate: '2026-08-05' })
+    validityType: 'evergreen', startDate: '', endDate: '', ...forContracts
   },
   {
     id: 'p7', name: 'Filter Case Pricing', type: 'Reusable', status: 'Active', audienceType: 'b2b',
@@ -236,9 +242,12 @@ const policies = [
     priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: ['FIL-XL', 'FIL-STD', 'SEA-30', 'HOS-12', 'VLV-40'],
     pricingRule: 'decrease', valueType: 'percentage', value: 10, variantAdjustments: {}, explicitEnabled: false,
     conditionalRules: [],
-    validityType: 'evergreen', startDate: '', endDate: ''
+    validityType: 'evergreen', startDate: '', endDate: '', ...forContracts
   }
 ];
+// The contract copies of pricing also assigned outside contracts (SPLIT).
+const contractCopy = (list, of) => ({ ...JSON.parse(JSON.stringify(list.find((x) => x.id === of))), id: SPLIT[of], forContracts: true });
+if (CONTRACTS) policies.push(...['p1', 'p22', 'p23', 'p27'].map((of) => contractCopy(policies, of)));
 
 const attention = [
   { sev: 'blocking', title: 'Order #1046 is blocked', meta: 'Song Hong Interiors · Hanoi · the negotiated price expired and nothing replaced it', cta: 'Fix pricing', company: 'c4' },
@@ -418,7 +427,7 @@ const limits = [
     storeWide: false, companyIds: ['c2'], locationKeys: [], message: '' },
   { id: 'ol3', createdAt: '2025-12-15', name: 'Filter case packs', kind: 'product', status: 'Active', maxAction: 'block',
     rules: [{ id: 'r1', scopeType: 'products', collection: '', selectedProducts: ['FIL-XL', 'FIL-STD'], min: set(12), max: inherit(), increment: set(12) }],
-    storeWide: false, companyIds: ['c1', 'c2'], locationKeys: [], message: '' },
+    storeWide: false, companyIds: CONTRACTS ? ['c2'] : ['c1', 'c2'], locationKeys: [], message: '' },
   { id: 'ol4', createdAt: '2026-04-21', name: 'ABC Hanoi review', kind: 'order', status: 'Active', maxAction: 'review', settings: orderSettings({ minValue: set(500), maxValue: set(10000) }),
     storeWide: false, companyIds: [], locationKeys: ['c1::l1'], message: '' },
   // Two storefront jerseys for ABC: over 5, one blocks checkout and one goes for
@@ -434,9 +443,17 @@ const limits = [
   { id: 'ol7', createdAt: '2026-07-20', name: 'ABC Hanoi order maximum', kind: 'order', status: 'Inactive', maxAction: 'block', settings: orderSettings({ maxValue: set(800) }),
     storeWide: false, companyIds: [], locationKeys: ['c1::l1'], message: '' },
 ];
+// The contract copies of limits also assigned outside contracts (SPLIT), each right
+// after its regular one: CT-301 gives ABC its Filter case packs; CT-305's are for
+// when it's activated.
+if (CONTRACTS) {
+  const copies = { ol2: { ...contractCopy(limits, 'ol2'), companyIds: [] }, ol3: { ...contractCopy(limits, 'ol3'), companyIds: ['c1'] } };
+  limits.splice(0, limits.length, ...limits.flatMap((l) => (copies[l.id] ? [l, copies[l.id]] : [l])));
+}
 
 // Agreements (see agreements.js). ABC's CT-301 is live and its terms are the ones
-// assigned above (p1, p8, p30, p6, ol3) — the rest of ABC's pricing is outside it.
+// assigned above (Distributor Tier 2, p8, p30, p6, Filter case packs — in Upcoming
+// the contract copies) — the rest of ABC's pricing is outside it.
 // It ends Aug 20, 2026 — within the renewal reminder. Vinh Phat's CT-305 is a
 // inactive contract for 2027; Song Hong's CT-274 expired (see its activity). Phu Thanh has a
 // contract per location: CT-302 (Ho Chi Minh City, Can Tho) and CT-303 (Vung Tau)
@@ -470,6 +487,17 @@ const agreements = [
     terms: { base: ['p22'], quantity: [], limits: [] },
     history: [{ version: 1, date: '2026-07-20', note: 'Activated, starts Feb 1, 2027', terms: { base: ['p22'], quantity: [], limits: [] } }] },
 ];
+
+// The contracts use the contract copies (SPLIT), in their versions too.
+if (CONTRACTS) {
+  agreements.forEach((a) =>
+    [a.terms, ...(a.history || []).map((h) => h.terms).filter(Boolean)].forEach((t) =>
+      ['base', 'quantity', 'limits'].forEach((k) => {
+        t[k] = t[k].map((id) => SPLIT[id] || id);
+      }),
+    ),
+  );
+}
 
 export const dbSeed = { defaults, products, companies, tagPricing, customers, policies, limits, agreements, attention, requests, health, quotes };
 

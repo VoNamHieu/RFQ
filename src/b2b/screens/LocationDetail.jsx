@@ -55,7 +55,8 @@ export function LocationDetail() {
   const addPricing = (kind) => {
     dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, locationId: location.id, kind, mode: 'add' });
   };
-  // A pricing a live contract gives this location comes off through the contract only.
+  // A pricing a live contract gives this location comes off through the contract only:
+  // Remove says where it comes from.
   const pricingActions = (policy, kind, ag) => (
     <s-stack direction="inline" gap="small-400" justifyContent="end" alignItems="center">
       <s-button
@@ -71,7 +72,7 @@ export function LocationDetail() {
         accessibilityLabel={`Remove ${policy.name}`}
         onClick={() =>
           ag
-            ? showLock({ name: policy.name, count: 1, verb: 'remove' })
+            ? showLock({ name: policy.name, verb: 'remove', message: `It comes from ${ag.number}. To take it off ${location.name}, edit the contract.` })
             : dispatch({ type: 'REMOVE_LOCATION_PRICING', companyId: company.id, locationId: location.id, kind, policyId: policy.id })
         }
       />

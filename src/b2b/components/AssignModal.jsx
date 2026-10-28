@@ -3,6 +3,7 @@ import { useStore } from '../store.jsx';
 import { companyBaseEntries, companyQuantityEntries, locationPricingEntries } from '../pricing.js';
 import { Modal } from '../../shared/wc.jsx';
 import { PricingCombobox } from './PricingCombobox.jsx';
+import { isContractTerm } from '../agreements.js';
 import { LocationScopePicker } from './LocationScopePicker.jsx';
 
 // Add existing pricing(s) to a company, or swap one for another — production's
@@ -29,10 +30,12 @@ export function AssignModal() {
     ? (({ bases, quantities }) => (isQuantity ? quantities : bases))(locationPricingEntries(company, location, state.db.policies, { includeInactive: true })).map((e) => e.policy.id)
     : (isQuantity ? companyQuantityEntries : companyBaseEntries)(company, state.db.policies).map((e) => e.policy.id);
 
+  // Contract pricing is given only by its contracts, so it isn't offered here.
   const candidates = state.db.policies.filter(
     (p) =>
       (isQuantity ? p.priceKind === 'quantity' : p.priceKind !== 'quantity') &&
       p.audienceType === 'b2b' &&
+      !isContractTerm(p) &&
       (isSwap ? p.id !== a.swapId : true) &&
       !assignedIds.includes(p.id),
   );

@@ -328,7 +328,7 @@ const CASES = [
       return [
         equals('Order limit at Hanoi', effectiveRules(db, 'c1', 'l1').order?.limit.name, 'Contract minimum B'),
         includes('Contract editor', contractLimitConflicts(db, pick(db, ['ca', 'cb'])), '“Contract minimum B” replaces “Contract minimum A” in this contract'),
-        includes('Contract editor', contractLimitConflicts(small, pick(small, ['ol3', 'csmall'])), 'can’t be ordered in this contract'),
+        includes('Contract editor', contractLimitConflicts(small, pick(small, ['olc3', 'csmall'])), 'can’t be ordered in this contract'),
       ];
     },
   },

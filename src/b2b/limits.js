@@ -1066,8 +1066,12 @@ export function limitErrors(d) {
   const allowed = (k, v) => (isMin(k) ? v >= 0 : v > 0);
   const bad = (k) => d[k] !== '' && d[k] != null && !allowed(k, Number(d[k]));
   if (!(d.name || '').trim()) e.name = 'Name is required';
-  if (d.startDate && d.endDate && d.endDate < d.startDate) e.endDate = 'Must be after the start date';
-  else if (d.endDate && d.endDate < TODAY) e.endDate = 'This date has passed';
+  // A contract limit has no dates, and applies where its contracts do (Applies to
+  // isn't checked below).
+  if (!d.forContracts) {
+    if (d.startDate && d.endDate && d.endDate < d.startDate) e.endDate = 'Must be after the start date';
+    else if (d.endDate && d.endDate < TODAY) e.endDate = 'This date has passed';
+  }
   if (d.kind === 'order') {
     ORDER_FIELDS.forEach((k) => { if (bad(k)) e[k] = isMin(k) ? 'Enter 0 or more' : 'Enter a number above 0'; });
     ['minQty', 'maxQty'].forEach((k) => {
@@ -1105,6 +1109,7 @@ export function limitErrors(d) {
       }
     });
   }
+  if (d.forContracts) return e;
   if (isD2CLimit(d)) {
     if (PICKED_TARGETS.includes(d.customerTarget) && !(d.customerTargetIds || []).length) {
       e.targets = d.customerTarget === 'tags' ? 'Pick at least one customer tag' : 'Pick at least one customer';

@@ -5,6 +5,7 @@ import { versionFlags, withVersion } from '../../shared/versions.js';
 import quotesArt from '../assets/quote-block.webp';
 import { heldOrders, heldReason, HeldOrderActions, buyerMessageText } from '../components/HeldOrders.jsx';
 import { money } from '../format.js';
+import { isContractTerm } from '../agreements.js';
 
 // Prototype: show the dev toggles in production too (flip to import.meta.env.DEV to hide in prod).
 const SHOW_DEV_TOOLS = true;
@@ -40,8 +41,9 @@ export function Home() {
   const locations = companies.reduce((n, c) => n + (c.locations || []).length, 0);
   const needPrice = companies.filter((c) => companyNeedsPrice(c, policies, db.defaults)).length;
   const activePricing = policies.filter((p) => policyStatus(p, db).label !== 'Inactive').length;
-  // Assigned to nobody — a pricing the merchant turned off on purpose isn't flagged.
-  const unassignedPricing = policies.filter((p) => p.status !== 'Inactive' && policyUsageCount(p, db) === 0).length;
+  // Assigned to nobody — a pricing the merchant turned off on purpose isn't flagged,
+  // nor a contract pricing (its contracts give it).
+  const unassignedPricing = policies.filter((p) => p.status !== 'Inactive' && !isContractTerm(p) && policyUsageCount(p, db) === 0).length;
   const quantityPricing = policies.filter((p) => kindOf(p) === 'quantity').length;
   const pending = (db.registrations || []).filter((r) => r.status === 'pending').length;
   const openQuotes = (db.quotes || []).filter((q) => !CLOSED_QUOTE.includes(q.status));

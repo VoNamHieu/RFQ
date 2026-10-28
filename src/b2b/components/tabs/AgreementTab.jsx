@@ -8,7 +8,6 @@ import {
   nextAgreements,
   agreementClashes,
   sharedLocations,
-  namesOf,
   canCreateAgreement,
   takenOver,
   joinAnd,
@@ -22,6 +21,8 @@ import {
   extendedEndDate,
   isLive,
   fmtDay,
+  overlapLines,
+  overlapsHeading,
   PAST_STATUSES,
 } from '../../agreements.js';
 import { ContractVersionModal } from '../ContractVersionModal.jsx';
@@ -329,22 +330,15 @@ export function AgreementTab({ company }) {
   }
 
   const expiring = contracts.filter((a) => expiringSoon(a, state.db));
-  // Renewing can't run into a contract set up to start at its locations: a location is
-  // in one contract at a time.
-  const renewClash = renewing
-    ? agreementClashes(state.db, renewing.ag, true, { ...renewing.ag, endDate: renewing.endDate }).filter((a) => a.status === 'Scheduled')
+  // Extending into a contract set up to start at its locations is allowed: a yellow
+  // Overlaps banner says so — the one that starts later runs there from its start date
+  // (takeEffect), and this one ends or gives up those locations then.
+  const renewOverlaps = renewing
+    ? agreementClashes(state.db, renewing.ag, true, { ...renewing.ag, endDate: renewing.endDate })
+        .filter((a) => a.status === 'Scheduled')
+        .map((a) => ({ old: a, shared: sharedLocations(company, a, renewing.ag) }))
     : [];
-  const renewClashLine = (a) => {
-    const shared = sharedLocations(company, a, renewing.ag);
-    const where = shared.length ? namesOf(shared) : company.name;
-    return `${where} ${shared.length > 1 ? 'are' : 'is'} in ${a.number} from ${fmtDay(a.startDate)}. Pick an earlier date, or change ${a.number} first.`;
-  };
-  const renewError =
-    renewing && !(renewing.endDate > renewing.ag.endDate)
-      ? 'Must be after the current end date'
-      : renewClash.length
-        ? renewClashLine(renewClash[0])
-        : undefined;
+  const renewError = renewing && !(renewing.endDate > renewing.ag.endDate) ? 'Must be after the current end date' : undefined;
   // Where an ending contract's terms come off: the company, or the locations it has.
   const whereOf = (ag) => (agreementScopeLabel(company, ag) === 'All locations' ? company.name : agreementScopeLabel(company, ag));
   // Ending an Active contract: Scheduled ones at its locations still start. Ending a
@@ -400,13 +394,28 @@ export function AgreementTab({ company }) {
 
       {renewing && (
         <Modal onClose={() => setRenewing(null)} heading={`Extend ${renewing.ag.number}`}>
-          <s-date-field
-            label="New end date"
-            value={renewing.endDate}
-            onChange={(e) => setRenewing({ ...renewing, endDate: e.currentTarget.value })}
-            error={renewError}
-            details={`The terms stay the same. Saved as version ${renewing.ag.version + 1}.`}
-          />
+          <s-stack gap="base">
+            <s-date-field
+              label="New end date"
+              value={renewing.endDate}
+              onChange={(e) => setRenewing({ ...renewing, endDate: e.currentTarget.value })}
+              error={renewError}
+              details={`The terms stay the same. Saved as version ${renewing.ag.version + 1}.`}
+            />
+            {renewOverlaps.length ? (
+              <s-banner tone="warning" heading={overlapsHeading(renewOverlaps.length)}>
+                <s-stack gap="small-200">
+                  <s-paragraph>{`These overlap with ${renewing.ag.number}:`}</s-paragraph>
+                  <s-unordered-list>
+                    {overlapLines(company, renewOverlaps).map((line) => (
+                      <s-list-item key={line}>{line}</s-list-item>
+                    ))}
+                  </s-unordered-list>
+                  <s-paragraph>If you extend it, the contract that starts later runs where they overlap, and the other one ends or gives up those locations.</s-paragraph>
+                </s-stack>
+              </s-banner>
+            ) : null}
+          </s-stack>
           <s-button
             slot="primary-action"
             variant="primary"

@@ -6,7 +6,9 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 // boxes when several can be picked, a check mark on the picked one when only one
 // can — and the picks shown as removable tags under it. Multi-select unless
 // `single`. Presentational — the caller owns `selectedIds` and gets `onChange`.
-// Options show the pricing name unless `optionLabel` says otherwise.
+// Options show the pricing name unless `optionLabel` says otherwise. `action`
+// ({ content, onAction }): an option pinned at the top of the list that does
+// something else (e.g. create one), there whatever the search or scroll.
 //
 // Like Polaris React's Combobox, the list floats over the content instead of
 // pushing it down: it is a native popover (top layer, so a modal can't clip it)
@@ -22,6 +24,7 @@ export function PricingCombobox({
   single = false,
   optionLabel = (p) => p.name,
   emptyText = 'No matches',
+  action = null,
 }) {
   const [inputValue, setInputValue] = useState('');
   // The option list shows while the field is in use (like the Combobox popover):
@@ -119,6 +122,25 @@ export function PricingCombobox({
           />
         </div>
         <div ref={listRef} popover="manual" role="group" aria-label={label} className="wc-combobox-list">
+          {open && action && (
+            <div className="wc-combobox-list__action">
+              <s-clickable
+                paddingInline="small"
+                paddingBlock="small-300"
+                accessibilityLabel={action.content}
+                onClick={() => {
+                  setOpen(false);
+                  action.onAction();
+                }}
+              >
+                <s-stack direction="inline" gap="small-200" alignItems="center">
+                  <s-icon type="plus-circle" />
+                  <s-text>{action.content}</s-text>
+                </s-stack>
+              </s-clickable>
+              <s-divider />
+            </div>
+          )}
           {open &&
             (filtered.length > 0 ? (
               filtered.map((p) => {

@@ -19,15 +19,18 @@
 // with others left keeps those, as a new version.
 // Every version keeps a snapshot of its terms as they were then (names and what
 // each sets), so any version — and contracts that are over — can be read again.
-// A live contract's pricing and limits change only through it: elsewhere they can't
-// be taken off where it applies, turned off or deleted (missingTerms / newlyBroken),
-// and editing what one sets adds a version to the contracts holding it
-// (recordTermEdit).
+// Contracts use only contract pricing and contract limits (`forContracts`): made for
+// contracts, with no dates, status or assignments of their own — the contracts
+// decide who gets them and when. One can be in several contracts. A regular pricing
+// or limit can be duplicated as one (not the other way round); regular ones never
+// reach a contract. A live contract's pricing and limits change only through it:
+// elsewhere they can't be taken off where it applies or deleted (missingTerms /
+// newlyBroken), and editing what one sets adds a version to the running contracts
+// holding it (recordTermEdit).
 // In production a daily job starts and expires contracts (syncContractDates) and
 // reminds the merchant reminderDays before the end date; Extend moves the end date
 // and keeps the terms, as a new version. The demo's "today" is TODAY.
-// Pricing and limits stay reusable in their libraries and can still be assigned
-// directly, outside any contract — ending one takes off only what it added.
+// Ending a contract takes off only what it added.
 import { addPricingToLocations, removeCompanySlot, companySlotArray } from './dbHelpers.js';
 import { hasOwnSlot, slotIds, scopeLabel, ruleAdjustmentLabel, ruleValuesSummary, TODAY } from './pricing.js';
 import { limitKey, limitSummary, limitLevel, isD2CLimit } from './limits.js';
@@ -164,6 +167,22 @@ export function handOver(db, ag, started) {
   });
 }
 
+// The Overlaps box (Activate / Save as version) and Extend's Overlaps banner: one line
+// per contract — where they share locations, and its dates there ("Hanoi is in CT-301
+// until Aug 20, 2026.", "Can Tho is in CT-304 from Feb 1, 2027 until Jan 31, 2028.");
+// two at most, then "… and N more". `list`: [{ old, shared }].
+export function overlapLines(company, list) {
+  const line = ({ old, shared }) => {
+    const where = shared.length ? namesOf(shared) : company.name;
+    const is = shared.length <= 1 ? 'is' : 'are';
+    if (old.status === 'Scheduled') return `${where} ${is} in ${old.number} from ${fmtDay(old.startDate)}${old.endDate ? ` until ${fmtDay(old.endDate)}` : ''}.`;
+    return old.endDate ? `${where} ${is} in ${old.number} until ${fmtDay(old.endDate)}.` : `${where} ${is} in ${old.number}, which has no end date.`;
+  };
+  return list.length > 2 ? [...list.slice(0, 2).map(line), `… and ${list.length - 2} more`] : list.map(line);
+}
+// "Overlaps 1 contract", "Overlaps 3 contracts".
+export const overlapsHeading = (n) => `Overlaps ${n} contract${n === 1 ? '' : 's'}`;
+
 // The Active contracts sharing a location with `ag` and still in force on its start
 // date: when it starts, it takes those locations over.
 export function takenOver(db, ag) {
@@ -212,13 +231,13 @@ export function newAgreement(db, company) {
 export const addsLaterLocations = (ag) => ag.applyLater ?? !ag.locationIds;
 
 // A new contract with another one's terms and locations — `ag` can be open or over:
-// the pricing and limits still in the libraries (and still offered for a contract),
-// and the locations its company still has. Its start date follows the Active
+// the contract pricing and limits still in the libraries, and the locations its
+// company still has. Its start date follows the Active
 // contracts at those locations, as a new one's does; no end date.
 export function duplicateAgreement(db, ag) {
   const c = companyOf(db, ag);
-  const pricing = (id) => (db.policies || []).some((p) => p.id === id && p.audienceType !== 'd2c');
-  const limit = (id) => (db.limits || []).some((l) => l.id === id && !l.storeWide && !isD2CLimit(l));
+  const pricing = (id) => (db.policies || []).some((p) => p.id === id && isContractTerm(p));
+  const limit = (id) => (db.limits || []).some((l) => l.id === id && isContractTerm(l));
   const locationIds = ag.locationIds ? ag.locationIds.filter((id) => (c?.locations || []).some((l) => l.id === id)) : null;
   return {
     ...newAgreement(db, c),
@@ -399,50 +418,6 @@ export function joinLaterLocations(db, c, locations) {
     });
   active.forEach((a) => applyAgreement(db, a));
   joined.filter(isLive).forEach((a) => addVersion(db, a, `Added ${joinAnd(locations.map((l) => l.name))}`));
-}
-
-// "Save as new pricing" on a pricing Active contracts hold: the new one (`newId`)
-// takes its place everywhere outside them — every company's and location's list, and
-// the store's default for all companies — and the old one stays only in contracts.
-// Each Active contract's own entries for it come off first, so what's left is what's
-// outside them, then go back on, recorded again: when the contract ends, its
-// companies and locations keep the new one (mutates `db`).
-export function replaceOutsideContracts(db, oldId, newId) {
-  const kind = db.policies.find((p) => p.id === oldId)?.priceKind === 'quantity' ? 'quantity' : 'base';
-  const live = (db.agreements || []).filter((a) => a.status === 'Active' && a.terms[kind].includes(oldId));
-  const only = (a) => ({ ...a, terms: { base: [], quantity: [], limits: [], [kind]: [oldId] } });
-  live.forEach((a) => unapplyAgreement(db, only(a)));
-  (db.companies || []).forEach((c) =>
-    [c, ...(c.locations || [])].forEach((h) => {
-      if (!h.pricing?.[kind]) return;
-      h.pricing[kind] = companySlotArray(h, kind).map((e) => (e.id === oldId ? { ...e, id: newId } : e));
-    }),
-  );
-  if (db.defaults?.b2bPolicyId === oldId) db.defaults.b2bPolicyId = newId;
-  live.forEach((a) => {
-    const back = only(a);
-    applyAgreement(db, back);
-    a.pricingAdded = { base: { ...a.pricingAdded?.base }, quantity: { ...a.pricingAdded?.quantity } };
-    a.pricingAdded[kind][oldId] = back.pricingAdded[kind][oldId];
-  });
-}
-// The same for "Save as new limit": the new one (`newId`) takes the companies and
-// locations the old one applies to outside the Active contracts, and the old one
-// stays only in contracts (mutates `db`).
-export function replaceLimitOutsideContracts(db, oldId, newId) {
-  const old = (db.limits || []).find((l) => l.id === oldId);
-  const copy = (db.limits || []).find((l) => l.id === newId);
-  if (!old || !copy) return;
-  const live = (db.agreements || []).filter((a) => a.status === 'Active' && a.terms.limits.includes(oldId));
-  const only = (a) => ({ ...a, terms: { base: [], quantity: [], limits: [oldId] } });
-  live.forEach((a) => unapplyAgreement(db, only(a)));
-  Object.assign(copy, { storeWide: !!old.storeWide, companyIds: old.companyIds || [], locationKeys: old.locationKeys || [] });
-  Object.assign(old, { storeWide: false, companyIds: [], locationKeys: [] });
-  live.forEach((a) => {
-    const back = only(a);
-    applyAgreement(db, back);
-    a.limitsAdded = { ...a.limitsAdded, [oldId]: back.limitsAdded[oldId] };
-  });
 }
 
 // The companies and order limits as they'd be after taking `off` off its company
@@ -662,23 +637,6 @@ export function newlyBroken(prev, next) {
 // Contracts, so nothing outside them shows or locks for one.
 export const contractsHolding = (db, id) =>
   versionFlags().agreements ? (db.agreements || []).filter((a) => isLive(a) && termIds(a).includes(id)) : [];
-// The companies and locations Active contracts give a pricing or limit to, for its
-// editor's pickers: they stay picked (taking it off them goes through the contract).
-// companyId → { locationId (or '__company' for a company without locations):
-// contract number }. Scheduled and Inactive contracts haven't given it to anyone yet.
-export function keptByContracts(db, id) {
-  const kept = {};
-  if (!versionFlags().agreements) return kept;
-  (db.agreements || [])
-    .filter((a) => a.status === 'Active' && termIds(a).includes(id))
-    .forEach((a) => {
-      const c = companyOf(db, a);
-      if (!c) return;
-      const ids = (c.locations || []).length ? c.locations.filter((l) => appliesAt(c, a, l.id)).map((l) => l.id) : ['__company'];
-      kept[c.id] = { ...kept[c.id], ...Object.fromEntries(ids.map((x) => [x, a.number])) };
-    });
-  return kept;
-}
 // The Active contracts giving a company — or any of these locations — a pricing.
 export function contractsGiving(db, company, id, locationIds = null) {
   if (!versionFlags().agreements) return [];
@@ -690,25 +648,9 @@ export function contractsGiving(db, company, id, locationIds = null) {
 export const draftsHolding = (db, id) =>
   versionFlags().agreements ? (db.agreements || []).filter((a) => a.status === 'Inactive' && termIds(a).includes(id)) : [];
 // The contracts that aren't over holding a pricing or limit (Active, Scheduled or
-// Inactive): switching it to D2C Wholesale takes it off all of them (dropTerm).
+// Inactive): the ones using it.
 export const openContractsHolding = (db, id) =>
   versionFlags().agreements ? (db.agreements || []).filter((a) => (isLive(a) || a.status === 'Inactive') && termIds(a).includes(id)) : [];
-// The ones it's the last term of: they'd be left with no terms.
-export const lastTermOf = (db, id) => openContractsHolding(db, id).filter((a) => termIds(a).length === 1);
-// Take a pricing or limit off every contract that isn't over (it went D2C, where
-// contracts don't reach); a live one records it as a new version. Its assignments
-// already came off with the switch (mutates `db`).
-export function dropTerm(db, id) {
-  const name = nameOf([...(db.policies || []), ...(db.limits || [])], id);
-  openContractsHolding(db, id).forEach((ag) => {
-    ag.terms = { base: ag.terms.base.filter((x) => x !== id), quantity: ag.terms.quantity.filter((x) => x !== id), limits: ag.terms.limits.filter((x) => x !== id) };
-    KINDS.forEach((kind) => {
-      if (ag.pricingAdded?.[kind]) delete ag.pricingAdded[kind][id];
-    });
-    if (ag.limitsAdded) delete ag.limitsAdded[id];
-    if (isLive(ag)) addVersion(db, ag, `Removed ${name}`);
-  });
-}
 // The Active contract giving a company — or one of its locations — a pricing or limit.
 export function contractGiving(db, company, id, locationId = null) {
   if (!versionFlags().agreements) return null;
@@ -721,6 +663,48 @@ export function contractGiving(db, company, id, locationId = null) {
 // "CT-301 · ABC Construction", for the contracts holding something.
 export const contractNames = (db, list) =>
   list.map((a) => `${a.number} · ${(db.companies || []).find((c) => c.id === a.companyId)?.name || 'Company'}`).join(', ');
+// Made for contracts (a contract pricing or limit)? None in a version without Contracts.
+export const isContractTerm = (x) => !!x?.forContracts && !!versionFlags().agreements;
+// The contracts using one, for the libraries' Assigned to / Applies to: "CT-301,
+// CT-302", "3 contracts" past two, or "Not in a contract". Ones that are over don't count.
+export const contractsLabel = (db, id) => contractsLabelOf(db, openContractsHolding(db, id).map((a) => a.id));
+// The same for picked contracts (ids), e.g. in an editor before saving.
+export function contractsLabelOf(db, ids) {
+  const using = (db.agreements || []).filter((a) => ids.includes(a.id));
+  if (!using.length) return 'Not in a contract';
+  return using.length > 2 ? `${using.length} contracts` : using.map((a) => a.number).join(', ');
+}
+// The contracts a contract pricing or limit can be put in from its editor: the ones
+// that aren't over, by number.
+export const assignableContracts = (db) =>
+  (db.agreements || []).filter((a) => isLive(a) || a.status === 'Inactive').sort((a, b) => String(a.number).localeCompare(String(b.number)));
+// Put a contract pricing or limit (`id`, in the terms' `key`: base, quantity or limits)
+// in exactly the contracts `wanted` (ids) among the ones that aren't over — `mode`
+// 'add' or 'remove' does only that half. A running one changes now, as a new version
+// ("Added …" / "Removed …"); an Active one's terms come off and go back on. Mutates `db`.
+export function setTermContracts(db, id, key, wanted, mode = null) {
+  const name = nameOf([...(db.policies || []), ...(db.limits || [])], id);
+  assignableContracts(db).forEach((ag) => {
+    const has = ag.terms[key].includes(id);
+    const want = wanted.includes(ag.id);
+    if (has === want || (mode === 'add' && !want) || (mode === 'remove' && want)) return;
+    if (ag.status === 'Active') unapplyAgreement(db, ag);
+    ag.terms = { ...ag.terms, [key]: want ? [...ag.terms[key], id] : ag.terms[key].filter((x) => x !== id) };
+    if (ag.status === 'Active') applyAgreement(db, ag);
+    if (isLive(ag)) addVersion(db, ag, `${want ? 'Added' : 'Removed'} ${name}`);
+  });
+}
+// The running contracts taking one off would leave with no terms (they can be ended instead).
+export const leftEmpty = (db, id, wanted) =>
+  (db.agreements || []).filter((a) => isLive(a) && !wanted.includes(a.id) && termIds(a).length === 1 && termIds(a).includes(id));
+// "CT-301 · ABC Construction, CT-302 · Phu Thanh Hardware" — two named at most, then
+// "… and N more".
+export const contractList = (db, list) => `${contractNames(db, list.slice(0, 2))}${list.length > 2 ? ` … and ${list.length - 2} more` : ''}`;
+// "It’s in 2 running contracts: CT-301 · ABC Construction, CT-302 · Phu Thanh Hardware."
+export function runningContractsLine(db, held) {
+  const n = held.length;
+  return `It’s in ${n} running contract${n === 1 ? '' : 's'}: ${contractList(db, held)}.`;
+}
 
 const termSummary = (db, x, isLimit) => (isLimit ? limitTermSummary(x, db) : pricingTermSummary(x));
 // Do live contracts holding a pricing or limit record this edit: a change to what it

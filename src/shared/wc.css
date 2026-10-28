@@ -650,6 +650,16 @@ body {
 /* ---------- Floating option list (combobox) ---------- */
 /* A native popover in the top layer, positioned from JS under its field. */
 
+/* An action option (e.g. Create contract pricing) pinned at the top while the
+   options scroll under it. */
+.wc-combobox-list__action {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin-top: -4px;
+  padding-top: 4px;
+  background: var(--wc-surface);
+}
 .wc-combobox-list {
   position: fixed;
   inset: auto;
@@ -740,10 +750,81 @@ body {
   background: #ccc;
   box-shadow: rgba(26, 26, 26, 0.12) -1px 0 1px 0 inset, rgba(26, 26, 26, 0.12) 1px 0 1px 0 inset, rgba(26, 26, 26, 0.2) 0 2px 1px 0 inset;
 }
+/* Locked (e.g. a pricing's type once saved): the picked side stays as it is, the
+   other dims and doesn't react. */
+.wc-segmented__item:disabled {
+  cursor: default;
+}
+.wc-segmented__item:disabled:not([aria-pressed='true']) {
+  color: #b5b5b5;
+  background: var(--wc-surface);
+}
 .wc-segmented__item:focus-visible {
   position: relative;
   outline: 2px solid #005bd3;
   outline-offset: 1px;
+}
+
+/* Two choices as cards side by side (a pricing's or limit's type, typeUi=tiles):
+   a radio dot, a title and a line under it; the picked one has a dark border.
+   Locked, the other dims. */
+.wc-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+.wc-tile {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 12px;
+  text-align: left;
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+  box-shadow: 0 0 0 1px #e3e3e3 inset;
+}
+.wc-tile:hover {
+  background: var(--wc-surface-hover);
+}
+.wc-tile[aria-checked='true'] {
+  box-shadow: 0 0 0 2px #303030 inset;
+}
+.wc-tile:disabled {
+  cursor: default;
+}
+.wc-tile:disabled:hover {
+  background: var(--wc-surface);
+}
+.wc-tile:disabled:not([aria-checked='true']) {
+  opacity: 0.5;
+}
+.wc-tile:focus-visible {
+  outline: 2px solid #005bd3;
+  outline-offset: 1px;
+}
+.wc-tile__radio {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #8a8a8a inset;
+}
+.wc-tile[aria-checked='true'] .wc-tile__radio {
+  box-shadow: 0 0 0 5px #303030 inset;
+}
+.wc-tile__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wc-tile__title {
+  font-weight: 550;
+}
+.wc-tile__details {
+  font-size: 12px;
+  line-height: 16px;
+  color: #616161;
 }
 
 /* A bar pinned to the bottom of an s-modal's scrolling body (over the content

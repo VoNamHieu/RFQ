@@ -1,15 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { useStore } from '../store.jsx';
 import { kindOf, scopeLabel, baseInScope, policyPriceBreakdown, resolveDetail, withContractPricing } from '../pricing.js';
-import { limitSummary, isD2CLimit, contractLimitConflicts } from '../limits.js';
+import { limitSummary, contractLimitConflicts } from '../limits.js';
 import {
   agreementChanges,
   companyAfterAgreement,
   isLive,
   liveStatus,
   fmtDay,
-  namesOf,
-  joinAnd,
   sameAgreement,
   termWarnings,
   overlapHandover,
@@ -21,6 +19,9 @@ import {
   agreementAppliesToLabel,
   agreementDatesLabel,
   appliesAt,
+  isContractTerm,
+  overlapLines,
+  overlapsHeading,
 } from '../agreements.js';
 import { TODAY } from '../pricing.js';
 import { PricingCombobox } from './PricingCombobox.jsx';
@@ -71,9 +72,10 @@ export function AgreementEditor() {
   // "Automatically apply this contract to locations added later": ticked by default
   // for all locations, unticked for some; the merchant can change either.
   const laterFor = (locationIds) => ({ applyLater: locationIds === null });
-  // Hidden while the company has Auto-add locations off; it keeps its value, so turning
-  // Auto-add back on shows it as it was.
-  const laterShown = !company || !!company.autoAddLocations;
+  // Shown only for a company with Auto-add locations on — in the company modal, the one
+  // ticked there (ticking one picks it), so none before a company is ticked. Hidden, it
+  // keeps its value, so turning Auto-add back on shows it as it was.
+  const laterShown = !!company?.autoAddLocations;
   const setCompany = (id, locationIds) => patch({ companyId: id, locationIds, ...laterFor(locationIds), ...followStart(id, locationIds) });
   // The contract's company and locations as the picker's picks: the whole company,
   // or `companyId::locationId` keys for some of its locations.
@@ -92,15 +94,22 @@ export function AgreementEditor() {
     },
   );
 
-  // Only Active (turned on) pricing and limits are offered; one picked before it was
-  // turned off stays listed, so it can be taken out.
+  // Only contract pricing and contract limits are offered; anything else picked before
+  // stays listed, so it can be taken out. Each picker's list starts with Create
+  // contract pricing / limit: the new one goes into this contract once saved.
   const picked = [...draft.terms.base, ...draft.terms.quantity, ...draft.terms.limits];
-  const b2b = state.db.policies.filter((p) => p.audienceType !== 'd2c' && (p.status !== 'Inactive' || picked.includes(p.id)));
-  const bases = b2b.filter((p) => kindOf(p) === 'base');
-  const quantities = b2b.filter((p) => kindOf(p) === 'quantity');
-  // Store-wide limits already reach every company and D2C ones never reach one, so
-  // they aren't offered here.
-  const limits = (state.db.limits || []).filter((l) => !l.storeWide && !isD2CLimit(l) && (l.status === 'Active' || picked.includes(l.id)));
+  const terms = state.db.policies.filter((p) => isContractTerm(p) || picked.includes(p.id));
+  const bases = terms.filter((p) => kindOf(p) === 'base');
+  const quantities = terms.filter((p) => kindOf(p) === 'quantity');
+  const limits = (state.db.limits || []).filter((l) => isContractTerm(l) || picked.includes(l.id));
+  const createPricing = (kind) => ({
+    content: 'Create contract pricing',
+    onAction: () => dispatch({ type: 'OPEN_EDITOR', policy: null, kind, forContracts: true, context: { mode: `add-${kind}`, addToAgreement: kind } }),
+  });
+  const createLimit = {
+    content: 'Create contract limit',
+    onAction: () => dispatch({ type: 'NAVIGATE', view: 'limits', patch: { limitChooser: { returnTo: { view: 'agreements' } } } }),
+  };
   // The limits picked for it that contradict each other (a warning: it still saves).
   // Worked out again only when the limits change.
   const limitConflicts = useMemo(
@@ -136,19 +145,8 @@ export function AgreementEditor() {
     const was = handedOver.find((x) => x.old.id === h.old.id);
     return !was || was.from !== h.from || h.shared.some((l) => !was.shared.some((x) => x.id === l.id));
   });
-  // One line per contract: where it overlaps, and its dates there — "Hanoi is in
-  // CT-301 until Aug 20, 2026.", "Can Tho is in CT-304 from Feb 1, 2027 until Jan 31,
-  // 2028.". The box says what saving does.
-  const overlapLine = ({ old, shared }) => {
-    const where = shared.length ? namesOf(shared) : company.name;
-    const is = shared.length <= 1 ? 'is' : 'are';
-    if (old.status === 'Scheduled') return `${where} ${is} in ${old.number} from ${fmtDay(old.startDate)}${old.endDate ? ` until ${fmtDay(old.endDate)}` : ''}.`;
-    return old.endDate ? `${where} ${is} in ${old.number} until ${fmtDay(old.endDate)}.` : `${where} ${is} in ${old.number}, which has no end date.`;
-  };
-  // Five lines at most: past that, the last one counts the rest.
-  const overlapLines = overlapsNow.length > 5
-    ? [...overlapsNow.slice(0, 4).map(overlapLine), `… and ${overlapsNow.length - 4} more`]
-    : overlapsNow.map(overlapLine);
+  // One line per contract, two at most (overlapLines). The box says what saving does.
+  const overlapList = company ? overlapLines(company, overlapsNow) : [];
 
   // Activating, or saving a live agreement, changes what the company gets — confirm
   // first (in the Overlaps box when it overlaps other contracts).
@@ -161,7 +159,7 @@ export function AgreementEditor() {
   // confirm says just what that does (nothing is applied now).
   const onlyLater =
     live && addsLaterLocations(saved) !== addsLaterLocations(draft) && sameAgreement(saved, { ...draft, applyLater: addsLaterLocations(saved) }, state.db);
-  // Terms that won't apply for the whole contract: turned off. (Their own dates don't count.)
+  // Terms that won't apply for the whole contract: turned off.
   const warnings = confirm ? termWarnings(state.db, draft) : [];
   const when = startsLater ? `on ${fmtDay(draft.startDate)}` : 'right away';
   // The Activate / Save as version box and an Inactive one's Status: "ABC gets these
@@ -243,14 +241,8 @@ export function AgreementEditor() {
                 selectedIds={draft.terms.base}
                 onChange={(ids) => setTerms({ base: ids })}
                 optionLabel={(p) => `${p.name} · Priority ${p.priority ?? 0}`}
+                action={createPricing('base')}
               />
-              {/* One line for any base pricing picked: while the contract runs, its
-                  pricing changes only through it. */}
-              {draft.terms.base.length ? (
-                <s-paragraph color="subdued" fontSize="small">
-                  While this contract runs, its pricing can’t be turned off or deleted.
-                </s-paragraph>
-              ) : null}
             </s-stack>
             <s-stack gap="small-200">
               <s-heading>Quantity pricing</s-heading>
@@ -262,6 +254,7 @@ export function AgreementEditor() {
                 selectedIds={draft.terms.quantity}
                 onChange={(ids) => setTerms({ quantity: ids })}
                 optionLabel={(p) => `${p.name} · ${scopeLabel(p)}`}
+                action={createPricing('quantity')}
               />
             </s-stack>
             <s-stack gap="small-200">
@@ -274,7 +267,7 @@ export function AgreementEditor() {
                 selectedIds={draft.terms.limits}
                 onChange={(ids) => setTerms({ limits: ids })}
                 optionLabel={(l) => `${l.name} · ${limitSummary(l, state.db)}`}
-                emptyText="No order limits to add. Store-wide limits already apply to every company."
+                action={createLimit}
               />
               {limitConflicts.length ? (
                 <s-banner tone="warning" heading="Some of these limits contradict each other">
@@ -286,6 +279,9 @@ export function AgreementEditor() {
                 </s-banner>
               ) : null}
             </s-stack>
+            <s-text color="subdued" fontSize="small">
+              Only contract pricing and contract limits show here.
+            </s-text>
             {shown('terms') && (
               <s-paragraph tone="critical" id="agreement-terms">
                 {errors.terms}
@@ -403,11 +399,11 @@ export function AgreementEditor() {
       />
 
       {overlapBox && (
-        <Modal onClose={() => setOverlapBox(false)} heading={`Overlaps ${joinAnd(overlapsNow.map((h) => h.old.number))}`}>
+        <Modal onClose={() => setOverlapBox(false)} heading={overlapsHeading(overlapsNow.length)}>
           <s-stack gap="small">
             <s-paragraph>{`These overlap with ${draft.number}:`}</s-paragraph>
             <s-unordered-list>
-              {overlapLines.map((line) => (
+              {overlapList.map((line) => (
                 <s-list-item key={line}>{line}</s-list-item>
               ))}
             </s-unordered-list>
