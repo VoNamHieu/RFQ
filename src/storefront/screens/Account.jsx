@@ -374,7 +374,11 @@ function OrderDetail({ item, session, onBack, dispatch }) {
   const placed = !NOT_PLACED.includes(item.status);
   const toCheckout = ['Waiting for review', 'Awaiting checkout'].includes(item.status);
   const address = session.shippingAddress;
-  const note = item.request?.note;
+  // Why it went for review; once placed (Unfulfilled, Fulfilled) only that it was approved after review.
+  const approvedAfterReview = item.request?.status === 'approved' || !!(item.order && item.note);
+  const note = ['Unfulfilled', 'Fulfilled'].includes(item.status) ? (approvedAfterReview ? 'Approved after review' : null)
+    : item.request?.status === 'approved' && item.note ? `Approved after review · ${item.note}` : item.note;
+  const buyerNote = item.request?.note;
   return (
     <>
       <header className="order-head">
@@ -389,7 +393,7 @@ function OrderDetail({ item, session, onBack, dispatch }) {
       <section className="acct-panel">
         <h3>{item.status}</h3>
         <p className="muted">{STATUS_DETAIL[item.status]}</p>
-        {item.note && <p className="muted">{item.request?.status === 'approved' ? `Approved after review · ${item.note}` : item.note}</p>}
+        {note && <p className="muted">{note}</p>}
         {item.message && (
           <div className="acct-order-message">
             <span className="acct-order-message-label">Message from the seller</span>
@@ -430,7 +434,7 @@ function OrderDetail({ item, session, onBack, dispatch }) {
         <div><span className="muted">Contact</span><span>{session.email}</span></div>
         {address && <div><span className="muted">Ship to</span><span>{address.name}<br />{address.line}</span></div>}
         <div><span className="muted">Payment</span><span>{BUSINESS_SUMMARY.paymentTerms}</span></div>
-        {note && <div><span className="muted">Your note</span><span>{note}</span></div>}
+        {buyerNote && <div><span className="muted">Your note</span><span>{buyerNote}</span></div>}
       </section>
     </>
   );
