@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useReducer } from 'react';
 import { accountForEmail, productBySku, b2bPriceFor } from './data/products.js';
-import { ORDER_LIMITS_KEY, IS_DEMO } from '../shared/persistence.js';
+import { ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, HELD_ORDERS_KEY } from '../shared/persistence.js';
 
 // Storefront state machine. Deliberately small — three pages (home / product /
 // account) plus the cross-cutting bits a Dawn storefront needs: a cart, a
@@ -8,7 +8,8 @@ import { ORDER_LIMITS_KEY, IS_DEMO } from '../shared/persistence.js';
 // flow that is this project's storefront touchpoint.
 
 const initialState = {
-  view: 'home', // 'home' | 'product' | 'account' | 'register'
+  view: 'home', // 'home' | 'product' | 'cart' | 'account' | 'register'
+  accountSection: null, // the account section to open on (the B2B Portal's Orders, after an order request is sent)
   currentSku: null,
   session: null, // null = guest (D2C); else DEMO_ACCOUNT (logged-in B2B buyer)
   cart: [], // [{ sku, variantId, qty }]
@@ -33,14 +34,14 @@ function addToCart(cart, { sku, variantId, qty }) {
 function reducer(state, action) {
   switch (action.type) {
     case 'NAVIGATE':
-      return { ...state, view: action.view, currentSku: action.sku ?? state.currentSku, cartOpen: false };
+      return { ...state, view: action.view, accountSection: null, currentSku: action.sku ?? state.currentSku, cartOpen: false };
     case 'OPEN_PRODUCT':
       return { ...state, view: 'product', currentSku: action.sku, cartOpen: false };
     // Demo sign-in: the email picks which of the two demo accounts you get
     // (not applied vs. approved B2B buyer) — see DEMO_ACCOUNTS.
     case 'LOGIN': {
       const account = accountForEmail(action.email);
-      return { ...state, session: account, quotes: account.quotes || [], toast: 'Signed in' };
+      return { ...state, session: account, quotes: account.quotes || [], cart: account.cart || state.cart, toast: 'Signed in' };
     }
     case 'LOGOUT':
       return { ...state, session: null, quotes: [], view: state.view === 'account' ? 'home' : state.view, toast: 'Signed out' };
@@ -59,10 +60,15 @@ function reducer(state, action) {
     }
     case 'REMOVE_LINE':
       return { ...state, cart: state.cart.filter((_, i) => i !== action.index) };
+    // The cart drawer's Demo case (prototype-only): a whole new cart.
+    case 'SET_CART':
+      return { ...state, cart: action.cart };
     // Over an order maximum sent for review: the cart goes to the merchant as an order request
-    // (a draft order) instead of checking out (see Order limits in the B2B app).
+    // (a draft order) instead of checking out (see Order limits in the B2B app). The
+    // buyer lands on the B2B Portal, where it waits for review at the top of Orders.
+    // A D2C customer has no B2B Portal, so stays on the page.
     case 'SUBMIT_FOR_REVIEW':
-      return { ...state, cart: [], cartOpen: false, toast: 'Order request sent' };
+      return { ...state, cart: [], cartOpen: false, ...(state.session?.companyKey ? { view: 'account', accountSection: 'portal' } : {}), toast: 'Order request sent' };
     case 'TOGGLE_CART':
       return { ...state, cartOpen: action.open ?? !state.cartOpen };
     case 'OPEN_QUOTE':
@@ -112,6 +118,10 @@ function reducer(state, action) {
     // re-render so the cart and product page check against them.
     case 'LIMITS_CHANGED':
       return { ...state, limitsVersion: (state.limitsVersion || 0) + 1 };
+    // The B2B app approved, declined or picked up an order request: re-render so
+    // the B2B Portal's Orders follow.
+    case 'REVIEWS_CHANGED':
+      return { ...state, reviewsVersion: (state.reviewsVersion || 0) + 1 };
     case 'TOAST':
       return { ...state, toast: action.message };
     case 'CLEAR_TOAST':
@@ -135,15 +145,13 @@ const StoreContext = createContext(null);
 export function StoreProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   useEffect(() => {
-    const onStorage = (e) => e.key === ORDER_LIMITS_KEY && dispatch({ type: 'LIMITS_CHANGED' });
+    const onStorage = (e) => {
+      if (e.key === ORDER_LIMITS_KEY) dispatch({ type: 'LIMITS_CHANGED' });
+      if (e.key === HELD_ORDERS_KEY || e.key === ORDER_REQUESTS_KEY) dispatch({ type: 'REVIEWS_CHANGED' });
+    };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, []);
-  // The B2B app's order-limit walkthrough drives this storefront from its stage:
-  // only in demo mode (?demo=1).
-  useEffect(() => {
-    if (IS_DEMO) window.__qsDemo = { dispatch, state };
-  });
   return <StoreContext.Provider value={{ state, dispatch }}>{children}</StoreContext.Provider>;
 }
 

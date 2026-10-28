@@ -75,7 +75,8 @@ function InlineCheckList({ items, selected, onSet, searchable, placeholder, empt
 // `single`: one company only (a contract) —
 // each company has a radio button instead, and picking one replaces the one before.
 // `keep`: what Active contracts give it to — companyId → { locationId (or
-// '__company'): contract number } — can't be unticked here.
+// '__company'): contract number } — can't be unticked here. With `needsLocation`
+// (order limits), a company with no locations can't be picked.
 export function SelectCompaniesModal({
   open,
   companies,
@@ -89,6 +90,7 @@ export function SelectCompaniesModal({
   laterDetails = 'This only applies to companies with “Automatically add new locations” turned on.',
   single = false,
   keep = {},
+  needsLocation = false,
 }) {
   const [q, setQ] = useState('');
   const query = q.trim().toLowerCase();
@@ -141,7 +143,7 @@ export function SelectCompaniesModal({
                           accessibilityLabel={`Select ${c.name}`}
                           checked={all}
                           indeterminate={!all && ticked.length > 0}
-                          disabled={allKept}
+                          disabled={allKept || (needsLocation && !c.locs.length)}
                           onChange={(e) => {
                             const want = e.currentTarget.checked;
                             if (want === all) return; // a repeat event for the same click

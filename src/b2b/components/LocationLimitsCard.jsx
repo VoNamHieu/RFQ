@@ -1,22 +1,20 @@
 import React from 'react';
 import { useStore } from '../store.jsx';
 import { LIMIT_KINDS, limitKey, locationLimits } from '../limits.js';
-import { contractGiving } from '../agreements.js';
+import { withCatalog } from '../limitCatalog.js';
 import { useWcId } from '../../shared/wc.jsx';
 
 const LEVEL_LABEL = { location: 'This location', company: 'Company', store: 'Store-wide' };
 
 // A location's order limits: every active limit that reaches it (its own, its
-// company's, store-wide), most specific first, read off the location's record. A
-// setting a more specific limit replaces here is struck through and names the
-// limit that wins — or the contract, when a contract's limit replaces it. A product
-// rule that lost only some fields lists those. One a contract gives here is badged
-// with it, as pricing is.
+// company's, store-wide), most specific first, read off the location's record.
+// Each shows its name and level only; one a contract gives here is badged with it,
+// as pricing is.
 export function LocationLimitsCard({ company, location }) {
   const { state, dispatch } = useStore();
   const addId = useWcId('add-limit');
-  const rows = locationLimits(state.db, company.id, location.id);
-  const contractOf = (limit) => contractGiving(state.db, company, limit.id, location.id);
+  // The whole catalog, so a rule by tag, vendor or type finds the storefront's products too.
+  const rows = locationLimits(withCatalog(state.db), company.id, location.id);
   // The editor opens in Order limits and comes back here on save or cancel.
   const returnTo = { view: 'location', selectedCompany: company.id, selectedLocation: location.id };
   const add = (kind) => {
@@ -61,41 +59,16 @@ export function LocationLimitsCard({ company, location }) {
         </s-popover>
 
         {rows.length ? (
-          rows.map(({ limit, level, rules }, i) => (
+          rows.map(({ limit, level, contract }, i) => (
             <React.Fragment key={limit.id}>
               {i > 0 && <s-divider />}
-              <s-stack gap="small-400">
-                <s-grid gridTemplateColumns="1fr auto" alignItems="start" gap="small-200">
-                  <s-stack direction="inline" gap="small-200" alignItems="center">
-                    <s-link onClick={() => dispatch({ type: 'OPEN_LIMIT_EDITOR', limit, returnTo })}>{limit.name}</s-link>
-                    {contractOf(limit) ? <s-badge tone="info">{`Contract ${contractOf(limit).number}`}</s-badge> : null}
-                  </s-stack>
-                  <s-badge tone={level === 'location' ? 'info' : undefined}>{LEVEL_LABEL[level]}</s-badge>
-                </s-grid>
-                {rules.map((r) =>
-                  // Replaced by a contract's limit: shown like any other rule.
-                  r.replacedBy && !r.replacedByContract ? (
-                    <s-stack key={r.text} gap="none">
-                      <s-paragraph fontSize="small" color="subdued">
-                        <s>{r.text}</s>
-                      </s-paragraph>
-                      <s-paragraph fontSize="small" color="subdued">{`Replaced here by ${r.replacedBy.name}`}</s-paragraph>
-                    </s-stack>
-                  ) : r.partly?.length ? (
-                    // A product rule other limits won some fields of (each field is taken on its own).
-                    <s-stack key={r.text} gap="none">
-                      <s-paragraph fontSize="small">{r.text}</s-paragraph>
-                      {r.partly.map((p) => (
-                        <s-paragraph key={p.field} fontSize="small" color="subdued">{`${p.label} replaced here by ${p.contract || p.by?.name || 'another limit'}`}</s-paragraph>
-                      ))}
-                    </s-stack>
-                  ) : (
-                    <s-paragraph key={r.text} fontSize="small">
-                      {r.text}
-                    </s-paragraph>
-                  ),
-                )}
-              </s-stack>
+              <s-grid gridTemplateColumns="1fr auto" alignItems="start" gap="small-200">
+                <s-stack direction="inline" gap="small-200" alignItems="center">
+                  <s-link onClick={() => dispatch({ type: 'OPEN_LIMIT_EDITOR', limit, returnTo })}>{limit.name}</s-link>
+                  {contract ? <s-badge tone="info">{`Contract ${contract}`}</s-badge> : null}
+                </s-stack>
+                <s-badge tone={level === 'location' ? 'info' : undefined}>{LEVEL_LABEL[level]}</s-badge>
+              </s-grid>
             </React.Fragment>
           ))
         ) : (

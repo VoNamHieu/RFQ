@@ -260,11 +260,45 @@ export function injectOrderRequests(db, requests) {
     const order = {
       id: `#${next++}`, requestId: r.id, location: loc?.name || '', locationId: r.locationId, buyer: r.buyer, date: r.date, amount: r.amount, lines: r.lines.length, po: '',
       pricing: r.priceList || '', pricingSource: 'Company price', source: 'Storefront order request',
-      status: 'Needs review', shopifyStatus: 'Draft order', reason: `Above the ${money(r.threshold)} maximum`, heldBy: r.limitId,
-      heldAt: { value: r.threshold, limitId: r.limitId, limitName: r.limitName || '', period: r.period || 'order' }, // what it broke when it was held
+      status: 'Needs review', shopifyStatus: 'Draft order', reason: r.sku ? `${r.item} above the maximum of ${r.threshold}` : r.basis === 'qty' ? `Above the ${r.threshold}-unit maximum` : `Above the ${money(r.threshold)} maximum`, heldBy: r.limitId,
+      // What it broke when it was held: an order value, the order quantity (`basis`
+      // 'qty'), or a product's maximum (`sku`, `item`).
+      heldAt: { value: r.threshold, limitId: r.limitId, limitName: r.limitName || '', period: r.period || 'order', ...(r.sku ? { sku: r.sku, item: r.item } : {}), ...(r.basis === 'qty' ? { basis: 'qty' } : {}) },
+      // What the buyer wrote with the request, if anything.
+      ...(r.note ? { buyerMessage: r.note } : {}),
     };
     c.orders = [order, ...(c.orders || [])];
     all.push(order);
   });
   return db;
+}
+
+// The orders held for the merchant's review (over a maximum sent for review) and
+// what became of them, as the buyer's B2B Portal on the storefront lists them
+// (Orders): `status` 'waiting', 'invoiced' (approved, its invoice sent: a draft order
+// until the buyer checks out from it), 'approved' (a real order now) or 'declined', the location each is for,
+// who sent it, what's in it (a count; the storefront keeps the lines of a request
+// it sent), the maximum it went over and, once declined, the merchant's message to
+// the buyer (`message`, null without one). `requestId`: the storefront request it
+// came from.
+const REVIEW_STATUS = (o) => (o.status === 'Needs review' ? 'waiting' : o.status === 'Invoice sent' ? 'invoiced' : o.status === 'Declined' ? 'declined' : 'approved');
+export function storefrontHeldOrders(db) {
+  return (db.companies || []).flatMap((c) => (c.orders || [])
+    .filter((o) => o.status === 'Needs review' || o.heldAt)
+    .map((o) => ({
+      status: REVIEW_STATUS(o),
+      id: o.id,
+      requestId: o.requestId || null,
+      companyId: c.id,
+      locationId: o.locationId || (c.locations || []).find((l) => l.name === o.location)?.id || null,
+      buyer: o.buyer,
+      date: o.date,
+      amount: o.amount,
+      lines: o.items || o.lines, // its products when the sample has them, else a count
+      threshold: o.heldAt?.value ?? null,
+      period: o.heldAt?.period || 'order',
+      item: o.heldAt?.item ?? null,
+      basis: o.heldAt?.basis || 'value',
+      message: o.status === 'Declined' ? o.declineMessage || null : null,
+    })));
 }

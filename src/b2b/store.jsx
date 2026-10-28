@@ -3,7 +3,7 @@ import { shopifyCompanies } from './data/directory.js';
 import { policyUsageCount, slotIds, hasOwnSlot, TODAY, setContractPricing } from './pricing.js';
 import { newRule, newBaseBuilder, newQuantityBuilder, builderDraft } from './builders.js';
 import { buildInitialState } from './initialState.js';
-import { newLimit, normalizeLimit, upgradeLimits, toDraft, isD2CLimit } from './limits.js';
+import { newLimit, normalizeLimit, upgradeLimits, toDraft, isD2CLimit, turnLimitOn } from './limits.js';
 import { versionFlags } from '../shared/versions.js';
 import {
   newAgreement,
@@ -42,8 +42,9 @@ import {
   recomputeBuyers,
   applyQuotePricingTransfer,
   injectOrderRequests,
+  storefrontHeldOrders,
 } from './dbHelpers.js';
-import { publishOrderLimits, publishedOrderLimits, publishContracts, readOrderRequests, removeOrderRequests, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, IS_DEMO } from '../shared/persistence.js';
+import { publishOrderLimits, publishedOrderLimits, publishContracts, publishHeldOrders, readOrderRequests, removeOrderRequests, readInvoiceCheckouts, removeInvoiceCheckouts, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, INVOICE_CHECKOUTS_KEY } from '../shared/persistence.js';
 
 // The B2B god file rebuilt #app from a single `state` on every action. Here that
 // is a reducer over a view state machine + the mutable demo db. The db helpers,
@@ -1079,8 +1080,10 @@ function reducer(state, action) {
       return { ...state, db };
     }
     // ----- Orders held by an order maximum sent for review (order limits) -----
-    // Approving completes the held draft order into a real order; declining cancels
-    // it (the buyer is told, and can change the order and submit it again).
+    // Approving sends the buyer an invoice for the held draft order: it stays a
+    // draft order ('Invoice sent') until they check out from it (INVOICE_CHECKOUTS).
+    // Declining cancels it (the buyer is told, and can change the order and submit it
+    // again) — with the merchant's message to the buyer, if they wrote one (`declineMessage`).
     case 'APPROVE_ORDER':
     case 'DECLINE_ORDER': {
       const approve = action.type === 'APPROVE_ORDER';
@@ -1088,9 +1091,23 @@ function reducer(state, action) {
       const c = db.companies.find((x) => x.id === action.companyId);
       const o = c?.orders?.find((x) => x.id === action.orderId);
       if (!o) return state;
-      Object.assign(o, approve ? { status: 'Unfulfilled', shopifyStatus: 'Unfulfilled' } : { status: 'Declined', shopifyStatus: 'Cancelled' });
-      c.activity = [{ when: 'Today', what: `Order ${o.id} ${approve ? 'approved' : 'declined'} after review` }, ...(c.activity || [])];
-      return { ...state, db, toast: `Order ${o.id} ${approve ? 'approved' : 'declined'}` };
+      const message = !approve && action.message ? action.message : null;
+      Object.assign(o, approve ? { status: 'Invoice sent', shopifyStatus: 'Draft order' } : { status: 'Declined', shopifyStatus: 'Cancelled', declineMessage: message });
+      c.activity = [{ when: 'Today', what: `Order ${o.id} ${approve ? 'approved after review, invoice sent to the buyer' : `declined after review${message ? ', with a message to the buyer' : ''}`}` }, ...(c.activity || [])];
+      return { ...state, db, toast: approve ? `Order ${o.id} approved · invoice sent` : `Order ${o.id} declined` };
+    }
+    // The buyer checked out from the invoice (on the storefront): the draft order
+    // becomes a real order.
+    case 'INVOICE_CHECKOUTS': {
+      const db = clone(state.db);
+      let placed = 0;
+      db.companies.forEach((c) => (c.orders || []).forEach((o) => {
+        if (o.status !== 'Invoice sent' || !action.ids.includes(o.id)) return;
+        Object.assign(o, { status: 'Unfulfilled', shopifyStatus: 'Unfulfilled' });
+        c.activity = [{ when: 'Today', what: `Order ${o.id} placed by the buyer from the invoice` }, ...(c.activity || [])];
+        placed++;
+      }));
+      return placed ? { ...state, db } : state;
     }
     // ----- Agreements (see agreements.js) -----
     // The editor is a page in the Agreements view; opened from a company's
@@ -1207,13 +1224,13 @@ function reducer(state, action) {
         // Switched to D2C Wholesale: the changes go to a new D2C limit, and this one
         // stays as it is (Company-based B2B, in its contracts, applying where it did).
         if (isD2CLimit(limit) && !isD2CLimit(old)) {
-          const copy = { ...limit, id: `ol${Date.now()}`, contractAt: {}, updatedAt: new Date().toISOString() };
+          const copy = { ...limit, id: `ol${Date.now()}`, contractAt: {}, createdAt: TODAY, updatedAt: TODAY };
           if (copy.name === old.name) copy.name = `Copy of ${old.name}`;
           db.limits.push(copy);
           return { ...state, db, ...(state.limitEditor.returnTo || {}), limitEditor: null, toast: 'Saved as a new order limit' };
         }
         Object.assign(old, { storeWide: !!limit.storeWide, companyIds: limit.companyIds || [], locationKeys: limit.locationKeys || [] });
-        const copy = { ...limit, id: `ol${Date.now()}`, contractAt: {}, updatedAt: new Date().toISOString() };
+        const copy = { ...limit, id: `ol${Date.now()}`, contractAt: {}, createdAt: TODAY, updatedAt: TODAY };
         if (copy.name === old.name) copy.name = `Copy of ${old.name}`;
         db.limits.push(copy);
         replaceLimitOutsideContracts(db, old.id, copy.id);
@@ -1226,14 +1243,20 @@ function reducer(state, action) {
         };
       }
       const isNew = !limit.id;
-      if (isNew) limit.id = `ol${Date.now()}`;
-      // When it was last saved: between two limits that contradict on a product, the newer applies.
-      limit.updatedAt = new Date().toISOString();
+      if (isNew) Object.assign(limit, { id: `ol${Date.now()}`, createdAt: TODAY });
+      // Latest updates on the Order limits list: saved or turned on/off.
+      limit.updatedAt = TODAY;
       const limits = state.db.limits || [];
-      const db = { ...state.db, limits: isNew ? [...limits, limit] : limits.map((l) => (l.id === limit.id ? limit : l)), agreements: clone(state.db.agreements || []) };
+      const before = limits.find((l) => l.id === limit.id);
+      // Saved from off to on, it's the newest limit, as when turned on in the list.
+      const next = isNew
+        ? [...limits, limit]
+        : before && before.status !== 'Active' && limit.status === 'Active'
+          ? turnLimitOn(limits, limit)
+          : limits.map((l) => (l.id === limit.id ? limit : l));
+      const db = { ...state.db, limits: next, agreements: clone(state.db.agreements || []) };
       // Switched to D2C Wholesale, it comes off every contract holding it; live ones
       // still holding it get a version with its new terms.
-      const before = limits.find((l) => l.id === limit.id);
       if (before && isD2CLimit(limit) && !isD2CLimit(before)) dropTerm(db, limit.id);
       if (before) recordTermEdit(db, before, limit, true);
       return { ...state, db, ...(state.limitEditor.returnTo || {}), limitEditor: null, toast: isNew ? 'Order limit created' : 'Order limit saved' };
@@ -1248,8 +1271,11 @@ function reducer(state, action) {
       return { ...state, db, ...(editing ? { ...(state.limitEditor.returnTo || {}), limitEditor: null } : {}), toast: 'Order limit deleted' };
     }
     case 'TOGGLE_LIMIT_STATUS': {
-      const limits = (state.db.limits || []).map((l) => (l.id === action.id ? { ...l, status: l.status === 'Active' ? 'Inactive' : 'Active' } : l));
-      const on = limits.find((l) => l.id === action.id)?.status === 'Active';
+      const all = state.db.limits || [];
+      const limit = all.find((l) => l.id === action.id);
+      const on = !!limit && limit.status !== 'Active';
+      // Turned back on, it's the newest limit (turnLimitOn).
+      const limits = on ? turnLimitOn(all, { ...limit, updatedAt: TODAY }) : all.map((l) => (l.id === action.id ? { ...l, status: 'Inactive', updatedAt: TODAY } : l));
       return { ...state, db: { ...state.db, limits }, toast: on ? 'Limit turned on' : 'Limit turned off' };
     }
     case 'TOAST':
@@ -1291,18 +1317,18 @@ export function StoreProvider({ children }) {
   useEffect(() => {
     if (!state.emptyMode) publishOrderLimits(state.db.limits || []);
   }, [state.db.limits, state.emptyMode]);
-  // The order-limit walkthrough (screens/LimitWalkthrough.jsx) drives this app
-  // from its stage: only in demo mode (?demo=1).
-  useEffect(() => {
-    if (IS_DEMO) window.__qsDemo = { dispatch, state };
-  });
   // Active contracts reach the buyer's account on the storefront the same way.
   useEffect(() => {
     if (!state.emptyMode) publishContracts(storefrontContracts(state.db));
   }, [state.db.agreements, state.db.policies, state.db.companies, state.emptyMode]);
+  // …and so do the orders held for review, for the buyer's Orders on the B2B Portal.
+  useEffect(() => {
+    if (!state.emptyMode) publishHeldOrders(storefrontHeldOrders(state.db));
+  }, [state.db.companies, state.emptyMode]);
   useEffect(() => {
     const onStorage = (e) => {
       if (e.key === ORDER_REQUESTS_KEY) dispatch({ type: 'SYNC_ORDER_REQUESTS', requests: readOrderRequests() });
+      if (e.key === INVOICE_CHECKOUTS_KEY) dispatch({ type: 'INVOICE_CHECKOUTS', ids: readInvoiceCheckouts() });
       if (e.key === ORDER_LIMITS_KEY && Array.isArray(publishedOrderLimits())) dispatch({ type: 'SYNC_LIMITS', limits: upgradeLimits(publishedOrderLimits()) });
     };
     window.addEventListener('storage', onStorage);
@@ -1311,6 +1337,11 @@ export function StoreProvider({ children }) {
   useEffect(() => {
     const done = state.db.companies.flatMap((c) => c.orders || []).filter((o) => o.requestId && o.status !== 'Needs review');
     if (done.length) removeOrderRequests(done.map((o) => o.requestId));
+    // Invoice checkouts are done once their order is placed; one for an order that
+    // isn't waiting on its invoice here (this app reloaded since) is dropped too.
+    const invoiced = state.db.companies.flatMap((c) => c.orders || []).filter((o) => o.status === 'Invoice sent').map((o) => o.id);
+    const checkouts = readInvoiceCheckouts();
+    if (checkouts.length) removeInvoiceCheckouts(checkouts.filter((id) => !invoiced.includes(id)));
   }, [state.db.companies]);
   return <StoreContext.Provider value={{ state, dispatch }}>{children}</StoreContext.Provider>;
 }

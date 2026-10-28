@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { DEMO_ACCOUNTS, BUSINESS_SUMMARY, QUOTE_STATUS, agreementForSession } from '../data/products.js';
+import { DEMO_ACCOUNTS, BUSINESS_SUMMARY, QUOTE_STATUS, REQUEST_STATUS, agreementForSession, orderRequestsForSession, productBySku } from '../data/products.js';
 import { ApplyForm } from '../components/ApplyForm.jsx';
 import { readRegistrationForm } from '../../shared/registrationForm.js';
+import { addInvoiceCheckout } from '../../shared/persistence.js';
 import { money } from '../utils.js';
 import { PinIcon, MailIcon, ChevronRightIcon, ChevronDownIcon, CardIcon, BoxIcon, CloseIcon } from '../components/icons.jsx';
 
@@ -12,9 +13,10 @@ const lineSummary = (lines) => lines.map((l) => `${l.title} ×${l.quantity}`).jo
 
 // My account = Shopify's new customer-account portal: its own header (logo +
 // company/location switcher + avatar) and a left nav. Orders and Profile are
-// Shopify's own pages; B2B Portal and Quotes are the app's customer-account
-// extension pages (qs-b2b-portal / qs-b2b-quotes), and the B2B blocks on Profile
-// are its profile-block targets.
+// Shopify's own pages — the app can't add to Orders' list, so order requests sent
+// for review are on the B2B Portal; B2B Portal and Quotes are the app's
+// customer-account extension pages (qs-b2b-portal / qs-b2b-quotes), and the B2B
+// blocks on Profile are its profile-block targets.
 const NAV = [
   { id: 'orders', label: 'Orders' },
   { id: 'profile', label: 'Profile' },
@@ -25,7 +27,7 @@ const NAV = [
 export function Account() {
   const { state, dispatch } = useStore();
   const session = state.session;
-  const [section, setSection] = useState('profile');
+  const [section, setSection] = useState(state.accountSection || 'profile');
   const [mktEmail, setMktEmail] = useState(session?.marketing?.email ?? false);
   const [openQuoteId, setOpenQuoteId] = useState(null);
 
@@ -69,7 +71,7 @@ export function Account() {
           )}
           {section === 'orders' && <Orders orders={session.orders || []} dispatch={dispatch} />}
           {section === 'portal' && (
-            <Portal session={session} company={company} application={state.b2bApplications[0]} go={go} dispatch={dispatch} />
+            <Portal session={session} company={company} application={state.b2bApplications[0]} requests={orderRequestsForSession(session)} go={go} dispatch={dispatch} />
           )}
           {section === 'apply' && <Apply session={session} go={go} dispatch={dispatch} />}
           {section === 'quotes' && (
@@ -133,11 +135,17 @@ function AccountLogin({ dispatch }) {
 
 // ── B2B Portal (customer-account.page.render) ────────────────────────────────
 // The app's own page in the customer account: who the buyer purchases for, the
-// terms that apply, and the last orders they can turn into a quote request.
-function Portal({ session, company, application, go, dispatch }) {
+// terms that apply, and their orders — the ones sent for review among them — which
+// they can turn into a quote request.
+function Portal({ session, company, application, requests, go, dispatch }) {
   const s = BUSINESS_SUMMARY;
   const agreement = agreementForSession(session);
   const orders = session.orders || [];
+  // An order opened from the Orders panel, by its key.
+  const [openKey, setOpenKey] = useState(null);
+  const items = portalOrderItems(orders, requests);
+  const open = items.find((it) => it.key === openKey);
+  if (open) return <OrderDetail item={open} session={session} onBack={() => setOpenKey(null)} dispatch={dispatch} />;
   const terms = [
     { label: 'Pricing', value: session.priceListName || s.priceListName },
     { label: 'Payment terms', value: s.paymentTerms },
@@ -232,34 +240,229 @@ function Portal({ session, company, application, go, dispatch }) {
         </section>
       )}
 
-      <section className="acct-panel">
-        <div className="acct-panel-head">
-          <h3>Recent orders</h3>
-          {orders.length > 0 && <button className="acct-btn" onClick={() => go('orders')}>View all</button>}
-        </div>
-        {orders.length === 0 ? (
-          <p className="muted">No orders yet. Orders placed for your account will appear here.</p>
-        ) : (
+      <PortalOrders
+        items={items}
+        location={session.locationLabel}
+        hasRequests={requests.length > 0}
+        onOpen={(key) => { setOpenKey(key); window.scrollTo(0, 0); }}
+        dispatch={dispatch}
+      />
+    </>
+  );
+}
+
+// The portal's Orders: the account's orders and its order requests — orders over
+// the buyer's limit sent to the seller for review (see orderRequestsForSession) —
+// in one list, newest first, one card each (its products' images, status, number
+// and total), scrolling inside the panel. An approved request waits for
+// the buyer to check out from the invoice the seller sent (Awaiting checkout ·
+// Complete checkout); checked out, it's an order. One the account has is that order,
+// marked as approved after review. The status views
+// (All, Waiting for review, Fulfilled…, each with its count) show one status.
+// Clicking one opens its page (OrderDetail).
+const STATUS_ORDER = ['Waiting for review', 'Awaiting checkout', 'Unfulfilled', 'Paid', 'Fulfilled', 'Declined'];
+const statusRank = (status) => (STATUS_ORDER.includes(status) ? STATUS_ORDER.indexOf(status) : STATUS_ORDER.length);
+// A day as a number: account orders say "Aug 28, 2026", requests 2026-08-28.
+const dayValue = (s) => new Date(/^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T00:00:00` : s).getTime() || 0;
+
+// The orders and order requests as the portal lists them. `rows`: the products
+// ({ sku, title, qty, price? }); a request from the B2B app has only a `count`.
+function portalOrderItems(orders, requests) {
+  const approved = new Map(requests.filter((r) => r.status === 'approved' && r.number).map((r) => [r.number, r]));
+  return [
+    ...orders.map((o) => ({
+      key: o.id, number: o.id, title: `Order ${o.id}`, day: dayValue(o.date), date: o.date, status: o.status, tone: o.statusTone, total: o.total,
+      rows: o.lines.map((l) => ({ sku: l.sku, title: l.title, qty: l.quantity, price: l.price })),
+      note: approved.has(o.id) ? `Approved after review · ${requestReason(approved.get(o.id))}` : null, order: o,
+    })),
+    ...requests.filter((r) => !(r.status === 'approved' && orders.some((o) => o.id === r.number))).map((r) => {
+      const st = REQUEST_STATUS[r.status] || REQUEST_STATUS.waiting;
+      // A request sent from this storefront has its lines; one from the B2B app, a count.
+      const listed = Array.isArray(r.lines);
+      return {
+        // Waiting for review or for checkout it's still a request; after, it has its order number.
+        key: r.number || r.id, number: r.number || null, title: r.number && !['waiting', 'invoiced'].includes(r.status) ? `Order ${r.number}` : 'Order request', day: dayValue(r.date), date: requestDate(r.date), status: st.label, tone: st.tone, total: r.amount,
+        rows: listed ? r.lines : null, count: listed ? null : r.lines, note: requestReason(r), order: null, request: r,
+        message: r.status === 'declined' ? r.message || null : null,
+        invoice: r.status === 'invoiced' ? r.number : null,
+      };
+    }),
+  ].sort((a, b) => b.day - a.day);
+}
+
+// Approved: check out from the seller's invoice (the link in its email).
+const completeCheckout = (number, dispatch) => {
+  addInvoiceCheckout(number);
+  dispatch({ type: 'TOAST', message: 'Order placed (demo only)' });
+};
+
+// Up to four product images, the fourth with "+N" for the rest, as on Shopify's
+// order cards. A request from the B2B app has only a count: blank tiles.
+function OrderImages({ rows, count }) {
+  const n = rows ? rows.length : count || 0;
+  const tiles = rows ? rows.map((l) => productBySku(l.sku)?.image || null) : Array.from({ length: n }, () => null);
+  return (
+    <div className="acct-order-images">
+      {tiles.slice(0, 4).map((src, i) => (
+        <span className="acct-order-image" key={i}>
+          {src && <img src={src} alt="" />}
+          {i === 3 && n > 4 && <span className="acct-order-image__more">{`+${n - 4}`}</span>}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function PortalOrders({ items, location, hasRequests, onOpen, dispatch }) {
+  const [view, setView] = useState('all');
+  // The statuses there are, in order; a view whose last order left (approved, say) falls back to All.
+  const statuses = [...new Set(items.map((it) => it.status))].sort((a, b) => statusRank(a) - statusRank(b));
+  const current = statuses.includes(view) ? view : 'all';
+  const shown = current === 'all' ? items : items.filter((it) => it.status === current);
+  const viewButton = (id, label, n) => (
+    <button key={id} aria-pressed={current === id} onClick={() => setView(id)}>
+      {label} <span className="acct-views-count">{n}</span>
+    </button>
+  );
+
+  return (
+    <section className="acct-panel">
+      <div className="acct-panel-head">
+        <h3>Orders</h3>
+      </div>
+      {items.length === 0 ? (
+        <p className="muted">No orders yet. Orders placed for your account will appear here.</p>
+      ) : (
         <>
-        <p className="muted">Open an order and choose Request a quote to reuse its products in a new quote request.</p>
-        <div className="acct-order-grid">
-          {orders.map((o) => (
-            <article className="acct-order-card" key={o.id}>
-              <div className="acct-panel-head">
-                <strong>Order {o.id}</strong>
-                <span className={`badge ${toneClass(o.statusTone)}`}>{o.status}</span>
-              </div>
-              <p className="muted">{o.date}</p>
-              <ul className="acct-lines">
-                {o.lines.map((l) => <li key={l.sku}>{l.title} ×{l.quantity}</li>)}
-              </ul>
-              <strong>{money(o.total)}</strong>
-              <button className="acct-btn" onClick={() => dispatch({ type: 'OPEN_ORDER_QUOTE', orderId: o.id })}>Request a quote</button>
-            </article>
-          ))}
-        </div>
+          <p className="muted">
+            Open an order and choose Request a quote to reuse its products in a new quote request.
+            {hasRequests && ' Orders over your limit wait for the seller’s review before they’re placed.'}
+          </p>
+          {statuses.length > 1 && (
+            <div className="acct-views" role="group" aria-label="Show orders by status">
+              {viewButton('all', 'All', items.length)}
+              {statuses.map((st) => viewButton(st, st, items.filter((it) => it.status === st).length))}
+            </div>
+          )}
+          <div className="acct-order-grid">
+            {shown.map((it) => (
+              <article
+                className="acct-order-card"
+                key={it.key}
+                role="button"
+                tabIndex={0}
+                aria-label={`Open ${it.title}`}
+                onClick={() => onOpen(it.key)}
+                onKeyDown={(e) => { if (e.key === 'Enter') onOpen(it.key); }}
+              >
+                <OrderImages rows={it.rows} count={it.count} />
+                <div className="acct-order-card__body">
+                  <strong className="acct-order-card__status">{it.status}</strong>
+                  <span className="muted">{`${it.number || 'Order request'} · ${money(it.total)} USD`}</span>
+                  <div className="acct-order-card__foot">
+                    <span className="muted">{location}</span>
+                    {it.invoice && (
+                      <button
+                        className="acct-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          completeCheckout(it.invoice, dispatch);
+                        }}
+                      >
+                        Complete checkout
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
         </>
+      )}
+    </section>
+  );
+}
+
+// ── Order page ───────────────────────────────────────────────────────────────
+// One order or order request, laid out like Shopify's order page: where it stands,
+// its products and totals, then contact, address and payment. Before it's placed
+// (waiting for review, awaiting checkout, declined) it was sent, not placed; an
+// approved one is checked out here as from the invoice.
+const STATUS_DETAIL = {
+  'Waiting for review': 'It’s over your limit, so the seller reviews it before it’s placed. You’ll get an email when they decide.',
+  'Awaiting checkout': 'The seller approved it and emailed you an invoice. Complete checkout to place the order.',
+  Unfulfilled: 'We’re preparing these items for shipping.',
+  Paid: 'Payment received. We’re preparing these items for shipping.',
+  Fulfilled: 'All items in this order have shipped.',
+  Declined: 'The seller declined it, so it wasn’t placed and you weren’t charged.',
+};
+const NOT_PLACED = ['Waiting for review', 'Awaiting checkout', 'Declined'];
+
+function OrderDetail({ item, session, onBack, dispatch }) {
+  const placed = !NOT_PLACED.includes(item.status);
+  const toCheckout = ['Waiting for review', 'Awaiting checkout'].includes(item.status);
+  const address = session.shippingAddress;
+  // Why it went for review; once placed (Unfulfilled, Fulfilled) only that it was approved after review.
+  const approvedAfterReview = item.request?.status === 'approved' || !!(item.order && item.note);
+  const note = ['Unfulfilled', 'Fulfilled'].includes(item.status) ? (approvedAfterReview ? 'Approved after review' : null)
+    : item.request?.status === 'approved' && item.note ? `Approved after review · ${item.note}` : item.note;
+  const buyerNote = item.request?.note;
+  return (
+    <>
+      <header className="order-head">
+        <button className="order-back" aria-label="Back to B2B Portal" onClick={onBack}>←</button>
+        <div>
+          <h2>{item.title}</h2>
+          <p className="muted">{`${placed ? 'Placed' : 'Sent'} ${item.date}`}</p>
+        </div>
+        {item.invoice && <button className="acct-btn" onClick={() => completeCheckout(item.invoice, dispatch)}>Complete checkout</button>}
+      </header>
+
+      <section className="acct-panel">
+        <h3>{item.status}</h3>
+        <p className="muted">{STATUS_DETAIL[item.status]}</p>
+        {note && <p className="muted">{note}</p>}
+        {item.message && (
+          <div className="acct-order-message">
+            <span className="acct-order-message-label">Message from the seller</span>
+            <p>{item.message}</p>
+          </div>
         )}
+      </section>
+
+      <section className="acct-panel">
+        {item.rows ? (
+          <div className="order-lines">
+            {item.rows.map((l) => {
+              const image = productBySku(l.sku)?.image;
+              return (
+                <div className="order-line" key={`${l.sku}-${l.title}`}>
+                  <span className="order-line__media">
+                    {image && <img src={image} alt="" />}
+                    <span className="order-line__qty">{l.qty}</span>
+                  </span>
+                  <span>{l.title}</span>
+                  <span>{l.price != null ? money(l.price * l.qty) : ''}</span>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="muted">{`${item.count} product${item.count === 1 ? '' : 's'}`}</p>
+        )}
+        <div className="order-totals">
+          <div><span>Subtotal</span><span>{money(item.total)}</span></div>
+          {toCheckout && <div><span>Shipping</span><span className="muted">Calculated at checkout</span></div>}
+          {toCheckout && <div><span>Taxes</span><span className="muted">Calculated at checkout</span></div>}
+          <div className="order-totals__total"><strong>Total</strong><span><small className="muted">USD</small> <strong>{money(item.total)}</strong></span></div>
+        </div>
+      </section>
+
+      <section className="acct-panel order-info">
+        <div><span className="muted">Contact</span><span>{session.email}</span></div>
+        {address && <div><span className="muted">Ship to</span><span>{address.name}<br />{address.line}</span></div>}
+        <div><span className="muted">Payment</span><span>{BUSINESS_SUMMARY.paymentTerms}</span></div>
+        {buyerNote && <div><span className="muted">Your note</span><span>{buyerNote}</span></div>}
       </section>
     </>
   );
@@ -578,6 +781,16 @@ function AddressCard({ address, tag, onClick }) {
     </button>
   );
 }
+
+const requestDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+// Why a request waits: the maximum it went over, e.g. "Over your $10,000 monthly limit"
+// or, for a product, "Industrial filter, XL over your maximum of 48".
+const requestReason = (r) => {
+  if (r.threshold == null) return null;
+  if (r.item) return `${r.item} over your maximum of ${r.threshold}`;
+  if (r.basis === 'qty') return `Over your ${r.threshold}-unit limit`;
+  return `Over your ${money(r.threshold)}${r.period && r.period !== 'order' ? ` ${r.period}ly` : ''} limit`;
+};
 
 function Orders({ orders, dispatch }) {
   if (orders.length === 0) {

@@ -3,11 +3,19 @@
 //             is the cart subtotal (cart.cost.subtotalAmount: B2B prices, before
 //             tax, shipping and order-level discounts), set in the store currency
 //             and converted with presentmentCurrencyRate for buyers paying in another.
-//             Over the maximum value (`maxAction`), checkout is blocked, or — B2B
-//             only — the buyer can send the order for review instead.
+//             Over a maximum — the value or the quantity (`maxAction`, for both) —
+//             checkout is blocked, or the buyer can send the order for review
+//             instead (D2C: only with the d2cOrderRequests flag).
 //   product — rules, each a minimum, maximum and increment (case packs) on a set
-//             of products, checked per variant like Shopify's B2B quantity rules.
-//             A product is in at most one rule of a limit. Kept in the
+//             of products. The minimum and maximum count every variant of a
+//             product together; the pack holds for each variant.
+//             Over a rule's maximum (`maxAction`, for all its rules), checkout is
+//             blocked, or the buyer can send the order for review (D2C: only
+//             with the d2cOrderRequests flag).
+//             A rule picks all products, collections, products, or product tags,
+//             vendors or product types (matched against the catalog when checked).
+//             Rules are in order: a product in more than one rule of a limit
+//             takes the first one's quantities, like pricings by priority. Kept in the
 //             app, not synced to those: they sit on catalog price lists shared by
 //             every location on the catalog, and a location with several catalogs
 //             takes the cheapest one's — so they can't follow a company / location.
@@ -33,41 +41,51 @@
 // maximum for review is B2B only (the request is a draft order for a company location).
 //
 // Explicit data. A limit stores each setting with its mode, never as a special
-// number: { mode: 'inherit' } (left empty: the wider limits decide), { mode: 'set',
-// value } or { mode: 'none' } (explicitly no limit here — it lifts a wider one).
-// Order limits keep theirs in `settings`; product rules in `min`, `max` and
-// `increment`. The editor works on a flat draft of strings (toDraft /
-// normalizeLimit): empty = inherit, 0 for a minimum = none, 1 for a pack = none.
+// number: { mode: 'inherit' } (left empty), { mode: 'set', value } or { mode: 'none' }
+// (0 for a minimum, 1 for a pack). Limits never combine, so empty and none both
+// mean no limit on that setting. Order limits keep theirs in `settings`; product
+// rules in `min`, `max` and `increment`. The editor works on a flat draft of
+// strings (toDraft / normalizeLimit): empty = inherit, 0 for a minimum = none, 1
+// for a pack = none.
 //
 // One resolver, one record. resolveBuyer turns the limits that reach a buyer on a
 // day into that buyer's effective rules: each setting with the value in force and
-// where it comes from (limit, level), each product's minimum, maximum and pack —
-// every field taken on its own from the most specific limit that sets it, so a
-// location's maximum keeps the company's pack — and every setting another limit
-// overrode. When several limits set the same thing, the most specific one wins
-// (an Active contract's > location > company > store-wide; for D2C a specific
-// customer > a customer tag > all, logged-in or non-logged-in customers); at the
-// same level, the strictest, then the one updated last. A product a contract limit
-// sets follows the contract's limits only.
-// The cart, product page, location card and held orders all read that record. Records are cached per version of the limits; in production the app
+// where it comes from (limit, level), and each product's minimum, maximum and
+// pack. One limit applies, whole: the most specific (an Active contract's >
+// location > company > store-wide; for D2C a specific customer > a customer tag >
+// all, logged-in or non-logged-in customers), then the newest (the one that started
+// applying last: created or turned back on, or its start date when that's later —
+// see newer).
+// For order limits that's one limit per buyer; for product limits one
+// per product — a limit replaces another only for the products both have. Settings
+// are never combined: what the winner leaves empty isn't taken from the limit it
+// replaces, so a location's maximum doesn't keep the company's pack. A D2C customer in
+// several tag segments follows, for each kind of limit, the segment of the newest
+// limit that reaches them through a tag: the limits on their other tags step aside
+// (segmentLevel), so two segments never combine into an order that can't check out.
+// The cart, product page, location card and held orders all read that record.
+// Records are cached per version of the limits; in production the app
 // keeps them (a metafield on each company location) and rebuilds them on the
 // events that change them — a limit saved, turned on or off or deleted, a contract
-// starting or ending, a location added or removed, a limit's date — so the
-// validation function only reads numbers.
+// starting or ending, a location added or removed, a limit's date, a product joining
+// or leaving a collection a rule uses (it can move the product to another rule) —
+// so the validation function only reads numbers.
 //
 // A maximum order value can count one order, or every order in a week (Monday to
-// Sunday) or a month (`period`), so splitting an order doesn't get around it. Each
-// period is its own setting: a buyer can have a per-order maximum and a monthly one.
-// The cart adds up what the buyer ordered in the period (spentSoFar); in production
+// Sunday) or a month (`period`), so splitting an order doesn't get around it. A
+// limit counts one period, and one order limit applies to a buyer, so a buyer has
+// one maximum order value. The cart adds up what the buyer ordered in the period (spentSoFar); in production
 // the app keeps that on the buyer's record, updated as orders come in, for the
 // validation function to read. Minimums and quantities always count one order.
 //
-// Limits that win different settings can still contradict each other (an order
-// maximum below a product's minimum). Each contradiction is settled so buyers can
-// still order: the higher-ranked limit applies, and at the same rank neither does
-// (two product limits: the newer one). The app checks only the limits picked for one
-// contract against each other, in its editor (contractLimitConflicts), and only what
-// needs no prices; elsewhere merchants keep their limits consistent.
+// Overlaps. limitOverlaps compares a limit with each other limit on its own — the
+// two definitions, no buyer by buyer and no prices: where both apply, which one
+// replaces the other there (two order limits; two product limits, for the products
+// both have), plus an order limit's maximum quantity below a product limit's
+// minimum (the two kinds both apply). They're notes, never a block: the
+// merchant can adjust one of the two. Shown when saving a limit and turning one
+// on; a contract's editor checks the limits picked for it against each other
+// (contractLimitConflicts).
 //
 // A limit can have dates: it applies from its start date through its end date
 // (both optional, YYYY-MM-DD). Turned on with a start date still to come it is
@@ -75,7 +93,8 @@
 // it, it applies on the contract's dates instead.
 import { COLLECTIONS } from './data/constants.js';
 import { money } from './format.js';
-import { companyForCustomerEmail, scopeCollections, TODAY } from './pricing.js';
+import { scopeCollections, TODAY } from './pricing.js';
+import { versionFlags } from '../shared/versions.js';
 
 export const LIMIT_KINDS = {
   order: { label: 'Order limit', description: 'A minimum or maximum order value or total quantity.' },
@@ -93,14 +112,6 @@ const isSetting = (s) => !!s && typeof s === 'object' && typeof s.mode === 'stri
 // A setting's number in force, or null (inherit or none).
 const num = (s) => (s && s.mode === 'set' ? s.value : null);
 const isMinField = (f) => f === 'minValue' || f === 'minQty' || f === 'min';
-// For comparing settings: none is no minimum (0), no maximum (Infinity), no pack (1).
-// A higher minimum or pack is stricter; a lower maximum.
-function strictValue(field, s) {
-  if (s.mode === 'set') return s.value;
-  if (field === 'increment') return 1;
-  return isMinField(field) ? 0 : Infinity;
-}
-const higherIsStricter = (field) => isMinField(field) || field === 'increment';
 
 // Draft (editor strings) ↔ setting. Empty = inherit; 0 for a minimum and 1 for a
 // pack = none.
@@ -122,10 +133,14 @@ function toInput(s, field) {
 export const settingOf = (l, field) => (l.settings && isSetting(l.settings[field]) ? l.settings[field] : INHERIT);
 const ruleSetting = (r, field) => (isSetting(r[field]) ? r[field] : INHERIT);
 // The key a setting competes on: a maximum sent for review competes with other
-// review maximums ('threshold'), not with blocking ones — a buyer can have both.
-const orderKey = (l, field) => (field === 'maxValue' && l.maxAction === 'review' ? 'threshold' : field);
+// review maximums ('threshold' for the value, 'thresholdQty' for the quantity),
+// not with blocking ones — a buyer can have both.
+const REVIEW_KEYS = { maxValue: 'threshold', maxQty: 'thresholdQty' };
+const orderKey = (l, field) => (REVIEW_KEYS[field] && l.maxAction === 'review' ? REVIEW_KEYS[field] : field);
 // What a maximum order value counts: one order, or every order in a week or month.
-export const PERIODS = ['order', 'week', 'month'];
+// Weekly and monthly maximums only with the limitPeriods flag (versions.js); without
+// it a saved one counts per order.
+export const PERIODS = versionFlags().limitPeriods ? ['order', 'week', 'month'] : ['order'];
 const periodOf = (l, field) => (field === 'maxValue' && PERIODS.includes(l.period) ? l.period : 'order');
 // The key a setting competes on, with its period: 'maxValue', 'threshold@month', …
 const settingKey = (l, field) => {
@@ -156,7 +171,7 @@ export function newLimit(kind) {
     kind,
     status: 'Active',
     ...Object.fromEntries(ORDER_FIELDS.map((k) => [k, null])),
-    maxAction: 'block', // over the maximum value: 'block' checkout, or 'review' (B2B)
+    maxAction: 'block', // over a maximum (order value or quantity): 'block' checkout, or 'review'
     period: 'order', // the maximum value counts each order, or every order in a week or month
     audienceType: 'b2b',
     storeWide: true,
@@ -180,7 +195,27 @@ export function limitState(l, at = TODAY) {
   return 'Active';
 }
 
+// The day a limit started applying: the day it was turned on (or created), or its
+// start date when that's later. A limit turned back on counts from that day.
+const startedOn = (l) => {
+  const on = l.turnedOnAt || l.createdAt || TODAY;
+  return l.startDate && l.startDate > on ? l.startDate : on;
+};
+// Whether limit a (at `pa` in the list) is newer than b (at `pb`): it started
+// applying later; on the same day, it's further down the list (limits are added,
+// and turned back on, at the end).
+const newer = (a, pa, b, pb) => {
+  const [sa, sb] = [startedOn(a), startedOn(b)];
+  return sa === sb ? pa > pb : sa > sb;
+};
+// Turning a limit on (in the list, or saving it on in the editor) makes it the
+// newest: it moves to the end of the list, turned on today.
+export const turnLimitOn = (limits, limit) => [...limits.filter((l) => l.id !== limit.id), { ...limit, status: 'Active', turnedOnAt: TODAY }];
+
 export const isD2CLimit = (l) => l.audienceType === 'd2c';
+// Whether the limit's maximum can send an order for review: D2C only with the
+// d2cOrderRequests flag (versions.js), else it blocks checkout.
+export const canReview = (l) => !isD2CLimit(l) || !!versionFlags().d2cOrderRequests;
 const PICKED_TARGETS = ['specific', 'tags'];
 
 // A stored limit holds settings; a draft holds strings (or, saved before settings, numbers).
@@ -203,7 +238,7 @@ const toNumber = (v) => (v === '' || v == null || Number.isNaN(Number(v)) ? null
 export function normalizeLimit(input) {
   const d = isStored(input) ? toDraft(input) : input;
   const l = { ...d, name: (d.name || '').trim(), message: (d.message || '').trim(), startDate: d.startDate || null, endDate: d.endDate || null };
-  l.maxAction = l.maxAction === 'review' && !isD2CLimit(l) ? 'review' : 'block';
+  l.maxAction = l.maxAction === 'review' && canReview(l) ? 'review' : 'block';
   if (l.kind === 'order') l.period = PERIODS.includes(l.period) ? l.period : 'order';
   else delete l.period;
   if (l.kind === 'order') {
@@ -228,17 +263,31 @@ export function normalizeLimit(input) {
 export const upgradeLimits = (limits) =>
   limits.map((l) => {
     const x = l.kind === 'review' ? { ...l, kind: 'order', maxValue: l.threshold, maxAction: 'review' } : l;
-    return isStored(x) ? { maxAction: 'block', ...x } : normalizeLimit({ maxAction: 'block', ...x });
+    if (!isStored(x)) return normalizeLimit({ maxAction: 'block', ...x });
+    return { maxAction: 'block', ...x, ...(canReview(x) ? {} : { maxAction: 'block' }) };
   });
 
 export const limitKey = (companyId, locationId) => `${companyId}::${locationId}`;
 
 const units = (n) => `${n} unit${n === 1 ? '' : 's'}`;
 
+// Rule scopes picked by a product attribute: the field the picks are kept in, and
+// whether a product matches them.
+export const ATTRIBUTE_SCOPES = {
+  tags: { key: 'selectedTags', matches: (p, vals) => (p.tags || []).some((t) => vals.includes(t)) },
+  vendors: { key: 'selectedVendors', matches: (p, vals) => vals.includes(p.vendor) },
+  productTypes: { key: 'selectedProductTypes', matches: (p, vals) => vals.includes(p.productType) },
+};
+const attributePicks = (r) => r[ATTRIBUTE_SCOPES[r.scopeType].key] || [];
+
 // The products one rule of a product limit covers.
 export function ruleSkus(r, db) {
   if (r.scopeType === 'all') return (db.products || []).map((p) => p.sku);
   if (r.scopeType === 'collection') return [...new Set(scopeCollections(r).flatMap((c) => COLLECTIONS[c] || []))];
+  if (ATTRIBUTE_SCOPES[r.scopeType]) {
+    const vals = attributePicks(r);
+    return (db.products || []).filter((p) => ATTRIBUTE_SCOPES[r.scopeType].matches(p, vals)).map((p) => p.sku);
+  }
   return r.selectedProducts || [];
 }
 // What a rule's quantities attach to: its products, or '*' for every product (one
@@ -251,6 +300,12 @@ export function productScopeLabel(r) {
     const cs = scopeCollections(r);
     return cs.length === 1 ? cs[0] : `${cs.length} collections`;
   }
+  if (ATTRIBUTE_SCOPES[r.scopeType]) {
+    const vals = attributePicks(r);
+    const one = { tags: (v) => `products tagged ${v}`, vendors: (v) => `${v} products`, productTypes: (v) => `${v} products` }[r.scopeType];
+    const many = { tags: 'product tags', vendors: 'vendors', productTypes: 'product types' }[r.scopeType];
+    return vals.length === 1 ? one(vals[0]) : `${vals.length} ${many}`;
+  }
   const n = (r.selectedProducts || []).length;
   return `${n} product${n === 1 ? '' : 's'}`;
 }
@@ -262,6 +317,7 @@ const ORDER_TEXT = {
   threshold: [(v) => `Orders over ${money(v)} need your review`, 'No review maximum'],
   minQty: [(v) => `At least ${units(v)} per order`, 'No minimum quantity'],
   maxQty: [(v) => `At most ${units(v)} per order`, 'No maximum quantity'],
+  thresholdQty: [(v) => `Orders over ${units(v)} need your review`, 'No review maximum quantity'],
 };
 const PERIOD_TEXT = {
   maxValue: [(v, p) => `Maximum ${money(v)} per ${p}`, (p) => `No ${p}ly maximum`],
@@ -278,11 +334,12 @@ const PRODUCT_TEXT = {
   max: [(v) => `max ${v}`, 'no maximum'],
   increment: [(v) => `multiples of ${v}`, 'no pack size'],
 };
-// A product rule's quantities, e.g. "min 12, multiples of 12".
-const ruleParts = (r) =>
+// A product rule's quantities, e.g. "min 12, multiples of 12" (`review`: its limit
+// sends an order over the maximum for review).
+const ruleParts = (r, review = false) =>
   PRODUCT_FIELDS.map((f) => [f, ruleSetting(r, f)])
     .filter(([, s]) => s.mode !== 'inherit')
-    .map(([f, s]) => (s.mode === 'set' ? PRODUCT_TEXT[f][0](s.value) : PRODUCT_TEXT[f][1]))
+    .map(([f, s]) => (s.mode === 'set' ? `${PRODUCT_TEXT[f][0](s.value)}${review && f === 'max' ? ' without review' : ''}` : PRODUCT_TEXT[f][1]))
     .join(', ');
 
 // The settings a limit makes (not the ones it leaves to wider limits), each as a
@@ -294,11 +351,37 @@ export function limitRules(l, db) {
       .filter((x) => x.s.mode !== 'inherit')
       .map((x) => ({ ...x, value: num(x.s), text: settingText(x.key, x.s) }));
   }
-  return productRules(l).flatMap((r) => {
-    const parts = ruleParts(r);
+  const overlaps = ruleOverlaps(l, db);
+  return productRules(l).flatMap((r, i) => {
+    const parts = ruleParts(r, l.maxAction === 'review');
     if (!parts) return [];
-    const text = `${parts} on ${productScopeLabel(r)}`;
-    return [{ rule: r, targets: ruleTargets(r, db), text: text[0].toUpperCase() + text.slice(1) }];
+    const left = overlaps[i];
+    const from = [...new Set(left.map((x) => x.rule + 1))];
+    const except = left.length ? `, except ${left.length} product${left.length === 1 ? '' : 's'} in ${from.length === 1 ? `rule ${from[0]}` : 'earlier rules'}` : '';
+    const text = `${parts} on ${productScopeLabel(r)}${except}`;
+    const targets = ruleTargets(r, db).filter((t) => !left.some((x) => x.sku === t));
+    return [{ rule: r, targets, text: text[0].toUpperCase() + text.slice(1) }];
+  });
+}
+
+// The products each rule of a product limit leaves to an earlier rule (rules are in
+// order: a product in more than one takes the first one's quantities). Per rule,
+// [{ sku, rule }] with the index of the rule that has it.
+export function ruleOverlaps(l, db) {
+  const owner = new Map(); // sku → the first rule that has it
+  let allAt = null; // the rule on all products, once one comes
+  return productRules(l).map((r, i) => {
+    if (allAt != null) return r.scopeType === 'all' ? [] : ruleSkus(r, db).map((sku) => ({ sku, rule: allAt }));
+    if (r.scopeType === 'all') {
+      allAt = i;
+      return [...owner].map(([sku, rule]) => ({ sku, rule }));
+    }
+    const left = [];
+    ruleSkus(r, db).forEach((t) => {
+      if (owner.has(t)) left.push({ sku: t, rule: owner.get(t) });
+      else owner.set(t, i);
+    });
+    return left;
   });
 }
 
@@ -313,14 +396,14 @@ export function defaultLimitMessage(l) {
     const r = rules[0] || {};
     const [min, max, pack] = PRODUCT_FIELDS.map((f) => num(ruleSetting(r, f)));
     if (pack > 1) return `This product is sold in packs of ${pack}${min ? `, minimum ${min}` : ''}.`;
-    const parts = [min && `at least ${min}`, max && `at most ${max}`].filter(Boolean);
+    const parts = [min && `at least ${min}`, max && `at most ${max}${l.maxAction === 'review' ? ' without review' : ''}`].filter(Boolean);
     return parts.length ? `You can order ${parts.join(' and ')} per order.` : '';
   }
   const v = (k) => num(settingOf(l, k));
   if (v('minValue')) return `Your order must be at least ${money(v('minValue'))} to check out.`;
   if (v('maxValue') != null) {
-    const p = l.period && l.period !== 'order' ? l.period : null;
-    if (p) {
+    const p = periodOf(l, 'maxValue');
+    if (p !== 'order') {
       return l.maxAction === 'review'
         ? `Your limit is ${money(v('maxValue'))} a ${p}. Reduce your order or send an order request.`
         : `Your orders can’t add up to more than ${money(v('maxValue'))} a ${p}.`;
@@ -330,7 +413,11 @@ export function defaultLimitMessage(l) {
       : `Orders can’t be more than ${money(v('maxValue'))}.`;
   }
   if (v('minQty')) return `Your order needs at least ${units(v('minQty'))}.`;
-  if (v('maxQty') != null) return `Orders can’t have more than ${units(v('maxQty'))}.`;
+  if (v('maxQty') != null) {
+    return l.maxAction === 'review'
+      ? `Your current limit is ${units(v('maxQty'))}. Reduce your order or send an order request.`
+      : `Orders can’t have more than ${units(v('maxQty'))}.`;
+  }
   return '';
 }
 
@@ -405,156 +492,67 @@ const contractAtBuyer = (limit, buyerKey) => {
 const CONTRACT_RANK = 4;
 
 // ── The resolver ─────────────────────────────────────────────────────────────
-// Every setting the limits that reach a buyer on a day make there (not the ones
-// they inherit), with how specific each is (rank). A product setting is per
-// product (`target`: a SKU, or '*' for a rule on all products) and per field.
-function claimsFor(db, levelOf, at, buyerKey) {
+// The limits that reach a buyer on a day, with how specific each is (rank), the
+// contract giving it there (`contract`) and where it is in the list (`pos`, for newer).
+function reachFor(db, levelOf, at, buyerKey) {
   const reach = [];
-  const claims = [];
-  (db.limits || []).forEach((limit) => {
+  (db.limits || []).forEach((limit, pos) => {
     const contract = contractAtBuyer(limit, buyerKey);
     if (contract ? limit.status !== 'Active' : limitState(limit, at) !== 'Active') return;
     const level = levelOf(limit);
-    if (!level) return;
-    const rank = contract ? CONTRACT_RANK : LEVEL_RANK[level];
-    reach.push({ limit, level, contract });
-    if (limit.kind === 'order') {
-      ORDER_FIELDS.forEach((field) => {
-        const s = settingOf(limit, field);
-        if (s.mode !== 'inherit') claims.push({ key: settingKey(limit, field), field, s, limit, level, rank, contract });
-      });
-      return;
-    }
-    productRules(limit).forEach((r) => {
-      const targets = ruleTargets(r, db);
-      PRODUCT_FIELDS.forEach((field) => {
-        const s = ruleSetting(r, field);
-        if (s.mode !== 'inherit') targets.forEach((target) => claims.push({ key: `p:${target}:${field}`, target, field, s, limit, level, rank, contract }));
-      });
-    });
+    if (level) reach.push({ limit, level, contract, rank: contract ? CONTRACT_RANK : LEVEL_RANK[level], pos });
   });
-  return { reach, claims };
+  return reach;
 }
 
-// Most specific first (a contract's, then a location's, …), then strictest.
-function byPrecedence(a, b) {
-  if (a.rank !== b.rank) return b.rank - a.rank;
-  const x = strictValue(a.field, a.s);
-  const y = strictValue(b.field, b.s);
-  if (x === y) return 0;
-  return higherIsStricter(a.field) ? (y > x ? 1 : -1) : (x > y ? 1 : -1);
-}
-// Can a product be ordered at all under these quantities: some amount at or over the
-// minimum, at or under the maximum, in whole packs?
-function contradicts(e) {
-  const min = Math.max(1, num(e.min) ?? 0);
-  const max = num(e.max) ?? Infinity;
-  const pack = num(e.increment) || 1;
-  return Math.ceil(min / pack) * pack > max;
-}
+// The one that applies: the most specific, then the newest.
+const winnerOf = (list) => list.reduce((w, x) => (!w || x.rank > w.rank || (x.rank === w.rank && newer(x.limit, x.pos, w.limit, w.pos)) ? x : w), null);
 
-// A buyer's effective rules on a day:
-//   settings   { minValue, maxValue, threshold, minQty, maxQty } — each the
-//              winning setting: { mode, value, limit, level, rank, contract }
-//              (missing: nothing sets it)
-//   products   { '*': { min, max, increment }, [sku]: { … } } — per field, the same
-//              shape; a product named by a rule weighs the all-products rules too
-//   overridden [{ key, field, limit, s, by, byS, sameLevel }] — settings another
-//              limit won (`sameLevel`: only strictness decided it)
-//   dropped    [{ limit, target | key, by, contract, why }] — limits left out here:
-//              on a product a contract limit sets ('contract'), or because they
-//              contradict another limit — the newer one at the same level wins on a
-//              product ('newer'), else the higher-ranked one ('contract',
-//              'specific'); two order settings at the same rank: neither ('same').
+// A buyer's effective rules on a day (`contract`: the contract giving the limit
+// there, else null):
+//   order      { limit, level, contract } — the order limit that applies, or null
+//   settings   { minValue, maxValue, threshold, minQty, maxQty } — its settings:
+//              { mode, value, limit, level, contract } (missing: it leaves it empty)
+//   products   { '*': entry, [sku]: entry } — for each product a rule names, and
+//              for the rest ('*'), the product limit that applies and its rule for
+//              the product: { limit, level, contract, min, max, increment } (a field
+//              missing when the rule leaves it empty)
 //   reach      [{ limit, level, contract }] — every limit in force there
-// An order setting and a product's limit that contradict are settled per order, in
-// the cart (cartProblemsIn), as only then is the product's price known.
 function buildRecord(db, levelOf, at, buyerKey) {
-  const { reach, claims } = claimsFor(db, levelOf, at, buyerKey);
-  const byKey = new Map();
-  claims.forEach((c) => {
-    if (!byKey.has(c.key)) byKey.set(c.key, []);
-    byKey.get(c.key).push(c);
-  });
-  // Ties go to the limit updated most recently (then the one added later).
-  const pos = new Map((db.limits || []).map((l, i) => [l.id, i]));
-  const newerFirst = (a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')) || (pos.get(b.id) ?? 0) - (pos.get(a.id) ?? 0);
-  const precedence = (a, b) => byPrecedence(a, b) || newerFirst(a.limit, b.limit);
-  const winnerOf = (list) => [...list].sort(precedence)[0];
-  const entryOf = (w) => ({ key: w.key, mode: w.s.mode, value: num(w.s), limit: w.limit, level: w.level, rank: w.rank, contract: w.contract, target: w.target });
-  const overridden = [];
-  const dropped = [];
-  const report = (key, list, win, keep = () => true) =>
-    list.forEach((c) => {
-      if (c !== win && keep(win, c)) overridden.push({ key, field: c.field, limit: c.limit, s: c.s, by: win.limit, byS: win.s, sameLevel: c.rank === win.rank });
-    });
+  const reach = reachFor(db, levelOf, at, buyerKey);
+  const order = winnerOf(reach.filter((x) => x.limit.kind === 'order'));
   const settings = {};
-  [...byKey.keys()].filter((key) => !key.startsWith('p:')).forEach((key) => {
-    const list = byKey.get(key);
-    const win = winnerOf(list);
-    report(key, list, win);
-    settings[key] = entryOf(win);
-  });
-  const products = {};
-  const productEntryFor = (target) => {
-    let cands = PRODUCT_FIELDS.flatMap((f) => [...(byKey.get(`p:${target}:${f}`) || []), ...(target === '*' ? [] : byKey.get(`p:*:${f}`) || [])]);
-    const merge = (list) => {
-      const e = {};
-      PRODUCT_FIELDS.forEach((f) => {
-        const w = winnerOf(list.filter((c) => c.field === f));
-        if (w) e[f] = entryOf(w);
-      });
-      return e;
-    };
-    const limitsIn = (list) => [...new Set(list.map((c) => c.limit))];
-    const drop = (list, by, why) => {
-      const winner = by && cands.find((c) => c.limit === by);
-      limitsIn(list).forEach((limit) => dropped.push({ limit, target, by, contract: winner?.contract || null, why }));
-      cands = cands.filter((c) => !list.includes(c));
-    };
-    // A product a contract limit sets here follows the contract's limits only.
-    if (cands.some((c) => c.contract) && cands.some((c) => !c.contract)) {
-      drop(cands.filter((c) => !c.contract), winnerOf(cands.filter((c) => c.contract)).limit, 'contract');
-    }
-    // Limits that leave it impossible to order: at the same level the newer one
-    // applies; across levels the more specific one.
-    if (contradicts(merge(cands))) {
-      const top = Math.max(...cands.map((c) => c.rank));
-      const atTop = limitsIn(cands.filter((c) => c.rank === top)).sort(newerFirst);
-      if (atTop.length > 1) drop(cands.filter((c) => c.rank === top && c.limit !== atTop[0]), atTop[0], 'newer');
-      if (contradicts(merge(cands))) drop(cands.filter((c) => c.rank < top), atTop[0], top === CONTRACT_RANK ? 'contract' : 'specific');
-    }
-    // Two all-products rules are reported once, under '*', not again for each product.
-    PRODUCT_FIELDS.forEach((f) => {
-      const list = cands.filter((c) => c.field === f);
-      if (list.length) report(`p:${target}:${f}`, list, winnerOf(list), (w, c) => target === '*' || w.target !== '*' || c.target !== '*');
+  if (order) {
+    ORDER_FIELDS.forEach((field) => {
+      const s = settingOf(order.limit, field);
+      const key = settingKey(order.limit, field);
+      if (s.mode !== 'inherit') settings[key] = { key, mode: s.mode, value: num(s), limit: order.limit, level: order.level, contract: order.contract };
     });
-    return merge(cands);
+  }
+  // Rules are in order: a product takes the first rule of a limit that has it, and
+  // a rule on all products takes every product left (coverage).
+  const productLimits = reach.filter((x) => x.limit.kind === 'product').map((x) => ({ ...x, cov: coverage(x.limit, db) }));
+  const entryOf = (w, r) => {
+    const e = { limit: w.limit, level: w.level, contract: w.contract };
+    PRODUCT_FIELDS.forEach((field) => {
+      const s = ruleSetting(r, field);
+      if (s.mode !== 'inherit') e[field] = { mode: s.mode, value: num(s), limit: w.limit, level: w.level, contract: w.contract };
+    });
+    return e;
   };
-  if (claims.some((c) => c.target === '*')) products['*'] = productEntryFor('*');
-  new Set(claims.filter((c) => c.target && c.target !== '*').map((c) => c.target)).forEach((sku) => {
-    products[sku] = productEntryFor(sku);
+  const products = {};
+  const all = winnerOf(productLimits.filter((x) => x.cov.all));
+  if (all) products['*'] = entryOf(all, all.cov.all);
+  new Set(productLimits.flatMap((x) => [...x.cov.bySku.keys()])).forEach((sku) => {
+    const w = winnerOf(productLimits.filter((x) => x.cov.bySku.has(sku) || x.cov.all));
+    products[sku] = entryOf(w, w.cov.bySku.get(sku) || w.cov.all);
   });
-  // A minimum above a maximum from another limit: the higher-ranked one applies (a
-  // contract's, else the more specific); at the same rank neither does.
-  [['minValue', ['maxValue', 'maxValue@week', 'maxValue@month']], ['minQty', ['maxQty']]].forEach(([minKey, maxKeys]) =>
-    maxKeys.forEach((maxKey) => {
-      const lo = settings[minKey];
-      const hi = settings[maxKey];
-      if (!lo || !hi || lo.mode !== 'set' || hi.mode !== 'set' || lo.value <= hi.value) return;
-      if (lo.rank === hi.rank) {
-        delete settings[minKey];
-        delete settings[maxKey];
-        dropped.push({ limit: lo.limit, key: minKey, by: null, contract: null, why: 'same' });
-        dropped.push({ limit: hi.limit, key: maxKey, by: null, contract: null, why: 'same' });
-        return;
-      }
-      const [win, lose, loseKey] = lo.rank > hi.rank ? [lo, hi, maxKey] : [hi, lo, minKey];
-      delete settings[loseKey];
-      dropped.push({ limit: lose.limit, key: loseKey, by: win.limit, contract: win.contract, why: win.contract ? 'contract' : 'specific' });
-    }),
-  );
-  return { reach, settings, products, overridden, dropped };
+  return {
+    reach: reach.map(({ limit, level, contract }) => ({ limit, level, contract })),
+    order: order && { limit: order.limit, level: order.level, contract: order.contract },
+    settings,
+    products,
+  };
 }
 
 // Records are kept per version of the limits (a new list on every change).
@@ -568,14 +566,33 @@ function resolveBuyer(db, buyerKey, levelOf, at = TODAY) {
   return kept.get(k);
 }
 export const effectiveRules = (db, companyId, locationId, at) => resolveBuyer(db, limitKey(companyId, locationId), atLocation(companyId, locationId), at);
-export const effectiveRulesForCustomer = (db, customer, at) => resolveBuyer(db, customerKey(customer), (l) => customerLimitLevel(l, customer), at);
+export const effectiveRulesForCustomer = (db, customer, at = TODAY) => resolveBuyer(db, customerKey(customer), segmentLevel(db, customer, at), at);
+
+// How a limit reaches a customer outside a company on a day, with tag segments
+// settled: when tag limits of one kind reach them through different tags, the
+// newest one's tags win — limits on their other tags don't reach them (null).
+// Limits on the same tag still combine (the stricter order setting, the newer
+// product quantity).
+function segmentLevel(db, customer, at) {
+  const matched = (l) => (customer?.tags || []).filter((t) => (l.customerTargetIds || []).includes(t));
+  const viaTags = (db.limits || []).map((l, pos) => ({ l, pos })).filter(({ l }) => limitState(l, at) === 'Active' && customerLimitLevel(l, customer) === 'tag');
+  const aside = new Set();
+  Object.keys(LIMIT_KINDS).forEach((kind) => {
+    const ofKind = viaTags.filter(({ l }) => l.kind === kind);
+    if (ofKind.length < 2) return;
+    const segment = matched(ofKind.reduce((x, y) => (newer(y.l, y.pos, x.l, x.pos) ? y : x)).l);
+    ofKind.forEach(({ l }) => { if (!matched(l).some((t) => segment.includes(t))) aside.add(l.id); });
+  });
+  return (l) => (aside.has(l.id) ? null : customerLimitLevel(l, customer));
+}
 
 // A product's quantities in a record: its own entry, else the rule on all products.
 const productEntry = (rec, sku) => rec.products[sku] || rec.products['*'] || null;
-// As numbers, { min, max, increment } (increment 1: no pack), or null when nothing limits it.
+// As numbers, { min, max, increment, review } (increment 1: no pack; review: over the
+// maximum the buyer can send the order for review), or null when nothing limits it.
 function quantities(e) {
   if (!e) return null;
-  const q = { min: num(e.min), max: num(e.max), increment: num(e.increment) || 1 };
+  const q = { min: num(e.min), max: num(e.max), increment: num(e.increment) || 1, review: num(e.max) != null && e.max.limit.maxAction === 'review' };
   return q.min == null && q.max == null && q.increment === 1 ? null : q;
 }
 
@@ -585,55 +602,43 @@ export const productRuleFor = (db, companyId, locationId, sku) => quantities(pro
 export const productRuleForCustomer = (db, customer, sku) => quantities(productEntry(effectiveRulesForCustomer(db, customer), sku));
 
 // The maximum sent for review in effect at a location for a period ('order',
-// 'week' or 'month'), or null: { limit, value }.
-export function reviewMaximumFor(db, companyId, locationId, period = 'order') {
-  const e = effectiveRules(db, companyId, locationId).settings[period === 'order' ? 'threshold' : `threshold@${period}`];
+// 'week' or 'month'), or null: { limit, value }. `basis` 'qty': the order quantity's.
+export function reviewMaximumFor(db, companyId, locationId, period = 'order', basis = 'value') {
+  const key = basis === 'qty' ? 'thresholdQty' : period === 'order' ? 'threshold' : `threshold@${period}`;
+  const e = effectiveRules(db, companyId, locationId).settings[key];
   return e && e.mode === 'set' ? { limit: e.limit, value: e.value } : null;
 }
 
-// Every limit in force at a location, most specific first, with what it sets. A
-// setting another limit wins there names it (`replacedBy`, and `replacedByContract`
-// when a contract's limit wins — on a product the contract sets, too).
-// Contradictions aren't shown. A product rule that still wins some of its fields
-// lists the ones it lost (`partly`: the field, the limit that won it and, when it
-// lost only some products, which — `label`).
-const FIELD_LABEL = { min: 'Minimum', max: 'Maximum', increment: 'Pack size' };
+// Every limit in force at a location, most specific first (a contract's first), with
+// the contract giving it there (`contract`) and what it sets. An
+// order limit another one replaces there names it on each setting (`replacedBy`).
+// A product rule names the limit that applies to its products instead: on the rule
+// when one limit took them all, else per limit (`partly`: { key, by, label } — the
+// products it lost to that limit).
 export function locationLimits(db, companyId, locationId) {
   const rec = effectiveRules(db, companyId, locationId);
   const titleOf = (sku) => (db.products || []).find((p) => p.sku === sku)?.title || sku;
   return rec.reach
-    .map(({ limit, level }) => ({
+    .map(({ limit, level, contract }) => ({
       limit,
       level,
+      contract,
       rules: limitRules(limit, db).map((entry) => {
-        if (entry.key) {
-          const e = rec.settings[entry.key];
-          return { ...entry, replacedBy: e && e.limit.id !== limit.id ? e.limit : null, replacedByContract: e && e.limit.id !== limit.id ? e.contract : null };
-        }
-        // Who won a field on a product: the contract that sets the product here, or
-        // another limit's field winning it.
-        const winnerAt = (t, f) => {
-          const d = rec.dropped.find((x) => x.target === t && x.limit.id === limit.id && x.why === 'contract');
-          if (d) return { limit: d.by, contract: d.contract };
-          const w = (t === '*' ? rec.products['*'] : productEntry(rec, t))?.[f];
-          return w && w.limit.id !== limit.id ? { limit: w.limit, contract: w.contract } : null;
-        };
-        const fields = PRODUCT_FIELDS.filter((f) => ruleSetting(entry.rule, f).mode !== 'inherit');
-        const lost = fields
-          .map((f) => {
-            const losses = entry.targets.map((t) => ({ t, w: winnerAt(t, f) })).filter(({ w }) => w);
-            if (!losses.length) return null;
-            const all = losses.length === entry.targets.length;
-            const on = losses.length > 2 ? `${losses.length} products` : losses.map(({ t }) => titleOf(t)).join(' and ');
-            return { field: f, all, by: losses[0].w.limit, contract: losses[0].w.contract, label: all ? FIELD_LABEL[f] : `${FIELD_LABEL[f]} for ${on}` };
-          })
-          .filter(Boolean);
-        if (lost.length === fields.length && lost.every((x) => x.all)) return { ...entry, replacedBy: lost[0].by, replacedByContract: lost[0].contract };
-        return { ...entry, replacedBy: null, partly: lost };
+        if (entry.key) return { ...entry, replacedBy: rec.order && rec.order.limit.id !== limit.id ? rec.order.limit : null };
+        const losses = entry.targets
+          .map((t) => ({ t, by: (t === '*' ? rec.products['*'] : productEntry(rec, t))?.limit }))
+          .filter(({ by }) => by && by.id !== limit.id);
+        if (!losses.length) return { ...entry, replacedBy: null };
+        if (losses.length === entry.targets.length && losses.every(({ by }) => by.id === losses[0].by.id)) return { ...entry, replacedBy: losses[0].by };
+        const byLimit = new Map();
+        losses.forEach(({ t, by }) => byLimit.set(by.id, { by, skus: [...(byLimit.get(by.id)?.skus || []), t] }));
+        const partly = [...byLimit.values()].map(({ by, skus }) => ({ key: by.id, by, label: skus.length > 2 ? `${skus.length} products` : skus.map(titleOf).join(' and ') }));
+        return { ...entry, replacedBy: null, partly };
       }),
     }))
-    .sort((a, b) => LEVEL_RANK[b.level] - LEVEL_RANK[a.level]);
+    .sort((a, b) => rankOf(b) - rankOf(a));
 }
+const rankOf = (x) => (x.contract ? CONTRACT_RANK : LEVEL_RANK[x.level]);
 
 // The day a week (Monday) or month starts, for a day (YYYY-MM-DD), and the day the next one starts.
 const shiftDay = (iso, days) => {
@@ -666,10 +671,14 @@ export function spentSoFar(orders, day = TODAY) {
 
 // What's wrong with a cart under the limits in effect for a location (for D2C, a
 // customer) — what the Cart and Checkout Validation function returns as errors.
-// `lines`: [{ sku, title, qty, price }], one per variant (`price`: the buyer's unit
-// price, optional); `subtotal` at the buyer's prices. A 'review' problem
-// blocks checkout too, but in the cart the buyer can send the order as an order
-// request instead.
+// `lines`: [{ sku, title, qty }], one per variant (`title`: the product's); `subtotal`
+// at the buyer's prices. A product's minimum and maximum count all its variants
+// together; its pack holds for each variant. Problems come in the order buyers see
+// them: the order's (minimum value, maximum value, minimum quantity, maximum
+// quantity), then products' (minimum, maximum, pack); then the 'review' ones — a
+// product's maximum (with its `sku`), then the order value's and the order
+// quantity's (`basis` 'qty'). A review problem blocks checkout too, but in the
+// cart the buyer can send the order as an order request instead.
 // `spent`: what the buyer ordered so far this week and month (spentSoFar), for
 // weekly and monthly maximums. A merchant's own message is used when the limit
 // sets one thing; with several, buyers see the message for the one they broke.
@@ -677,46 +686,16 @@ export const cartProblems = (db, companyId, locationId, lines, subtotal, spent =
 export const cartProblemsForCustomer = (db, customer, lines, subtotal, spent = {}) => cartProblemsIn(effectiveRulesForCustomer(db, customer), lines, subtotal, spent);
 const ownMessage = (limit) =>
   limit.message && (limit.kind === 'product' || ORDER_FIELDS.filter((f) => settingOf(limit, f).mode === 'set').length === 1) ? limit.message : null;
-// The least of a product one order can hold under its limit — its minimum, else its
-// pack — and the setting that asks for it, or null.
-function leastOf(e) {
-  const q = quantities(e);
-  const min = q && (q.min ?? (q.increment > 1 ? q.increment : null));
-  return min ? { min, e: q.min != null ? e.min : e.increment } : null;
-}
-// An order setting and a product's limit that contradict — the product's least is
-// over the order's maximum units, or costs more than its maximum value (at the line's
-// `price`) — are settled for an order with that product: the higher-ranked one
-// applies (a contract's, else the more specific); at the same rank neither does.
-// What's left out: { keys: order settings, skus: products whose limit isn't checked }.
-function orderProductClashes(rec, lines) {
-  const keys = new Set();
-  const skus = new Set();
-  lines.forEach((line) => {
-    const least = leastOf(productEntry(rec, line.sku));
-    if (!least) return;
-    const clash = (key, over) => {
-      const s = rec.settings[key];
-      if (!s || s.mode !== 'set' || !over(s.value)) return;
-      if (least.e.rank >= s.rank) keys.add(key);
-      if (s.rank >= least.e.rank) skus.add(line.sku);
-    };
-    clash('maxQty', (v) => least.min > v);
-    if (line.price != null) ['maxValue', 'maxValue@week', 'maxValue@month'].forEach((k) => clash(k, (v) => least.min * line.price > v));
-  });
-  return { keys, skus };
-}
 function cartProblemsIn(rec, lines, subtotal, spent = {}) {
   const totalQty = lines.reduce((n, l) => n + l.qty, 0);
   const problems = [];
-  const left = orderProductClashes(rec, lines);
-  const setting = (key) => (!left.keys.has(key) && rec.settings[key]?.mode === 'set' ? rec.settings[key] : null);
-  const add = (type, e, text, value, period = 'order') => problems.push({ type, limit: e.limit, message: ownMessage(e.limit) || text, value, period });
+  const setting = (key) => (rec.settings[key]?.mode === 'set' ? rec.settings[key] : null);
+  const add = (type, e, text, value, period = 'order', extra = {}) => problems.push({ type, limit: e.limit, message: ownMessage(e.limit) || text, value, period, ...extra });
 
   const minValue = setting('minValue');
   if (minValue && subtotal < minValue.value) add('minValue', minValue, `Your order must be at least ${money(minValue.value)} to check out. Add ${money(minValue.value - subtotal)} more.`);
   const maxValue = setting('maxValue');
-  if (maxValue && subtotal > maxValue.value) add('maxValue', maxValue, `Orders can’t be more than ${money(maxValue.value)}. Remove ${money(subtotal - maxValue.value)} to check out.`);
+  if (maxValue && subtotal > maxValue.value) add('maxValue', maxValue, `Orders can’t be more than ${money(maxValue.value)}. Remove ${money(subtotal - maxValue.value)} to check out.`, maxValue.value);
   // Weekly and monthly maximums: this order on top of what was ordered in the period.
   const sofar = (p) => Number(spent[p]) || 0;
   ['week', 'month'].forEach((p) => {
@@ -727,211 +706,353 @@ function cartProblemsIn(rec, lines, subtotal, spent = {}) {
   const minQty = setting('minQty');
   if (minQty && totalQty < minQty.value) add('minQty', minQty, `Your order needs at least ${units(minQty.value)}. Add ${units(minQty.value - totalQty)} more.`);
   const maxQty = setting('maxQty');
-  if (maxQty && totalQty > maxQty.value) add('maxQty', maxQty, `Orders can’t have more than ${units(maxQty.value)}.`);
+  if (maxQty && totalQty > maxQty.value) add('maxQty', maxQty, `Orders can’t have more than ${units(maxQty.value)}.`, maxQty.value);
+  // A product's variants together, with each variant's quantity for the pack.
+  const byProduct = new Map();
   lines.forEach((line) => {
-    if (left.skus.has(line.sku)) return;
-    const e = productEntry(rec, line.sku);
+    const p = byProduct.get(line.sku) || { sku: line.sku, title: line.title, qty: 0, each: [] };
+    p.qty += line.qty;
+    p.each.push(line.qty);
+    byProduct.set(line.sku, p);
+  });
+  const PRODUCT_ORDER = ['min', 'max', 'pack'];
+  const productProblems = [];
+  const productReviews = [];
+  byProduct.forEach((p) => {
+    const e = productEntry(rec, p.sku);
     const q = quantities(e);
     if (!q) return;
-    // Errors show for the whole cart, not on a line — so the merchant's own message
-    // is prefixed with the line it's about. Each field names the limit it came from.
-    const addLine = (fieldE, text) => problems.push({ type: 'product', limit: fieldE.limit, message: fieldE.limit.message ? `${line.title}: ${fieldE.limit.message}` : text });
-    if (q.min != null && line.qty < q.min) addLine(e.min, `${line.title}: order at least ${q.min}.`);
-    else if (q.max != null && line.qty > q.max) addLine(e.max, `${line.title}: order at most ${q.max}.`);
-    else if (q.increment > 1 && line.qty % q.increment) addLine(e.increment, `${line.title} is sold in packs of ${q.increment}.`);
+    // Errors can show for the whole cart, not on a line — so the merchant's own message
+    // is prefixed with the product it's about (`sku`, for a cart that shows it under the
+    // product's line). Each field names the limit it came from.
+    const addLine = (fieldE, field, text) => productProblems.push({ type: 'product', field, sku: p.sku, limit: fieldE.limit, message: fieldE.limit.message ? `${p.title}: ${fieldE.limit.message}` : text });
+    if (q.min != null && p.qty < q.min) addLine(e.min, 'min', `${p.title}: order at least ${q.min}.`);
+    else if (q.max != null && p.qty > q.max && !q.review) addLine(e.max, 'max', `${p.title}: order at most ${q.max}.`);
+    else if (q.increment > 1 && p.each.some((n) => n % q.increment)) addLine(e.increment, 'pack', `${p.title} is sold in packs of ${q.increment}.`);
+    // Over a maximum sent for review, the product can go as an order request (`sku`, `item`).
+    if (q.review && p.qty > q.max) {
+      const own = e.max.limit.message ? `${p.title}: ${e.max.limit.message}` : null;
+      productReviews.push({ type: 'review', limit: e.max.limit, message: own || `${p.title}: you can order up to ${q.max} without review. Reduce it or send an order request.`, value: q.max, period: 'order', sku: p.sku, item: p.title });
+    }
   });
+  productProblems.sort((a, b) => PRODUCT_ORDER.indexOf(a.field) - PRODUCT_ORDER.indexOf(b.field));
+  problems.push(...productProblems, ...productReviews);
   const threshold = setting('threshold');
   if (threshold && subtotal > threshold.value) add('review', threshold, `Your current limit is ${money(threshold.value)}. Reduce your order or send an order request.`, threshold.value);
   ['week', 'month'].forEach((p) => {
     const t = setting(`threshold@${p}`);
     const total = sofar(p) + subtotal;
-    if (t && total > t.value && !problems.some((x) => x.type === 'review')) {
+    if (t && total > t.value && !problems.some((x) => x.type === 'review' && !x.sku)) {
       add('review', t, `Your orders this ${p} come to ${money(sofar(p))}. With this one you’d be at ${money(total)}, over the ${money(t.value)} a ${p} you can order without review. Reduce your order or send an order request.`, t.value, p);
     }
   });
+  const thresholdQty = setting('thresholdQty');
+  if (thresholdQty && totalQty > thresholdQty.value) {
+    add('review', thresholdQty, `Your current limit is ${units(thresholdQty.value)}. Reduce your order or send an order request.`, thresholdQty.value, 'order', { basis: 'qty' });
+  }
   return problems;
 }
 
-// ── A contract's limits against each other ──────────────────────────────────
-// The limits picked for a contract that contradict each other, as lines for its
-// editor (a warning: it still saves). In one contract they rank the same, so they're
-// settled as the resolver and the cart settle them: an order minimum over another's
-// maximum — neither applies; a product they leave impossible to order — only the
-// newest applies to it; a product's least over an order's maximum units — neither, in
-// an order with it. Only what needs no prices (a product's least against a maximum
-// order value is settled in the cart). Limits that are off don't contradict; the rest
-// apply on the contract's dates, so they're all in force together.
-export function contractLimitConflicts(db, limits) {
-  const live = limits.filter((l) => l.status !== 'Inactive').map((l) => ({ l }));
-  const name = (l) => `“${l.name}”`;
+// ── Overlaps ────────────────────────────────────────────────────────────────
+// Read off two limits alone: where both apply (their targets), what both set and
+// who wins there — the same order of precedence as the resolver.
+const quote = (l) => `“${l.name || 'This limit'}”`;
+const capFirst = (s) => s[0].toUpperCase() + s.slice(1);
+const andList = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}` : xs[0] || '');
+// Product titles can hold commas ("Industrial filter, XL"), so a list uses semicolons.
+function titles(skus, db) {
+  const names = skus.slice(0, 3).map((sku) => (db.products || []).find((p) => p.sku === sku)?.title || sku);
+  if (skus.length > 3) return `${names.join('; ')} and ${skus.length - 3} more`;
+  return names.length > 1 ? `${names.slice(0, -1).join('; ')} and ${names.at(-1)}` : names[0];
+}
+
+// The first day (today or later) two limits both apply, or null when their dates never meet.
+function datesMeet(a, b) {
+  const start = (l) => (l.startDate && l.startDate > TODAY ? l.startDate : TODAY);
+  const end = (l) => l.endDate || '9999-12-31';
+  const from = start(a) > start(b) ? start(a) : start(b);
+  return from <= end(a) && from <= end(b) ? from : null;
+}
+
+// Where two limits both apply, with how each reaches there: [{ label, noun, a, b }]
+// (a, b: each one's level). B2B: store-wide, a company or a location — a location
+// deleted in Shopify can't order, so it's left out.
+function placesB2B(db, a, b) {
+  const company = (id) => (db.companies || []).find((c) => c.id === id);
+  const companyOf = (key) => key.split('::')[0];
+  const spots = (l) => [
+    ...(l.companyIds || []).map((id) => ({ key: id, label: company(id)?.name || 'Company', noun: 'company', level: 'company' })),
+    ...(l.locationKeys || []).flatMap((k) => {
+      const c = company(companyOf(k));
+      const loc = c?.locations?.find((x) => x.id === k.split('::')[1]);
+      return loc && loc.status !== 'Deleted' ? [{ key: k, label: `${loc.name} · ${c.name}`, noun: 'location', level: 'location' }] : [];
+    }),
+  ];
+  if (a.storeWide && b.storeWide) return [{ label: 'store-wide', noun: 'store', a: 'store', b: 'store' }];
+  if (a.storeWide) return spots(b).map((s) => ({ ...s, a: 'store', b: s.level }));
+  if (b.storeWide) return spots(a).map((s) => ({ ...s, a: s.level, b: 'store' }));
   const out = [];
-
-  const orders = live.filter((x) => x.l.kind === 'order');
-  orders.forEach((a) =>
-    orders.forEach((b) => {
-      if (a === b) return;
-      const minValue = num(settingOf(a.l, 'minValue'));
-      const maxValue = b.l.maxAction === 'review' ? null : num(settingOf(b.l, 'maxValue'));
-      if (minValue != null && maxValue != null && minValue > maxValue) {
-        const period = periodOf(b.l, 'maxValue');
-        out.push(`${name(a.l)} needs at least ${money(minValue)} per order, but ${name(b.l)} allows at most ${money(maxValue)} ${period === 'order' ? 'per order' : `a ${period}`}. Neither the minimum nor the maximum applies.`);
-      }
-      const minQty = num(settingOf(a.l, 'minQty'));
-      const maxQty = num(settingOf(b.l, 'maxQty'));
-      if (minQty != null && maxQty != null && minQty > maxQty) {
-        out.push(`${name(a.l)} needs at least ${units(minQty)} per order, but ${name(b.l)} allows at most ${units(maxQty)}. Neither the minimum nor the maximum applies.`);
-      }
-    }),
-  );
-
-  // A product limit's quantities per product ('*': every product), the strictest per
-  // field; a product's own take in the limit's rule on every product.
-  const stricter = (f, s, than) => (higherIsStricter(f) ? strictValue(f, s) > strictValue(f, than) : strictValue(f, s) < strictValue(f, than));
-  const combine = (...entries) => {
-    const e = {};
-    entries.filter(Boolean).forEach((x) =>
-      PRODUCT_FIELDS.forEach((f) => {
-        if (x[f] && (!e[f] || stricter(f, x[f], e[f]))) e[f] = x[f];
-      }),
-    );
-    return e;
-  };
-  const entriesOf = (l) => {
-    const m = new Map();
-    productRules(l).forEach((r) => {
-      const e = Object.fromEntries(PRODUCT_FIELDS.map((f) => [f, ruleSetting(r, f)]).filter(([, s]) => s.mode !== 'inherit'));
-      ruleTargets(r, db).forEach((t) => m.set(t, combine(m.get(t), e)));
-    });
-    return m;
-  };
-  const on = (m, t) => (t === '*' ? m.get('*') : combine(m.get(t), m.get('*')));
-  const joined = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}` : xs[0]);
-  const titles = new Map((db.products || []).map((p) => [p.sku, p.title]));
-  const listed = (skus) => {
-    const names = skus.slice(0, 3).map((s) => titles.get(s) || s);
-    return skus.length > 3 ? `${names.join(', ')} and ${skus.length - 3} more` : joined(names);
-  };
-  const parts = (e) => PRODUCT_FIELDS.filter((f) => e[f]).map((f) => (e[f].mode === 'set' ? PRODUCT_TEXT[f][0](e[f].value) : PRODUCT_TEXT[f][1])).join(', ');
-  // Newest first: updated most recently, then added later (as in buildRecord).
-  const pos = new Map((db.limits || []).map((l, i) => [l.id, i]));
-  const newerFirst = (a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')) || (pos.get(b.id) ?? 0) - (pos.get(a.id) ?? 0);
-
-  // Products the limits on them leave impossible to order: per product, the limits
-  // on it.
-  const products = live.filter((x) => x.l.kind === 'product').map((x) => ({ ...x, m: entriesOf(x.l) }));
-  const onAll = products.filter((p) => p.m.has('*'));
-  const bySku = new Map();
-  products.forEach((p) =>
-    p.m.forEach((_, t) => {
-      if (t === '*') return;
-      if (!bySku.has(t)) bySku.set(t, []);
-      bySku.get(t).push(p);
-    }),
-  );
-  const impossible = new Map();
-  const check = (t, members) => {
-    if (members.length < 2) return;
-    const inForce = [...members].sort((a, b) => newerFirst(b.l, a.l));
-    const entries = inForce.map((p) => on(p.m, t));
-    if (entries.some(contradicts) || !contradicts(combine(...entries))) return;
-    const key = inForce.map((p, i) => `${p.l.id}:${parts(entries[i])}`).join('|');
-    if (!impossible.has(key)) impossible.set(key, { inForce, entries, skus: [] });
-    impossible.get(key).skus.push(t);
-  };
-  check('*', onAll);
-  bySku.forEach((own, t) => check(t, [...own, ...onAll.filter((p) => !own.includes(p))]));
-  impossible.forEach(({ inForce, entries, skus }) => {
-    const what = skus.includes('*') ? 'All products' : listed(skus);
-    const which = inForce.length === 2 ? 'the newer one' : 'the newest';
-    out.push(`${what}: ${joined(inForce.map((p, i) => `${name(p.l)} (${parts(entries[i])})`))} leave no quantity that can be ordered. Only ${which}, ${name(inForce.at(-1).l)}, applies.`);
-  });
-
-  // A product's least over an order's maximum units.
-  const capped = orders.filter((o) => num(settingOf(o.l, 'maxQty')) != null);
-  if (!capped.length) return out;
-  products.forEach((p) => {
-    // Its least per product, most first.
-    const all = p.m.has('*') ? leastOf(p.m.get('*'))?.min ?? 0 : 0;
-    const skus = [...p.m.keys()].filter((t) => t !== '*').map((t) => [leastOf(on(p.m, t))?.min ?? 0, t]).sort((a, b) => b[0] - a[0]);
-    capped.forEach((o) => {
-      const maxQty = num(settingOf(o.l, 'maxQty'));
-      const but = `but ${name(o.l)} allows at most ${units(maxQty)} per order`;
-      if (all > maxQty) return out.push(`${name(p.l)} needs at least ${all} of each product in an order, ${but}. Neither applies.`);
-      const over = new Map();
-      for (const [n, t] of skus) {
-        if (n <= maxQty) break;
-        if (!over.has(n)) over.set(n, []);
-        over.get(n).push(t);
-      }
-      over.forEach((list, n) => out.push(`${name(p.l)} needs at least ${n} of ${listed(list)} in an order, ${but}. In an order with ${list.length === 1 ? 'it' : 'them'}, neither applies.`));
-    });
-  });
+  spots(a).forEach((s) => spots(b).forEach((t) => {
+    if (s.key === t.key) out.push({ ...s, a: s.level, b: t.level });
+    else if (s.level === 'company' && t.level === 'location' && companyOf(t.key) === s.key) out.push({ ...t, a: 'company', b: 'location' });
+    else if (s.level === 'location' && t.level === 'company' && companyOf(s.key) === t.key) out.push({ ...s, a: 'location', b: 'company' });
+  }));
   return out;
 }
-
-// ── Buyers ──────────────────────────────────────────────────────────────────
-// The buyers limits apply to, each with a `key` for their record, how a
-// limit reaches them (`levelOf`) and a name for where. B2B: every company location.
-// D2C: non-logged-in customers, logged-in customers without tags, each customer
-// tag (so a tag no customer has yet still counts) and the customers who differ
-// from those — picked by name, with several tags, or with their own pricing.
-// Customers in a company are B2B buyers.
-function buyers(db) {
-  const list = [];
-  // A location deleted in Shopify can't order, so it isn't checked.
-  (db.companies || []).forEach((c) => (c.locations || []).filter((loc) => loc.status !== 'Deleted').forEach((loc) => list.push({
-    key: limitKey(c.id, loc.id),
-    audience: 'b2b',
-    where: `${loc.name} · ${c.name}`,
-    levelOf: atLocation(c.id, loc.id),
-  })));
-
-  const d2c = (db.limits || []).filter(isD2CLimit);
-  const picked = new Set(d2c.filter((l) => l.customerTarget === 'specific').flatMap((l) => l.customerTargetIds || []));
-  const tags = new Set([...(db.tagPricing || []).map((t) => t.id), ...d2c.filter((l) => l.customerTarget === 'tags').flatMap((l) => l.customerTargetIds || [])]);
-  const tagName = (id) => (db.tagPricing || []).find((t) => t.id === id)?.name || id;
-  const customer = (cu, where) => list.push({
-    key: customerKey(cu),
-    audience: 'd2c',
-    where,
-    levelOf: (l) => customerLimitLevel(l, cu),
-  });
-  customer(null, 'Non logged-in customers');
-  customer({ id: null, tags: [] }, 'Logged-in customers');
-  tags.forEach((t) => customer({ id: null, tags: [t] }, `Customers tagged ${tagName(t)}`));
-  (db.customers || [])
-    .filter((cu) => !companyForCustomerEmail(db, cu.email) && (picked.has(cu.id) || (cu.tags || []).length > 1 || cu.policyId))
-    .forEach((cu) => customer(cu, cu.name));
-  return list;
+// D2C: all, logged-in or non-logged-in customers ('everyone'), a customer tag or a customer.
+const BROAD_TARGETS = ['all', 'logged_in', 'logged_out'];
+const PICKED_LEVEL = { tags: 'tag', specific: 'customer' };
+function placesD2C(db, a, b) {
+  const ta = a.customerTarget || 'all';
+  const tb = b.customerTarget || 'all';
+  const customer = (id) => (db.customers || []).find((c) => c.id === id);
+  const place = (target, id) =>
+    target === 'tags'
+      ? { key: id, label: `customers tagged ${(db.tagPricing || []).find((t) => t.id === id)?.name || id}`, noun: 'customer tag' }
+      : { key: id, label: customer(id)?.name || 'a customer', noun: 'customer' };
+  if (BROAD_TARGETS.includes(ta) && BROAD_TARGETS.includes(tb)) {
+    if (ta !== 'all' && tb !== 'all' && ta !== tb) return []; // logged in, and not
+    return [{ label: D2C_TARGET_LABEL[ta === 'all' ? tb : ta].toLowerCase(), noun: 'customer group', a: 'everyone', b: 'everyone' }];
+  }
+  if (BROAD_TARGETS.includes(ta) || BROAD_TARGETS.includes(tb)) {
+    const broadIsA = BROAD_TARGETS.includes(ta);
+    const [broad, picked] = broadIsA ? [ta, b] : [tb, a];
+    if (broad === 'logged_out') return []; // picked customers and tags are logged in
+    const level = PICKED_LEVEL[picked.customerTarget];
+    return (picked.customerTargetIds || []).map((id) => ({ ...place(picked.customerTarget, id), a: broadIsA ? 'everyone' : level, b: broadIsA ? level : 'everyone' }));
+  }
+  const ia = a.customerTargetIds || [];
+  const ib = b.customerTargetIds || [];
+  // Different tags can meet at a customer who has both too, but which customers is
+  // their data, not the limits' — see segmentNote.
+  if (ta === tb) return ia.filter((id) => ib.includes(id)).map((id) => ({ ...place(ta, id), a: PICKED_LEVEL[ta], b: PICKED_LEVEL[ta] }));
+  // A customer tag and picked customers meet at the customers who have the tag.
+  const [tagIds, people] = ta === 'tags' ? [ia, ib] : [ib, ia];
+  return people
+    .filter((id) => (customer(id)?.tags || []).some((t) => tagIds.includes(t)))
+    .map((id) => ({ ...place('specific', id), a: PICKED_LEVEL[ta], b: PICKED_LEVEL[tb] }));
+}
+const meetingPlaces = (db, a, b) => (isD2CLimit(a) ? placesD2C(db, a, b) : placesB2B(db, a, b));
+// How a limit covers the whole of a place, if it does (a limit on one location
+// covers only part of its company). Everyone and a customer tag are never covered
+// whole.
+function levelAtPlace(l, p) {
+  if (p.noun === 'store') return l.storeWide ? 'store' : null;
+  if (p.noun === 'company') return (l.companyIds || []).includes(p.key) ? 'company' : l.storeWide ? 'store' : null;
+  if (p.noun === 'location') return (l.locationKeys || []).includes(p.key) ? 'location' : (l.companyIds || []).includes(p.key.split('::')[0]) ? 'company' : l.storeWide ? 'store' : null;
+  if (p.noun === 'customer') return l.customerTarget === 'specific' && (l.customerTargetIds || []).includes(p.key) ? 'customer' : null;
+  return null;
 }
 
-// ── Inherited values, for the editor ─────────────────────────────────────────
-// What the buyers a draft reaches get for one setting when the draft leaves it
-// empty: the value from the other limits at the draft's level or wider (more
-// specific ones override the draft anyway). The winning setting ({ mode, value,
-// limit }) when it's the same for every buyer, 'varies' when they differ, null
-// when nothing sets it. `others` = the db without the draft's saved version, kept
-// the same while editing so the buyers' records are reused.
-export function inheritedSetting(others, draft, field, rule = null) {
-  const target = normalizeLimit(draft);
-  const people = buyers({ ...others, limits: [...(others.limits || []), target] });
-  const found = new Map();
-  people.forEach((b) => {
-    const level = b.levelOf(target);
-    if (!level) return;
-    const cap = LEVEL_RANK[level];
-    const capped = (l) => {
-      const lv = b.levelOf(l);
-      return lv && LEVEL_RANK[lv] <= cap ? lv : null;
-    };
-    const rec = resolveBuyer(others, `${b.key}|up to ${cap}`, capped);
-    const values = rule
-      ? ruleTargets(rule, others).map((t) => (t === '*' ? rec.products['*'] : productEntry(rec, t))?.[field] || null)
-      : [rec.settings[settingKey(target, field)] || null];
-    values.forEach((e) => found.set(e ? `${e.mode}|${e.value}|${e.limit.id}` : '', e));
+// " store-wide", " at ABC Construction", " at 2 companies and 4 locations",
+// " for customers tagged VIP".
+function whereText(places) {
+  if (places.length === 1 && places[0].noun === 'store') return ' store-wide';
+  const prep = ['company', 'location'].includes(places[0]?.noun) ? 'at' : places[0]?.noun === 'contract' ? 'in' : 'for';
+  if (places.length <= 3) return ` ${prep} ${andList(places.map((p) => p.label))}`;
+  const counts = new Map();
+  places.forEach((p) => counts.set(p.noun, (counts.get(p.noun) || 0) + 1));
+  return ` ${prep} ${andList([...counts].map(([noun, n]) => `${n} ${n === 1 ? noun : noun === 'company' ? 'companies' : `${noun}s`}`))}`;
+}
+
+const rankWinner = (p) => (LEVEL_RANK[p.a] === LEVEL_RANK[p.b] ? null : { who: LEVEL_RANK[p.a] > LEVEL_RANK[p.b] ? 'a' : 'b', why: 'more specific' });
+// The places grouped by who wins there: [{ who, why, places }].
+function byWinner(places, winnerAt) {
+  const groups = new Map();
+  places.forEach((p) => {
+    const w = winnerAt(p);
+    const k = `${w.who}|${w.why || ''}`;
+    if (!groups.has(k)) groups.set(k, { ...w, places: [] });
+    groups.get(k).places.push(p);
   });
-  if (!found.size || (found.size === 1 && found.has(''))) return null;
-  return found.size === 1 ? [...found.values()][0] : 'varies';
+  return [...groups.values()];
+}
+
+// Which rule of a product limit each product takes (rules are in order; a rule on
+// all products takes the rest, and the rules after it get nothing).
+function coverage(l, db) {
+  const bySku = new Map();
+  let all = null;
+  for (const r of productRules(l)) {
+    if (r.scopeType === 'all') {
+      all = r;
+      break;
+    }
+    ruleSkus(r, db).forEach((sku) => { if (!bySku.has(sku)) bySku.set(sku, r); });
+  }
+  return { bySku, all };
+}
+// The products both product limits set quantities for, by the pair of rules that
+// have them: [{ ra, rb, skus }] — skus ['*'] for every product neither names.
+function sharedProducts(a, b, db) {
+  const ca = coverage(a, db);
+  const cb = coverage(b, db);
+  const pairs = new Map(); // rule of a → (rule of b → entry)
+  const put = (ra, rb, sku) => {
+    if (!ruleParts(ra) || !ruleParts(rb)) return;
+    if (!pairs.has(ra)) pairs.set(ra, new Map());
+    if (!pairs.get(ra).has(rb)) pairs.get(ra).set(rb, { ra, rb, skus: [] });
+    pairs.get(ra).get(rb).skus.push(sku);
+  };
+  new Set([...ca.bySku.keys(), ...cb.bySku.keys()]).forEach((sku) => {
+    const ra = ca.bySku.get(sku) || ca.all;
+    const rb = cb.bySku.get(sku) || cb.all;
+    if (ra && rb) put(ra, rb, sku);
+  });
+  if (ca.all && cb.all) put(ca.all, cb.all, '*');
+  const rest = ca.bySku.size + cb.bySku.size > 0;
+  return [...pairs.values()].flatMap((m) => [...m.values()]).map((x) => ({ ...x, label: x.skus[0] === '*' ? (rest ? 'All other products' : 'All products') : titles(x.skus, db), many: x.skus[0] === '*' || x.skus.length > 1 }));
+}
+
+// What two limits that meet (`places`, from the day `from`) have to say about each
+// other. Two limits of one kind don't combine: where both apply, one replaces the
+// other — the more specific, then the newer (`aNewer`: a is newer than b) — a
+// product limit only for the products both have. An order limit and a product
+// limit both apply, so an order maximum below a product minimum stops orders
+// (`stops`). `posOf`: where a limit is in the list (a draft not saved yet, or one
+// being turned on, is the newest).
+function pairNotes(db, a, b, places, names, aNewer, from, posOf) {
+  const stops = [];
+  const notes = [];
+  const other = (who) => (who === 'a' ? 'b' : 'a');
+  const groups = byWinner(places, (p) => rankWinner(p) || { who: aNewer ? 'a' : 'b', why: 'newer' });
+  if (a.kind === 'order' && b.kind === 'order') {
+    groups.forEach((g) => {
+      notes.push(`${capFirst(names[g.who])} replaces ${names[other(g.who)]}${whereText(g.places)}: it’s ${g.why}, so none of ${names[other(g.who)]}’s settings apply there.`);
+    });
+  } else if (a.kind === 'product' && b.kind === 'product') {
+    const sides = { a, b };
+    sharedProducts(a, b, db).forEach(({ ra, rb, label, many }) => {
+      const rules = { a: ra, b: rb };
+      const parts = (who) => ruleParts(rules[who], sides[who].maxAction === 'review');
+      groups.forEach((g) => {
+        notes.push(`${label} ${many ? 'are' : 'is'} in both limits${whereText(g.places)}: ${names[g.who]} (${parts(g.who)}) applies, not ${names[other(g.who)]} (${parts(other(g.who))}). It’s ${g.why}.`);
+      });
+    });
+  } else {
+    // An order limit's maximum units against a product limit's minimum (or pack).
+    // Where a third order limit replaces the order limit (more specific, or as
+    // specific and newer), it doesn't apply, so it can't stop orders there.
+    const [o, p, oSide, pSide] = a.kind === 'order' ? [a, b, 'a', 'b'] : [b, a, 'b', 'a'];
+    const replaced = (pl) =>
+      (db.limits || []).some((z) => {
+        if (z.id === a.id || z.id === b.id || z.kind !== 'order' || limitState(z, from) !== 'Active' || isD2CLimit(z) !== isD2CLimit(a)) return false;
+        const level = levelAtPlace(z, pl);
+        if (!level) return false;
+        const [rz, ro] = [LEVEL_RANK[level], LEVEL_RANK[pl[oSide]]];
+        return rz > ro || (rz === ro && newer(z, posOf(z), o, posOf(o)));
+      });
+    const maxQty = num(settingOf(o, 'maxQty'));
+    const where = places.filter((pl) => !replaced(pl));
+    if (maxQty != null && where.length) {
+      const cov = coverage(p, db);
+      [...new Set(cov.bySku.values()), ...(cov.all ? [cov.all] : [])].forEach((r) => {
+        const pack = num(ruleSetting(r, 'increment'));
+        const min = num(ruleSetting(r, 'min')) ?? (pack > 1 ? pack : null);
+        if (min == null || min <= maxQty) return;
+        const skus = r === cov.all ? null : [...cov.bySku].filter(([, x]) => x === r).map(([sku]) => sku);
+        const label = skus ? titles(skus, db) : cov.bySku.size ? 'All other products' : 'All products';
+        const each = !skus || skus.length > 1 ? ' of each' : '';
+        stops.push(`${label} can’t be ordered${whereText(where)}: ${names[pSide]} needs at least ${min}${each}, but ${names[oSide]} allows at most ${units(maxQty)} per order.`);
+      });
+    }
+  }
+  return { lines: [...stops, ...notes], stops: stops.length > 0, attention: stops.length > 0 };
+}
+
+// The other limits a limit (a draft or a stored one) overlaps: ones of its kind it
+// replaces or that replace it for some of their buyers (or products), or ones that
+// together with it stop orders. One per other limit, the ones that stop orders first:
+//   { key, id, name, from, text, stops, attention }
+// `from`: the day they start to meet, when it's later than today. `attention`: it
+// stops orders. `self`: what to call the limit in the text
+// (its name by default; the editor says "this limit"). Last, for a limit on customer
+// tags, a soft note when other tags already have limits of its kind (`soft`, no
+// `id`: see segmentNote).
+export function limitOverlaps(db, draft, { self } = {}) {
+  const list = db.limits || [];
+  // A limit being created, or turned on (it's off now), is the newest (turnLimitOn).
+  const saved = list.find((x) => x.id === draft.id);
+  const turningOn = !saved || saved.status !== 'Active';
+  const a = { ...normalizeLimit(draft), id: draft.id || 'new', ...(turningOn ? { turnedOnAt: TODAY } : {}) };
+  if (a.status !== 'Active' || !isLimitAssigned(a)) return [];
+  const pos = (l) => {
+    const i = turningOn && l.id === a.id ? -1 : list.findIndex((x) => x.id === l.id);
+    return i === -1 ? Infinity : i;
+  };
+  const out = [];
+  list.forEach((b) => {
+    if (b.id === a.id || b.status !== 'Active' || isD2CLimit(b) !== isD2CLimit(a) || !isLimitAssigned(b)) return;
+    const from = datesMeet(a, b);
+    if (!from) return;
+    const places = meetingPlaces(db, a, b);
+    if (!places.length) return;
+    const found = pairNotes(db, a, b, places, { a: self || quote(a), b: quote(b) }, newer(a, pos(a), b, pos(b)), from, pos);
+    if (!found.lines.length) return;
+    const text = [...found.lines, 'Consider adjusting one of the two.'].join(' ');
+    out.push({ key: `${b.id}|${from}`, id: b.id, name: b.name, from: from > TODAY ? from : null, text: capFirst(text), stops: found.stops, attention: found.attention });
+  });
+  out.sort((x, y) => Number(y.stops) - Number(x.stops) || Number(y.attention) - Number(x.attention));
+  const soft = segmentNote(db, a);
+  return soft ? [...out, soft] : out;
+}
+
+// A customer can have several tags, and with tag limits of one kind on different
+// tags, they get only the newest one (segmentLevel). Which customers have which
+// tags is their data, not the limits', so this only says which other tags already
+// have limits of the kind — no customer is looked up.
+function segmentNote(db, a) {
+  if (!isD2CLimit(a) || a.customerTarget !== 'tags' || !(a.customerTargetIds || []).length) return null;
+  const others = (db.limits || []).filter((b) => b.id !== a.id && b.status === 'Active' && isD2CLimit(b) && b.kind === a.kind
+    && b.customerTarget === 'tags' && datesMeet(a, b) && !(b.customerTargetIds || []).some((t) => a.customerTargetIds.includes(t)));
+  if (!others.length) return null;
+  const tagName = (id) => (db.tagPricing || []).find((t) => t.id === id)?.name || id;
+  const tags = [...new Set(others.flatMap((b) => b.customerTargetIds || []))].map(tagName);
+  const shown = tags.length > 3 ? `${tags.slice(0, 3).join(', ')} and ${tags.length - 3} more` : andList(tags);
+  const kind = a.kind === 'order' ? 'order limits' : 'product limits';
+  return {
+    key: 'segments', id: null, name: null, from: null, stops: false, attention: false, soft: true,
+    text: `Other customer tags already have ${kind} (${shown}). A customer with several tags gets only the newest of these limits, so check them if they may overlap.`,
+  };
+}
+
+// The overlaps some limits have once a change is made (`nextLimits`, e.g. a
+// contract going live), each pair once.
+export function overlapsOf(db, nextLimits, ids) {
+  const next = { ...db, limits: nextLimits };
+  const seen = new Set();
+  return ids.flatMap((id) => {
+    const l = nextLimits.find((x) => x.id === id);
+    if (!l) return [];
+    return limitOverlaps(next, l).filter((o) => {
+      const k = [id, o.id].sort().join('|');
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    }).map((o) => ({ ...o, key: `${id}|${o.key}` }));
+  });
+}
+
+// ── A contract's limits against each other ──────────────────────────────────
+// The limits picked for a contract that overlap, as lines for its editor (a
+// warning: it still saves). In one contract they apply at the same places, at the
+// same rank, on the contract's dates — so, as anywhere, two order limits don't
+// combine (the newest applies), two product limits don't for the products both have,
+// and an order maximum below a product minimum stops orders. Limits that are off
+// don't count.
+export function contractLimitConflicts(db, limits) {
+  const list = db.limits || [];
+  const pos = (l) => list.findIndex((x) => x.id === l.id);
+  const live = limits.filter((l) => l.status === 'Active');
+  const places = [{ label: 'this contract', noun: 'contract', a: 'contract', b: 'contract' }];
+  const out = [];
+  live.forEach((a, i) =>
+    live.slice(i + 1).forEach((b) => {
+      const found = pairNotes(db, a, b, places, { a: quote(a), b: quote(b) }, newer(a, pos(a), b, pos(b)), TODAY, pos);
+      out.push(...found.lines.map(capFirst));
+    }),
+  );
+  return out;
 }
 
 // ── Validation ──────────────────────────────────────────────────────────────
@@ -939,8 +1060,8 @@ export function inheritedSetting(others, draft, field, rule = null) {
 export function limitErrors(d) {
   const e = {};
   const n = (k) => toNumber(d[k]);
-  // A minimum can be 0 (none: it lifts a wider limit's minimum where this one is
-  // more specific); a maximum of 0 would stop every order, so it must be above 0.
+  // A minimum can be 0 (none); a maximum of 0 would stop every order, so it must be
+  // above 0.
   const isMin = (k) => k.startsWith('min');
   const allowed = (k, v) => (isMin(k) ? v >= 0 : v > 0);
   const bad = (k) => d[k] !== '' && d[k] != null && !allowed(k, Number(d[k]));
@@ -956,12 +1077,11 @@ export function limitErrors(d) {
     if (n('minValue') != null && n('maxValue') != null && n('minValue') > n('maxValue')) e.maxValue = 'Must be more than the minimum';
     if (n('minQty') != null && n('maxQty') != null && n('minQty') > n('maxQty')) e.maxQty = 'Must be more than the minimum';
   }
-  // Product limit: each rule on its own (keys `rule-<i>-<field>`), and no product
-  // in two rules — a rule on all products can't share the limit with others. A
-  // minimum of 0 is none; a pack of 1 is no pack (it lifts a wider one).
+  // Product limit: each rule on its own (keys `rule-<i>-<field>`). Rules can share
+  // products, a rule on all products too: the first one wins them (see
+  // ruleOverlaps). A minimum of 0 is none; a pack of 1 is no pack.
   if (d.kind === 'product') {
     const rules = productRules(d);
-    const owner = new Map(); // sku → the earlier rule that has it
     rules.forEach((r, i) => {
       const key = (f) => `rule-${i}-${f}`;
       const rn = (f) => toNumber(r[f]);
@@ -980,12 +1100,10 @@ export function limitErrors(d) {
       if (rn('min') && rn('max') != null && rn('min') > rn('max')) e[key('max')] = 'Must be more than the minimum';
       if (r.scopeType === 'products' && !(r.selectedProducts || []).length) e[key('products')] = 'Pick at least one product';
       if (r.scopeType === 'collection' && !scopeCollections(r).length) e[key('products')] = 'Pick at least one collection';
-      const skus = r.scopeType === 'collection' ? scopeCollections(r).flatMap((c) => COLLECTIONS[c] || []) : r.scopeType === 'products' ? r.selectedProducts || [] : [];
-      const taken = skus.map((sku) => owner.get(sku)).find((j) => j != null);
-      if (taken != null && !e[key('products')]) e[key('products')] = `Some of these products are already in rule ${taken + 1}`;
-      skus.forEach((sku) => { if (!owner.has(sku)) owner.set(sku, i); });
+      if (ATTRIBUTE_SCOPES[r.scopeType] && !attributePicks(r).length) {
+        e[key('products')] = { tags: 'Pick at least one tag', vendors: 'Pick at least one vendor', productTypes: 'Pick at least one product type' }[r.scopeType];
+      }
     });
-    if (rules.length > 1 && rules.some((r) => r.scopeType === 'all')) e.rules = 'A rule on all products can’t share a limit with other rules';
   }
   if (isD2CLimit(d)) {
     if (PICKED_TARGETS.includes(d.customerTarget) && !(d.customerTargetIds || []).length) {

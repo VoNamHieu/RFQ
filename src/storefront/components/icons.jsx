@@ -22,6 +22,9 @@ export const QuoteIcon = (p) => (
 export const InfoIcon = (p) => (
   <svg viewBox="0 0 24 24" {...p}><circle cx="12" cy="12" r="9" {...stroke} /><path d="M12 11v5M12 8h.01" {...stroke} /></svg>
 );
+export const WarningIcon = (p) => (
+  <svg viewBox="0 0 24 24" {...p}><path d="M12 4 3 20h18z" {...stroke} /><path d="M12 10v4.5M12 17h.01" {...stroke} /></svg>
+);
 export const PinIcon = (p) => (
   <svg viewBox="0 0 24 24" {...p}><path d="M12 21c4.5-4.2 7-7.5 7-11a7 7 0 1 0-14 0c0 3.5 2.5 6.8 7 11z" {...stroke} /><circle cx="12" cy="10" r="2.4" {...stroke} /></svg>
 );

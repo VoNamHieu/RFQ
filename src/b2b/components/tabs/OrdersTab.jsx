@@ -3,13 +3,14 @@ import { EmptyBlock } from '../../../shared/EmptyBlock.jsx';
 import { money } from '../../format.js';
 import { useStore } from '../../store.jsx';
 import { versionFlags } from '../../../shared/versions.js';
-import { isHeld, heldReason, heldFirst, HeldOrderActions } from '../HeldOrders.jsx';
+import { isHeld, heldReason, heldFirst, HeldOrderActions, buyerMessageText } from '../HeldOrders.jsx';
 import { wcTone } from '../../../shared/wc.jsx';
 
 const STATUS_TONE = {
   Fulfilled: 'success',
   Paid: 'success',
   'Needs review': 'warning',
+  'Invoice sent': 'info',
   Blocked: 'critical',
   Cancelled: 'critical',
   'Draft order': 'info',
@@ -23,7 +24,8 @@ export function OrdersTab({ company }) {
   const [loc, setLoc] = useState('all');
   // Orders held by an order maximum sent for review sit on top, with Approve / Decline (order limits).
   const reviewOrders = versionFlags().orderLimits;
-  const allOrders = company.orders || [];
+  // A declined order request leaves the list (the buyer still sees it, declined, on the storefront).
+  const allOrders = (company.orders || []).filter((o) => o.status !== 'Declined');
   const orders = (loc === 'all' ? allOrders : allOrders.filter((o) => o.location === loc))
     .slice()
     .sort(reviewOrders ? heldFirst : (a, b) => String(b.date).localeCompare(String(a.date)));
@@ -50,6 +52,11 @@ export function OrdersTab({ company }) {
           {reviewOrders && isHeld(o) ? (
             <s-text tone="caution" fontSize="small">
               {heldReason(o, state.db)}
+            </s-text>
+          ) : null}
+          {reviewOrders && isHeld(o) && buyerMessageText(o) ? (
+            <s-text fontSize="small">
+              {buyerMessageText(o)}
             </s-text>
           ) : null}
         </s-stack>

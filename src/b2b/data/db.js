@@ -404,25 +404,35 @@ const quotes = [
 ];
 
 // Order limits (see limits.js). Each setting says what it does: `set` a value,
-// `inherit` (left to the wider limits) or `none` (no limit here). Vinh Phat's own
-// minimum replaces the store-wide one for its location. The maximums sent for
-// review held orders #1045 (ABC Hanoi's own, $10,000) and #1048 (store-wide,
-// $20,000) — see `heldAt` in orderSeed.
+// `inherit` (left empty) or `none` (no limit here). Limits don't combine, so each
+// order limit sets everything its buyers get: Vinh Phat's own and ABC Hanoi's
+// replace the store-wide one there. The maximums sent for review held orders #1045
+// (ABC Hanoi's, $10,000) and #1048 (Vinh Phat's, $20,000) — see `heldAt` in orderSeed.
 const inherit = () => ({ mode: 'inherit' });
 const set = (value) => ({ mode: 'set', value });
 const orderSettings = (s) => ({ minValue: inherit(), maxValue: inherit(), minQty: inherit(), maxQty: inherit(), ...s });
 const limits = [
-  { id: 'ol1', name: 'Wholesale minimum', kind: 'order', status: 'Active', maxAction: 'block', settings: orderSettings({ minValue: set(500) }),
+  { id: 'ol1', createdAt: '2025-11-12', name: 'Wholesale minimum', kind: 'order', status: 'Active', maxAction: 'review', settings: orderSettings({ minValue: set(500), maxValue: set(20000) }),
     storeWide: true, companyIds: [], locationKeys: [], message: '' },
-  { id: 'ol2', name: 'Vinh Phat low minimum', kind: 'order', status: 'Active', maxAction: 'block', settings: orderSettings({ minValue: set(200) }),
+  { id: 'ol2', createdAt: '2025-12-08', name: 'Vinh Phat low minimum', kind: 'order', status: 'Active', maxAction: 'review', settings: orderSettings({ minValue: set(200), maxValue: set(20000) }),
     storeWide: false, companyIds: ['c2'], locationKeys: [], message: '' },
-  { id: 'ol3', name: 'Filter case packs', kind: 'product', status: 'Active', maxAction: 'block',
+  { id: 'ol3', createdAt: '2025-12-15', name: 'Filter case packs', kind: 'product', status: 'Active', maxAction: 'block',
     rules: [{ id: 'r1', scopeType: 'products', collection: '', selectedProducts: ['FIL-XL', 'FIL-STD'], min: set(12), max: inherit(), increment: set(12) }],
     storeWide: false, companyIds: ['c1', 'c2'], locationKeys: [], message: '' },
-  { id: 'ol4', name: 'ABC Hanoi review', kind: 'order', status: 'Active', maxAction: 'review', settings: orderSettings({ maxValue: set(10000) }),
+  { id: 'ol4', createdAt: '2026-04-21', name: 'ABC Hanoi review', kind: 'order', status: 'Active', maxAction: 'review', settings: orderSettings({ minValue: set(500), maxValue: set(10000) }),
     storeWide: false, companyIds: [], locationKeys: ['c1::l1'], message: '' },
-  { id: 'ol5', name: 'Large order review', kind: 'order', status: 'Active', maxAction: 'review', settings: orderSettings({ maxValue: set(20000) }),
-    storeWide: true, companyIds: [], locationKeys: [], message: '' },
+  // Two storefront jerseys for ABC: over 5, one blocks checkout and one goes for
+  // review — the B2B demo account's cart starts over both (DEMO_ACCOUNTS).
+  { id: 'ol5', createdAt: '2026-07-20', name: 'Haaland jersey maximum', kind: 'product', status: 'Active', maxAction: 'block',
+    rules: [{ id: 'r1', scopeType: 'products', collection: '', selectedProducts: ['701242784-HAALAND'], min: inherit(), max: set(5), increment: inherit() }],
+    storeWide: false, companyIds: ['c1'], locationKeys: [], message: '' },
+  { id: 'ol6', createdAt: '2026-07-20', name: 'Foden jersey review', kind: 'product', status: 'Active', maxAction: 'review',
+    rules: [{ id: 'r1', scopeType: 'products', collection: '', selectedProducts: ['701242784-FODEN'], min: inherit(), max: set(5), increment: inherit() }],
+    storeWide: false, companyIds: ['c1'], locationKeys: [], message: '' },
+  // Off until the storefront cart's demo case "Order blocks + product review" turns
+  // it on (CART_CASES): newer, it replaces ABC Hanoi review there.
+  { id: 'ol7', createdAt: '2026-07-20', name: 'ABC Hanoi order maximum', kind: 'order', status: 'Inactive', maxAction: 'block', settings: orderSettings({ maxValue: set(800) }),
+    storeWide: false, companyIds: [], locationKeys: ['c1::l1'], message: '' },
 ];
 
 // Agreements (see agreements.js). ABC's CT-301 is live and its terms are the ones
@@ -467,8 +477,24 @@ export const orderSeed = {
   c1: [
     {
       id: '#1045', location: 'Hanoi', buyer: 'John Nguyen', date: '2026-07-15', amount: 12400, lines: 3, po: 'PO-9821',
+      // Its products, at the negotiated prices, for the buyer's order page on the storefront.
+      items: [
+        { sku: '701242690-HAALAND', title: 'Manchester City Home Authentic Jersey 2026/27 With HAALAND 9 Printing in Gift Box', qty: 40, price: 130 },
+        { sku: '701242808', title: "Women's Manchester City Home Jersey 2026/27 With CHERKI 10 Printing", qty: 50, price: 90 },
+        { sku: '701242812-CHERKI', title: "Kids' Manchester City Home Jersey 2026/27 Long Sleeve With CHERKI 10 Printing", qty: 40, price: 67.5 },
+      ],
       pricing: 'ABC Hanoi Negotiated', pricingSource: 'Location price', source: 'Direct checkout',
       status: 'Needs review', shopifyStatus: 'Draft order', reason: 'Above the $10,000 maximum', heldBy: 'ol4', heldAt: { value: 10000, limitId: 'ol4', limitName: 'ABC Hanoi review' }
+    },
+    {
+      // Approved after review: the invoice is sent, waiting for the buyer to check out.
+      id: '#1047', location: 'Hanoi', buyer: 'John Nguyen', date: '2026-08-03', amount: 12200, lines: 2, po: 'PO-9840',
+      items: [
+        { sku: '701242784-CHERKI', title: 'Manchester City Home Jersey 2026/27 With CHERKI 10 Printing', qty: 80, price: 85 },
+        { sku: '701242808-GVARDIOL', title: "Women's Manchester City Home Jersey 2026/27 With GVARDIOL 24 Printing", qty: 60, price: 90 },
+      ],
+      pricing: 'ABC Hanoi Negotiated', pricingSource: 'Location price', source: 'Direct checkout',
+      status: 'Invoice sent', shopifyStatus: 'Draft order', reason: 'Above the $10,000 maximum', heldBy: 'ol4', heldAt: { value: 10000, limitId: 'ol4', limitName: 'ABC Hanoi review' }
     },
     {
       id: '#1044', location: 'Hanoi', buyer: 'Le Thu Ha', date: '2026-07-14', amount: 5860, lines: 2, po: 'PO-9814',
@@ -495,7 +521,7 @@ export const orderSeed = {
     {
       id: '#1048', location: 'Da Nang', buyer: 'Bui Quang', date: '2026-08-07', amount: 21500, lines: 8, po: 'PO-4470',
       pricing: 'Distributor Tier 2', pricingSource: 'Company price', source: 'Direct checkout',
-      status: 'Needs review', shopifyStatus: 'Draft order', reason: 'Above the $20,000 maximum', heldBy: 'ol5', heldAt: { value: 20000, limitId: 'ol5', limitName: 'Large order review' }
+      status: 'Needs review', shopifyStatus: 'Draft order', reason: 'Above the $20,000 maximum', heldBy: 'ol2', heldAt: { value: 20000, limitId: 'ol2', limitName: 'Vinh Phat low minimum' }
     },
     {
       id: '#1041', location: 'Da Nang', buyer: 'Bui Quang', date: '2026-07-11', amount: 1560, lines: 1, po: 'None',

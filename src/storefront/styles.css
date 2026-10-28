@@ -288,6 +288,27 @@ h3 { font-size: 1.8rem; }
 .summary-row { display: flex; justify-content: space-between; font-size: 1.6rem; margin-bottom: 1.4rem; }
 .summary-row strong { font-weight: 700; }
 
+/* ── Cart page (main-cart-items + main-cart-footer) ───────────────────────── */
+.cart-page__head { display: flex; align-items: baseline; justify-content: space-between; gap: 2rem; margin-bottom: 3.2rem; }
+.cart-page__head .link { font-size: 1.5rem; }
+.cart-page--empty { text-align: center; }
+.cart-page--empty .button { margin-top: 2.4rem; }
+.cart-page .order-limits { margin-bottom: 3.2rem; }
+/* Columns: Product (media + info) · Quantity · Total. */
+.cart-items__head, .cart-item { display: grid; column-gap: 2rem; }
+.cart-items__head { grid-template-columns: 1fr 18rem 12rem; font-size: 1.1rem; letter-spacing: 0.1rem; text-transform: uppercase; color: var(--color-muted); padding-bottom: 1.8rem; border-bottom: 0.1rem solid var(--color-border); }
+.cart-items__head span:last-child, .cart-item__total { text-align: right; }
+.cart-item { grid-template-columns: 10rem 1fr 18rem 12rem; grid-template-areas: "media info qty total"; row-gap: 1.2rem; padding: 2.4rem 0; border-bottom: 0.1rem solid var(--color-border); }
+.cart-item__media { grid-area: media; width: 10rem; height: 10rem; background: var(--color-surface-2); }
+.cart-item__media img { width: 100%; height: 100%; object-fit: cover; }
+.cart-item__info { grid-area: info; display: grid; gap: 0.6rem; align-content: start; font-size: 1.5rem; }
+.cart-item__name { font-size: 1.6rem; cursor: pointer; }
+.cart-item__name:hover { text-decoration: underline; text-underline-offset: 0.3rem; }
+.cart-item__qty { grid-area: qty; display: flex; align-items: center; gap: 1.2rem; align-self: start; }
+.cart-item__total { grid-area: total; font-size: 1.6rem; }
+.cart-page__footer { display: flex; justify-content: flex-end; margin-top: 4rem; }
+.cart-page__summary { width: 100%; max-width: 36rem; }
+
 /* ── Footer ───────────────────────────────────────────────────────────────── */
 .footer { border-top: 0.1rem solid var(--color-border); margin-top: 4rem; background: #fff; }
 .footer__cols { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 3rem; padding: 5rem 0 3rem; }
@@ -312,6 +333,9 @@ h3 { font-size: 1.8rem; }
 .dev-switch--end { left: auto; right: 1.6rem; }
 /* Clear of the cart drawer's Check out button while the cart is open. */
 .dev-switch--end.dev-switch--beside-cart { right: calc(min(40rem, 92vw) + 1.6rem); }
+/* The B2B demo account's cart cases, at the top of the cart drawer. */
+.demo-case { display: grid; gap: 0.6rem; padding: 1.2rem; margin-bottom: 0.8rem; border: 0.1rem dashed var(--color-border-strong); border-radius: var(--radius); font-size: 1.3rem; color: var(--color-muted); }
+.demo-case .select { padding: 0.8rem 1rem; font-size: 1.4rem; }
 
 /* Prototype-only: the B2B app's Order limits screen docked bottom-right, beside the
    cart drawer while it's open so both stay in view. */
@@ -435,6 +459,16 @@ h3 { font-size: 1.8rem; }
 .acct-row--button:hover { background: #fafafa; }
 .acct-row--order .badge { flex: none; }
 
+/* The B2B Portal's Orders: one button per status (a view), with its count. */
+.acct-views { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.acct-views button {
+  display: inline-flex; align-items: center; gap: 0.6rem; padding: 0.5rem 1.2rem; border-radius: 10rem; cursor: pointer;
+  border: 0.1rem solid var(--color-border-strong); background: #fff; color: rgb(var(--color-fg)); font: inherit; font-size: 1.4rem;
+}
+.acct-views button:hover { background: var(--color-surface-2); }
+.acct-views button[aria-pressed="true"] { background: rgb(var(--color-button)); border-color: rgb(var(--color-button)); color: rgb(var(--color-button-text)); }
+.acct-views-count { opacity: 0.7; }
+
 .acct-toggle {
   width: 4.4rem; height: 2.6rem; border-radius: 100px; background: #cccccc; border: none;
   position: relative; cursor: pointer; padding: 0; flex: none; transition: background 0.15s ease;
@@ -488,10 +522,38 @@ h3 { font-size: 1.8rem; }
 .acct-contract-limits li { display: flex; gap: 0.8rem; }
 .acct-contract-limits li::before { content: ''; flex: none; width: 0.6rem; height: 0.6rem; margin-top: 0.75rem; border-radius: 50%; background: var(--b2b); }
 
-.acct-order-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 1.2rem; }
-.acct-order-card { border: 0.1rem solid var(--color-border); border-radius: 0.8rem; padding: 1.6rem; display: flex; flex-direction: column; gap: 1rem; font-size: 1.5rem; }
-.acct-order-card .muted { margin: 0; }
-.acct-order-card .acct-btn { align-self: flex-start; }
+/* The portal's order cards (Shopify's order cards): product images, then status,
+   number · total, location and an action. */
+.acct-order-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(30rem, 1fr)); gap: 1.2rem; max-height: 60rem; overflow-y: auto; overscroll-behavior: contain; }
+.acct-order-card { display: grid; gap: 1.6rem; padding: 1.6rem; border: 0.1rem solid var(--color-border); border-radius: 1.2rem; background: #fff; cursor: pointer; }
+.acct-order-card:hover { border-color: var(--color-border-strong); }
+.acct-order-images { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.8rem; }
+.acct-order-image { position: relative; aspect-ratio: 1; border-radius: 0.8rem; overflow: hidden; background: var(--color-surface-2); }
+.acct-order-image img { width: 100%; height: 100%; object-fit: cover; }
+.acct-order-image__more { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, 0.45); color: #fff; font-size: 1.6rem; font-weight: 700; }
+.acct-order-card__body { display: grid; gap: 0.2rem; font-size: 1.5rem; }
+.acct-order-card__status { font-size: 2rem; font-weight: 700; margin-bottom: 0.4rem; }
+.acct-order-card__foot { display: flex; align-items: center; justify-content: space-between; gap: 1.2rem; }
+
+/* Order page (Shopify's order page): back + title + action, then cards. */
+.order-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 1.2rem; align-items: start; }
+.order-head h2 { font-size: 2.4rem; font-weight: 700; margin: 0; }
+.order-head .muted { margin: 0.2rem 0 0; font-size: 1.5rem; }
+.order-back { background: none; border: none; padding: 0; font: inherit; font-size: 2.4rem; line-height: 1.2; cursor: pointer; color: #121212; }
+.order-lines { display: grid; gap: 1.6rem; }
+.order-line { display: grid; grid-template-columns: 6.4rem minmax(0, 1fr) auto; gap: 1.6rem; align-items: center; font-size: 1.5rem; }
+.order-line__media { position: relative; width: 6.4rem; height: 6.4rem; border: 0.1rem solid var(--color-border); border-radius: 0.8rem; background: var(--color-surface-2); }
+.order-line__media img { width: 100%; height: 100%; object-fit: cover; border-radius: 0.8rem; }
+.order-line__qty { position: absolute; top: -0.8rem; right: -0.8rem; min-width: 2.2rem; height: 2.2rem; padding: 0 0.6rem; border-radius: 1.1rem; background: #121212; color: #fff; font-size: 1.2rem; font-weight: 600; display: grid; place-items: center; }
+.order-totals { display: grid; gap: 0.8rem; font-size: 1.5rem; }
+.order-totals > div { display: flex; justify-content: space-between; gap: 1.6rem; }
+.order-totals__total { font-size: 1.8rem; padding-top: 0.4rem; align-items: baseline; }
+.order-totals__total small { font-size: 1.2rem; }
+.order-info > div { display: grid; grid-template-columns: 10rem minmax(0, 1fr); gap: 1.6rem; font-size: 1.5rem; }
+
+.acct-order-message {background: var(--color-surface-2); border-radius: 0.6rem; padding: 1rem 1.2rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.acct-order-message-label { font-size: 1.3rem; font-weight: 600; color: var(--color-muted); }
+.acct-order-message p { margin: 0; font-size: 1.5rem; }
 
 .acct-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; font-size: 1.5rem; color: #4a4a4a; }
 
@@ -642,11 +704,42 @@ h3 { font-size: 1.8rem; }
   .reg-grid { grid-template-columns: 1fr; }
   .reg-card { padding: 2rem; }
   .reg-intro h1 { font-size: 2.8rem; }
+  /* Cart page: Quantity goes under the product's info. */
+  .cart-items__head { grid-template-columns: 1fr auto; }
+  .cart-items__head span:nth-child(2) { display: none; }
+  .cart-item { grid-template-columns: 8rem 1fr auto; grid-template-areas: "media info total" "media qty qty"; row-gap: 1.6rem; }
+  .cart-item__media { width: 8rem; height: 8rem; }
+  .cart-page__summary { max-width: none; }
 }
 
 /* ── Order limits (cart problems + product quantity rules) ───────────────── */
-.limit-notice { background: #fff4e5; border: 0.1rem solid #f1c48a; color: #6b4300; padding: 1.2rem 1.4rem; font-size: 1.35rem; margin-bottom: 1.6rem; }
-.limit-notice ul { margin: 0; padding-left: 1.8rem; }
+/* The order's limits: an icon, each message on its own line, then what to do next. */
+.order-limits { display: grid; gap: 0.8rem; margin-bottom: 1.6rem; }
+.limit-notice { display: grid; grid-template-columns: 1.8rem minmax(0, 1fr); gap: 1rem; align-items: start; background: #fef3f2; color: #b42318; border-radius: 0.8rem; padding: 1.2rem 1.4rem; font-size: 1.35rem; line-height: 1.45; }
+/* The order's maximums sent for review: blue, as on the product page. */
+.limit-notice--review { background: var(--b2b-bg); color: var(--b2b); }
+.limit-notice svg { width: 1.8rem; height: 1.8rem; margin-top: 0.1rem; }
+.limit-notice ul { margin: 0; padding: 0; list-style: none; }
 .limit-notice li + li { margin-top: 0.4rem; }
-.qty-note { font-size: 1.3rem; color: var(--color-muted); margin: 0.8rem 0 2.4rem; }
-.qty-note--error { color: #b42318; }
+.limit-notice p { margin: 0.4rem 0 0; font-size: 1.25rem; opacity: 0.85; }
+/* A product's limits under its line (cart drawer and cart page), across the info,
+   quantity and total columns: red when it blocks checkout, blue for review. */
+.line-limit { grid-column: 2 / -1; display: grid; gap: 0.4rem; font-size: 1.3rem; color: #b42318; }
+.line-limit p { margin: 0; }
+.line-limit .line-limit--review { color: var(--b2b); }
+/* Above a Check out that's off, when the cart could go as an order request once fixed. */
+.checkout-hint { font-size: 1.3rem; margin: 0 0 1.2rem; }
+/* Order limits on the product page: one block, a row for this product and one for
+   the order (cart + quantity picked), live as it changes. A row is grey while it's
+   fine, amber when it can't check out like this, blue when the seller will review it. */
+.limit-block { display: grid; margin: 0.8rem 0 2.4rem; border-radius: 0.8rem; overflow: hidden; font-size: 1.3rem; }
+.limit-row { display: grid; grid-template-columns: 9.6rem minmax(0, 1fr); gap: 1.2rem; padding: 1rem 1.2rem; background: var(--color-surface-2); }
+.limit-row + .limit-row { border-top: 0.1rem solid rgb(var(--color-bg)); }
+.limit-row--warn { background: #fdf2dc; color: #9a6a00; }
+.limit-row--review { background: var(--b2b-bg); color: var(--b2b); }
+.limit-row__label { font-weight: 600; }
+.limit-row__body { display: grid; gap: 0.2rem; }
+.limit-row__body p { margin: 0; }
+.limit-row__rule, .limit-row__detail { opacity: 0.75; }
+.limit-row__status { display: inline-flex; align-items: center; gap: 0.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.limit-row__status svg { width: 1.6rem; height: 1.6rem; flex: none; }

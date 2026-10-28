@@ -4,10 +4,11 @@ import { money } from '../format.js';
 import { reviewMaximumFor, spentSoFar } from '../limits.js';
 import { Modal } from '../../shared/wc.jsx';
 
-// Orders an order maximum (order limits) held back for review: status 'Needs review',
-// `heldAt` = what it broke then ({ value, limitId, limitName }). The buyer couldn't check out, so the order waits as a
-// draft order until the merchant approves it (it becomes a real order) or
-// declines it. Listed on app home and in the location / company orders.
+// Orders a maximum (order limits: an order value, or a product's) held back for review: status 'Needs review',
+// `heldAt` = what it broke then ({ value, limitId, limitName }, plus `sku` and `item` for a product). The buyer couldn't check out, so the order waits as a
+// draft order until the merchant approves it (an invoice goes to the buyer: 'Invoice
+// sent', a real order once they check out from it) or declines it. Listed on app
+// home and in the location / company orders.
 export const isHeld = (o) => o.status === 'Needs review';
 
 // Held orders across every company, the longest-waiting first.
@@ -33,6 +34,9 @@ export function heldReason(order, db) {
   const location = company && (company.locations || []).find((l) => (order.locationId ? l.id === order.locationId : l.name === order.location));
   if (!location) return order.reason || 'Held for your review';
   const held = order.heldAt;
+  // A product, or the order quantity, over its maximum: what it broke when it was held.
+  if (held?.sku) return `${held.item} over the maximum of ${held.value} · ${held.limitName}`;
+  if (held?.basis === 'qty') return `Over the ${held.value}-unit maximum · ${held.limitName}`;
   // A weekly or monthly maximum counts this order on top of the location's other
   // orders in that period.
   const period = held?.period || 'order';
@@ -49,12 +53,24 @@ export function heldReason(order, db) {
   return `Held over ${money(held.value)}${per} · now ${now}`;
 }
 
+// What the buyer wrote with the order request (Note for the seller), shown where the merchant decides.
+export const buyerMessageText = (order) => (order.buyerMessage ? `Buyer’s note: “${order.buyerMessage}”` : null);
+
 // Held first, then newest — so what's waiting sits on top of an order list.
 export const heldFirst = (a, b) => Number(isHeld(b)) - Number(isHeld(a)) || String(b.date).localeCompare(String(a.date));
 
+// Approve, or decline — optionally with a message telling the buyer why, which
+// their account on the storefront shows with the declined order.
 export function HeldOrderActions({ companyId, order }) {
   const { dispatch } = useStore();
   const [confirm, setConfirm] = useState(false);
+  const [withMessage, setWithMessage] = useState(false);
+  const [message, setMessage] = useState('');
+  const close = () => {
+    setConfirm(false);
+    setWithMessage(false);
+    setMessage('');
+  };
   return (
     // Keep clicks off the row underneath (rows can open the order's location).
     <div onClick={(e) => e.stopPropagation()}>
@@ -65,22 +81,38 @@ export function HeldOrderActions({ companyId, order }) {
         </s-button>
       </s-stack>
       {confirm && (
-        <Modal onClose={() => setConfirm(false)} heading={`Decline order ${order.id}?`}>
-          <s-paragraph>
-            {`The draft order for ${money(order.amount)} is cancelled and ${order.buyer || 'the buyer'} is told it wasn’t approved. They can change the order and submit it again.`}
-          </s-paragraph>
+        <Modal onClose={close} heading={`Decline order ${order.id}?`}>
+          <s-stack gap="base">
+            <s-paragraph>
+              {`The draft order for ${money(order.amount)} is cancelled and ${order.buyer || 'the buyer'} is told it wasn’t approved. They can change the order and submit it again.`}
+            </s-paragraph>
+            <s-checkbox label="Add a message for the buyer" checked={withMessage} onChange={(e) => setWithMessage(e.currentTarget.checked)} />
+            {withMessage && (
+              <s-text-area
+                label="Message to the buyer"
+                rows={3}
+                maxLength={500}
+                value={message}
+                onInput={(e) => setMessage(e.currentTarget.value)}
+                placeholder="e.g. We can’t take an order this size before your credit review. Please split it into orders under $10,000."
+                details="Shown with the declined order in their account on your store."
+                autocomplete="off"
+              />
+            )}
+          </s-stack>
           <s-button
             slot="primary-action"
             variant="primary"
             tone="critical"
             onClick={() => {
-              setConfirm(false);
-              dispatch({ type: 'DECLINE_ORDER', companyId, orderId: order.id });
+              const text = withMessage ? message.trim() : '';
+              close();
+              dispatch({ type: 'DECLINE_ORDER', companyId, orderId: order.id, message: text });
             }}
           >
             Decline order
           </s-button>
-          <s-button slot="secondary-actions" onClick={() => setConfirm(false)}>
+          <s-button slot="secondary-actions" onClick={close}>
             Cancel
           </s-button>
         </Modal>
