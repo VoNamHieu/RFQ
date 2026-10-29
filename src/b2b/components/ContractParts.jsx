@@ -29,7 +29,8 @@ export function Fact({ icon, label, value, children = null }) {
 // list: a header with its count (and `action`: the contract editor's Add), then a
 // row per term — name over its detail, a side badge (a base pricing's priority) and
 // `actions` (the contract editor's Edit and Remove; `onOpen`: the name opens it too),
-// and under it `expanded` (a version's settings for it).
+// `lead` before the name (a version's priority number) and under it `expanded` (a
+// version's settings for it).
 export function TermGroup({ icon, title, rows, action = null }) {
   return (
     <s-box border="base" borderRadius="base" overflow="hidden">
@@ -49,7 +50,8 @@ export function TermGroup({ icon, title, rows, action = null }) {
             <s-divider />
             <s-box paddingBlock="small-200" paddingInline="small">
               <s-stack gap="small-200">
-              <s-grid gridTemplateColumns="minmax(0, 1fr) auto" alignItems="center" gap="small">
+              <s-grid gridTemplateColumns={r.lead ? 'auto minmax(0, 1fr) auto' : 'minmax(0, 1fr) auto'} alignItems="center" gap="small">
+                {r.lead || null}
                 <s-stack gap="small-500">
                   {r.onOpen ? (
                     <s-link tone="neutral" onClick={r.onOpen}>
@@ -218,5 +220,15 @@ export function DeleteContractModal({ ag, onClose }) {
         Cancel
       </s-button>
     </Modal>
+  );
+}
+
+// A pricing's priority as a small round number before its name — the order reads
+// down the list.
+export function PriorityNumber({ value }) {
+  return (
+    <span className="wc-priority" title={`Priority ${value}`} aria-label={`Priority ${value}`}>
+      {value}
+    </span>
   );
 }
