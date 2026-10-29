@@ -26,7 +26,7 @@ import {
   PAST_STATUSES,
 } from '../../agreements.js';
 import { ContractVersionModal } from '../ContractVersionModal.jsx';
-import { Modal, wcTone } from '../../../shared/wc.jsx';
+import { MenuButton, Modal, wcTone } from '../../../shared/wc.jsx';
 
 const STATUS_TONE = { Active: 'success', Scheduled: 'info', Expired: undefined, Ended: undefined };
 
@@ -198,16 +198,18 @@ function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onV
         </div>
         {open ? (
           <s-stack direction="inline" gap="small-200">
+            {/* End contract, and for a Scheduled one (nothing is applied yet) Delete
+                contract too, under "…". */}
             {live ? (
-              <s-button tone="critical" variant="tertiary" onClick={() => onEnd(ag)}>
-                End contract
-              </s-button>
-            ) : null}
-            {/* Scheduled: nothing is applied yet, so it can be deleted too. */}
-            {ag.status === 'Scheduled' ? (
-              <s-button tone="critical" variant="tertiary" onClick={() => onDelete(ag)}>
-                Delete contract
-              </s-button>
+              <MenuButton
+                icon="menu-horizontal"
+                variant="tertiary"
+                accessibilityLabel={`More actions for ${ag.number}`}
+                items={[
+                  { content: 'End contract', destructive: true, onAction: () => onEnd(ag) },
+                  ag.status === 'Scheduled' && { content: 'Delete contract', destructive: true, onAction: () => onDelete(ag) },
+                ]}
+              />
             ) : null}
             <s-button onClick={() => onDuplicate(ag)}>Duplicate</s-button>
             <s-button onClick={() => onEdit(ag)}>Edit</s-button>
