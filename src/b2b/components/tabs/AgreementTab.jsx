@@ -26,6 +26,7 @@ import {
   PAST_STATUSES,
 } from '../../agreements.js';
 import { ContractVersionModal } from '../ContractVersionModal.jsx';
+import { Fact, TermGroup, VersionTimeline, ShowAllLink, SHOWN } from '../ContractParts.jsx';
 import { MenuButton, Modal, wcTone } from '../../../shared/wc.jsx';
 
 const STATUS_TONE = { Active: 'success', Scheduled: 'info', Expired: undefined, Ended: undefined };
@@ -43,121 +44,6 @@ function Line({ main, side, onClick }) {
   );
 }
 
-// A key fact under the contract's title: a small tile with an icon and label.
-function Fact({ icon, label, value }) {
-  return (
-    <s-box background="subdued" borderRadius="base" padding="small">
-      <s-stack gap="small-400">
-        <s-stack direction="inline" gap="small-300" alignItems="center">
-          <s-icon type={icon} color="subdued" size="small" />
-          <s-text color="subdued" fontSize="small">
-            {label}
-          </s-text>
-        </s-stack>
-        <s-text fontWeight="semibold">{value}</s-text>
-      </s-stack>
-    </s-box>
-  );
-}
-
-// One kind of term (base pricing, quantity pricing, order limits) as a bordered
-// list: a header with its count, then a row per term — name over its detail, and
-// a side badge (a base pricing's priority).
-function TermGroup({ icon, title, rows }) {
-  return (
-    <s-box border="base" borderRadius="base" overflow="hidden">
-      <s-box background="subdued" paddingBlock="small-300" paddingInline="small">
-        <s-stack direction="inline" gap="small-200" alignItems="center">
-          <s-icon type={icon} color="subdued" />
-          <s-text fontWeight="semibold">{title}</s-text>
-          <s-badge>{String(rows.length)}</s-badge>
-        </s-stack>
-      </s-box>
-      {rows.length ? (
-        rows.map((r) => (
-          <React.Fragment key={r.key}>
-            <s-divider />
-            <s-box paddingBlock="small-200" paddingInline="small">
-              <s-grid gridTemplateColumns="minmax(0, 1fr) auto" alignItems="center" gap="small">
-                <s-stack gap="small-500">
-                  <s-text fontWeight="medium">{r.name}</s-text>
-                  <s-text color="subdued" fontSize="small">
-                    {r.detail}
-                  </s-text>
-                </s-stack>
-                {r.side ? <s-badge>{r.side}</s-badge> : <span />}
-              </s-grid>
-            </s-box>
-          </React.Fragment>
-        ))
-      ) : (
-        <>
-          <s-divider />
-          <s-box paddingBlock="small-200" paddingInline="small">
-            <s-text color="subdued">None</s-text>
-          </s-box>
-        </>
-      )}
-    </s-box>
-  );
-}
-
-// Lists that grow over time (version history, past contracts) show the newest
-// SHOWN; the link shows the rest, and hides them again.
-const SHOWN = 3;
-function ShowAllLink({ total, all, onToggle }) {
-  return total > SHOWN ? <s-link onClick={onToggle}>{all ? 'Show less' : `Show all (${total})`}</s-link> : null;
-}
-
-// The version history as a timeline, newest first. A version that kept a snapshot
-// opens as it was.
-function VersionTimeline({ history, onView }) {
-  const [all, setAll] = useState(false);
-  const shown = all ? history : history.slice(0, SHOWN);
-  return (
-    <s-stack gap="small">
-      <s-heading>Version history</s-heading>
-      <div>
-        {shown.map((h, i) => {
-          const last = i === shown.length - 1;
-          return (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '12px minmax(0, 1fr)', columnGap: 12 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <span
-                  style={{
-                    width: 10,
-                    height: 10,
-                    marginTop: 5,
-                    borderRadius: '50%',
-                    flex: '0 0 auto',
-                    background: i === 0 ? 'var(--p-color-bg-fill-brand)' : 'var(--p-color-bg-surface)',
-                    border: `2px solid ${i === 0 ? 'var(--p-color-bg-fill-brand)' : 'var(--p-color-input-border)'}`,
-                  }}
-                />
-                {last ? null : <span style={{ flex: 1, width: 2, marginBlock: 4, background: 'var(--p-color-border)' }} />}
-              </div>
-              <div style={{ paddingBottom: last ? 0 : 16, minWidth: 0 }}>
-                <s-stack gap="small-500">
-                  <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
-                    {h.snapshot ? <s-link onClick={() => onView(h.version)}>{`Version ${h.version}`}</s-link> : <s-text fontWeight="medium">{`Version ${h.version}`}</s-text>}
-                    <s-text color="subdued" fontSize="small">
-                      {fmtDay(h.date)}
-                    </s-text>
-                  </s-grid>
-                  <s-text color="subdued">{h.note}</s-text>
-                </s-stack>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      {/* Lined up with the entries' text, past the dots. */}
-      <div style={{ paddingLeft: 24 }}>
-        <ShowAllLink total={history.length} all={all} onToggle={() => setAll(!all)} />
-      </div>
-    </s-stack>
-  );
-}
 
 // One contract as a collapsible row. Closed: its name, status, where it applies,
 // dates and version. Open: what isn't applied yet, its key facts, terms and version

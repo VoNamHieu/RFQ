@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useStore } from '../store.jsx';
 import { kindOf, scopeLabel, baseInScope, policyPriceBreakdown, resolveDetail, withContractPricing } from '../pricing.js';
-import { limitSummary, contractLimitConflicts } from '../limits.js';
+import { limitSummary, contractLimitConflicts, isD2CLimit } from '../limits.js';
 import {
   agreementChanges,
   companyAfterAgreement,
@@ -22,16 +22,21 @@ import {
   isContractTerm,
   overlapLines,
   overlapsHeading,
+  withStagedTerms,
 } from '../agreements.js';
 import { TODAY } from '../pricing.js';
 import { PricingCombobox } from './PricingCombobox.jsx';
 import { PricePreviewDialog } from './PricePreviewDialog.jsx';
 import { SelectCompaniesModal, companyPicks } from './AssignmentCard.jsx';
-import { Modal, PageHeader, useWcId } from '../../shared/wc.jsx';
+import { TermGroup } from './ContractParts.jsx';
+import { MenuButton, Modal, PageHeader, useWcId } from '../../shared/wc.jsx';
 
 // Create / edit a company's agreement — an in-frame page in the Agreements view
-// (OPEN_AGREEMENT_EDITOR). Terms are picked from the Pricing and Order limits
-// libraries; who gets them is all of the company's locations or some, picked like a
+// (OPEN_AGREEMENT_EDITOR). Its pricing and limits are its own: created here, or copied
+// from the Pricing and Order limits lists (Copy existing). Each opens in the pricing
+// or limit editor on top; what's saved there is staged here (`staged`) and goes in
+// with the contract — saving a live one applies it as a new version, and Cancel drops
+// it. Who gets them is all of the company's locations or some, picked like a
 // pricing's or order limit's companies (one company per contract). Saving a new one
 // puts it in force (Active, or Scheduled until its start date); a live one saves as
 // its next version, applied at once.
@@ -43,6 +48,8 @@ import { Modal, PageHeader, useWcId } from '../../shared/wc.jsx';
 export function AgreementEditor() {
   const { state, dispatch } = useStore();
   const draft = state.agreementEditor.draft;
+  // The pricing and limits as edited here, not saved yet.
+  const db = useMemo(() => withStagedTerms(state.db, state.agreementEditor.staged), [state.db, state.agreementEditor.staged]);
   const pickCompany = !!state.agreementEditor.pickCompany;
   const company = state.db.companies.find((c) => c.id === draft.companyId);
   // The name used in the help text before a company is picked.
@@ -61,6 +68,8 @@ export function AgreementEditor() {
   const [overlapBox, setOverlapBox] = useState(false);
   const [companyModal, setCompanyModal] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  // Copy existing: the terms' key (base, quantity or limits) being copied into it.
+  const [copying, setCopying] = useState(null);
   const scopeTipId = useWcId('scope-tip');
   const patch = (p) => dispatch({ type: 'AGREEMENT_EDITOR_PATCH', patch: p });
   const setTerms = (p) => patch({ terms: { ...draft.terms, ...p } });
@@ -95,28 +104,25 @@ export function AgreementEditor() {
     },
   );
 
-  // Only contract pricing and contract limits are offered; anything else picked before
-  // stays listed, so it can be taken out. Each picker's list starts with Create
-  // contract pricing / limit: the new one goes into this contract once saved.
-  const picked = [...draft.terms.base, ...draft.terms.quantity, ...draft.terms.limits];
-  const terms = state.db.policies.filter((p) => isContractTerm(p) || picked.includes(p.id));
-  const bases = terms.filter((p) => kindOf(p) === 'base');
-  const quantities = terms.filter((p) => kindOf(p) === 'quantity');
-  const limits = (state.db.limits || []).filter((l) => isContractTerm(l) || picked.includes(l.id));
-  const createPricing = (kind) => ({
-    content: 'Create contract pricing',
-    onAction: () => dispatch({ type: 'OPEN_EDITOR', policy: null, kind, forContracts: true, context: { mode: `add-${kind}`, addToAgreement: kind } }),
-  });
-  const createLimit = {
-    content: 'Create contract limit',
-    onAction: () => dispatch({ type: 'NAVIGATE', view: 'limits', patch: { limitChooser: { returnTo: { view: 'agreements' } } } }),
+  // Its pricing and limits: each opens in its editor on top (Edit), or comes out
+  // (Remove). Add creates a new one there, or copies existing ones from the Pricing and
+  // Order limits lists — B2B ones, not another contract's.
+  const editPricing = (p) => dispatch({ type: 'OPEN_EDITOR', policy: p, context: { mode: 'edit', contractTerm: true } });
+  const editLimit = (l) => dispatch({ type: 'OPEN_LIMIT_EDITOR', limit: l, returnTo: { view: 'agreements' }, contractTerm: true });
+  const createPricing = (kind) => dispatch({ type: 'OPEN_EDITOR', policy: null, kind, context: { mode: `add-${kind}`, contractTerm: true } });
+  const createLimit = () => dispatch({ type: 'NAVIGATE', view: 'limits', patch: { limitChooser: { returnTo: { view: 'agreements' } } } });
+  const remove = (key, id) => setTerms({ [key]: draft.terms[key].filter((x) => x !== id) });
+  const library = {
+    base: db.policies.filter((p) => !isContractTerm(p) && p.audienceType !== 'd2c' && kindOf(p) === 'base'),
+    quantity: db.policies.filter((p) => !isContractTerm(p) && p.audienceType !== 'd2c' && kindOf(p) === 'quantity'),
+    limits: (db.limits || []).filter((l) => !isContractTerm(l) && !isD2CLimit(l)),
   };
   // The limits picked for it that contradict each other (a warning: it still saves).
   // Worked out again only when the limits change.
   const limitConflicts = useMemo(
-    () => contractLimitConflicts(state.db, pickedOf(draft.terms.limits, state.db.limits)),
+    () => contractLimitConflicts(db, pickedOf(draft.terms.limits, db.limits)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.db.limits, state.db.products, draft.terms.limits],
+    [db.limits, db.products, draft.terms.limits],
   );
 
   const errors = {};
@@ -156,19 +162,19 @@ export function AgreementEditor() {
   const goLive = () => (!valid ? setTried(true) : overlapsNow.length ? setOverlapBox(true) : setConfirm(true));
   const nextVersion = (saved?.version || 0) + 1;
   // Saving a live contract unchanged would only add an empty version.
-  const unchanged = live && sameAgreement(saved, draft, state.db);
+  const unchanged = live && sameAgreement(saved, draft, db, state.db);
   // Only "Automatically apply this contract to locations added later" changed: the
   // confirm says just what that does (nothing is applied now).
   const onlyLater =
-    live && addsLaterLocations(saved) !== addsLaterLocations(draft) && sameAgreement(saved, { ...draft, applyLater: addsLaterLocations(saved) }, state.db);
+    live && addsLaterLocations(saved) !== addsLaterLocations(draft) && sameAgreement(saved, { ...draft, applyLater: addsLaterLocations(saved) }, db, state.db);
   // Terms that won't apply for the whole contract: turned off.
-  const warnings = confirm ? termWarnings(state.db, draft) : [];
+  const warnings = confirm ? termWarnings(db, draft) : [];
   const when = startsLater ? `on ${fmtDay(draft.startDate)}` : 'right away';
   // The Save / Save as version box: "ABC gets these terms right away, until Oct 31, 2026."
   const getsTerms = `${company?.name || 'The company'} gets these terms ${when}${draft.endDate ? `, until ${fmtDay(draft.endDate)}` : ''}.`;
   // Overview: the contract at a glance, from the draft, so unsaved edits count.
   const count = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
-  const covered = contractProducts(state.db, draft);
+  const covered = contractProducts(db, draft);
   const overview = [
     ['organization', 'Company', company?.name || 'Not picked'],
     ['location', 'Applies to', company ? (agreementScopeLabel(company, draft) ? agreementAppliesToLabel(company, draft) : 'No locations') : '—'],
@@ -230,59 +236,55 @@ export function AgreementEditor() {
           </s-stack>
         </s-section>
 
-        <s-section>
-          <s-stack gap="base">
-            <s-stack gap="small-200">
-              <s-heading>Base pricing</s-heading>
-              <PricingCombobox
-                label="Base pricing"
-                labelHidden
-                placeholder="Search base pricing"
-                candidates={bases}
-                selectedIds={draft.terms.base}
-                onChange={(ids) => setTerms({ base: ids })}
-                optionLabel={(p) => `${p.name} · Priority ${p.priority ?? 0}`}
-                action={createPricing('base')}
-              />
-            </s-stack>
-            <s-stack gap="small-200">
-              <s-heading>Quantity pricing</s-heading>
-              <PricingCombobox
-                label="Quantity pricing"
-                labelHidden
-                placeholder="Search quantity pricing"
-                candidates={quantities}
-                selectedIds={draft.terms.quantity}
-                onChange={(ids) => setTerms({ quantity: ids })}
-                optionLabel={(p) => `${p.name} · ${scopeLabel(p)}`}
-                action={createPricing('quantity')}
-              />
-            </s-stack>
-            <s-stack gap="small-200">
-              <s-heading>Order limits</s-heading>
-              <PricingCombobox
-                label="Order limits"
-                labelHidden
-                placeholder="Search order limits"
-                candidates={limits}
-                selectedIds={draft.terms.limits}
-                onChange={(ids) => setTerms({ limits: ids })}
-                optionLabel={(l) => `${l.name} · ${limitSummary(l, state.db)}`}
-                action={createLimit}
-              />
-              {limitConflicts.length ? (
-                <s-banner tone="warning" heading="Some of these limits contradict each other">
-                  <s-unordered-list>
-                    {limitConflicts.map((c, i) => (
-                      <s-list-item key={i}>{c}</s-list-item>
-                    ))}
-                  </s-unordered-list>
-                </s-banner>
-              ) : null}
-            </s-stack>
-            <s-text color="subdued" fontSize="small">
-              Only contract pricing and contract limits show here.
-            </s-text>
+        {/* Laid out like the company's Contract tab, with Add, Edit and Remove. */}
+        <s-section heading="Terms">
+          <s-stack gap="small">
+            <TermGroup
+              icon="receipt-dollar"
+              title="Base pricing"
+              action={<AddTerm onCreate={() => createPricing('base')} onCopy={() => setCopying('base')} />}
+              rows={pickedOf(draft.terms.base, db.policies).map((p) => ({
+                key: p.id,
+                name: p.name,
+                detail: scopeLabel(p),
+                side: `Priority ${p.priority ?? 0}`,
+                onOpen: () => editPricing(p),
+                actions: <TermActions name={p.name} onEdit={() => editPricing(p)} onRemove={() => remove('base', p.id)} />,
+              }))}
+            />
+            <TermGroup
+              icon="discount"
+              title="Quantity pricing"
+              action={<AddTerm onCreate={() => createPricing('quantity')} onCopy={() => setCopying('quantity')} />}
+              rows={pickedOf(draft.terms.quantity, db.policies).map((p) => ({
+                key: p.id,
+                name: p.name,
+                detail: scopeLabel(p),
+                onOpen: () => editPricing(p),
+                actions: <TermActions name={p.name} onEdit={() => editPricing(p)} onRemove={() => remove('quantity', p.id)} />,
+              }))}
+            />
+            <TermGroup
+              icon="order"
+              title="Order limits"
+              action={<AddTerm onCreate={createLimit} onCopy={() => setCopying('limits')} />}
+              rows={pickedOf(draft.terms.limits, db.limits).map((l) => ({
+                key: l.id,
+                name: l.name,
+                detail: limitSummary(l, db),
+                onOpen: () => editLimit(l),
+                actions: <TermActions name={l.name} onEdit={() => editLimit(l)} onRemove={() => remove('limits', l.id)} />,
+              }))}
+            />
+            {limitConflicts.length ? (
+              <s-banner tone="warning" heading="Some of these limits contradict each other">
+                <s-unordered-list>
+                  {limitConflicts.map((c, i) => (
+                    <s-list-item key={i}>{c}</s-list-item>
+                  ))}
+                </s-unordered-list>
+              </s-banner>
+            ) : null}
             {shown('terms') && (
               <s-paragraph tone="critical" id="agreement-terms">
                 {errors.terms}
@@ -384,7 +386,20 @@ export function AgreementEditor() {
         </s-stack>
       </s-section>
       {previewOpen && company && (
-        <ContractPricePreview draft={draft} change={change} products={covered} onClose={() => setPreviewOpen(false)} />
+        <ContractPricePreview db={db} draft={draft} change={change} products={covered} onClose={() => setPreviewOpen(false)} />
+      )}
+      {copying && (
+        <CopyTermsModal
+          key={copying}
+          kind={copying}
+          candidates={library[copying]}
+          optionLabel={copying === 'limits' ? (l) => `${l.name} · ${limitSummary(l, db)}` : copying === 'base' ? (p) => `${p.name} · Priority ${p.priority ?? 0}` : (p) => `${p.name} · ${scopeLabel(p)}`}
+          onCopy={(ids) => {
+            setCopying(null);
+            dispatch({ type: 'COPY_INTO_AGREEMENT', key: copying, ids });
+          }}
+          onClose={() => setCopying(null)}
+        />
       )}
       <SelectCompaniesModal
         open={companyModal}
@@ -438,7 +453,7 @@ export function AgreementEditor() {
           ) : (
             <s-stack gap="small">
               {/* Save as version: what changed on its own line first. */}
-              {live ? <s-paragraph>{`${agreementChanges(saved, draft, state.db)}.`}</s-paragraph> : null}
+              {live ? <s-paragraph>{`${agreementChanges(saved, draft, db, state.db)}.`}</s-paragraph> : null}
               <s-paragraph>{getsTerms}</s-paragraph>
               {warnings.length ? (
                 <>
@@ -474,6 +489,62 @@ export function AgreementEditor() {
 
 const pickedOf = (ids, list) => ids.map((id) => (list || []).find((x) => x.id === id)).filter(Boolean);
 
+// A term group's Add: Create new, or Copy existing.
+function AddTerm({ onCreate, onCopy }) {
+  return (
+    <MenuButton
+      icon="plus"
+      variant="tertiary"
+      items={[
+        { content: 'Create new', onAction: onCreate },
+        { content: 'Copy existing', onAction: onCopy },
+      ]}
+    >
+      Add
+    </MenuButton>
+  );
+}
+
+// A term's Edit and Remove.
+function TermActions({ name, onEdit, onRemove }) {
+  return (
+    <s-stack direction="inline" gap="small-400" alignItems="center">
+      <s-button icon="edit" variant="tertiary" accessibilityLabel={`Edit ${name}`} onClick={onEdit} />
+      <s-button icon="x-circle" variant="tertiary" tone="critical" accessibilityLabel={`Remove ${name}`} onClick={onRemove} />
+    </s-stack>
+  );
+}
+
+// Copy existing: pick pricing or limits from the Pricing or Order limits list; the
+// contract gets its own copy of each.
+const COPY_NOUN = { base: 'base pricing', quantity: 'quantity pricing', limits: 'order limits' };
+function CopyTermsModal({ kind, candidates, optionLabel, onCopy, onClose }) {
+  const [ids, setIds] = useState([]);
+  const noun = COPY_NOUN[kind];
+  return (
+    <Modal onClose={onClose} heading={`Copy existing ${noun}`}>
+      <s-stack gap="small">
+        <s-paragraph>The contract gets its own copy. Changing it here doesn’t change the original.</s-paragraph>
+        <PricingCombobox
+          label={`Search ${noun}`}
+          labelHidden
+          placeholder={`Search ${noun}`}
+          candidates={candidates}
+          selectedIds={ids}
+          onChange={setIds}
+          optionLabel={optionLabel}
+        />
+      </s-stack>
+      <s-button slot="primary-action" variant="primary" disabled={!ids.length} onClick={() => onCopy(ids)}>
+        Copy to contract
+      </s-button>
+      <s-button slot="secondary-actions" onClick={onClose}>
+        Cancel
+      </s-button>
+    </Modal>
+  );
+}
+
 // The products the contract's pricing covers: a base pricing's product scope, a
 // quantity pricing's.
 function contractProducts(db, ag) {
@@ -485,22 +556,22 @@ function contractProducts(db, ag) {
 // "Preview prices": what a buyer pays for each product in the contract once it
 // applies (`change`: the version it saves over, or the contracts it takes
 // locations over from, come off first), and which pricing decided it — from the
-// draft, so unsaved edits count. The contract's pricing applies first (pricing.js);
+// draft and its pricing as edited, so unsaved edits count. The contract's pricing
+// applies first (pricing.js);
 // pricing outside it decides only the products it doesn't cover. One of the
 // contract's locations at a time. Same modal as the company page's Preview prices
 // (PricePreviewDialog).
-function ContractPricePreview({ draft, change, products, onClose }) {
-  const { state } = useStore();
+function ContractPricePreview({ db, draft, change, products, onClose }) {
   const [locationId, setLocationId] = useState(null);
-  const company = companyAfterAgreement(state.db, change, draft.companyId);
+  const company = companyAfterAgreement(db, change, draft.companyId);
   const locations = (company?.locations || []).filter((l) => appliesAt(company, draft, l.id));
   const location = locations.find((l) => l.id === locationId) || locations[0] || null;
   // Resolved with this contract in force, so its pricing comes first, on its dates.
   const entries = withContractPricing(
-    contractPricingAfter(state.db, change, draft),
+    contractPricingAfter(db, change, draft),
     () =>
       products.map((p) => {
-        const d = resolveDetail(company, p, state.db.policies, undefined, location);
+        const d = resolveDetail(company, p, db.policies, undefined, location);
         return { product: p, shopify: p.list, final: d.price, decidedBy: d.decidedBy, priority: d.policy ? d.policy.priority ?? 0 : null };
       }),
   );

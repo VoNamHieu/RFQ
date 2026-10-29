@@ -6,7 +6,7 @@ import { DEMO_STATE_KEY, readJSON, consumeHandoff, readOrderRequests, publishedO
 import { versionFlags } from '../shared/versions.js';
 import { upgradeLimits } from './limits.js';
 import { normalizeDb, injectRfqCompany, applyQuotePricingTransfer, injectOrderRequests } from './dbHelpers.js';
-import { syncContractDates, seedSnapshots, stampContractLimits } from './agreements.js';
+import { syncContractDates, seedSnapshots, stampContractLimits, ownContractTerms } from './agreements.js';
 
 // Prototype: the storefront docks this app's Order limits screen (?embed=limits),
 // without the admin frame, so a limit change shows in its cart right away.
@@ -55,17 +55,18 @@ export function makeBaseState() {
     priceBoard: null, // { companyId, search } — resolved-prices preview
     assign: null, // { companyId, mode:'add'|'swap', swapId, selectedId } — assign/swap base
     assignMulti: null, // { policyId } — assign one policy to many companies/customers/tags/global
-    limitEditor: null, // { draft, returnTo, addToAgreement } — the order-limit editor (see limits.js)
+    limitEditor: null, // { draft, returnTo, contractTerm } — the order-limit editor (see limits.js)
     limitChooser: null, // { returnTo } — Select limit type for a contract limit, from the contract editor
-    agreementEditor: null, // { draft, returnTo } — the agreement editor (see agreements.js)
+    agreementEditor: null, // { draft, staged, returnTo } — the agreement editor (see agreements.js)
     addCompany: null, // { selected: shopifyCompanyIds, search, autoAddLocations } — add-company picker
     shopifyNewLocations: {}, // { [shopifyCompanyId]: [location] } — created in Shopify this session (Settings → Prototype)
     emptyMode: false, // "show the app with no data" (fresh-install simulation)
     emptyBackup: null,
     // The seeded registrations came in through the form, so it already exists. It starts
     // unpublished so Home shows the "form isn't published" warning without any clicks.
-    // Contracts start and expire by date (the daily job, run once on load here).
-    db: stampContractLimits(syncContractDates(seedSnapshots(normalizeDb({ ...dbSeed, registrations: registrationSeed, hasRegistrationForm: true, registrationFormPublished: false, rfqAppInstalled: true })))),
+    // Contracts start and expire by date (the daily job, run once on load here). Each
+    // contract's pricing and limits are its own (ownContractTerms).
+    db: stampContractLimits(syncContractDates(seedSnapshots(ownContractTerms(normalizeDb({ ...dbSeed, registrations: registrationSeed, hasRegistrationForm: true, registrationFormPublished: false, rfqAppInstalled: true }))))),
     toast: null,
   };
 }
@@ -80,9 +81,9 @@ export function buildInitialState() {
   // Order limits as last saved (they're shared with the storefront), and order
   // requests buyers sent from it, waiting for review.
   const limits = publishedOrderLimits();
-  // Saved before contract limits existed (the seed has some, the saved list none):
-  // the seed's limits instead, so its contracts find theirs.
-  const beforeContractLimits = Array.isArray(limits) && (s.db.limits || []).some((l) => l.forContracts) && !limits.some((l) => l.forContracts);
+  // Saved before contracts had their own limits (the seed's have a contract, the saved
+  // list's none): the seed's limits instead, so its contracts find theirs.
+  const beforeContractLimits = Array.isArray(limits) && (s.db.limits || []).some((l) => l.contractId) && !limits.some((l) => l.contractId);
   if (Array.isArray(limits) && !beforeContractLimits) {
     // Limits saved before they had a created date take the seed's.
     const created = Object.fromEntries((s.db.limits || []).map((l) => [l.id, l.createdAt]));
