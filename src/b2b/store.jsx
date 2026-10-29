@@ -1234,7 +1234,8 @@ function reducer(state, action) {
       return {
         ...state,
         db,
-        agreementEditor: state.agreementEditor?.draft.id === action.id ? null : state.agreementEditor,
+        // Deleted from its editor: the editor closes, back where it was opened from.
+        ...(state.agreementEditor?.draft.id === action.id ? { ...(state.agreementEditor.returnTo || {}), agreementEditor: null } : {}),
         toast: 'Contract deleted',
       };
     }
