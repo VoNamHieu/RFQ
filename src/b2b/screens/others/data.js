@@ -23,6 +23,8 @@ export const DEFAULT_NOTIFICATION_STATE = {
   allow_admin_notification_email: false,
   allow_approval_notification_email: false,
   allow_rejection_notification_email: false,
+  allow_order_request_approved_email: false,
+  allow_order_request_declined_email: false,
   allow_contract_started_email: false,
   allow_contract_ending_email: false,
   allow_contract_ended_email: false,
@@ -53,6 +55,14 @@ const CONTRACT_DYNAMIC_VALUES = [
   { description: 'Contract name', value: '{contract_name}' },
   { description: 'Contract start date', value: '{start_date}' },
   { description: 'Contract end date', value: '{end_date}' },
+];
+// Order request emails also fill in the order request (see b2b/components/HeldOrders.jsx).
+const ORDER_REQUEST_DYNAMIC_VALUES = [
+  ...COMMON_DYNAMIC_VALUES,
+  { description: 'Company name', value: '{company_name}' },
+  { description: 'Location name', value: '{location_name}' },
+  { description: 'Order number', value: '{order_number}' },
+  { description: 'Order total', value: '{order_total}' },
 ];
 const BUYER_PREHEADER_FIELDS = [
   { key: 'senderName', label: 'Sender name', autoComplete: 'off' },
@@ -115,6 +125,26 @@ const REGISTRATION_EMAIL_TEMPLATES = {
   },
 };
 
+// Order request emails (Upcoming version): to the buyer who sent an order request
+// over an order limit's maximum, when you approve it (with the invoice they check
+// out from) or decline it.
+const ORDER_REQUEST_EMAIL_TEMPLATES = {
+  allow_order_request_approved_email: {
+    title: 'Order request approved',
+    description: 'Email sent to the buyer with an invoice when you approve their order request',
+    detail: 'Order request approved email is sent automatically to the buyer who sent an order request over an order limit, when you approve it. It holds the invoice they check out from to place the order',
+    dynamicValues: [...ORDER_REQUEST_DYNAMIC_VALUES, { description: 'Invoice link', value: '{invoice_url}' }],
+    preheaderFields: BUYER_PREHEADER_FIELDS,
+  },
+  allow_order_request_declined_email: {
+    title: 'Order request declined',
+    description: 'Email sent to the buyer when you decline their order request',
+    detail: 'Order request declined email is sent automatically to the buyer who sent an order request over an order limit, when you decline it, with your message if you add one',
+    dynamicValues: [...ORDER_REQUEST_DYNAMIC_VALUES, { description: 'Your message to the buyer', value: '{decline_message}' }],
+    preheaderFields: BUYER_PREHEADER_FIELDS,
+  },
+};
+
 // Contract emails (Upcoming version): to the buyers at the locations a contract
 // applies to when it starts, when its renewal reminder starts (reminderDays in
 // agreements.js), when it ends and when it's extended; and to you when the reminder
@@ -157,7 +187,7 @@ const CONTRACT_EMAIL_TEMPLATES = {
   },
 };
 
-export const NOTIFICATION_EMAIL_TEMPLATES = { ...REGISTRATION_EMAIL_TEMPLATES, ...CONTRACT_EMAIL_TEMPLATES };
+export const NOTIFICATION_EMAIL_TEMPLATES = { ...REGISTRATION_EMAIL_TEMPLATES, ...ORDER_REQUEST_EMAIL_TEMPLATES, ...CONTRACT_EMAIL_TEMPLATES };
 
 const itemsOf = (templates) =>
   Object.keys(templates).map((key) => {
@@ -165,6 +195,7 @@ const itemsOf = (templates) =>
     return { key, title: template.title, description: template.description, detail: template.detail };
   });
 export const REGISTRATION_NOTIFICATION_ITEMS = itemsOf(REGISTRATION_EMAIL_TEMPLATES);
+export const ORDER_REQUEST_NOTIFICATION_ITEMS = itemsOf(ORDER_REQUEST_EMAIL_TEMPLATES);
 export const CONTRACT_NOTIFICATION_ITEMS = itemsOf(CONTRACT_EMAIL_TEMPLATES);
 
 // Demo: what GET /email/templates/{type} returns for this shop, as editor form
@@ -228,6 +259,40 @@ export const DEMO_EMAIL_TEMPLATES = {
       'If you have any questions, contact us at {store_email}.',
       '<br>',
       '<a href="{store_url}">Visit our store</a>',
+      '<br>',
+      'Best regards,<br>{store_name}',
+    ),
+    senderName: '221 Baker',
+    recipientName: '{customer_name}',
+  },
+  allow_order_request_approved_email: {
+    subject: 'Your order request {order_number} is approved',
+    emailBody: body(
+      'Dear {first_name},',
+      '<br>',
+      '{store_name} approved your order request {order_number} for {order_total} for {company_name} · {location_name}.',
+      '<br>',
+      'To place the order, <a href="{invoice_url}">complete checkout from your invoice</a>. The order isn’t placed until you check out.',
+      '<br>',
+      'If you have any questions, contact us at {store_email}.',
+      '<br>',
+      'Best regards,<br>{store_name}',
+    ),
+    senderName: '221 Baker',
+    recipientName: '{customer_name}',
+  },
+  allow_order_request_declined_email: {
+    subject: 'Your order request {order_number} was declined',
+    emailBody: body(
+      'Dear {first_name},',
+      '<br>',
+      '{store_name} declined your order request {order_number} for {order_total} for {company_name} · {location_name}. It wasn’t placed and you weren’t charged.',
+      '<br>',
+      '{decline_message}',
+      '<br>',
+      'You can change your order and send it again at <a href="{store_url}">our store</a>.',
+      '<br>',
+      'If you have any questions, contact us at {store_email}.',
       '<br>',
       'Best regards,<br>{store_name}',
     ),
@@ -313,8 +378,8 @@ export const DEMO_EMAIL_TEMPLATES = {
 };
 
 // Demo: what GET /email/settings returns for this shop — a connected sender
-// account with three of the four registration notifications on, and the contract
-// ones on.
+// account with three of the four registration notifications on, and the order
+// request and contract ones on.
 export const DEMO_EMAIL_SETTINGS = {
   is_connected: true,
   email: 'wholesale@221baker.com',
@@ -322,6 +387,8 @@ export const DEMO_EMAIL_SETTINGS = {
   allow_admin_notification_email: true,
   allow_approval_notification_email: true,
   allow_rejection_notification_email: false,
+  allow_order_request_approved_email: true,
+  allow_order_request_declined_email: true,
   allow_contract_started_email: true,
   allow_contract_ending_email: true,
   allow_contract_ended_email: true,
