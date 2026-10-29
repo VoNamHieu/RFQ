@@ -15,9 +15,8 @@ const STATUS_TABS = [
 ];
 const STATUS_TONE = { Active: 'success', Scheduled: 'info', Expired: undefined, Ended: undefined };
 
-// Every company's agreement in one list. A row opens the company's Agreement tab —
-// a past one opens as it was, read-only; the editor opens as a page here
-// (OPEN_AGREEMENT_EDITOR).
+// Every company's agreement in one list. A row opens it in the editor, as a page here
+// (OPEN_AGREEMENT_EDITOR) — a past one opens as it was, read-only.
 export function Agreements() {
   const { state, dispatch } = useStore();
   const [status, setStatus] = useState('all');
@@ -53,7 +52,7 @@ export function Agreements() {
             <s-stack gap="small-500">
               <s-link
                 id={linkId}
-                onClick={() => (PAST_STATUSES.includes(a.status) ? setViewing(a) : dispatch({ type: 'OPEN_COMPANY', id: a.companyId, tab: 'agreement' }))}
+                onClick={() => (PAST_STATUSES.includes(a.status) ? setViewing(a) : dispatch({ type: 'OPEN_AGREEMENT_EDITOR', agreementId: a.id }))}
               >
                 {a.number}
               </s-link>
