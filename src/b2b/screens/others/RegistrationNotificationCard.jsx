@@ -5,7 +5,7 @@ import { useWcId } from '../../../shared/wc.jsx';
 // features/Email/components/RegistrationNotificationCard). A collapsible list of
 // the four registration emails, each with an Active/Inactive badge, an on/off
 // toggle icon and an edit icon. Dimmed and inert until a sender email is connected.
-// The contract emails use the same card under their own heading.
+// The order request and contract emails use the same card under their own heading.
 export function RegistrationNotificationCard({
   heading = 'Registration form notification',
   notifications,

@@ -12,12 +12,13 @@ import {
   DEMO_EMAIL_SETTINGS,
   DEMO_EMAIL_TEMPLATES,
   NOTIFICATION_EMAIL_TEMPLATES,
+  ORDER_REQUEST_NOTIFICATION_ITEMS,
   REGISTRATION_NOTIFICATION_ITEMS,
 } from './data.js';
 
 // Email section of the Others page (production: features/Email/components/Email):
 // the sender connection card + the registration notification toggles (and, in the
-// version with contracts, the contract ones), with a
+// version with order limits and contracts, the order request and contract ones), with a
 // contextual save bar for unsaved toggle changes. A notification's edit icon
 // opens its template editor in place of the cards (the app keeps it in the
 // ?template=<key> query param of the same page); the page owns that key.
@@ -72,6 +73,7 @@ export function Email({ activeNotificationEditor = null, onOpenEditor, onCloseEd
   const [notifications, setNotifications] = useState(initialNotifications);
   const [savedNotifications, setSavedNotifications] = useState(initialNotifications);
   const [notificationCollapsed, setNotificationCollapsed] = useState(false);
+  const [orderRequestCollapsed, setOrderRequestCollapsed] = useState(false);
   const [contractCollapsed, setContractCollapsed] = useState(false);
 
   // Template editor state: the editable copy and what the "server" holds.
@@ -241,6 +243,18 @@ export function Email({ activeNotificationEditor = null, onOpenEditor, onCloseEd
             onToggleNotification={handleToggleNotification}
             onEditNotification={handleEditNotification}
           />
+          {versionFlags().orderLimits && (
+            <RegistrationNotificationCard
+              heading="Order limit notification"
+              notifications={notifications}
+              isConnected={isConnected}
+              collapsed={orderRequestCollapsed}
+              items={ORDER_REQUEST_NOTIFICATION_ITEMS}
+              onToggleCollapse={() => setOrderRequestCollapsed((prev) => !prev)}
+              onToggleNotification={handleToggleNotification}
+              onEditNotification={handleEditNotification}
+            />
+          )}
           {versionFlags().agreements && (
             <RegistrationNotificationCard
               heading="Contract notification"
