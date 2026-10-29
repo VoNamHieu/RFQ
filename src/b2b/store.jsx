@@ -21,14 +21,21 @@ import {
   duplicateAgreement,
   liveContractPricing,
   newlyBroken,
-  recordTermEdit,
   recordContractNumber,
   stampContractLimits,
   storefrontContracts,
   joinLaterLocations,
   isContractTerm,
-  openContractsHolding,
-  setTermContracts,
+  contractOf,
+  noStagedTerms,
+  withStagedTerms,
+  copyTerms,
+  saveStagedTerms,
+  dropOwnTerms,
+  sameTerm,
+  asContractPricing,
+  asContractLimit,
+  newLimitId,
 } from './agreements.js';
 import { todayISO, registrationDuplicates, isD2CRegistration } from './registrations.js';
 import {
@@ -290,6 +297,12 @@ function approveAsCustomer(db, reg, customer) {
     db.customers = [...(db.customers || []), cu];
   }
   Object.assign(reg, { status: 'approved', decidedAt: todayISO(), customerId: cu.id, linkedCustomerId: customer ? customer.id : null });
+}
+
+// The contract editor on `ag` (a copy, nothing staged yet). `returnTo`: where closing
+// it goes — by default the page it was opened from.
+function openContractEditor(state, ag, returnTo = { view: state.view, selectedCompany: state.selectedCompany, companyTab: state.companyTab, selectedLocation: state.selectedLocation }) {
+  return { ...state, view: 'agreements', agreementEditor: { draft: clone(ag), staged: noStagedTerms(), returnTo } };
 }
 
 function reducer(state, action) {
@@ -791,29 +804,32 @@ function reducer(state, action) {
       return { ...state, basePage: action.page };
     // ----- Pricing editor -----
     case 'OPEN_EDITOR': {
+      // A contract's own pricing opened from a company or location page is edited in
+      // its contract: the contract editor opens, with the pricing editor on top.
+      if (action.policy && isContractTerm(action.policy) && !action.context?.contractTerm) {
+        const ag = contractOf(state.db, action.policy.id);
+        if (!ag) return state;
+        return reducer(openContractEditor(state, ag), { type: 'OPEN_EDITOR', policy: action.policy, context: { mode: 'edit', contractTerm: true } });
+      }
+      // `context.contractTerm`: one of the contract editor's own pricing (a new one is
+      // Contract: its dates, status and who it serves don't apply — the contract decides).
+      const forContract = !!action.context?.contractTerm;
       const builder = action.policy
         ? {
             // God-file appearanceEditor defaults for older policies that lack them.
             appearanceTitle: 'Wholesale pricing',
             appearanceLabel: 'Special price',
             ...clone(action.policy),
-            ...seedAssignment(action.policy, state.db),
+            ...(forContract ? {} : seedAssignment(action.policy, state.db)),
           }
         : action.kind === 'quantity'
         ? newQuantityBuilder()
         : newBaseBuilder();
-      // A new contract pricing (from the contract editor): set as Contract. Its dates,
-      // status and who it serves don't apply — its contracts decide.
-      if (!action.policy && action.forContracts) builder.forContracts = true;
-      // A contract pricing's contracts, picked in its Contracts card.
-      builder.contractIds = action.policy ? openContractsHolding(state.db, action.policy.id).map((a) => a.id) : [];
+      if (!action.policy && forContract) builder.forContracts = true;
       // Editing from a company page: "Who this pricing serves" starts from the
       // company's locations that get it now (null = all of them).
       let editorContext = action.context || null;
-      // A contract pricing is edited as itself wherever it's opened: no copy for a
-      // company. `addToAgreement`: created from the contract editor, it goes into
-      // that contract's base or quantity pricing.
-      if (isContractTerm(builder)) editorContext = { mode: editorContext?.mode || 'edit', addToAgreement: editorContext?.addToAgreement || null };
+      if (forContract) editorContext = { mode: editorContext.mode || 'edit', contractTerm: true };
       else if (action.policy?.id && editorContext?.companyId && !editorContext.locationId) {
         const c = state.db.companies.find((x) => x.id === editorContext.companyId);
         const locs = c?.locations || [];
@@ -877,31 +893,23 @@ function reducer(state, action) {
       const db = clone(state.db);
       const existing = db.policies.find((p) => p.id === b.id);
       const closed = { builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null };
-      // A contract pricing: no assignments of its own — it goes in the contracts picked
-      // in its Contracts card (a new one from the contract editor: that contract). An
-      // edit adds a version to the running contracts keeping it; ones it joins or
-      // leaves get "Added …" / "Removed …".
-      const { contractIds = [], ...fields } = draft;
-      if (isContractTerm(fields)) {
-        const key = fields.priceKind === 'quantity' ? 'quantity' : 'base';
-        if (existing) {
-          const before = clone(existing);
-          Object.assign(existing, fields, { id: existing.id });
-          setTermContracts(db, existing.id, key, contractIds, 'remove');
-          recordTermEdit(db, before, existing, false);
-          setTermContracts(db, existing.id, key, contractIds, 'add');
-          return { ...state, db, ...closed, toast: 'Pricing saved' };
-        }
-        const id = demoPolicyId(db);
-        // Set as Contract in the editor: what the hidden sections held doesn't apply.
-        const none = { audienceType: 'b2b', status: 'Active', validityType: 'evergreen', startDate: '', hasEndDate: false, endDate: '', b2bCompanyIds: [], b2bLocationKeys: [], customerTarget: 'none', assignmentTargetIds: [] };
-        db.policies.push({ ...newBaseBuilder(), ...fields, ...none, id });
-        setTermContracts(db, id, key, contractIds, 'add');
-        const to = state.editorContext?.addToAgreement;
+      // One of the contract editor's own pricing: staged there, saved with the contract.
+      // A new one goes into its base or quantity pricing. Saved unchanged, nothing changes.
+      if (state.editorContext?.contractTerm) {
         const ed = state.agreementEditor;
-        const agreementEditor = to && ed ? { ...ed, draft: { ...ed.draft, terms: { ...ed.draft.terms, [to]: [...ed.draft.terms[to], id] } } } : ed;
-        return { ...state, db, agreementEditor, ...closed, toast: 'Pricing saved' };
+        if (!ed) return { ...state, ...closed };
+        const all = withStagedTerms(state.db, ed.staged);
+        const before = b.id ? all.policies.find((p) => p.id === b.id) : null;
+        const start = before && builderDraft({ appearanceTitle: 'Wholesale pricing', appearanceLabel: 'Special price', ...clone(before) });
+        if (before && sameTerm(start, draft)) return { ...state, ...closed };
+        const term = { ...asContractPricing({ ...newBaseBuilder(), ...(before || {}), ...draft }), id: before ? before.id : demoPolicyId(all) };
+        const key = term.priceKind === 'quantity' ? 'quantity' : 'base';
+        const staged = { ...ed.staged, policies: { ...ed.staged.policies, [term.id]: term } };
+        const terms = before ? ed.draft.terms : { ...ed.draft.terms, [key]: [...ed.draft.terms[key], term.id] };
+        return { ...state, agreementEditor: { ...ed, staged, draft: { ...ed.draft, terms } }, ...closed, toast: before ? 'Pricing updated' : 'Pricing added' };
       }
+      // A contract's own pricing is edited only in its contract (see OPEN_EDITOR).
+      if (isContractTerm(draft)) return { ...state, ...closed };
       if (!existing) {
         const id = `pN${db.policies.length + 1}`;
         db.policies.push({ ...newBaseBuilder(), ...draft, id });
@@ -988,40 +996,6 @@ function reducer(state, action) {
       });
       // Running contracts can't lose it (see newlyBroken): it's deleted only outside them.
       return { ...state, db, toast: 'Pricing deleted' };
-    }
-    // "Duplicate as contract pricing": a regular pricing's copy, made for contracts —
-    // no dates, status or assignments; the original stays as it is. Opens the copy.
-    case 'DUPLICATE_PRICING_FOR_CONTRACTS': {
-      const db = clone(state.db);
-      const from = db.policies.find((p) => p.id === action.id);
-      if (!from || isContractTerm(from)) return state;
-      const copy = {
-        ...clone(from),
-        id: demoPolicyId(db),
-        name: `Copy of ${from.name}`,
-        forContracts: true,
-        audienceType: 'b2b',
-        status: 'Active',
-        validityType: 'evergreen',
-        startDate: '',
-        hasEndDate: false,
-        endDate: '',
-        b2bCompanyIds: [],
-        b2bLocationKeys: [],
-        customerTarget: 'none',
-        assignmentTargetIds: [],
-      };
-      db.policies.push(copy);
-      return {
-        ...state,
-        db,
-        builder: { appearanceTitle: 'Wholesale pricing', appearanceLabel: 'Special price', ...clone(copy), contractIds: [] },
-        pricingBuilderTab: 'settings',
-        ruleEdit: null,
-        addRuleMenu: false,
-        editorContext: { mode: 'edit', addToAgreement: null },
-        toast: 'Contract pricing duplicated',
-      };
     }
     case 'TOGGLE_POLICY_STATUS': {
       const db = clone(state.db);
@@ -1158,13 +1132,15 @@ function reducer(state, action) {
       const source = action.duplicateOf && (state.db.agreements || []).find((a) => a.id === action.duplicateOf);
       if (source) {
         if (!state.db.companies.some((c) => c.id === source.companyId)) return state;
-        return { ...state, view: 'agreements', agreementEditor: { draft: duplicateAgreement(state.db, source), returnTo: action.returnTo || null } };
+        const { draft, staged } = duplicateAgreement(state.db, source);
+        return { ...state, view: 'agreements', agreementEditor: { draft, staged, returnTo: action.returnTo || null } };
       }
       const found = action.agreementId && (state.db.agreements || []).find((a) => a.id === action.agreementId);
-      if (!found && !action.companyId) {
-        return { ...state, view: 'agreements', agreementEditor: { draft: newAgreement(state.db, null), returnTo: action.returnTo || null, pickCompany: true } };
+      if (found) return openContractEditor(state, found, action.returnTo || null);
+      if (!action.companyId) {
+        return { ...state, view: 'agreements', agreementEditor: { draft: newAgreement(state.db, null), staged: noStagedTerms(), returnTo: action.returnTo || null, pickCompany: true } };
       }
-      const company = state.db.companies.find((c) => c.id === (found?.companyId || action.companyId));
+      const company = state.db.companies.find((c) => c.id === action.companyId);
       if (!company) return state;
       const fresh = newAgreement(state.db, company);
       // Picking every location counts as all (see LocationScopePicker). Its start date
@@ -1174,11 +1150,22 @@ function reducer(state, action) {
         fresh.applyLater = false;
         fresh.startDate = defaultStartDate(state.db, company.id, fresh.locationIds);
       }
-      const draft = found ? clone(found) : fresh;
-      return { ...state, view: 'agreements', agreementEditor: { draft, returnTo: action.returnTo || null } };
+      return { ...state, view: 'agreements', agreementEditor: { draft: fresh, staged: noStagedTerms(), returnTo: action.returnTo || null } };
     }
     case 'AGREEMENT_EDITOR_PATCH':
       return { ...state, agreementEditor: { ...state.agreementEditor, draft: { ...state.agreementEditor.draft, ...action.patch } } };
+    // "Copy existing": the picked pricing or limits (`ids`, in the terms' `key`) go into
+    // the contract as its own copies, staged until it's saved.
+    case 'COPY_INTO_AGREEMENT': {
+      const ed = state.agreementEditor;
+      if (!ed || !action.ids.length) return state;
+      const draft = clone(ed.draft);
+      const staged = clone(ed.staged || noStagedTerms());
+      copyTerms(state.db, draft, staged, action.key, action.ids);
+      const n = action.ids.length;
+      const noun = action.key === 'limits' ? `limit${n === 1 ? '' : 's'}` : 'pricing';
+      return { ...state, agreementEditor: { ...ed, draft, staged }, toast: `${n} ${noun} copied` };
+    }
     case 'CLOSE_AGREEMENT_EDITOR':
       return { ...state, ...(state.agreementEditor?.returnTo || {}), agreementEditor: null };
     // Save the editor's draft (or `action.draft`). A new one goes in force — Active, or
@@ -1188,6 +1175,8 @@ function reducer(state, action) {
     case 'SAVE_AGREEMENT': {
       const db = clone(state.db);
       const draft = clone(action.draft || state.agreementEditor.draft);
+      // The pricing and limits edited in the editor go in with it.
+      const staged = action.draft ? null : state.agreementEditor?.staged;
       draft.name = (draft.name || '').trim();
       draft.updatedAt = new Date().toISOString();
       const prev = draft.id ? (db.agreements || []).find((a) => a.id === draft.id) : null;
@@ -1200,6 +1189,7 @@ function reducer(state, action) {
       db.agreements = prev ? db.agreements.map((a) => (a.id === draft.id ? draft : a)) : [...(db.agreements || []), draft];
       // Its number is given out for good, even if it's deleted later.
       if (!prev) recordContractNumber(db, draft);
+      saveStagedTerms(db, draft, staged);
       // Live terms come off first; they go back on if it's (still) in its dates.
       if (prev?.status === 'Active') unapplyAgreement(db, prev);
       // Over Active or Scheduled contracts at its locations (the Overlaps box): those
@@ -1209,8 +1199,10 @@ function reducer(state, action) {
       if (status === 'Scheduled') draft.status = 'Scheduled';
       else if (prev?.status === 'Active') applyAgreement(db, draft);
       else takeEffect(db, draft);
-      const note = wasLive ? agreementChanges(prev, draft, db) : status === 'Scheduled' ? `Activated, starts ${fmtDay(draft.startDate)}` : 'Activated';
+      const note = wasLive ? agreementChanges(prev, draft, db, state.db) : status === 'Scheduled' ? `Activated, starts ${fmtDay(draft.startDate)}` : 'Activated';
       addVersion(db, draft, note);
+      // Its own pricing and limits taken out in the editor go.
+      dropOwnTerms(db, draft);
       const returnTo = action.draft ? {} : state.agreementEditor?.returnTo || {};
       const toast = wasLive ? `Version ${draft.version} saved` : draft.status === 'Scheduled' ? `${draft.number} scheduled` : `${draft.number} activated`;
       return { ...state, db, ...returnTo, agreementEditor: action.draft ? state.agreementEditor : null, toast };
@@ -1233,51 +1225,33 @@ function reducer(state, action) {
       addVersion(db, ag, `Extended until ${fmtDay(action.endDate)}`);
       return { ...state, db, toast: `${ag.number} extended` };
     }
-    case 'DELETE_AGREEMENT':
+    // Its own pricing and limits go with it.
+    case 'DELETE_AGREEMENT': {
+      const ag = (state.db.agreements || []).find((a) => a.id === action.id);
+      if (ag?.status !== 'Scheduled') return state;
+      const db = { ...state.db, agreements: state.db.agreements.filter((a) => a.id !== ag.id) };
+      dropOwnTerms(db, ag, []);
       return {
         ...state,
-        db: { ...state.db, agreements: (state.db.agreements || []).filter((a) => !(a.id === action.id && a.status === 'Scheduled')) },
+        db,
         agreementEditor: state.agreementEditor?.draft.id === action.id ? null : state.agreementEditor,
         toast: 'Contract deleted',
       };
+    }
     // ----- Order limits -----
     // The editor is a page in the Order limits view. Opened from somewhere else (a
     // location's Order limits card), it goes back there on save or cancel.
-    // `addToAgreement`: a contract limit created from the contract editor goes into
-    // that contract.
+    // `contractTerm`: one of the contract editor's own limits (staged there, see SAVE_LIMIT).
     case 'OPEN_LIMIT_EDITOR': {
+      // A contract's own limit opened from a location page is edited in its contract:
+      // the contract editor opens, with the limit editor on top.
+      if (action.limit && isContractTerm(action.limit) && !action.contractTerm) {
+        const ag = contractOf(state.db, action.limit.id);
+        if (!ag) return state;
+        return reducer(openContractEditor(state, ag), { type: 'OPEN_LIMIT_EDITOR', limit: action.limit, returnTo: { view: 'agreements' }, contractTerm: true });
+      }
       const draft = action.limit ? toDraft(action.limit) : { ...newLimit(action.kind), ...(action.preset || {}) };
-      // A contract limit's contracts, picked in its Contracts card.
-      draft.contractIds = action.limit ? openContractsHolding(state.db, action.limit.id).map((a) => a.id) : [];
-      return { ...state, view: 'limits', limitChooser: null, limitEditor: { draft, returnTo: action.returnTo || null, addToAgreement: !!action.addToAgreement } };
-    }
-    // "Duplicate as contract limit": a regular limit's copy, made for contracts — no
-    // dates, status or Applies to; the original stays as it is. Opens the copy.
-    case 'DUPLICATE_LIMIT_FOR_CONTRACTS': {
-      const from = (state.db.limits || []).find((l) => l.id === action.id);
-      if (!from || isContractTerm(from)) return state;
-      const copy = normalizeLimit({
-        ...clone(from),
-        id: `ol${Date.now()}`,
-        name: `Copy of ${from.name}`,
-        forContracts: true,
-        audienceType: 'b2b',
-        storeWide: false,
-        companyIds: [],
-        locationKeys: [],
-        contractAt: {},
-        status: 'Active',
-        startDate: null,
-        endDate: null,
-        createdAt: TODAY,
-        updatedAt: TODAY,
-      });
-      return {
-        ...state,
-        db: { ...state.db, limits: [...(state.db.limits || []), copy] },
-        limitEditor: { draft: { ...toDraft(copy), contractIds: [] }, returnTo: state.limitEditor?.returnTo || null, addToAgreement: false },
-        toast: 'Contract limit duplicated',
-      };
+      return { ...state, view: 'limits', limitChooser: null, limitEditor: { draft, returnTo: action.returnTo || null, contractTerm: !!action.contractTerm } };
     }
     case 'LIMIT_EDITOR_PATCH':
       return { ...state, limitEditor: { ...state.limitEditor, draft: { ...state.limitEditor.draft, ...action.patch } } };
@@ -1285,13 +1259,20 @@ function reducer(state, action) {
       return { ...state, ...(state.limitEditor?.returnTo || {}), limitEditor: null };
     case 'SAVE_LIMIT': {
       const limit = normalizeLimit(state.limitEditor.draft);
-      const contractIds = limit.contractIds || [];
-      delete limit.contractIds;
       const isNew = !limit.id;
-      // A new contract limit (set as Contract in the editor): what the hidden Applies
-      // to, Dates and Status held doesn't apply — its contracts decide.
-      if (isNew && isContractTerm(limit)) {
-        Object.assign(limit, { audienceType: 'b2b', storeWide: false, companyIds: [], locationKeys: [], customerTarget: 'all', customerTargetIds: [], startDate: null, endDate: null, status: 'Active' });
+      // One of the contract editor's own limits: staged there, saved with the contract.
+      // A new one goes into its order limits. Saved unchanged, nothing changes.
+      if (state.limitEditor.contractTerm) {
+        const ed = state.agreementEditor;
+        const back = { ...(state.limitEditor.returnTo || {}), limitEditor: null };
+        if (!ed) return { ...state, ...back };
+        const all = withStagedTerms(state.db, ed.staged);
+        const before = isNew ? null : all.limits.find((l) => l.id === limit.id);
+        if (before && sameTerm(normalizeLimit(before), limit)) return { ...state, ...back };
+        const term = normalizeLimit({ ...asContractLimit(limit), id: before ? before.id : newLimitId(all), createdAt: before?.createdAt || TODAY });
+        const staged = { ...ed.staged, limits: { ...ed.staged.limits, [term.id]: term } };
+        const terms = before ? ed.draft.terms : { ...ed.draft.terms, limits: [...ed.draft.terms.limits, term.id] };
+        return { ...state, ...back, agreementEditor: { ...ed, staged, draft: { ...ed.draft, terms } }, toast: before ? 'Limit updated' : 'Limit added' };
       }
       if (isNew) Object.assign(limit, { id: `ol${Date.now()}`, createdAt: TODAY });
       // Latest updates on the Order limits list: saved or turned on/off.
@@ -1304,20 +1285,7 @@ function reducer(state, action) {
         : before && before.status !== 'Active' && limit.status === 'Active'
           ? turnLimitOn(limits, limit)
           : limits.map((l) => (l.id === limit.id ? limit : l));
-      // A contract limit goes in the contracts picked in its Contracts card (putting it
-      // in or taking it off an Active one re-applies that one's terms, so on a copy).
-      const forContracts = isContractTerm(limit);
-      const db = forContracts ? clone({ ...state.db, limits: next }) : { ...state.db, limits: next, agreements: clone(state.db.agreements || []) };
-      if (forContracts) setTermContracts(db, limit.id, 'limits', contractIds, 'remove');
-      // The running contracts keeping it get a version with its new terms.
-      if (before) recordTermEdit(db, before, limit, true);
-      if (forContracts) setTermContracts(db, limit.id, 'limits', contractIds, 'add');
-      // A new contract limit from the contract editor goes into that contract.
-      const ed = state.agreementEditor;
-      const agreementEditor = isNew && state.limitEditor.addToAgreement && ed
-        ? { ...ed, draft: { ...ed.draft, terms: { ...ed.draft.terms, limits: [...ed.draft.terms.limits, limit.id] } } }
-        : ed;
-      return { ...state, db, agreementEditor, ...(state.limitEditor.returnTo || {}), limitEditor: null, toast: isNew ? 'Order limit created' : 'Order limit saved' };
+      return { ...state, db: { ...state.db, limits: next }, ...(state.limitEditor.returnTo || {}), limitEditor: null, toast: isNew ? 'Order limit created' : 'Order limit saved' };
     }
     case 'DELETE_LIMIT': {
       // Running contracts can't lose it (see newlyBroken): it's deleted only outside them.

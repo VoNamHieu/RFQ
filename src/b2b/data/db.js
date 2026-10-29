@@ -248,6 +248,42 @@ const policies = [
 // The contract copies of pricing also assigned outside contracts (SPLIT).
 const contractCopy = (list, of) => ({ ...JSON.parse(JSON.stringify(list.find((x) => x.id === of))), id: SPLIT[of], forContracts: true });
 if (CONTRACTS) policies.push(...['p1', 'p22', 'p23', 'p27'].map((of) => contractCopy(policies, of)));
+// Song Hong's expired CT-274 also had a negotiated base with many rules and product
+// overrides — to read a long pricing in a past contract's version.
+const rule = (id, field, value, pct) => ({ id, conditions: [{ field, operator: field === 'tag' ? 'contains' : 'is', values: [value] }], match: 'ALL', rule: 'decrease', valueType: 'percentage', value: pct });
+if (CONTRACTS) {
+  policies.push({
+    id: 'pc274', name: 'Song Hong negotiated base', type: 'Account-specific', status: 'Active', audienceType: 'b2b', priority: 1,
+    priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: ['FIL-XL', 'FIL-STD', 'SEA-30', 'HOS-12', 'VLV-40'],
+    pricingRule: 'decrease', valueType: 'percentage', value: 10,
+    conditionalRules: [
+      rule('crs1', 'collection', 'Distributor assortment', 22),
+      rule('crs2', 'collection', 'Contractor assortment', 20),
+      rule('crs3', 'collection', 'Project assortment', 18),
+      rule('crs4', 'tag', 'clearance', 30),
+      rule('crs5', 'vendor', 'HydroMax', 15),
+      rule('crs6', 'vendor', 'FilterCo', 14),
+      rule('crs7', 'vendor', 'SealPro', 12),
+      rule('crs8', 'tag', 'consumable', 10),
+      rule('crs9', 'tag', 'premium', 8),
+      rule('crs10', 'productType', 'Hoses', 12),
+      rule('crs11', 'productType', 'Valves', 9),
+      rule('crs12', 'productType', 'Apparel', 5),
+    ],
+    variantAdjustments: {
+      'FIL-XL': { rule: 'set', valueType: 'amount', value: 82 },
+      'FIL-XL-HD': { rule: 'set', valueType: 'amount', value: 99 },
+      'FIL-STD': { rule: 'set', valueType: 'amount', value: 54 },
+      'SEA-30': { rule: 'set', valueType: 'amount', value: 6.9 },
+      'HOS-12': { rule: 'set', valueType: 'amount', value: 118 },
+      'HOS-12-18M': { rule: 'set', valueType: 'amount', value: 165 },
+      'HOS-12-24M': { rule: 'set', valueType: 'amount', value: 210 },
+      'VLV-40': { rule: 'decrease', valueType: 'percentage', value: 12 },
+    },
+    explicitEnabled: true,
+    validityType: 'evergreen', startDate: '', endDate: '', forContracts: true,
+  });
+}
 
 const attention = [
   { sev: 'blocking', title: 'Order #1046 is blocked', meta: 'Song Hong Interiors · Hanoi · the negotiated price expired and nothing replaced it', cta: 'Fix pricing', company: 'c4' },
@@ -473,10 +509,10 @@ const agreements = [
     terms: { base: ['p1'], quantity: [], limits: ['ol2', 'ol3'] },
     history: [{ version: 1, date: '2026-07-10', note: 'Activated, starts Jan 1, 2027', terms: { base: ['p1'], quantity: [], limits: ['ol2', 'ol3'] } }] },
   { id: 'ag3', number: 'CT-274', name: '2025–26 negotiated terms', companyId: 'c4', locationIds: null, status: 'Expired', version: 1, startDate: '2025-07-01', endDate: '2026-06-30',
-    terms: { base: ['p8'], quantity: [], limits: [] },
+    terms: { base: CONTRACTS ? ['p8', 'pc274'] : ['p8'], quantity: [], limits: [] },
     history: [
       { version: 1, date: '2026-07-01', note: 'Expired' },
-      { version: 1, date: '2025-07-01', note: 'Activated', terms: { base: ['p8'], quantity: [], limits: [] } },
+      { version: 1, date: '2025-07-01', note: 'Activated', terms: { base: CONTRACTS ? ['p8', 'pc274'] : ['p8'], quantity: [], limits: [] } },
     ] },
   { id: 'ag4', number: 'CT-302', name: 'South region terms', companyId: 'c7', locationIds: ['l11', 'l12'], status: 'Scheduled', version: 1, startDate: '2026-02-01', endDate: '2027-01-31',
     terms: { base: ['p23'], quantity: [], limits: [] },

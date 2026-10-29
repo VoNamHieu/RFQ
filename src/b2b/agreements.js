@@ -20,21 +20,21 @@
 // with others left keeps those, as a new version.
 // Every version keeps a snapshot of its terms as they were then (names and what
 // each sets), so any version — and contracts that are over — can be read again.
-// Contracts use only contract pricing and contract limits (`forContracts`): made for
-// contracts, with no dates, status or assignments of their own — the contracts
-// decide who gets them and when. One can be in several contracts. A regular pricing
-// or limit can be duplicated as one (not the other way round); regular ones never
-// reach a contract. A live contract's pricing and limits change only through it:
-// elsewhere they can't be taken off where it applies or deleted (missingTerms /
-// newlyBroken), and editing what one sets adds a version to the running contracts
-// holding it (recordTermEdit).
+// A contract's pricing and limits are its own (`forContracts`, `contractId`): made in
+// the contract editor, new or copied from the Pricing and Order limits lists
+// (copyTerms), with no dates, status or assignments of their own — the contract
+// decides who gets them and when. They aren't in those lists, and each is in one
+// contract only. They're edited in the contract editor, staged there (`staged`) and
+// saved with the contract (saveStagedTerms): saving a live one applies the edits as a
+// new version. Elsewhere they can't be taken off where it applies (missingTerms /
+// newlyBroken); editing one from a company or location page opens its contract.
 // In production a daily job starts and expires contracts (syncContractDates) and
 // reminds the merchant reminderDays before the end date; Extend moves the end date
 // and keeps the terms, as a new version. The demo's "today" is TODAY.
 // Ending a contract takes off only what it added.
-import { addPricingToLocations, removeCompanySlot, companySlotArray } from './dbHelpers.js';
-import { hasOwnSlot, slotIds, scopeLabel, ruleAdjustmentLabel, ruleValuesSummary, TODAY } from './pricing.js';
-import { limitKey, limitSummary, limitLevel, isD2CLimit } from './limits.js';
+import { addPricingToLocations, removeCompanySlot, companySlotArray, demoPolicyId } from './dbHelpers.js';
+import { hasOwnSlot, slotIds, scopeLabel, ruleAdjustmentLabel, ruleValuesSummary, ruleTypeLabel, ruleField, productVariants, TODAY } from './pricing.js';
+import { limitKey, limitSummary, limitLevel, isD2CLimit, limitRules, defaultLimitMessage } from './limits.js';
 import { versionFlags } from '../shared/versions.js';
 
 const KINDS = ['base', 'quantity'];
@@ -236,22 +236,124 @@ export function newAgreement(db, company) {
 export const addsLaterLocations = (ag) => ag.applyLater ?? !ag.locationIds;
 
 // A new contract with another one's terms and locations — `ag` can be open or over:
-// the contract pricing and limits still in the libraries, and the locations its
-// company still has. Its start date follows the Active
-// contracts at those locations, as a new one's does; no end date.
+// its own copies of that one's pricing and limits (staged until it's saved), and the
+// locations its company still has. Its start date follows the Active contracts at
+// those locations, as a new one's does; no end date. { draft, staged }
 export function duplicateAgreement(db, ag) {
   const c = companyOf(db, ag);
-  const pricing = (id) => (db.policies || []).some((p) => p.id === id && isContractTerm(p));
-  const limit = (id) => (db.limits || []).some((l) => l.id === id && isContractTerm(l));
   const locationIds = ag.locationIds ? ag.locationIds.filter((id) => (c?.locations || []).some((l) => l.id === id)) : null;
-  return {
+  const draft = {
     ...newAgreement(db, c),
     name: ag.name ? `Copy of ${ag.name}` : '',
     locationIds,
     applyLater: addsLaterLocations(ag),
     startDate: defaultStartDate(db, ag.companyId, locationIds),
-    terms: { base: ag.terms.base.filter(pricing), quantity: ag.terms.quantity.filter(pricing), limits: ag.terms.limits.filter(limit) },
   };
+  const staged = noStagedTerms();
+  ['base', 'quantity', 'limits'].forEach((key) => copyTerms(db, draft, staged, key, ag.terms[key]));
+  return { draft, staged };
+}
+
+// ── A contract's own pricing and limits ───────────────────────────────────────
+// What a pricing or limit has of its own that the contract decides instead: dates,
+// status and who gets it.
+const CONTRACT_PRICING = { forContracts: true, audienceType: 'b2b', status: 'Active', validityType: 'evergreen', startDate: '', hasEndDate: false, endDate: '', b2bCompanyIds: [], b2bLocationKeys: [], customerTarget: 'none', assignmentTargetIds: [] };
+const CONTRACT_LIMIT = { forContracts: true, audienceType: 'b2b', storeWide: false, companyIds: [], locationKeys: [], contractAt: {}, customerTarget: 'all', customerTargetIds: [], status: 'Active', startDate: null, endDate: null };
+const copyOf = (x) => JSON.parse(JSON.stringify(x));
+export const asContractPricing = (p) => ({ ...copyOf(p), ...CONTRACT_PRICING });
+export const asContractLimit = (l) => ({ ...copyOf(l), ...CONTRACT_LIMIT, createdAt: TODAY, updatedAt: TODAY });
+// The contract editor's pricing and limits not saved yet: id → the term as edited,
+// or a new one.
+export const noStagedTerms = () => ({ policies: {}, limits: {} });
+// The db with those in place, as the contract editor shows them.
+export function withStagedTerms(db, staged) {
+  const over = (list, map) => {
+    const terms = Object.values(map || {});
+    if (!terms.length) return list;
+    return [...list.map((x) => map[x.id] || x), ...terms.filter((x) => !list.some((y) => y.id === x.id))];
+  };
+  return staged ? { ...db, policies: over(db.policies || [], staged.policies), limits: over(db.limits || [], staged.limits) } : db;
+}
+export function newLimitId(db) {
+  let n = Date.now();
+  while ((db.limits || []).some((l) => l.id === `ol${n}`)) n += 1;
+  return `ol${n}`;
+}
+// Copies of pricing or limits (`ids`, in the terms' `key`: base, quantity or limits)
+// as the draft's own, staged until it's saved (mutates `draft` and `staged`).
+export function copyTerms(db, draft, staged, key, ids) {
+  const isLimit = key === 'limits';
+  ids.forEach((id) => {
+    const all = withStagedTerms(db, staged);
+    const from = (isLimit ? all.limits : all.policies).find((x) => x.id === id);
+    if (!from) return;
+    const copy = isLimit ? { ...asContractLimit(from), id: newLimitId(all) } : { ...asContractPricing(from), id: demoPolicyId(all) };
+    delete copy.contractId;
+    staged[isLimit ? 'limits' : 'policies'][copy.id] = copy;
+    draft.terms = { ...draft.terms, [key]: [...draft.terms[key], copy.id] };
+  });
+}
+// Saving the contract: its staged pricing and limits go in the lists as its own — the
+// ones its terms still name. A limit keeps where the contract put it (its companies
+// and locations), which the editor doesn't set. Then its own ones it no longer names
+// (taken out in the editor) go. Mutates `db`.
+export function saveStagedTerms(db, ag, staged) {
+  const ids = termIds(ag);
+  const put = (key, map, placed = []) =>
+    Object.values(map || {})
+      .filter((x) => ids.includes(x.id))
+      .forEach((x) => {
+        const list = db[key] || (db[key] = []);
+        const i = list.findIndex((y) => y.id === x.id);
+        const term = { ...copyOf(x), forContracts: true, contractId: ag.id };
+        if (i < 0) return list.push(term);
+        placed.forEach((k) => {
+          term[k] = list[i][k];
+        });
+        list[i] = term;
+      });
+  put('policies', staged?.policies);
+  put('limits', staged?.limits, ['companyIds', 'locationKeys', 'contractAt']);
+}
+export function dropOwnTerms(db, ag, keep = termIds(ag)) {
+  const gone = (x) => x.contractId === ag.id && !keep.includes(x.id);
+  db.policies = (db.policies || []).filter((p) => !gone(p));
+  db.limits = (db.limits || []).filter((l) => !gone(l));
+}
+// The contract a pricing or limit is in (its own: one at most).
+export const contractOf = (db, id) => (db.agreements || []).find((a) => termIds(a).includes(id)) || null;
+// The seed's contracts share some pricing and limits: each gets its own copies, so
+// every contract's terms are its own — in its versions too (mutates `db`).
+export function ownContractTerms(db) {
+  if (!versionFlags().agreements) return db;
+  const claimed = new Set();
+  (db.agreements || []).forEach((ag) => {
+    const moved = {};
+    ['base', 'quantity', 'limits'].forEach((key) => {
+      const isLimit = key === 'limits';
+      if (isLimit && !db.limits) db.limits = [];
+      const list = isLimit ? db.limits : db.policies;
+      ag.terms[key].forEach((id) => {
+        const x = list.find((y) => y.id === id);
+        if (!x) return;
+        if (x.forContracts && !claimed.has(id)) {
+          claimed.add(id);
+          x.contractId = ag.id;
+          return;
+        }
+        const copy = { ...(isLimit ? asContractLimit(x) : asContractPricing(x)), id: `${id}-${String(ag.number).toLowerCase()}`, contractId: ag.id };
+        list.push(copy);
+        claimed.add(copy.id);
+        moved[id] = copy.id;
+      });
+    });
+    [ag.terms, ...(ag.history || []).map((h) => h.terms)].filter(Boolean).forEach((t) =>
+      ['base', 'quantity', 'limits'].forEach((k) => {
+        t[k] = (t[k] || []).map((id) => moved[id] || id);
+      }),
+    );
+  });
+  return db;
 }
 
 // A Scheduled contract that takes over (some of) an Active one's locations by the
@@ -523,7 +625,9 @@ export function pricingTermSummary(p) {
 }
 export const limitTermSummary = (l, db) => [limitSummary(l, db), l.status !== 'Active' && 'Turned off'].filter(Boolean).join(' · ');
 
-// The contract's terms as they are now, for a version's snapshot.
+// The contract's terms as they are now, for a version's snapshot: names, what each
+// sets in a line, and the whole pricing or limit (`config`, see termSettings), so a
+// version — and a contract that's over — can be read again in full.
 export function snapshotTerms(db, ag) {
   const c = db.companies.find((x) => x.id === ag.companyId);
   const pol = (id) => db.policies.find((p) => p.id === id);
@@ -533,10 +637,45 @@ export function snapshotTerms(db, ag) {
     startDate: ag.startDate,
     endDate: ag.endDate,
     scope: c ? agreementScopeLabel(c, ag) : '',
-    base: ag.terms.base.map(pol).filter(Boolean).map((p) => ({ id: p.id, name: p.name, summary: pricingTermSummary(p) })),
-    quantity: ag.terms.quantity.map(pol).filter(Boolean).map((p) => ({ id: p.id, name: p.name, summary: pricingTermSummary(p) })),
-    limits: ag.terms.limits.map(lim).filter(Boolean).map((l) => ({ id: l.id, name: l.name, summary: limitTermSummary(l, db) })),
+    base: ag.terms.base.map(pol).filter(Boolean).map((p) => ({ id: p.id, name: p.name, summary: pricingTermSummary(p), config: copyOf(p) })),
+    quantity: ag.terms.quantity.map(pol).filter(Boolean).map((p) => ({ id: p.id, name: p.name, summary: pricingTermSummary(p), config: copyOf(p) })),
+    limits: ag.terms.limits.map(lim).filter(Boolean).map((l) => ({ id: l.id, name: l.name, summary: limitTermSummary(l, db), config: copyOf(l) })),
   };
+}
+// A pricing's or limit's settings, as sections of lines — what its editor sets, for
+// reading a version's terms in full (ContractVersionModal). A line can carry its
+// adjustment as a badge ("35% off"), tinted like the editor's rules.
+export function termSettings(db, x, isLimit) {
+  const adjust = (a) => ({ badge: ruleAdjustmentLabel(a), tone: a && a.rule !== 'set' && a.rule !== 'keep' && a.value ? 'success' : undefined });
+  const none = (items) => (items.length ? items : [{ text: 'None', subdued: true }]);
+  if (isLimit) {
+    const message = x.message || defaultLimitMessage(x);
+    return [
+      { label: 'Sets', items: none(limitRules(x, db).map((r) => ({ text: r.text }))) },
+      { label: 'Buyer message', items: [message ? { text: `“${message}”`, note: x.message ? null : 'Suggested message' } : { text: 'None', subdued: true }] },
+    ];
+  }
+  if (x.priceKind === 'quantity') {
+    return [
+      { label: 'Products', items: [{ text: scopeLabel(x) }] },
+      { label: 'Quantity ranges', items: none((x.volumeRanges || []).map((r) => ({ text: range(r), ...adjust({ rule: 'decrease', valueType: r.valueType, value: r.value }) }))) },
+      { label: 'Discount off', items: [{ text: x.volumeBasis === 'base' ? 'The base price' : 'The Shopify price' }] },
+    ];
+  }
+  // A product override is keyed by its variant: "Industrial filter, XL · Blue".
+  const variantName = (id) => {
+    const product = (db.products || []).find((p) => productVariants(p).some((v) => v.id === id));
+    const v = productVariants(product).find((y) => y.id === id);
+    return product ? `${product.title}${v && v.title !== 'Default' && productVariants(product).length > 1 ? ` · ${v.title}` : ''}` : id;
+  };
+  return [
+    x.pricingRule && x.pricingRule !== 'keep' ? { label: 'Price', items: [{ text: scopeLabel(x), ...adjust({ rule: x.pricingRule, valueType: x.valueType, value: x.value }) }] } : null,
+    {
+      label: 'Rules',
+      items: none((x.conditionalRules || []).map((r, i) => ({ text: `Rule ${i + 1} · ${ruleTypeLabel(r)}${ruleField(r) === 'all' ? '' : ` · ${ruleValuesSummary(r)}`}`, ...adjust(r) }))),
+    },
+    { label: 'Product overrides', items: none(Object.entries(x.variantAdjustments || {}).map(([id, a]) => ({ text: variantName(id), ...adjust(a) }))) },
+  ].filter(Boolean);
 }
 // A new version: its number, the note and a snapshot of the terms (mutates `ag`).
 export function addVersion(db, ag, note, date = TODAY) {
@@ -664,10 +803,6 @@ export function contractsGiving(db, company, id, locationIds = null) {
     (a) => a.status === 'Active' && a.companyId === company.id && termIds(a).includes(id) && (!locationIds || locationIds.some((l) => appliesAt(company, a, l))),
   );
 }
-// The contracts that aren't over (running: Active or Scheduled) holding a pricing or
-// limit: the ones using it.
-export const openContractsHolding = (db, id) =>
-  versionFlags().agreements ? (db.agreements || []).filter((a) => isLive(a) && termIds(a).includes(id)) : [];
 // The Active contract giving a company — or one of its locations — a pricing or limit.
 export function contractGiving(db, company, id, locationId = null) {
   if (!versionFlags().agreements) return null;
@@ -680,67 +815,20 @@ export function contractGiving(db, company, id, locationId = null) {
 // "CT-301 · ABC Construction", for the contracts holding something.
 export const contractNames = (db, list) =>
   list.map((a) => `${a.number} · ${(db.companies || []).find((c) => c.id === a.companyId)?.name || 'Company'}`).join(', ');
-// Made for contracts (a contract pricing or limit)? None in a version without Contracts.
+// A contract's own pricing or limit? None in a version without Contracts.
 export const isContractTerm = (x) => !!x?.forContracts && !!versionFlags().agreements;
-// The contracts using one, for the libraries' Assigned to / Applies to: "CT-301,
-// CT-302", "3 contracts" past two, or "Not in a contract". Ones that are over don't count.
-export const contractsLabel = (db, id) => contractsLabelOf(db, openContractsHolding(db, id).map((a) => a.id));
-// A contract pricing's or limit's status in its library: Active when an Active
-// contract holds it, otherwise Inactive.
-export const contractTermStatus = (db, id) =>
-  openContractsHolding(db, id).some((a) => a.status === 'Active') ? { label: 'Active', tone: 'success' } : { label: 'Inactive', tone: undefined };
-// The same for picked contracts (ids), e.g. in an editor before saving.
-export function contractsLabelOf(db, ids) {
-  const using = (db.agreements || []).filter((a) => ids.includes(a.id));
-  if (!using.length) return 'Not in a contract';
-  return using.length > 2 ? `${using.length} contracts` : using.map((a) => a.number).join(', ');
-}
-// The contracts a contract pricing or limit can be put in from its editor: the running
-// ones, by number.
-export const assignableContracts = (db) => (db.agreements || []).filter(isLive).sort((a, b) => String(a.number).localeCompare(String(b.number)));
-// Put a contract pricing or limit (`id`, in the terms' `key`: base, quantity or limits)
-// in exactly the contracts `wanted` (ids) among the ones that aren't over — `mode`
-// 'add' or 'remove' does only that half. A running one changes now, as a new version
-// ("Added …" / "Removed …"); an Active one's terms come off and go back on. Mutates `db`.
-export function setTermContracts(db, id, key, wanted, mode = null) {
-  const name = nameOf([...(db.policies || []), ...(db.limits || [])], id);
-  assignableContracts(db).forEach((ag) => {
-    const has = ag.terms[key].includes(id);
-    const want = wanted.includes(ag.id);
-    if (has === want || (mode === 'add' && !want) || (mode === 'remove' && want)) return;
-    if (ag.status === 'Active') unapplyAgreement(db, ag);
-    ag.terms = { ...ag.terms, [key]: want ? [...ag.terms[key], id] : ag.terms[key].filter((x) => x !== id) };
-    if (ag.status === 'Active') applyAgreement(db, ag);
-    if (isLive(ag)) addVersion(db, ag, `${want ? 'Added' : 'Removed'} ${name}`);
-  });
-}
-// The running contracts taking one off would leave with no terms (they can be ended instead).
-export const leftEmpty = (db, id, wanted) =>
-  (db.agreements || []).filter((a) => isLive(a) && !wanted.includes(a.id) && termIds(a).length === 1 && termIds(a).includes(id));
-// "CT-301, CT-302, CT-303 … and 2 more" — numbers only, three at most.
-export const contractList = (list) => {
-  const numbers = list.slice(0, 3).map((a) => a.number).join(', ');
-  return list.length > 3 ? `${numbers} … and ${list.length - 3} more` : numbers;
+// The same pricing or limit, leaving out what its contract sets (where a limit applies).
+const TERM_PLACED = ['companyIds', 'locationKeys', 'contractAt', 'contractId', 'createdAt', 'updatedAt'];
+const canon = (v) =>
+  Array.isArray(v)
+    ? v.map(canon)
+    : v && typeof v === 'object'
+      ? Object.fromEntries(Object.keys(v).sort().filter((k) => v[k] !== undefined).map((k) => [k, canon(v[k])]))
+      : v;
+export const sameTerm = (a, b) => {
+  const strip = (x) => Object.fromEntries(Object.entries(x).filter(([k]) => !TERM_PLACED.includes(k)));
+  return JSON.stringify(canon(strip(a))) === JSON.stringify(canon(strip(b)));
 };
-// "It’s in 2 running contracts: CT-301, CT-302."
-export function runningContractsLine(held) {
-  const n = held.length;
-  return `It’s in ${n} running contract${n === 1 ? '' : 's'}: ${contractList(held)}.`;
-}
-
-const termSummary = (db, x, isLimit) => (isLimit ? limitTermSummary(x, db) : pricingTermSummary(x));
-// Do live contracts holding a pricing or limit record this edit: a change to what it
-// sets, or to its name?
-export const termChanged = (db, before, after, isLimit) =>
-  termSummary(db, before, isLimit) !== termSummary(db, after, isLimit) || before.name !== after.name;
-// Editing a pricing or limit live contracts hold: when what it sets (or its name)
-// changed, each of them gets a version with the new terms (mutates `db`).
-export function recordTermEdit(db, before, after, isLimit) {
-  if (!termChanged(db, before, after, isLimit)) return;
-  const same = termSummary(db, before, isLimit) === termSummary(db, after, isLimit);
-  const note = before.name !== after.name ? `${before.name} renamed to ${after.name}${same ? '' : ' and changed'}` : `${after.name} changed`;
-  contractsHolding(db, after.id).forEach((ag) => addVersion(db, ag, note));
-}
 
 // Terms that won't apply for the contract: turned off. (Their own dates don't
 // count: they apply on the contract's.)
@@ -779,18 +867,34 @@ export function storefrontContracts(db) {
 
 const nameOf = (list, id) => (list || []).find((x) => x.id === id)?.name || id;
 
-// One line on what changed between two versions, for the version history.
-export function agreementChanges(prev, next, db) {
+// One line on what changed between two versions, for the version history. `db` has
+// `next`'s pricing and limits as edited, `before` `prev`'s.
+export function agreementChanges(prev, next, db, before = db) {
   const parts = [];
-  const diff = (a, b, list) => ({ added: b.filter((x) => !a.includes(x)).map((x) => nameOf(list, x)), removed: a.filter((x) => !b.includes(x)).map((x) => nameOf(list, x)) });
+  // Kept ones edited in the contract editor: "Changed Contract Base", or with its new
+  // name "Changed Contract Base (now 2027 Base)".
+  const edited = (ids, list, was) =>
+    ids.flatMap((id) => {
+      const now = (list || []).find((x) => x.id === id);
+      const then = (was || []).find((x) => x.id === id);
+      if (!now || !then || sameTerm(now, then)) return [];
+      return [now.name === then.name ? now.name : `${then.name} (now ${now.name})`];
+    });
+  const diff = (a, b, list, was) => ({
+    added: b.filter((x) => !a.includes(x)).map((x) => nameOf(list, x)),
+    removed: a.filter((x) => !b.includes(x)).map((x) => nameOf(was, x)),
+    changed: edited(a.filter((x) => b.includes(x)), list, was),
+  });
   const all = [
-    diff([...prev.terms.base, ...prev.terms.quantity], [...next.terms.base, ...next.terms.quantity], db.policies),
-    diff(prev.terms.limits, next.terms.limits, db.limits),
+    diff([...prev.terms.base, ...prev.terms.quantity], [...next.terms.base, ...next.terms.quantity], db.policies, before.policies),
+    diff(prev.terms.limits, next.terms.limits, db.limits, before.limits),
   ];
   const added = all.flatMap((d) => d.added);
   const removed = all.flatMap((d) => d.removed);
+  const changed = all.flatMap((d) => d.changed);
   if (added.length) parts.push(`Added ${added.join(', ')}`);
   if (removed.length) parts.push(`Removed ${removed.join(', ')}`);
+  if (changed.length) parts.push(`Changed ${changed.join(', ')}`);
   const c = db.companies.find((x) => x.id === next.companyId);
   if (c && agreementScopeLabel(c, prev) !== agreementScopeLabel(c, next)) parts.push(`Now applies to ${agreementScopeLabel(c, next)}`);
   if (addsLaterLocations(prev) !== addsLaterLocations(next)) {
@@ -802,9 +906,9 @@ export function agreementChanges(prev, next, db) {
   return parts.join(' · ') || 'No changes to terms';
 }
 // Saving would change nothing: same name, dates, locations and terms.
-export function sameAgreement(a, b, db) {
+export function sameAgreement(a, b, db, before = db) {
   const c = db.companies.find((x) => x.id === b.companyId);
-  return agreementChanges(a, b, db) === 'No changes to terms' && (!c || agreementScopeLabel(c, a) === agreementScopeLabel(c, b));
+  return agreementChanges(a, b, db, before) === 'No changes to terms' && (!c || agreementScopeLabel(c, a) === agreementScopeLabel(c, b));
 }
 
 // Short lines describing the terms, for the agreement document and lists.

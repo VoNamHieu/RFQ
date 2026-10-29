@@ -4,12 +4,10 @@ import { LIMIT_KINDS, limitErrors, defaultLimitMessage, normalizeLimit, limitOve
 import { money } from '../format.js';
 import { LimitOverlapMessage } from './LimitOverlapList.jsx';
 import { LimitRulesCard } from './LimitRulesCard.jsx';
-import { TermUseSwitch, ContractsCard, ContractSaveMessage } from './pricingEditorCards.jsx';
 import { SelectCompaniesModal, CustomerTargetsBox, companyPicks } from './AssignmentCard.jsx';
 import { Modal, useWcId, PageHeader } from '../../shared/wc.jsx';
 import { limitCatalog, withCatalog } from '../limitCatalog.js';
-import { contractsHolding, termChanged, isContractTerm, leftEmpty, openContractsHolding } from '../agreements.js';
-import { useContractLock } from './ContractLock.jsx';
+import { isContractTerm } from '../agreements.js';
 import { versionFlags } from '../../shared/versions.js';
 
 const str = (v) => (v == null ? '' : String(v));
@@ -20,8 +18,7 @@ export { limitCatalog, withCatalog };
 // unassigns it from ABC Construction. …" (here and in the Order limits list). Store-wide
 // and all / logged-in / non-logged-in customers read in lower case mid-sentence.
 export function deleteLimitText(l, db) {
-  // A contract limit is deleted only outside running contracts: nothing to unassign.
-  if (l.forContracts || !isLimitAssigned(l)) return 'This deletes the limit.';
+  if (!isLimitAssigned(l)) return 'This deletes the limit.';
   const label = limitTargetsLabel(l, db);
   const where = l.storeWide ? 'all companies' : isD2CLimit(l) && !['specific', 'tags'].includes(l.customerTarget) ? label.toLowerCase() : label;
   return `This deletes the limit and unassigns it from ${where}. Buyers there can check out without it right away.`;
@@ -35,21 +32,17 @@ const isRequired = (k) => REQUIRED.includes(k) || /^rule-\d+(-products)?$/.test(
 // Create / edit one order limit — an in-frame page in the Order limits view (see
 // the OPEN_LIMIT_EDITOR action). Name, who it applies to (it decides what the
 // settings below offer), what it sets; status in the aside. Limits never combine,
-// so an empty field is no limit. A contract limit has no Applies to, dates or
-// status: its contracts decide who gets it and when.
+// so an empty field is no limit. A contract's own limit (opened from its contract
+// editor) has no Applies to, dates or status — the contract decides who gets it and
+// when; saving keeps it in the contract editor, which applies it when the contract
+// is saved.
 export function LimitEditor() {
   const { state, dispatch } = useStore();
   const draft = state.limitEditor.draft;
   const [tried, setTried] = useState(false);
-  // Set by a save that would leave running contracts with no terms (see leftEmpty).
-  const [emptyContracts, setEmptyContracts] = useState([]);
   const [companyModal, setCompanyModal] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmSave, setConfirmSave] = useState(false);
-  // Save dialog for a contract limit running contracts hold: each gets a version.
-  const [contractConfirm, setContractConfirm] = useState(false);
-  // Deleting a contract limit running contracts hold goes through them.
-  const [showLock, lockModal] = useContractLock();
   const scopeName = useWcId('limit-scope');
   const patch = (p) => dispatch({ type: 'LIMIT_EDITOR_PATCH', patch: p });
   const close = () => dispatch({ type: 'CLOSE_LIMIT_EDITOR' });
@@ -57,39 +50,19 @@ export function LimitEditor() {
   const isNew = !draft.id;
   const kind = LIMIT_KINDS[draft.kind];
   const forContracts = isContractTerm(draft);
-  // Regular or contract limit (Upcoming), set when it's created and locked once saved;
-  // from the contract editor it's Contract, locked. Contract hides Applies to, Dates
-  // and Status right away.
-  const useLocked = !isNew || !!state.limitEditor.addToAgreement;
+  const contract = state.limitEditor.contractTerm ? state.agreementEditor?.draft : null;
   const allErrors = limitErrors(draft);
   const errors = Object.fromEntries(Object.entries(allErrors).filter(([k]) => tried || !isRequired(k)));
   const saved = isNew ? null : (state.db.limits || []).find((l) => l.id === draft.id) || null;
-  // A contract limit the running contracts hold can't be deleted meanwhile. The ones
-  // keeping it (still picked in its Contracts card): a change to what it sets, or to
-  // its name, adds a version to each of them — confirmed first.
-  const contractIds = draft.contractIds || [];
-  const held = forContracts && !isNew ? contractsHolding(state.db, draft.id) : [];
-  const keeping = held.filter((a) => contractIds.includes(a.id));
-  const versionsContracts = keeping.length > 0 && !!saved && termChanged(state.db, saved, normalizeLimit(draft), true);
-  // Contracts added and removed in its Contracts card (a saved one): saving asks first.
-  const savedIn = forContracts && !isNew ? openContractsHolding(state.db, draft.id) : [];
-  const addedTo = forContracts && !isNew ? (state.db.agreements || []).filter((a) => contractIds.includes(a.id) && !savedIn.includes(a)) : [];
-  const removedFrom = savedIn.filter((a) => !contractIds.includes(a.id));
   const hasErrors = Object.keys(allErrors).length > 0;
   // Saving a regular limit that overlaps other limits (limitOverlaps) shows one
-  // message first, as turning one on does — a note, it still saves. A contract
-  // limit's are checked in the contract editor.
+  // message first, as turning one on does — a note, it still saves. A contract's
+  // own limits are checked in the contract editor.
   const save = () => {
     if (hasErrors) return setTried(true);
-    // A running contract it's the only term of can't lose it (it can be ended instead).
-    const empty = forContracts && !isNew ? leftEmpty(state.db, draft.id, contractIds) : [];
-    setEmptyContracts(empty);
-    if (empty.length) return;
-    if (versionsContracts || addedTo.length || removedFrom.length) return setContractConfirm(true);
     if (!forContracts && limitOverlaps(catalogDb, draft).length) return setConfirmSave(true);
     return dispatch({ type: 'SAVE_LIMIT' });
   };
-  const duplicate = () => dispatch({ type: 'DUPLICATE_LIMIT_FOR_CONTRACTS', id: draft.id });
 
   // Who it's for, like pricing: Company-based B2B or D2C Wholesale. Switching side
   // clears the other side's picks; without D2C order requests (canReview), a D2C
@@ -208,15 +181,13 @@ export function LimitEditor() {
     <>
     <PageHeader
       heading={isNew ? `Create ${kind.label.toLowerCase()}` : `Edit limit: ${draft.name}`}
-      titleMetadata={forContracts ? <s-badge>Contract limit</s-badge> : null}
-      backAction={{ content: 'Order limits', onAction: close }}
-      primaryAction={{ content: isNew ? 'Create limit' : 'Save', onAction: save }}
+      // In a contract: its number by the title, and saving or going back returns to it.
+      titleMetadata={contract ? <s-badge>{`Contract ${contract.number}`}</s-badge> : null}
+      backAction={{ content: contract ? contract.number : 'Order limits', onAction: close }}
+      primaryAction={{ content: contract ? (isNew ? 'Add to contract' : 'Done') : isNew ? 'Create limit' : 'Save', onAction: save }}
       secondaryActions={[
-        // A saved regular limit can be copied as a contract limit (Upcoming); the copy opens.
-        !isNew && !forContracts && versionFlags().agreements && { content: 'Duplicate as contract limit', onAction: duplicate },
-        ...(isNew
-          ? []
-          : [{ content: 'Delete', destructive: true, onAction: () => (held.length ? showLock({ name: saved?.name || draft.name, count: held.length, verb: 'delete' }) : setConfirmDelete(true)) }]),
+        // A contract's own limit comes out of it in the contract editor.
+        ...(isNew || contract ? [] : [{ content: 'Delete', destructive: true, onAction: () => setConfirmDelete(true) }]),
         { content: 'Cancel', onAction: close },
       ]}
     />
@@ -240,29 +211,9 @@ export function LimitEditor() {
               maxLength={255}
               autocomplete="off"
             />
-            {versionFlags().agreements && (
-              <TermUseSwitch
-                forContracts={forContracts}
-                locked={useLocked}
-                onChange={(on) => patch({ forContracts: on })}
-                labels={['Regular limit', 'Contract limit']}
-                regularDetails="Set limits for companies, locations, or customers, with their own dates."
-                contractDetails="Set limits for contracts. Each limit follows its contract's terms and dates."
-              />
-            )}
           </s-stack>
         </s-section>
 
-        {/* A contract limit: its contracts instead — not when it's created from the
-            contract editor (it goes into that one). */}
-        {forContracts && !state.limitEditor.addToAgreement && (
-          <ContractsCard
-            db={state.db}
-            ids={contractIds}
-            onChange={(ids) => patch({ contractIds: ids })}
-            empty={emptyContracts.filter((a) => !contractIds.includes(a.id))}
-          />
-        )}
         {!forContracts && (
         <s-section heading="Applies to">
           <s-stack gap="small">
@@ -451,9 +402,9 @@ export function LimitEditor() {
         )}
       </s-stack>
 
-      {/* A contract limit has no Status: an empty aside keeps the page's two columns, so
-          the form doesn't widen when Contract is picked (s-page lays out an aside column
-          only when the slot has something). */}
+      {/* A contract's own limit has no Status: an empty aside keeps the page's two
+          columns, like the other limits' (s-page lays out an aside column only when the
+          slot has something). */}
       {forContracts ? (
         <div slot="aside" />
       ) : (
@@ -508,25 +459,6 @@ export function LimitEditor() {
         </Modal>
       )}
 
-      {lockModal}
-      {contractConfirm && (
-        <Modal onClose={() => setContractConfirm(false)} heading={`Save changes to ${saved.name}?`}>
-          <ContractSaveMessage db={state.db} keeping={keeping} changed={versionsContracts} added={addedTo} removed={removedFrom} />
-          <s-button
-            slot="primary-action"
-            variant="primary"
-            onClick={() => {
-              setContractConfirm(false);
-              dispatch({ type: 'SAVE_LIMIT' });
-            }}
-          >
-            Save and apply
-          </s-button>
-          <s-button slot="secondary-actions" onClick={() => setContractConfirm(false)}>
-            Cancel
-          </s-button>
-        </Modal>
-      )}
     </s-page>
     </>
   );
