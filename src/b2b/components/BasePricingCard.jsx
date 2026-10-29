@@ -119,7 +119,7 @@ export function BasePricingCard({ company }) {
   const buildFromQuotes = () => openBuildFromQuotes(dispatch, company, state.db);
 
   const priorityHeader = (
-    <Tip content={versionFlags().agreements ? 'Lower number applies first. A live contract’s pricing applies before any priority.' : 'Lower number applies first.'}>
+    <Tip detached content={versionFlags().agreements ? 'Lower number applies first. A live contract’s pricing applies before any priority.' : 'Lower number applies first.'}>
       <span style={{ borderBottom: '1px dotted var(--p-color-border)', cursor: 'help' }}>Priority</span>
     </Tip>
   );
