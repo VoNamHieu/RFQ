@@ -28,7 +28,8 @@ import { TODAY } from '../pricing.js';
 import { PricingCombobox } from './PricingCombobox.jsx';
 import { PricePreviewDialog } from './PricePreviewDialog.jsx';
 import { SelectCompaniesModal, companyPicks } from './AssignmentCard.jsx';
-import { TermGroup } from './ContractParts.jsx';
+import { TermGroup, VersionTimeline, EndContractModal, DeleteContractModal } from './ContractParts.jsx';
+import { ContractVersionModal } from './ContractVersionModal.jsx';
 import { MenuButton, Modal, PageHeader, useWcId } from '../../shared/wc.jsx';
 
 // Create / edit a company's agreement — an in-frame page in the Agreements view
@@ -70,6 +71,12 @@ export function AgreementEditor() {
   const [previewOpen, setPreviewOpen] = useState(false);
   // Copy existing: the terms' key (base, quantity or limits) being copied into it.
   const [copying, setCopying] = useState(null);
+  // A version from its history, read as it was.
+  const [viewing, setViewing] = useState(null);
+  // End contract (a live one) or Delete contract (a Scheduled one), from the header,
+  // as on the company's Contract tab. Ended, the editor closes.
+  const [ending, setEnding] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const scopeTipId = useWcId('scope-tip');
   const patch = (p) => dispatch({ type: 'AGREEMENT_EDITOR_PATCH', patch: p });
   const setTerms = (p) => patch({ terms: { ...draft.terms, ...p } });
@@ -112,11 +119,17 @@ export function AgreementEditor() {
   const createPricing = (kind) => dispatch({ type: 'OPEN_EDITOR', policy: null, kind, context: { mode: `add-${kind}`, contractTerm: true } });
   const createLimit = () => dispatch({ type: 'NAVIGATE', view: 'limits', patch: { limitChooser: { returnTo: { view: 'agreements' } } } });
   const remove = (key, id) => setTerms({ [key]: draft.terms[key].filter((x) => x !== id) });
+  // Copy existing offers the regular ones (B2B) first, then other contracts' own ones —
+  // running or over, each badged "In other contract".
+  const ownerOf = (x) => (isContractTerm(x) ? (state.db.agreements || []).find((a) => a.id === x.contractId) || null : null);
+  const copyable = (x) => !isContractTerm(x) || (!!ownerOf(x) && ownerOf(x).id !== draft.id);
+  const regularFirst = (a, b) => Number(!!ownerOf(a)) - Number(!!ownerOf(b)) || String(ownerOf(a)?.number || '').localeCompare(String(ownerOf(b)?.number || ''));
   const library = {
-    base: db.policies.filter((p) => !isContractTerm(p) && p.audienceType !== 'd2c' && kindOf(p) === 'base'),
-    quantity: db.policies.filter((p) => !isContractTerm(p) && p.audienceType !== 'd2c' && kindOf(p) === 'quantity'),
-    limits: (db.limits || []).filter((l) => !isContractTerm(l) && !isD2CLimit(l)),
+    base: db.policies.filter((p) => copyable(p) && p.audienceType !== 'd2c' && kindOf(p) === 'base').sort(regularFirst),
+    quantity: db.policies.filter((p) => copyable(p) && p.audienceType !== 'd2c' && kindOf(p) === 'quantity').sort(regularFirst),
+    limits: (db.limits || []).filter((l) => copyable(l) && !isD2CLimit(l)).sort(regularFirst),
   };
+  const contractBadge = (x) => (ownerOf(x) ? 'In other contract' : null);
   // The limits picked for it that contradict each other (a warning: it still saves).
   // Worked out again only when the limits change.
   const limitConflicts = useMemo(
@@ -191,7 +204,11 @@ export function AgreementEditor() {
       subtitle={company?.name}
       backAction={{ content: 'Contracts', onAction: close }}
       primaryAction={{ content: live ? `Save as version ${nextVersion}` : 'Save', onAction: goLive, disabled: unchanged }}
-      secondaryActions={[{ content: 'Cancel', onAction: close }]}
+      secondaryActions={[
+        live && { content: 'End contract', destructive: true, onAction: () => setEnding(true) },
+        saved?.status === 'Scheduled' && { content: 'Delete contract', destructive: true, onAction: () => setDeleting(true) },
+        { content: 'Cancel', onAction: close },
+      ]}
     />
     <s-page>
       <s-stack gap="base">
@@ -239,6 +256,9 @@ export function AgreementEditor() {
         {/* Laid out like the company's Contract tab, with Add, Edit and Remove. */}
         <s-section heading="Terms">
           <s-stack gap="small">
+            <s-paragraph color="subdued">
+              Pricing and order limits here are used only in this contract. They don’t show in Pricing or Order limits with your regular pricing and limits.
+            </s-paragraph>
             <TermGroup
               icon="receipt-dollar"
               title="Base pricing"
@@ -385,6 +405,15 @@ export function AgreementEditor() {
           </s-button>
         </s-stack>
       </s-section>
+      {/* A saved one's version history, like on the company's Contract tab. */}
+      {saved?.history?.length ? (
+        <s-section slot="aside">
+          <VersionTimeline history={saved.history} onView={setViewing} />
+        </s-section>
+      ) : null}
+      {viewing != null && saved && <ContractVersionModal ag={saved} version={viewing} onClose={() => setViewing(null)} />}
+      {ending && saved && <EndContractModal ag={saved} onClose={() => setEnding(false)} onDone={close} />}
+      {deleting && saved && <DeleteContractModal ag={saved} onClose={() => setDeleting(false)} />}
       {previewOpen && company && (
         <ContractPricePreview db={db} draft={draft} change={change} products={covered} onClose={() => setPreviewOpen(false)} />
       )}
@@ -394,6 +423,7 @@ export function AgreementEditor() {
           kind={copying}
           candidates={library[copying]}
           optionLabel={copying === 'limits' ? (l) => `${l.name} · ${limitSummary(l, db)}` : copying === 'base' ? (p) => `${p.name} · Priority ${p.priority ?? 0}` : (p) => `${p.name} · ${scopeLabel(p)}`}
+          optionBadge={contractBadge}
           onCopy={(ids) => {
             setCopying(null);
             dispatch({ type: 'COPY_INTO_AGREEMENT', key: copying, ids });
@@ -515,10 +545,10 @@ function TermActions({ name, onEdit, onRemove }) {
   );
 }
 
-// Copy existing: pick pricing or limits from the Pricing or Order limits list; the
-// contract gets its own copy of each.
+// Copy existing: pick pricing or limits from the Pricing or Order limits list, or from
+// other contracts (badged "In other contract"); the contract gets its own copy of each.
 const COPY_NOUN = { base: 'base pricing', quantity: 'quantity pricing', limits: 'order limits' };
-function CopyTermsModal({ kind, candidates, optionLabel, onCopy, onClose }) {
+function CopyTermsModal({ kind, candidates, optionLabel, optionBadge, onCopy, onClose }) {
   const [ids, setIds] = useState([]);
   const noun = COPY_NOUN[kind];
   return (
@@ -533,6 +563,7 @@ function CopyTermsModal({ kind, candidates, optionLabel, onCopy, onClose }) {
           selectedIds={ids}
           onChange={setIds}
           optionLabel={optionLabel}
+          optionBadge={optionBadge}
         />
       </s-stack>
       <s-button slot="primary-action" variant="primary" disabled={!ids.length} onClick={() => onCopy(ids)}>

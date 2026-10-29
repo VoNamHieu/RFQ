@@ -382,12 +382,12 @@ export function BuildFromQuotes() {
                   <s-table-header listSlot="labeled" format="currency">Shopify</s-table-header>
                   <s-table-header listSlot="labeled" format="currency">Quoted</s-table-header>
                   <s-table-header listSlot="labeled" format="currency">
-                    <Tip content={`The price ${sourceLoc ? sourceLoc.name : 'this company'} pays now, from its current B2B pricing. “—” means no B2B price is set yet.`}>
+                    <Tip detached content={`The price ${sourceLoc ? sourceLoc.name : 'this company'} pays now, from its current B2B pricing. “—” means no B2B price is set yet.`}>
                       Current
                     </Tip>
                   </s-table-header>
                   <s-table-header listSlot="labeled">
-                    <Tip content="Saved as this product’s base price in the selected pricing. Defaults to the quoted price — edit if needed.">
+                    <Tip detached content="Saved as this product’s base price in the selected pricing. Defaults to the quoted price — edit if needed.">
                       Price to save
                     </Tip>
                   </s-table-header>

@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
-import { fmtDay } from '../agreements.js';
+import { useStore } from '../store.jsx';
+import { fmtDay, nextAgreements, overlaps, takenOver, joinAnd, agreementScopeLabel } from '../agreements.js';
+import { Modal } from '../../shared/wc.jsx';
 
 // Pieces a contract is shown with — on the company's Contract tab, in the contract
 // editor and in a version (ContractVersionModal).
 
-// A key fact under the contract's title: a small tile with an icon and label.
-export function Fact({ icon, label, value }) {
+// A key fact under the contract's title: a small tile with an icon and label, and
+// anything that goes with the value under it (`children`, e.g. Dates' renewal reminder).
+export function Fact({ icon, label, value, children = null }) {
   return (
     <s-box background="subdued" borderRadius="base" padding="small">
       <s-stack gap="small-400">
@@ -16,6 +19,7 @@ export function Fact({ icon, label, value }) {
           </s-text>
         </s-stack>
         <s-text fontWeight="semibold">{value}</s-text>
+        {children}
       </s-stack>
     </s-box>
   );
@@ -144,5 +148,75 @@ export function VersionTimeline({ history, onView, current = null }) {
         <ShowAllLink total={history.length} all={all} onToggle={() => setAll(!all)} />
       </div>
     </s-stack>
+  );
+}
+
+// End contract, confirmed — from the company's Contract tab, the Contracts list and
+// the contract editor (`onDone`: after it's ended). Ending an Active one takes its
+// terms off right away (Scheduled ones at its locations still start); ending a
+// Scheduled one, it never starts (the Active ones it would have taken over from stay).
+export function EndContractModal({ ag, onClose, onDone }) {
+  const { state, dispatch } = useStore();
+  const company = state.db.companies.find((c) => c.id === ag.companyId);
+  if (!company) return null;
+  // Where its terms come off: the company, or the locations it has.
+  const where = agreementScopeLabel(company, ag) === 'All locations' ? company.name : agreementScopeLabel(company, ag);
+  const stillStarting = nextAgreements(state.db, company.id).filter((n) => n.status === 'Scheduled' && n.id !== ag.id && overlaps(company, n, ag));
+  const staying = ag.status === 'Scheduled' ? takenOver(state.db, ag) : [];
+  return (
+    <Modal onClose={onClose} heading={`End ${ag.number}?`}>
+      <s-stack gap="small">
+        <s-paragraph>
+          {ag.status === 'Active'
+            ? `Its pricing and order limits come off ${where} right away. Anything assigned outside the contract stays.${stillStarting
+                .map((n) => ` ${n.number} still starts on ${fmtDay(n.startDate)}.`)
+                .join('')}`
+            : `It won’t start on ${fmtDay(ag.startDate)}, and nothing changes for ${company.name}${
+                staying.length ? `: ${joinAnd(staying.map((a) => a.number))} ${staying.length === 1 ? 'stays' : 'stay'} in place` : ''
+              }.`}
+        </s-paragraph>
+      </s-stack>
+      <s-button
+        slot="primary-action"
+        variant="primary"
+        tone="critical"
+        onClick={() => {
+          dispatch({ type: 'END_AGREEMENT', id: ag.id });
+          onClose();
+          onDone?.();
+        }}
+      >
+        End contract
+      </s-button>
+      <s-button slot="secondary-actions" onClick={onClose}>
+        Cancel
+      </s-button>
+    </Modal>
+  );
+}
+
+// Delete a Scheduled contract, confirmed — from the company's Contract tab, the
+// Contracts list and the contract editor.
+export function DeleteContractModal({ ag, onClose }) {
+  const { state, dispatch } = useStore();
+  const company = state.db.companies.find((c) => c.id === ag.companyId);
+  return (
+    <Modal onClose={onClose} heading={`Delete ${ag.number}?`}>
+      <s-paragraph>{`It won’t start on ${fmtDay(ag.startDate)} and is removed with its history. Nothing changes for ${company?.name || 'the company'}.`}</s-paragraph>
+      <s-button
+        slot="primary-action"
+        variant="primary"
+        tone="critical"
+        onClick={() => {
+          dispatch({ type: 'DELETE_AGREEMENT', id: ag.id });
+          onClose();
+        }}
+      >
+        Delete contract
+      </s-button>
+      <s-button slot="secondary-actions" onClick={onClose}>
+        Cancel
+      </s-button>
+    </Modal>
   );
 }

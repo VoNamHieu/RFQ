@@ -447,29 +447,23 @@ export function PricingEditor({ asPage = false }) {
           aria-label={editorTitle}
           style={{ position: 'fixed', inset: 0, zIndex: 517, display: 'flex', flexDirection: 'column', background: 'var(--p-color-bg, #f1f1f1)' }}
         >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              padding: '10px 20px',
-              background: 'var(--p-color-bg-surface, #fff)',
-              borderBottom: '1px solid var(--p-color-border, #e3e3e3)',
-              flex: '0 0 auto',
-            }}
-          >
-            <s-heading fontSize="large">{editorTitle}</s-heading>
-            {contractBadge}
-            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <s-button onClick={() => dispatch({ type: 'CLOSE_EDITOR' })}>Cancel</s-button>
-              <s-button variant="primary" onClick={onSave} disabled={noLocationPicked}>{saveLabel}</s-button>
-              <s-button variant="tertiary" icon="x" accessibilityLabel="Close" onClick={() => dispatch({ type: 'CLOSE_EDITOR' })} />
+          {/* The bar spans the screen; its title and actions line up with the content
+              below, which is laid out like every other page (s-page). */}
+          <div style={{ background: 'var(--p-color-bg-surface, #fff)', borderBottom: '1px solid var(--p-color-border, #e3e3e3)', flex: '0 0 auto' }}>
+            <div className="wc-overlay-header">
+              <div className="wc-overlay-header__title">
+                <s-heading fontSize="large">{editorTitle}</s-heading>
+                {contractBadge}
+              </div>
+              <div className="wc-overlay-header__actions">
+                <s-button onClick={() => dispatch({ type: 'CLOSE_EDITOR' })}>Cancel</s-button>
+                <s-button variant="primary" onClick={onSave} disabled={noLocationPicked}>{saveLabel}</s-button>
+                <s-button variant="tertiary" icon="x" accessibilityLabel="Close" onClick={() => dispatch({ type: 'CLOSE_EDITOR' })} />
+              </div>
             </div>
           </div>
-          <div style={{ flex: '1 1 auto', overflowY: 'auto' }}>
-            <div style={{ maxWidth: 1160, margin: '0 auto', padding: '20px 20px 64px' }}>
-              {editorBody}
-            </div>
+          <div style={{ flex: '1 1 auto', overflowY: 'auto', paddingBottom: 64 }}>
+            <s-page>{editorBody}</s-page>
           </div>
         </div>
       )}

@@ -89,7 +89,9 @@ body {
   z-index: 400;
   height: var(--wc-topbar-h);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 480px) minmax(0, 1fr);
+  /* The sides keep room for the version switcher and the user; the search
+     shrinks first, so nothing slides under it on narrow screens. */
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, 480px) minmax(max-content, 1fr);
   align-items: center;
   gap: 12px;
   padding: 0 12px;
@@ -644,6 +646,45 @@ body {
   .wc-page-header__actions {
     flex-basis: 100%;
     justify-content: flex-start;
+  }
+}
+
+/* Full-screen editor bar (the pricing editor opened over a page): its title and
+   actions line up with the page content under it, like the page header above;
+   on a narrow screen the actions wrap under the title. */
+.wc-overlay-header {
+  box-sizing: border-box;
+  margin-inline: auto;
+  width: min(100% - 32px, 966px);
+  padding-block: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.wc-overlay-header__title {
+  display: flex;
+  flex: 1 1 240px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wc-overlay-header__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+
+/* A page's intro line under its title, outside any card: on a phone s-page drops
+   its side padding (cards go edge to edge), so the line keeps the page's 16px. */
+@media (max-width: 490px) {
+  .wc-page-intro {
+    display: block;
+    padding-inline: 16px;
   }
 }
 

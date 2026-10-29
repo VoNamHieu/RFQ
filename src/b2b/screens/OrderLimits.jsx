@@ -135,7 +135,7 @@ export function OrderLimits() {
         Run tests
       </s-button>
       <s-stack gap="base">
-        <s-paragraph color="subdued">Rules on what B2B buyers and D2C wholesale customers can check out, checked in the cart and at checkout.</s-paragraph>
+        <s-paragraph className="wc-page-intro" color="subdued">Rules on what B2B buyers and D2C wholesale customers can check out, checked in the cart and at checkout.</s-paragraph>
 
         <s-section padding="none">
           <s-table>

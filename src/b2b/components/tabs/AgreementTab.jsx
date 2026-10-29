@@ -5,14 +5,9 @@ import { scopeLabel } from '../../pricing.js';
 import {
   openAgreements,
   lastChange,
-  nextAgreements,
   agreementClashes,
   sharedLocations,
   canCreateAgreement,
-  takenOver,
-  joinAnd,
-  overlaps,
-  agreementScopeLabel,
   agreementAppliesToLabel,
   agreementTermLines,
   agreementDatesLabel,
@@ -26,7 +21,7 @@ import {
   PAST_STATUSES,
 } from '../../agreements.js';
 import { ContractVersionModal } from '../ContractVersionModal.jsx';
-import { Fact, TermGroup, VersionTimeline, ShowAllLink, SHOWN } from '../ContractParts.jsx';
+import { Fact, TermGroup, VersionTimeline, ShowAllLink, SHOWN, EndContractModal, DeleteContractModal } from '../ContractParts.jsx';
 import { MenuButton, Modal, wcTone } from '../../../shared/wc.jsx';
 
 const STATUS_TONE = { Active: 'success', Scheduled: 'info', Expired: undefined, Ended: undefined };
@@ -48,8 +43,14 @@ function Line({ main, side, onClick }) {
 // One contract as a collapsible row. Closed: its name, status, where it applies,
 // dates and version. Open: what isn't applied yet, its key facts, terms and version
 // history, with its actions.
-function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onView, onDuplicate }) {
+function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onView, onDuplicate, onExtend }) {
   const { state } = useStore();
+  // The renewal reminder, on the contract it's about: from reminderDays before its end
+  // date, unless a next contract is set to take over — a badge by its title while it's
+  // closed, and under its dates with Extend once it's open.
+  const soon = expiringSoon(ag, state.db);
+  const days = soon ? daysUntil(ag.endDate) : null;
+  const endsIn = days === 0 ? 'Ends today' : days === 1 ? 'Ends tomorrow' : `Ends in ${days} days`;
   const terms = agreementTermLines(state.db, ag);
   const live = isLive(ag);
   const scope = agreementAppliesToLabel(company, ag);
@@ -74,6 +75,7 @@ function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onV
             <s-stack direction="inline" gap="small-200" alignItems="center">
               <s-text fontWeight="semibold">{title}</s-text>
               <s-badge tone={wcTone(STATUS_TONE[ag.status])}>{ag.status}</s-badge>
+              {soon && !open ? <s-badge tone="warning">{endsIn}</s-badge> : null}
             </s-stack>
             {open ? null : (
               <s-text color="subdued" fontSize="small">
@@ -112,7 +114,14 @@ function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onV
             <s-grid gridTemplateColumns="@container (inline-size > 480px) 1fr 1fr 1fr, 1fr" gap="small">
               <Fact icon="clock" label="Version" value={ag.version ? String(ag.version) : '—'} />
               <Fact icon="location" label="Applies to" value={scope} />
-              <Fact icon="calendar" label="Dates" value={agreementDatesLabel(ag)} />
+              <Fact icon="calendar" label="Dates" value={agreementDatesLabel(ag)}>
+                {soon ? (
+                  <s-stack direction="inline" gap="small-200" alignItems="center">
+                    <s-badge tone="warning">{endsIn}</s-badge>
+                    <s-link onClick={() => onExtend(ag)}>Extend</s-link>
+                  </s-stack>
+                ) : null}
+              </Fact>
             </s-grid>
           </s-query-container>
 
@@ -204,7 +213,6 @@ export function AgreementTab({ company }) {
     );
   }
 
-  const expiring = contracts.filter((a) => expiringSoon(a, state.db));
   // Extending into a contract set up to start at its locations is allowed: a yellow
   // Overlaps banner says so — the one that starts later runs there from its start date
   // (takeEffect), and this one ends or gives up those locations then.
@@ -214,29 +222,9 @@ export function AgreementTab({ company }) {
         .map((a) => ({ old: a, shared: sharedLocations(company, a, renewing.ag) }))
     : [];
   const renewError = renewing && !(renewing.endDate > renewing.ag.endDate) ? 'Must be after the current end date' : undefined;
-  // Where an ending contract's terms come off: the company, or the locations it has.
-  const whereOf = (ag) => (agreementScopeLabel(company, ag) === 'All locations' ? company.name : agreementScopeLabel(company, ag));
-  // Ending an Active contract: Scheduled ones at its locations still start. Ending a
-  // Scheduled one: the Active ones it would have taken over from stay.
-  const stillStarting = ending ? nextAgreements(state.db, company.id).filter((n) => n.status === 'Scheduled' && n.id !== ending.id && overlaps(company, n, ending)) : [];
-  const staying = ending?.status === 'Scheduled' ? takenOver(state.db, ending) : [];
 
   return (
     <s-stack gap="base">
-      {/* The renewal reminder, per contract: shown from reminderDays before the end
-          date, unless a next contract is set to take over. */}
-      {expiring.map((a) => {
-        const days = daysUntil(a.endDate);
-        return (
-          <s-banner key={a.id} tone="warning" heading={`${a.number} ends ${days === 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`}`}>
-            <s-paragraph>{`After ${fmtDay(a.endDate)}, ${whereOf(a)} goes back to the pricing and limits outside the contract. Extend it to keep these terms.`}</s-paragraph>
-            <s-button slot="secondary-actions" onClick={() => setRenewing({ ag: a, endDate: extendedEndDate(a) })}>
-              Extend
-            </s-button>
-          </s-banner>
-        );
-      })}
-
       <s-section>
         <s-stack gap="small">
           <s-grid gridTemplateColumns="1fr auto" alignItems="center" gap="small-200">
@@ -258,6 +246,7 @@ export function AgreementTab({ company }) {
                 onDelete={setDeleting}
                 onView={view}
                 onDuplicate={duplicate}
+                onExtend={(ag) => setRenewing({ ag, endDate: extendedEndDate(ag) })}
               />
             </React.Fragment>
           ))}
@@ -308,55 +297,8 @@ export function AgreementTab({ company }) {
         </Modal>
       )}
 
-      {ending && (
-        <Modal onClose={() => setEnding(null)} heading={`End ${ending.number}?`}>
-          <s-stack gap="small">
-            <s-paragraph>
-              {ending.status === 'Active'
-                ? `Its pricing and order limits come off ${whereOf(ending)} right away. Anything assigned outside the contract stays.${stillStarting
-                    .map((n) => ` ${n.number} still starts on ${fmtDay(n.startDate)}.`)
-                    .join('')}`
-                : `It won’t start on ${fmtDay(ending.startDate)}, and nothing changes for ${company.name}${
-                    staying.length ? `: ${joinAnd(staying.map((a) => a.number))} ${staying.length === 1 ? 'stays' : 'stay'} in place` : ''
-                  }.`}
-            </s-paragraph>
-          </s-stack>
-          <s-button
-            slot="primary-action"
-            variant="primary"
-            tone="critical"
-            onClick={() => {
-              dispatch({ type: 'END_AGREEMENT', id: ending.id });
-              setEnding(null);
-            }}
-          >
-            End contract
-          </s-button>
-          <s-button slot="secondary-actions" onClick={() => setEnding(null)}>
-            Cancel
-          </s-button>
-        </Modal>
-      )}
-
-      {deleting && (
-        <Modal onClose={() => setDeleting(null)} heading={`Delete ${deleting.number}?`}>
-          <s-paragraph>{`It won’t start on ${fmtDay(deleting.startDate)} and is removed with its history. Nothing changes for ${company.name}.`}</s-paragraph>
-          <s-button
-            slot="primary-action"
-            variant="primary"
-            tone="critical"
-            onClick={() => {
-              dispatch({ type: 'DELETE_AGREEMENT', id: deleting.id });
-              setDeleting(null);
-            }}
-          >
-            Delete contract
-          </s-button>
-          <s-button slot="secondary-actions" onClick={() => setDeleting(null)}>
-            Cancel
-          </s-button>
-        </Modal>
-      )}
+      {ending && <EndContractModal ag={ending} onClose={() => setEnding(null)} />}
+      {deleting && <DeleteContractModal ag={deleting} onClose={() => setDeleting(null)} />}
     </s-stack>
   );
 }

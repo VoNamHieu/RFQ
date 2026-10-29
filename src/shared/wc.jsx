@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 // Small React helpers around Polaris web components (s-*) for the cases the
 // components don't cover declaratively: a modal driven by React state, ids for
@@ -93,14 +94,17 @@ export function Modal({ open = true, onClose, heading, size, padding, children }
 }
 
 // Tooltip around arbitrary inline content (a badge, a value). For an s-button,
-// s-link or s-icon, put interestFor={id} on it directly instead.
-export function Tip({ content, children }) {
+// s-link or s-icon, put interestFor={id} on it directly instead. `detached`: the
+// tooltip lives at the end of the page instead of next to the content — for an
+// s-table-header, whose text labels each value when the table lists rows on a phone.
+export function Tip({ content, children, detached = false }) {
   const id = useWcId('tip');
   if (!content) return children;
+  const tooltip = <s-tooltip id={id}>{content}</s-tooltip>;
   return (
     <>
       <s-text interestFor={id}>{children}</s-text>
-      <s-tooltip id={id}>{content}</s-tooltip>
+      {detached ? createPortal(tooltip, document.body) : tooltip}
     </>
   );
 }

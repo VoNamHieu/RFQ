@@ -120,7 +120,7 @@ export function Home() {
       <s-button slot="secondary-actions" onClick={addCompany}>Add company</s-button>
       <s-button slot="secondary-actions" onClick={createPricing}>Create pricing</s-button>
       <s-stack gap="base">
-        <s-text color="subdued">
+        <s-text className="wc-page-intro" color="subdued">
           {setupComplete
             ? 'Your B2B companies, pricing and registrations at a glance.'
             : 'Complete a few setup steps to start accepting B2B registrations and selling with custom pricing.'}

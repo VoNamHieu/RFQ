@@ -6,7 +6,8 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 // boxes when several can be picked, a check mark on the picked one when only one
 // can — and the picks shown as removable tags under it. Multi-select unless
 // `single`. Presentational — the caller owns `selectedIds` and gets `onChange`.
-// Options show the pricing name unless `optionLabel` says otherwise. `action`
+// Options show the pricing name unless `optionLabel` says otherwise; `optionBadge`
+// can tag one (e.g. "In other contract" — searchable too). `action`
 // ({ content, onAction }): an option pinned at the top of the list that does
 // something else (e.g. create one), there whatever the search or scroll.
 //
@@ -25,6 +26,7 @@ export function PricingCombobox({
   optionLabel = (p) => p.name,
   emptyText = 'No matches',
   action = null,
+  optionBadge = null,
 }) {
   const [inputValue, setInputValue] = useState('');
   // The option list shows while the field is in use (like the Combobox popover):
@@ -34,7 +36,8 @@ export function PricingCombobox({
   const fieldRef = useRef(null);
   const listRef = useRef(null);
   const q = inputValue.trim().toLowerCase();
-  const filtered = q ? candidates.filter((p) => p.name.toLowerCase().includes(q)) : candidates;
+  const badgeOf = (p) => (optionBadge ? optionBadge(p) : null);
+  const filtered = q ? candidates.filter((p) => p.name.toLowerCase().includes(q) || (badgeOf(p) || '').toLowerCase().includes(q)) : candidates;
   const selectedPolicies = candidates.filter((p) => selectedIds.includes(p.id));
 
   useEffect(() => {
@@ -162,14 +165,24 @@ export function PricingCombobox({
                     </s-clickable>
                   );
                 }
+                const checkbox = (
+                  <s-checkbox
+                    label={optionLabel(p)}
+                    accessibilityLabel={p.name}
+                    checked={on}
+                    onChange={(e) => handleSelect(p.id, e.currentTarget.checked)}
+                  />
+                );
                 return (
                   <s-box key={p.id} paddingInline="small" paddingBlock="small-300">
-                    <s-checkbox
-                      label={optionLabel(p)}
-                      accessibilityLabel={p.name}
-                      checked={on}
-                      onChange={(e) => handleSelect(p.id, e.currentTarget.checked)}
-                    />
+                    {badgeOf(p) ? (
+                      <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
+                        {checkbox}
+                        <s-badge tone="info">{badgeOf(p)}</s-badge>
+                      </s-grid>
+                    ) : (
+                      checkbox
+                    )}
                   </s-box>
                 );
               })

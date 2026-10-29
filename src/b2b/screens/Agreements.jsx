@@ -3,6 +3,7 @@ import { useStore } from '../store.jsx';
 import { canCreateAgreement, agreementAppliesToLabel, agreementTermCount, agreementDatesLabel, expiringSoon, daysUntil, PAST_STATUSES } from '../agreements.js';
 import { AgreementEditor } from '../components/AgreementEditor.jsx';
 import { ContractVersionModal } from '../components/ContractVersionModal.jsx';
+import { EndContractModal, DeleteContractModal } from '../components/ContractParts.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import { IndexFiltersBar, useWcId, wcTone } from '../../shared/wc.jsx';
 
@@ -16,12 +17,15 @@ const STATUS_TABS = [
 const STATUS_TONE = { Active: 'success', Scheduled: 'info', Expired: undefined, Ended: undefined };
 
 // Every company's agreement in one list. A row opens it in the editor, as a page here
-// (OPEN_AGREEMENT_EDITOR) — a past one opens as it was, read-only.
+// (OPEN_AGREEMENT_EDITOR) — a past one opens as it was, read-only. An Active one can
+// be ended and a Scheduled one deleted from its row.
 export function Agreements() {
   const { state, dispatch } = useStore();
   const [status, setStatus] = useState('all');
   const [search, setSearch] = useState('');
   const [viewing, setViewing] = useState(null);
+  const [ending, setEnding] = useState(null);
+  const [deleting, setDeleting] = useState(null);
   const rowId = useWcId('agreement');
 
   if (state.agreementEditor) return <AgreementEditor />;
@@ -76,6 +80,42 @@ export function Agreements() {
           <s-table-cell>
             <s-badge tone={wcTone(STATUS_TONE[a.status])}>{a.status}</s-badge>
           </s-table-cell>
+          <s-table-cell>
+            <s-stack direction="inline" gap="small-400" justifyContent="end" alignItems="center">
+              {a.status === 'Active' ? (
+                <>
+                  <s-button
+                    icon="stop-circle"
+                    variant="tertiary"
+                    tone="critical"
+                    accessibilityLabel={`End ${a.number}`}
+                    interestFor={`${linkId}-end-tip`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEnding(a);
+                    }}
+                  />
+                  <s-tooltip id={`${linkId}-end-tip`}>End contract</s-tooltip>
+                </>
+              ) : null}
+              {a.status === 'Scheduled' ? (
+                <>
+                  <s-button
+                    icon="delete"
+                    variant="tertiary"
+                    tone="critical"
+                    accessibilityLabel={`Delete ${a.number}`}
+                    interestFor={`${linkId}-delete-tip`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleting(a);
+                    }}
+                  />
+                  <s-tooltip id={`${linkId}-delete-tip`}>Delete contract</s-tooltip>
+                </>
+              ) : null}
+            </s-stack>
+          </s-table-cell>
         </s-table-row>
       );
     });
@@ -97,7 +137,7 @@ export function Agreements() {
     <s-page heading="Contracts">
       {createButton}
       <s-stack gap="base">
-        <s-paragraph color="subdued">Each company’s pricing and order limits, applied together.</s-paragraph>
+        <s-paragraph className="wc-page-intro" color="subdued">Each company’s pricing and order limits, applied together.</s-paragraph>
         <s-section padding="none">
           <s-table>
             <IndexFiltersBar
@@ -117,6 +157,9 @@ export function Agreements() {
               <s-table-header listSlot="labeled">Terms</s-table-header>
               <s-table-header listSlot="labeled">Version</s-table-header>
               <s-table-header listSlot="secondary">Status</s-table-header>
+              <s-table-header listSlot="inline">
+                <s-text accessibilityVisibility="exclusive">Actions</s-text>
+              </s-table-header>
             </s-table-header-row>
             <s-table-body>{rows}</s-table-body>
           </s-table>
@@ -129,6 +172,8 @@ export function Agreements() {
           ) : null}
         </s-section>
       </s-stack>
+      {ending && <EndContractModal ag={ending} onClose={() => setEnding(null)} />}
+      {deleting && <DeleteContractModal ag={deleting} onClose={() => setDeleting(null)} />}
       {viewing && (
         <ContractVersionModal
           ag={viewing}
