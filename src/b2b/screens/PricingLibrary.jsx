@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useStore } from '../store.jsx';
 import { policyStatus, policyUsage, policyUsageCount } from '../pricing.js';
 import { Modal, IndexFiltersBar, useWcId, wcTone, PageHeader } from '../../shared/wc.jsx';
-import { contractsHolding, isContractTerm, contractsLabel } from '../agreements.js';
-import { useContractLock, DraftsLosingIt } from '../components/ContractLock.jsx';
+import { contractsHolding, isContractTerm, contractsLabel, contractTermStatus } from '../agreements.js';
+import { useContractLock } from '../components/ContractLock.jsx';
 import { versionFlags } from '../../shared/versions.js';
 import basePricingArt from '../assets/base-pricing-empty.webp';
 import quantityPricingArt from '../assets/quantity-pricing-empty.webp';
@@ -125,11 +125,13 @@ export function PricingLibrary() {
   }
 
   const q = search.trim().toLowerCase();
+  // A contract pricing's status comes from its contracts (contractTermStatus).
+  const statusOf = (p) => (isContractTerm(p) ? contractTermStatus(state.db, p.id) : policyStatus(p, state.db));
   const tabOf = (p) => (isContractTerm(p) ? 'contract' : p.audienceType);
   let policies = state.db.policies.filter((p) => {
     if (audience !== 'all' && tabOf(p) !== audience) return false;
     if (kind !== 'all' && (p.priceKind === 'quantity' ? 'quantity' : 'base') !== kind) return false;
-    if (statusFilter !== 'all' && policyStatus(p, state.db).label.toLowerCase() !== statusFilter) return false;
+    if (statusFilter !== 'all' && statusOf(p).label.toLowerCase() !== statusFilter) return false;
     if (q && !p.name.toLowerCase().includes(q)) return false;
     return true;
   });
@@ -152,7 +154,7 @@ export function PricingLibrary() {
   const openEditor = (p) => dispatch({ type: 'OPEN_EDITOR', policy: p, context: { mode: 'edit' } });
 
   const rows = pagePolicies.map((p) => {
-    const st = policyStatus(p, state.db);
+    const st = statusOf(p);
     const isOff = p.status === 'Inactive';
     const id = `${tipId}-${p.id}`;
     // A contract pricing: the contracts using it, no Turn off. Running contracts hold
@@ -299,12 +301,12 @@ export function PricingLibrary() {
 
       {confirmDelete && (
         <Modal onClose={() => setConfirmDelete(null)} heading={`Delete ${confirmDelete.name}?`}>
-          <s-stack gap="small">
-            <s-paragraph>
-              This deletes the pricing and unassigns it from {policyUsage(confirmDelete, state.db)}. Buyers there fall back to their next pricing or the Shopify price.
-            </s-paragraph>
-            <DraftsLosingIt db={state.db} id={confirmDelete.id} />
-          </s-stack>
+          {/* A contract pricing is deleted only outside running contracts: nothing to unassign. */}
+          <s-paragraph>
+            {isContractTerm(confirmDelete)
+              ? 'This deletes the pricing.'
+              : `This deletes the pricing and unassigns it from ${policyUsage(confirmDelete, state.db)}. Buyers there fall back to their next pricing or the Shopify price.`}
+          </s-paragraph>
           <s-button
             slot="primary-action"
             variant="primary"

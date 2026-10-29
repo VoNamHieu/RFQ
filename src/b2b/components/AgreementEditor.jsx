@@ -32,13 +32,14 @@ import { Modal, PageHeader, useWcId } from '../../shared/wc.jsx';
 // Create / edit a company's agreement — an in-frame page in the Agreements view
 // (OPEN_AGREEMENT_EDITOR). Terms are picked from the Pricing and Order limits
 // libraries; who gets them is all of the company's locations or some, picked like a
-// pricing's or order limit's companies (one company per contract). An inactive one
-// is activated here; an active agreement saves as its next version, applied at once.
-// A location is in one contract at a time: activating one, or saving a version of it,
-// over the Active or Scheduled ones at its locations (clashesAt) first says what
-// happens to them in the Overlaps box — those locations are this one's from its start
-// date (handOver). A draft is saved overlapping anything. Created from Contracts, the
-// company is picked here too (`pickCompany`); otherwise only its locations are.
+// pricing's or order limit's companies (one company per contract). Saving a new one
+// puts it in force (Active, or Scheduled until its start date); a live one saves as
+// its next version, applied at once.
+// A location is in one contract at a time: saving one, or a version of it, over the
+// Active or Scheduled ones at its locations (clashesAt) first says what happens to
+// them in the Overlaps box — those locations are this one's from its start date
+// (handOver). Created from Contracts, the company is picked here too (`pickCompany`);
+// otherwise only its locations are.
 export function AgreementEditor() {
   const { state, dispatch } = useStore();
   const draft = state.agreementEditor.draft;
@@ -47,7 +48,7 @@ export function AgreementEditor() {
   // The name used in the help text before a company is picked.
   const who = company?.name || 'the company';
   const saved = (state.db.agreements || []).find((a) => a.id === draft.id);
-  // Live = activated (Scheduled or Active); started = Active, so its start date is fixed.
+  // Live = saved (Scheduled or Active); started = Active, so its start date is fixed.
   const live = isLive(saved);
   const started = saved?.status === 'Active';
   const startsLater = liveStatus(draft) === 'Scheduled';
@@ -56,7 +57,7 @@ export function AgreementEditor() {
   const change = started ? { off: saved, on: draft } : { start: draft };
   const [tried, setTried] = useState(false);
   const [confirm, setConfirm] = useState(false);
-  // Activate / Save as version over Active or Scheduled contracts at its locations.
+  // Save / Save as version over Active or Scheduled contracts at its locations.
   const [overlapBox, setOverlapBox] = useState(false);
   const [companyModal, setCompanyModal] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -148,10 +149,11 @@ export function AgreementEditor() {
   // One line per contract, two at most (overlapLines). The box says what saving does.
   const overlapList = company ? overlapLines(company, overlapsNow) : [];
 
-  // Activating, or saving a live agreement, changes what the company gets — confirm
-  // first (in the Overlaps box when it overlaps other contracts).
+  // Saving changes what the company gets (a new one goes in force: Active, or Scheduled
+  // until its start date) — once everything it needs is there (name, company, a pricing
+  // or order limit, locations, a start date not before today), confirm first: in the
+  // Overlaps box when it overlaps other contracts.
   const goLive = () => (!valid ? setTried(true) : overlapsNow.length ? setOverlapBox(true) : setConfirm(true));
-  const save = () => (draft.companyId && (valid || (draft.name || '').trim()) ? dispatch({ type: 'SAVE_AGREEMENT' }) : setTried(true));
   const nextVersion = (saved?.version || 0) + 1;
   // Saving a live contract unchanged would only add an empty version.
   const unchanged = live && sameAgreement(saved, draft, state.db);
@@ -162,8 +164,7 @@ export function AgreementEditor() {
   // Terms that won't apply for the whole contract: turned off.
   const warnings = confirm ? termWarnings(state.db, draft) : [];
   const when = startsLater ? `on ${fmtDay(draft.startDate)}` : 'right away';
-  // The Activate / Save as version box and an Inactive one's Status: "ABC gets these
-  // terms right away, until Oct 31, 2026."
+  // The Save / Save as version box: "ABC gets these terms right away, until Oct 31, 2026."
   const getsTerms = `${company?.name || 'The company'} gets these terms ${when}${draft.endDate ? `, until ${fmtDay(draft.endDate)}` : ''}.`;
   // Overview: the contract at a glance, from the draft, so unsaved edits count.
   const count = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
@@ -183,8 +184,8 @@ export function AgreementEditor() {
       heading={saved ? `${draft.number} · ${saved.name}` : `New contract ${draft.number}`}
       subtitle={company?.name}
       backAction={{ content: 'Contracts', onAction: close }}
-      primaryAction={{ content: live ? `Save as version ${nextVersion}` : 'Activate', onAction: goLive, disabled: unchanged }}
-      secondaryActions={[...(live ? [] : [{ content: 'Save', onAction: save }]), { content: 'Cancel', onAction: close }]}
+      primaryAction={{ content: live ? `Save as version ${nextVersion}` : 'Save', onAction: goLive, disabled: unchanged }}
+      secondaryActions={[{ content: 'Cancel', onAction: close }]}
     />
     <s-page>
       <s-stack gap="base">
@@ -301,7 +302,7 @@ export function AgreementEditor() {
                   </span>
                   <s-tooltip id={scopeTipId}>
                     <s-paragraph fontSize="small">
-                      A location can be in one contract at a time: this one can’t overlap the Active or Scheduled contracts at its locations.
+                      A location can be in one contract at a time. Where dates overlap, the contract that starts later takes over.
                     </s-paragraph>
                   </s-tooltip>
                 </>
@@ -352,13 +353,15 @@ export function AgreementEditor() {
 
       <s-section slot="aside" heading="Status">
         <s-stack gap="small-200">
-          <div>
-            <s-badge tone={started ? 'success' : live ? 'info' : undefined}>{live ? `${saved.status} · version ${saved.version}` : 'Inactive'}</s-badge>
-          </div>
+          {live ? (
+            <div>
+              <s-badge tone={started ? 'success' : 'info'}>{`${saved.status} · version ${saved.version}`}</s-badge>
+            </div>
+          ) : null}
           <s-paragraph color="subdued" fontSize="small">
             {live
               ? `Saving gives ${company?.name} your changes ${when}, as version ${nextVersion}.`
-              : `Nothing is applied yet. ${getsTerms}`}
+              : `Nothing is applied yet. Saving gives ${who} these terms${draft.startDate ? ` from ${fmtDay(draft.startDate)}` : ''}.`}
           </s-paragraph>
         </s-stack>
       </s-section>
@@ -414,7 +417,7 @@ export function AgreementEditor() {
             variant="primary"
             onClick={() => {
               setOverlapBox(false);
-              dispatch({ type: 'SAVE_AGREEMENT', activate: true });
+              dispatch({ type: 'SAVE_AGREEMENT' });
             }}
           >
             Save
@@ -425,7 +428,7 @@ export function AgreementEditor() {
         </Modal>
       )}
       {confirm && (
-        <Modal onClose={() => setConfirm(false)} heading={live ? `Save ${draft.number} as version ${nextVersion}?` : `Activate ${draft.number}?`}>
+        <Modal onClose={() => setConfirm(false)} heading={live ? `Save ${draft.number} as version ${nextVersion}?` : `Save ${draft.number}?`}>
           {onlyLater ? (
             <s-paragraph>
               {addsLaterLocations(draft)
@@ -434,9 +437,9 @@ export function AgreementEditor() {
             </s-paragraph>
           ) : (
             <s-stack gap="small">
-              <s-paragraph>
-                {live ? `${agreementChanges(saved, draft, state.db)}. ${getsTerms}` : getsTerms}
-              </s-paragraph>
+              {/* Save as version: what changed on its own line first. */}
+              {live ? <s-paragraph>{`${agreementChanges(saved, draft, state.db)}.`}</s-paragraph> : null}
+              <s-paragraph>{getsTerms}</s-paragraph>
               {warnings.length ? (
                 <>
                   <s-paragraph>These terms won’t apply for the whole contract:</s-paragraph>
@@ -454,10 +457,10 @@ export function AgreementEditor() {
             variant="primary"
             onClick={() => {
               setConfirm(false);
-              dispatch({ type: 'SAVE_AGREEMENT', activate: true });
+              dispatch({ type: 'SAVE_AGREEMENT' });
             }}
           >
-            {onlyLater ? 'Save' : live ? 'Save and apply' : 'Activate'}
+            {onlyLater ? 'Save' : 'Save and apply'}
           </s-button>
           <s-button slot="secondary-actions" onClick={() => setConfirm(false)}>
             Cancel

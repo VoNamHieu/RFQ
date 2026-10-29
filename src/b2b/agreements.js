@@ -1,8 +1,8 @@
 // Contracts (shown as "Contracts"; called agreements in code): a company's terms —
 // its pricing (base + quantity) and order limits — set up and applied together,
-// for all its locations or some, from a start date to an optional end date.
-//   Inactive  — saved, not activated yet; nothing applied.
-//   Scheduled — activated with a start date still to come; applied on that date.
+// for all its locations or some, from a start date to an optional end date. Saving a
+// new one puts it in force: Active, or Scheduled until its start date.
+//   Scheduled — saved with a start date still to come; applied on that date.
 //   Active    — its pricing and limits are assigned to the company. Saving an
 //               active contract applies the change right away as a new version.
 //   Expired   — the end date passed: its terms came off and the company is back
@@ -10,12 +10,13 @@
 //   Ended     — ended by hand, or replaced by the next contract; its terms came
 //               off. Expired and Ended stay as history.
 // A company can have several contracts, each for all its locations or some. A
-// location is in one contract at a time: one activated, or saved as a version, over
-// Active or Scheduled ones there in time (clashesAt) is allowed — where they overlap,
-// the one that starts later runs from its start date (handOver). Inactive ones are
-// drafts: they hold no location, so any number can be set up, overlapping any other.
+// location is in one contract at a time: one saved, or saved as a version, over Active
+// or Scheduled ones there in time (clashesAt) is allowed — where they overlap, the one
+// that starts later runs from its start date (handOver); starting the same day as a
+// Scheduled one, the one saved last does (`takesOver`).
 // On its start date a contract takes its locations over from the Active ones there,
-// whatever their end dates: one left with no locations ends ("Replaced by …"), one
+// whatever their end dates, and from the Scheduled ones starting that day it was saved
+// over: one left with no locations ends ("Replaced by …", "… before it started"), one
 // with others left keeps those, as a new version.
 // Every version keeps a snapshot of its terms as they were then (names and what
 // each sets), so any version — and contracts that are over — can be read again.
@@ -91,12 +92,11 @@ export const PAST_STATUSES = ['Expired', 'Ended'];
 export const isLive = (ag) => ag?.status === 'Active' || ag?.status === 'Scheduled';
 
 const companyOf = (db, ag) => (db.companies || []).find((c) => c.id === ag.companyId) || null;
-// The company's Active contracts, and its next ones (Inactive or Scheduled).
+// The company's Active contracts, and its next ones (Scheduled).
 export const activeAgreements = (db, companyId) => (db.agreements || []).filter((a) => a.companyId === companyId && a.status === 'Active');
-export const nextAgreements = (db, companyId) =>
-  (db.agreements || []).filter((a) => a.companyId === companyId && (a.status === 'Inactive' || a.status === 'Scheduled'));
-// The company's contracts that aren't over: Active first, then Scheduled, then Inactive.
-const OPEN_ORDER = { Active: 0, Scheduled: 1, Inactive: 2 };
+export const nextAgreements = (db, companyId) => (db.agreements || []).filter((a) => a.companyId === companyId && a.status === 'Scheduled');
+// The company's contracts that aren't over: Active first, then Scheduled.
+const OPEN_ORDER = { Active: 0, Scheduled: 1 };
 export const openAgreements = (db, companyId) =>
   [...activeAgreements(db, companyId), ...nextAgreements(db, companyId)].sort(
     (a, b) => OPEN_ORDER[a.status] - OPEN_ORDER[b.status] || String(a.number).localeCompare(String(b.number)),
@@ -114,8 +114,7 @@ export const canCreateAgreement = (db, companyId) => (db.companies || []).some((
 // is in one contract at a time (null: a company without locations). A started one
 // (`started`): another Active one there, or a Scheduled one in its dates. Any other:
 // an Active or Scheduled one there in force on its dates — it can only start after
-// that one ends. Inactive ones (drafts) never clash. `dates` stands in for its own
-// dates.
+// that one ends. `dates` stands in for its own dates.
 export function clashesAt(db, company, ag, locationId, started, dates = ag) {
   const here = (a) => a.id !== ag.id && appliesAt(company, a, locationId);
   const active = activeAgreements(db, company.id).filter(here);
@@ -130,13 +129,14 @@ export function agreementClashes(db, ag, started, dates = ag) {
   return [...new Set(ids.flatMap((id) => clashesAt(db, c, ag, id, started, dates)))];
 }
 
-// Activating `ag`, or saving a version of it, over the contracts it overlaps
+// Saving `ag` (a new one, or a version of it) over the contracts it overlaps
 // (agreementClashes): where they overlap, the one that starts later runs, and the one
 // before it runs until that day. `from` is `ag`'s start date, or today once it has
 // started. Neither's end date changes: on the later start date (takeEffect) the one
 // before, left with no other locations, ends ("Replaced by …"), otherwise it keeps
-// those and the shared ones move. One starting on `from` too (`before`): `ag`, saved
-// last, runs, and that one never starts there.
+// those and the shared ones move. A Scheduled one starting on `from` too (`before`):
+// `ag`, saved last, runs there — on that day that one ends before it started, or
+// gives those locations up.
 export function overlapHandover(db, ag, started) {
   const c = companyOf(db, ag);
   if (!c) return [];
@@ -150,19 +150,24 @@ export function overlapHandover(db, ag, started) {
   }));
 }
 // Saving it over them, before its own terms go on (mutates `db`): what happens today
-// — an Active one it replaces right away, or one that never starts there. A later
-// start date is takeEffect's, on that day.
+// — an Active one it replaces right away. A later start date is takeEffect's, on that
+// day; a Scheduled one starting the same day is noted (`takesOver`, taken off that
+// one's) for then.
 export function handOver(db, ag, started) {
   overlapHandover(db, ag, started).forEach(({ old, shared, kept, from, before }) => {
-    const now = old.status === 'Active' && from <= TODAY;
-    if (!before && !now) return;
-    if (!kept.length) {
-      closeAgreement(db, old, 'Ended', before ? `Replaced by ${ag.number} before it started` : `Replaced by ${ag.number}`);
+    if (before) {
+      ag.takesOver = [...new Set([...(ag.takesOver || []), old.id])];
+      old.takesOver = (old.takesOver || []).filter((id) => id !== ag.id);
       return;
     }
-    if (now) unapplyAgreement(db, old);
+    if (old.status !== 'Active' || from > TODAY) return;
+    if (!kept.length) {
+      closeAgreement(db, old, 'Ended', `Replaced by ${ag.number}`);
+      return;
+    }
+    unapplyAgreement(db, old);
     old.locationIds = kept.map((l) => l.id);
-    if (now) applyAgreement(db, old);
+    applyAgreement(db, old);
     addVersion(db, old, `${namesOf(shared)} moved to ${ag.number}`);
   });
 }
@@ -217,7 +222,7 @@ export function newAgreement(db, company) {
     // "Automatically apply this contract to locations added later" (from Shopify or
     // by hand): on by default for all locations, off for some.
     applyLater: true,
-    status: 'Inactive',
+    status: null, // not saved yet: saving makes it Active or Scheduled
     startDate: defaultStartDate(db, company?.id),
     endDate: '', // '' = no end date
     version: 0,
@@ -389,28 +394,27 @@ export function unapplyAgreement(db, ag) {
 // Auto-add locations off they join none, whatever the contracts say. An
 // Active contract they join gives them its terms right away, as a new version
 // ("Added <location>"); a Scheduled one adds a version too and gives them its terms
-// when it starts; an Inactive one (a draft) adds none. They join the Active and
-// Scheduled ones in that order, leaving out one whose dates would overlap a contract
-// they already joined (mutates `db`).
+// when it starts. They join the Active and Scheduled ones in that order, leaving out
+// one whose dates would overlap a contract they already joined (mutates `db`).
 export function joinLaterLocations(db, c, locations) {
   if (!versionFlags().agreements) {
     c.locations = [...(c.locations || []), ...locations];
     return;
   }
-  const open = (db.agreements || []).filter((a) => a.companyId === c.id && (isLive(a) || a.status === 'Inactive'));
+  const open = (db.agreements || []).filter((a) => a.companyId === c.id && isLive(a));
   const active = open.filter((a) => a.status === 'Active');
   // Off first: one on all locations sits on the company's list, which the new
   // location would inherit.
   active.forEach((a) => unapplyAgreement(db, a));
   const had = (c.locations || []).map((l) => l.id);
   c.locations = [...(c.locations || []), ...locations];
-  const rank = { Active: 0, Scheduled: 1, Inactive: 2 };
+  const rank = { Active: 0, Scheduled: 1 };
   const meet = (a, b) => a.startDate <= (b.endDate || '9999-12-31') && b.startDate <= (a.endDate || '9999-12-31');
   const joined = [];
   [...open]
     .sort((a, b) => rank[a.status] - rank[b.status] || String(a.startDate).localeCompare(String(b.startDate)))
     .forEach((a) => {
-      const joins = !!c.autoAddLocations && addsLaterLocations(a) && (a.status === 'Inactive' || !joined.some((x) => x.status !== 'Inactive' && meet(a, x)));
+      const joins = !!c.autoAddLocations && addsLaterLocations(a) && !joined.some((x) => meet(a, x));
       if (joins) {
         if (a.locationIds) a.locationIds = [...a.locationIds, ...locations.map((l) => l.id)];
         joined.push(a);
@@ -582,6 +586,18 @@ export function takeEffect(db, ag, date = TODAY) {
       applyAgreement(db, old);
       addVersion(db, old, `${namesOf(moved)} moved to ${ag.number}`, date);
     });
+  // Scheduled ones starting that day it was saved over (`takesOver`): it runs there —
+  // one left with no locations ends before it started, one with others keeps those.
+  (ag.takesOver || []).forEach((id) => {
+    const old = (db.agreements || []).find((a) => a.id === id);
+    if (!c || !old || old.status !== 'Scheduled' || !overlaps(c, old, ag)) return;
+    const kept = keptLocations(c, old, ag);
+    if (!kept.length) return closeAgreement(db, old, 'Ended', `Replaced by ${ag.number} before it started`, date);
+    const moved = sharedLocations(c, old, ag);
+    old.locationIds = kept.map((l) => l.id);
+    addVersion(db, old, `${namesOf(moved)} moved to ${ag.number}`, date);
+  });
+  delete ag.takesOver;
   applyAgreement(db, ag);
   ag.status = 'Active';
 }
@@ -590,11 +606,15 @@ export function takeEffect(db, ag, date = TODAY) {
 // Active one), and expire Active ones whose end date has passed (their terms come
 // off). Mutates `db`.
 export function syncContractDates(db) {
-  (db.agreements || []).forEach((ag) => {
-    if (ag.status !== 'Scheduled' || liveStatus(ag) !== 'Active') return;
-    takeEffect(db, ag, ag.startDate);
-    ag.history = [{ version: ag.version, date: ag.startDate, note: 'Started' }, ...(ag.history || [])];
-  });
+  // By start date; on the same day, the ones saved over others first (takesOver).
+  (db.agreements || [])
+    .filter((ag) => ag.status === 'Scheduled' && liveStatus(ag) === 'Active')
+    .sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)) || (b.takesOver?.length ? 1 : 0) - (a.takesOver?.length ? 1 : 0))
+    .forEach((ag) => {
+      if (ag.status !== 'Scheduled') return; // ended before it started, by one that took over
+      takeEffect(db, ag, ag.startDate);
+      ag.history = [{ version: ag.version, date: ag.startDate, note: 'Started' }, ...(ag.history || [])];
+    });
   (db.agreements || []).forEach((ag) => {
     if (ag.status === 'Active' && ag.endDate && ag.endDate < TODAY) closeAgreement(db, ag, 'Expired', 'Expired', addDay(ag.endDate));
   });
@@ -644,13 +664,10 @@ export function contractsGiving(db, company, id, locationIds = null) {
     (a) => a.status === 'Active' && a.companyId === company.id && termIds(a).includes(id) && (!locationIds || locationIds.some((l) => appliesAt(company, a, l))),
   );
 }
-// The Inactive contracts holding a pricing or limit: deleting it takes it off them.
-export const draftsHolding = (db, id) =>
-  versionFlags().agreements ? (db.agreements || []).filter((a) => a.status === 'Inactive' && termIds(a).includes(id)) : [];
-// The contracts that aren't over holding a pricing or limit (Active, Scheduled or
-// Inactive): the ones using it.
+// The contracts that aren't over (running: Active or Scheduled) holding a pricing or
+// limit: the ones using it.
 export const openContractsHolding = (db, id) =>
-  versionFlags().agreements ? (db.agreements || []).filter((a) => (isLive(a) || a.status === 'Inactive') && termIds(a).includes(id)) : [];
+  versionFlags().agreements ? (db.agreements || []).filter((a) => isLive(a) && termIds(a).includes(id)) : [];
 // The Active contract giving a company — or one of its locations — a pricing or limit.
 export function contractGiving(db, company, id, locationId = null) {
   if (!versionFlags().agreements) return null;
@@ -668,16 +685,19 @@ export const isContractTerm = (x) => !!x?.forContracts && !!versionFlags().agree
 // The contracts using one, for the libraries' Assigned to / Applies to: "CT-301,
 // CT-302", "3 contracts" past two, or "Not in a contract". Ones that are over don't count.
 export const contractsLabel = (db, id) => contractsLabelOf(db, openContractsHolding(db, id).map((a) => a.id));
+// A contract pricing's or limit's status in its library: Active when an Active
+// contract holds it, otherwise Inactive.
+export const contractTermStatus = (db, id) =>
+  openContractsHolding(db, id).some((a) => a.status === 'Active') ? { label: 'Active', tone: 'success' } : { label: 'Inactive', tone: undefined };
 // The same for picked contracts (ids), e.g. in an editor before saving.
 export function contractsLabelOf(db, ids) {
   const using = (db.agreements || []).filter((a) => ids.includes(a.id));
   if (!using.length) return 'Not in a contract';
   return using.length > 2 ? `${using.length} contracts` : using.map((a) => a.number).join(', ');
 }
-// The contracts a contract pricing or limit can be put in from its editor: the ones
-// that aren't over, by number.
-export const assignableContracts = (db) =>
-  (db.agreements || []).filter((a) => isLive(a) || a.status === 'Inactive').sort((a, b) => String(a.number).localeCompare(String(b.number)));
+// The contracts a contract pricing or limit can be put in from its editor: the running
+// ones, by number.
+export const assignableContracts = (db) => (db.agreements || []).filter(isLive).sort((a, b) => String(a.number).localeCompare(String(b.number)));
 // Put a contract pricing or limit (`id`, in the terms' `key`: base, quantity or limits)
 // in exactly the contracts `wanted` (ids) among the ones that aren't over — `mode`
 // 'add' or 'remove' does only that half. A running one changes now, as a new version
@@ -697,13 +717,15 @@ export function setTermContracts(db, id, key, wanted, mode = null) {
 // The running contracts taking one off would leave with no terms (they can be ended instead).
 export const leftEmpty = (db, id, wanted) =>
   (db.agreements || []).filter((a) => isLive(a) && !wanted.includes(a.id) && termIds(a).length === 1 && termIds(a).includes(id));
-// "CT-301 · ABC Construction, CT-302 · Phu Thanh Hardware" — two named at most, then
-// "… and N more".
-export const contractList = (db, list) => `${contractNames(db, list.slice(0, 2))}${list.length > 2 ? ` … and ${list.length - 2} more` : ''}`;
-// "It’s in 2 running contracts: CT-301 · ABC Construction, CT-302 · Phu Thanh Hardware."
-export function runningContractsLine(db, held) {
+// "CT-301, CT-302, CT-303 … and 2 more" — numbers only, three at most.
+export const contractList = (list) => {
+  const numbers = list.slice(0, 3).map((a) => a.number).join(', ');
+  return list.length > 3 ? `${numbers} … and ${list.length - 3} more` : numbers;
+};
+// "It’s in 2 running contracts: CT-301, CT-302."
+export function runningContractsLine(held) {
   const n = held.length;
-  return `It’s in ${n} running contract${n === 1 ? '' : 's'}: ${contractList(db, held)}.`;
+  return `It’s in ${n} running contract${n === 1 ? '' : 's'}: ${contractList(held)}.`;
 }
 
 const termSummary = (db, x, isLimit) => (isLimit ? limitTermSummary(x, db) : pricingTermSummary(x));
@@ -772,7 +794,7 @@ export function agreementChanges(prev, next, db) {
   const c = db.companies.find((x) => x.id === next.companyId);
   if (c && agreementScopeLabel(c, prev) !== agreementScopeLabel(c, next)) parts.push(`Now applies to ${agreementScopeLabel(c, next)}`);
   if (addsLaterLocations(prev) !== addsLaterLocations(next)) {
-    parts.push(addsLaterLocations(next) ? 'Enabled auto-add of new locations to this contract' : 'Disabled auto-add of new locations to this contract');
+    parts.push(addsLaterLocations(next) ? 'Enabled auto-apply for new locations' : 'Disabled auto-apply for new locations');
   }
   if (prev.name !== next.name) parts.push(`Renamed to ${next.name}`);
   if ((prev.startDate || '') !== (next.startDate || '')) parts.push(`Now starts ${fmtDay(next.startDate)}`);

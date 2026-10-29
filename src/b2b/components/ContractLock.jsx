@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Modal } from '../../shared/wc.jsx';
-import { draftsHolding, contractNames } from '../agreements.js';
 
 // Deleting a contract pricing or limit — or taking one off a company or location —
 // while running contracts hold it goes through those contracts. Its button stays: it
@@ -23,18 +22,4 @@ export function useContractLock() {
     </Modal>
   ) : null;
   return [setLock, lockModal];
-}
-
-// Deleting a contract pricing or limit takes it off the Inactive contracts holding
-// it: its delete confirmation names them.
-export function DraftsLosingIt({ db, id }) {
-  const drafts = draftsHolding(db, id);
-  if (!drafts.length) return null;
-  return (
-    <s-paragraph>
-      {drafts.length === 1
-        ? `It also comes off the Inactive contract ${contractNames(db, drafts)}.`
-        : `It also comes off ${drafts.length} Inactive contracts: ${contractNames(db, drafts)}.`}
-    </s-paragraph>
-  );
 }

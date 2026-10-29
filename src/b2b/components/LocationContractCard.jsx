@@ -3,10 +3,10 @@ import { useStore } from '../store.jsx';
 import { openAgreements, appliesAt, agreementDatesLabel } from '../agreements.js';
 import { wcTone } from '../../shared/wc.jsx';
 
-const STATUS_TONE = { Active: 'success', Scheduled: 'info', Inactive: undefined };
+const STATUS_TONE = { Active: 'success', Scheduled: 'info' };
 
-// A location's contracts: the Active one here, the Scheduled ones set up to follow
-// it and any drafts for it (Active first). A new one can always be created for this
+// A location's contracts: the Active one here and the Scheduled ones set up to follow
+// it (Active first). A new one can always be created for this
 // location.
 export function LocationContractCard({ company, location }) {
   const { state, dispatch } = useStore();
