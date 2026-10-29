@@ -10,11 +10,10 @@ const STATUS_TABS = [
   { id: 'all', label: 'All' },
   { id: 'Active', label: 'Active' },
   { id: 'Scheduled', label: 'Scheduled' },
-  { id: 'Inactive', label: 'Inactive' },
   { id: 'Expired', label: 'Expired' },
   { id: 'Ended', label: 'Ended' },
 ];
-const STATUS_TONE = { Active: 'success', Scheduled: 'info', Inactive: undefined, Expired: undefined, Ended: undefined };
+const STATUS_TONE = { Active: 'success', Scheduled: 'info', Expired: undefined, Ended: undefined };
 
 // Every company's agreement in one list. A row opens the company's Agreement tab —
 // a past one opens as it was, read-only; the editor opens as a page here

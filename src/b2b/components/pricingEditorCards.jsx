@@ -93,7 +93,7 @@ export function TermUseSwitch({ forContracts, locked, onChange, labels, regularD
 }
 
 // A contract pricing's or limit's contracts, in its editor where a regular one has
-// who it serves / Applies to: picked from the contracts that aren't over, as tags.
+// who it serves / Applies to: picked from the running contracts, as tags.
 // Saving puts it in them (and takes it off the others); running ones get a version.
 // `empty`: running contracts a save would leave with no terms (it was turned down).
 export function ContractsCard({ db, ids, onChange, empty = [] }) {
@@ -128,17 +128,16 @@ export function ContractsCard({ db, ids, onChange, empty = [] }) {
 
 // The "Save changes to …?" box of a contract pricing or limit, its lines: the running
 // contracts keeping it (`keeping`, when what it sets or its name changed), and the
-// contracts it's added to and removed from in its Contracts card. Inactive ones there
-// get no version.
+// contracts it's added to and removed from in its Contracts card.
 export function ContractSaveMessage({ db, keeping, changed, added, removed }) {
   if (!added.length && !removed.length) {
-    return <s-paragraph>{`${runningContractsLine(db, keeping)} ${keeping.length === 1 ? 'It gets' : 'Each gets'} a new version with these changes.`}</s-paragraph>;
+    return <s-paragraph>{`${runningContractsLine(keeping)} ${keeping.length === 1 ? 'It gets' : 'Each gets'} a new version with these changes.`}</s-paragraph>;
   }
   return (
     <s-stack gap="small">
-      {changed && keeping.length ? <s-paragraph>{runningContractsLine(db, keeping)}</s-paragraph> : null}
-      {added.length ? <s-paragraph>{`Added to: ${contractList(db, added)}`}</s-paragraph> : null}
-      {removed.length ? <s-paragraph>{`Removed from: ${contractList(db, removed)}`}</s-paragraph> : null}
+      {changed && keeping.length ? <s-paragraph>{runningContractsLine(keeping)}</s-paragraph> : null}
+      {added.length ? <s-paragraph>{`Added to: ${contractList(added)}`}</s-paragraph> : null}
+      {removed.length ? <s-paragraph>{`Removed from: ${contractList(removed)}`}</s-paragraph> : null}
       <s-paragraph>Running contracts get a new version.</s-paragraph>
     </s-stack>
   );

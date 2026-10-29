@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { EmptyBlock } from '../../../shared/EmptyBlock.jsx';
 import { useStore } from '../../store.jsx';
-import { scopeLabel, TODAY } from '../../pricing.js';
+import { scopeLabel } from '../../pricing.js';
 import {
   openAgreements,
   lastChange,
@@ -28,7 +28,7 @@ import {
 import { ContractVersionModal } from '../ContractVersionModal.jsx';
 import { Modal, wcTone } from '../../../shared/wc.jsx';
 
-const STATUS_TONE = { Active: 'success', Scheduled: 'info', Inactive: undefined, Expired: undefined, Ended: undefined };
+const STATUS_TONE = { Active: 'success', Scheduled: 'info', Expired: undefined, Ended: undefined };
 
 function Line({ main, side, onClick }) {
   return (
@@ -167,14 +167,8 @@ function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onV
   const terms = agreementTermLines(state.db, ag);
   const live = isLive(ag);
   const scope = agreementAppliesToLabel(company, ag);
-  // A next contract: when it starts — "Starts Feb 1, 2027, not applied yet."; a draft
-  // starting today or earlier: "Not applied yet."
-  const note =
-    ag.status === 'Scheduled' || (ag.status === 'Inactive' && ag.startDate > TODAY)
-      ? `Starts ${fmtDay(ag.startDate)}, not applied yet.`
-      : ag.status === 'Inactive'
-        ? 'Not applied yet.'
-        : null;
+  // A next contract: when it starts — "Starts Feb 1, 2027, not applied yet."
+  const note = ag.status === 'Scheduled' ? `Starts ${fmtDay(ag.startDate)}, not applied yet.` : null;
   const summary = [scope, agreementDatesLabel(ag), ag.version ? `Version ${ag.version}` : null].filter(Boolean).join(' · ');
   const history = ag.history || [];
   const title = `${ag.number} · ${ag.name || 'Untitled contract'}`;
@@ -209,20 +203,14 @@ function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onV
                 End contract
               </s-button>
             ) : null}
-            {/* Inactive or Scheduled: nothing is applied yet, so it can be deleted. */}
-            {ag.status !== 'Active' ? (
+            {/* Scheduled: nothing is applied yet, so it can be deleted too. */}
+            {ag.status === 'Scheduled' ? (
               <s-button tone="critical" variant="tertiary" onClick={() => onDelete(ag)}>
                 Delete contract
               </s-button>
             ) : null}
             <s-button onClick={() => onDuplicate(ag)}>Duplicate</s-button>
-            {live ? (
-              <s-button onClick={() => onEdit(ag)}>Edit</s-button>
-            ) : (
-              <s-button variant="primary" onClick={() => onEdit(ag)}>
-                Review and activate
-              </s-button>
-            )}
+            <s-button onClick={() => onEdit(ag)}>Edit</s-button>
           </s-stack>
         ) : (
           <span />
@@ -269,9 +257,8 @@ function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onV
   );
 }
 
-// A company's contracts: every one that isn't over (Active, Scheduled ones that don't
-// overlap at a location, and any number of drafts), each collapsed until opened — a
-// company's only contract starts open — then the past ones.
+// A company's contracts: every one that isn't over (Active and Scheduled), each
+// collapsed until opened — a company's only contract starts open — then the past ones.
 export function AgreementTab({ company }) {
   const { state, dispatch } = useStore();
   const [ending, setEnding] = useState(null);
@@ -465,11 +452,7 @@ export function AgreementTab({ company }) {
 
       {deleting && (
         <Modal onClose={() => setDeleting(null)} heading={`Delete ${deleting.number}?`}>
-          <s-paragraph>
-            {deleting.status === 'Scheduled'
-              ? `It won’t start on ${fmtDay(deleting.startDate)} and is removed with its history. Nothing changes for ${company.name}.`
-              : `The contract is deleted. Nothing changes for ${company.name}.`}
-          </s-paragraph>
+          <s-paragraph>{`It won’t start on ${fmtDay(deleting.startDate)} and is removed with its history. Nothing changes for ${company.name}.`}</s-paragraph>
           <s-button
             slot="primary-action"
             variant="primary"

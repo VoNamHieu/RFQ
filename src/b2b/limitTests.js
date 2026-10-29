@@ -219,7 +219,7 @@ const CASES = [
   },
   {
     code: 'OL-22', title: 'Overlaps are notes, never a block', ref: 'Notes',
-    expect: 'A $300 cap at ABC replaces the store-wide limit there: a note, and it still saves. A 10-unit cap under the filters’ minimum of 12 is a note that it stops orders; a limit on other products has no note',
+    expect: 'A $300 cap at ABC replaces the store-wide limit there: a note, and it still saves. A 10-unit cap under the filters’ minimum of 12 is a note that neither applies in an order with them — at Bac Ninh site 12 filters check out, 11 hoses don’t; a limit on other products has no note',
     run() {
       const db = fresh();
       const tiny = { name: 'ABC tiny cap', maxValue: '300', storeWide: false, companyIds: ['c1'] };
@@ -228,7 +228,9 @@ const CASES = [
       return [
         includes('$300 cap: a note', warningsFor(db, tiny), '“ABC tiny cap” replaces “Wholesale minimum” at ABC Construction: it’s more specific, so none of “Wholesale minimum”’s settings apply there.'),
         equals('…and it saves (no errors)', Object.keys(limitErrors(draftOf(tiny))), []),
-        includes('10-unit cap: a note that it stops orders', warningsFor(db, units), 'can’t be ordered at ABC Construction: “Filter case packs” needs at least 12 of each, but “ABC unit cap” allows at most 10 units per order.'),
+        includes('10-unit cap: a note', warningsFor(db, units), 'at ABC Construction: “Filter case packs” needs at least 12 of each, but “ABC unit cap” allows at most 10 units per order. In an order with them, neither limit applies.'),
+        equals('Cart at Bac Ninh site: 12 filters', messages(cartProblems(withLimit(db, units, 'uc'), 'c1', 'l2', ...filters(12))), []),
+        equals('Cart at Bac Ninh site: 11 hoses', messages(cartProblems(withLimit(db, units, 'uc'), 'c1', 'l2', [{ sku: 'HOS-12', title: 'Reinforced hose', qty: 11 }], 1100)), ['Orders can’t have more than 10 units.']),
         equals('Hose packs: no note', warningsFor(db, hosePacks), []),
       ];
     },
@@ -319,7 +321,7 @@ const CASES = [
   },
   {
     code: 'OL-27', title: 'Two limits in one contract', ref: 'Contracts',
-    expect: 'Two order limits in CT-301: the newer applies, and the contract editor notes it; a 6-unit maximum with the contract’s case packs of 12 is noted as stopping orders',
+    expect: 'Two order limits in CT-301: the newer applies, and the contract editor notes it; a 6-unit maximum with the contract’s case packs of 12: noted, and neither applies to orders with filters — the maximum still applies to other orders',
     run() {
       let db = inContract(fresh(), { name: 'Contract minimum A', minValue: '800' }, 'ca');
       db = inContract(db, { name: 'Contract minimum B', minValue: '600' }, 'cb');
@@ -328,7 +330,9 @@ const CASES = [
       return [
         equals('Order limit at Hanoi', effectiveRules(db, 'c1', 'l1').order?.limit.name, 'Contract minimum B'),
         includes('Contract editor', contractLimitConflicts(db, pick(db, ['ca', 'cb'])), '“Contract minimum B” replaces “Contract minimum A” in this contract'),
-        includes('Contract editor', contractLimitConflicts(small, pick(small, ['olc3', 'csmall'])), 'can’t be ordered in this contract'),
+        includes('Contract editor', contractLimitConflicts(small, pick(small, ['olc3', 'csmall'])), 'In an order with them, neither limit applies.'),
+        equals('Cart at Hanoi: 12 filters', messages(cartProblems(small, 'c1', 'l1', ...filters(12))), []),
+        equals('Cart at Hanoi: 10 hoses', messages(cartProblems(small, 'c1', 'l1', ...hoses(1000))), ['Orders can’t have more than 6 units.']),
       ];
     },
   },

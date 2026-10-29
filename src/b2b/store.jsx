@@ -986,10 +986,7 @@ function reducer(state, action) {
           removeCompanySlot(holder, 'quantity', action.id);
         });
       });
-      // An inactive contract drops it (a live one can't lose it — see newlyBroken).
-      (db.agreements || []).forEach((a) => {
-        if (a.status === 'Inactive') a.terms = { ...a.terms, base: a.terms.base.filter((x) => x !== action.id), quantity: a.terms.quantity.filter((x) => x !== action.id) };
-      });
+      // Running contracts can't lose it (see newlyBroken): it's deleted only outside them.
       return { ...state, db, toast: 'Pricing deleted' };
     }
     // "Duplicate as contract pricing": a regular pricing's copy, made for contracts —
@@ -1023,7 +1020,7 @@ function reducer(state, action) {
         ruleEdit: null,
         addRuleMenu: false,
         editorContext: { mode: 'edit', addToAgreement: null },
-        toast: 'Duplicated as contract pricing',
+        toast: 'Contract pricing duplicated',
       };
     }
     case 'TOGGLE_POLICY_STATUS': {
@@ -1184,10 +1181,10 @@ function reducer(state, action) {
       return { ...state, agreementEditor: { ...state.agreementEditor, draft: { ...state.agreementEditor.draft, ...action.patch } } };
     case 'CLOSE_AGREEMENT_EDITOR':
       return { ...state, ...(state.agreementEditor?.returnTo || {}), agreementEditor: null };
-    // Save the editor's draft (or `action.draft`, e.g. Activate from the Agreement
-    // tab). Activating, or saving an active agreement, applies its terms now: the
-    // previous version's terms come off, the new ones go on, as a new version. A next
-    // contract starting now takes its locations over from the Active ones there.
+    // Save the editor's draft (or `action.draft`). A new one goes in force — Active, or
+    // Scheduled until its start date; saving a live one applies its terms now: the
+    // previous version's terms come off, the new ones go on, as a new version. One
+    // starting now takes its locations over from the Active ones there.
     case 'SAVE_AGREEMENT': {
       const db = clone(state.db);
       const draft = clone(action.draft || state.agreementEditor.draft);
@@ -1195,26 +1192,27 @@ function reducer(state, action) {
       draft.updatedAt = new Date().toISOString();
       const prev = draft.id ? (db.agreements || []).find((a) => a.id === draft.id) : null;
       const wasLive = isLive(prev);
-      const goLive = wasLive || !!action.activate;
-      if (!draft.id) draft.id = `ag${Date.now()}`;
+      if (!draft.id) {
+        draft.id = `ag${Date.now()}`;
+        // Unique even when saved within the same millisecond as another.
+        while ((db.agreements || []).some((a) => a.id === draft.id)) draft.id += 'x';
+      }
       db.agreements = prev ? db.agreements.map((a) => (a.id === draft.id ? draft : a)) : [...(db.agreements || []), draft];
       // Its number is given out for good, even if it's deleted later.
       if (!prev) recordContractNumber(db, draft);
-      if (goLive) {
-        // Live terms come off first; they go back on if it's (still) in its dates.
-        if (prev?.status === 'Active') unapplyAgreement(db, prev);
-        // Over Active or Scheduled contracts at its locations (the Overlaps box): those
-        // locations are its from its start date, or today once it has started.
-        handOver(db, draft, prev?.status === 'Active');
-        const status = liveStatus(draft);
-        if (status === 'Scheduled') draft.status = 'Scheduled';
-        else if (prev?.status === 'Active') applyAgreement(db, draft);
-        else takeEffect(db, draft);
-        const note = wasLive ? agreementChanges(prev, draft, db) : status === 'Scheduled' ? `Activated, starts ${fmtDay(draft.startDate)}` : 'Activated';
-        addVersion(db, draft, note);
-      }
+      // Live terms come off first; they go back on if it's (still) in its dates.
+      if (prev?.status === 'Active') unapplyAgreement(db, prev);
+      // Over Active or Scheduled contracts at its locations (the Overlaps box): those
+      // locations are its from its start date, or today once it has started.
+      handOver(db, draft, prev?.status === 'Active');
+      const status = liveStatus(draft);
+      if (status === 'Scheduled') draft.status = 'Scheduled';
+      else if (prev?.status === 'Active') applyAgreement(db, draft);
+      else takeEffect(db, draft);
+      const note = wasLive ? agreementChanges(prev, draft, db) : status === 'Scheduled' ? `Activated, starts ${fmtDay(draft.startDate)}` : 'Activated';
+      addVersion(db, draft, note);
       const returnTo = action.draft ? {} : state.agreementEditor?.returnTo || {};
-      const toast = wasLive ? `Version ${draft.version} saved` : !goLive ? 'Contract saved' : draft.status === 'Scheduled' ? `${draft.number} scheduled` : `${draft.number} activated`;
+      const toast = wasLive ? `Version ${draft.version} saved` : draft.status === 'Scheduled' ? `${draft.number} scheduled` : `${draft.number} activated`;
       return { ...state, db, ...returnTo, agreementEditor: action.draft ? state.agreementEditor : null, toast };
     }
     // Ending takes the agreement's terms off the company; it stays as history. A
@@ -1238,7 +1236,7 @@ function reducer(state, action) {
     case 'DELETE_AGREEMENT':
       return {
         ...state,
-        db: { ...state.db, agreements: (state.db.agreements || []).filter((a) => !(a.id === action.id && (a.status === 'Inactive' || a.status === 'Scheduled'))) },
+        db: { ...state.db, agreements: (state.db.agreements || []).filter((a) => !(a.id === action.id && a.status === 'Scheduled')) },
         agreementEditor: state.agreementEditor?.draft.id === action.id ? null : state.agreementEditor,
         toast: 'Contract deleted',
       };
@@ -1278,7 +1276,7 @@ function reducer(state, action) {
         ...state,
         db: { ...state.db, limits: [...(state.db.limits || []), copy] },
         limitEditor: { draft: { ...toDraft(copy), contractIds: [] }, returnTo: state.limitEditor?.returnTo || null, addToAgreement: false },
-        toast: 'Duplicated as contract limit',
+        toast: 'Contract limit duplicated',
       };
     }
     case 'LIMIT_EDITOR_PATCH':
@@ -1322,11 +1320,8 @@ function reducer(state, action) {
       return { ...state, db, agreementEditor, ...(state.limitEditor.returnTo || {}), limitEditor: null, toast: isNew ? 'Order limit created' : 'Order limit saved' };
     }
     case 'DELETE_LIMIT': {
-      // An inactive contract drops it (a live one can't lose it — see newlyBroken).
-      const agreements = (state.db.agreements || []).map((a) =>
-        a.status === 'Inactive' && a.terms.limits.includes(action.id) ? { ...a, terms: { ...a.terms, limits: a.terms.limits.filter((x) => x !== action.id) } } : a,
-      );
-      const db = { ...state.db, limits: (state.db.limits || []).filter((l) => l.id !== action.id), agreements };
+      // Running contracts can't lose it (see newlyBroken): it's deleted only outside them.
+      const db = { ...state.db, limits: (state.db.limits || []).filter((l) => l.id !== action.id) };
       const editing = state.limitEditor?.draft.id === action.id;
       return { ...state, db, ...(editing ? { ...(state.limitEditor.returnTo || {}), limitEditor: null } : {}), toast: 'Order limit deleted' };
     }

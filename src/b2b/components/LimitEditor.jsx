@@ -9,7 +9,7 @@ import { SelectCompaniesModal, CustomerTargetsBox, companyPicks } from './Assign
 import { Modal, useWcId, PageHeader } from '../../shared/wc.jsx';
 import { limitCatalog, withCatalog } from '../limitCatalog.js';
 import { contractsHolding, termChanged, isContractTerm, leftEmpty, openContractsHolding } from '../agreements.js';
-import { useContractLock, DraftsLosingIt } from './ContractLock.jsx';
+import { useContractLock } from './ContractLock.jsx';
 import { versionFlags } from '../../shared/versions.js';
 
 const str = (v) => (v == null ? '' : String(v));
@@ -20,7 +20,8 @@ export { limitCatalog, withCatalog };
 // unassigns it from ABC Construction. …" (here and in the Order limits list). Store-wide
 // and all / logged-in / non-logged-in customers read in lower case mid-sentence.
 export function deleteLimitText(l, db) {
-  if (!isLimitAssigned(l)) return 'This deletes the limit.';
+  // A contract limit is deleted only outside running contracts: nothing to unassign.
+  if (l.forContracts || !isLimitAssigned(l)) return 'This deletes the limit.';
   const label = limitTargetsLabel(l, db);
   const where = l.storeWide ? 'all companies' : isD2CLimit(l) && !['specific', 'tags'].includes(l.customerTarget) ? label.toLowerCase() : label;
   return `This deletes the limit and unassigns it from ${where}. Buyers there can check out without it right away.`;
@@ -497,7 +498,6 @@ export function LimitEditor() {
         <Modal onClose={() => setConfirmDelete(false)} heading={`Delete ${draft.name}?`}>
           <s-stack gap="small">
             <s-paragraph>{deleteLimitText(saved || normalizeLimit(draft), state.db)}</s-paragraph>
-            <DraftsLosingIt db={state.db} id={draft.id} />
           </s-stack>
           <s-button slot="primary-action" variant="primary" tone="critical" onClick={() => dispatch({ type: 'DELETE_LIMIT', id: draft.id })}>
             Delete limit

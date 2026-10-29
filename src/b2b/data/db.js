@@ -454,8 +454,8 @@ if (CONTRACTS) {
 // Agreements (see agreements.js). ABC's CT-301 is live and its terms are the ones
 // assigned above (Distributor Tier 2, p8, p30, p6, Filter case packs — in Upcoming
 // the contract copies) — the rest of ABC's pricing is outside it.
-// It ends Aug 20, 2026 — within the renewal reminder. Vinh Phat's CT-305 is a
-// inactive contract for 2027; Song Hong's CT-274 expired (see its activity). Phu Thanh has a
+// It ends Aug 20, 2026 — within the renewal reminder. Vinh Phat's CT-305 is
+// scheduled for 2027; Song Hong's CT-274 expired (see its activity). Phu Thanh has a
 // contract per location: CT-302 (Ho Chi Minh City, Can Tho) and CT-303 (Vung Tau)
 // are seeded Scheduled with past start dates, so they start on load
 // (syncContractDates) and put their pricing on those locations; CT-304 takes Can Tho
@@ -469,8 +469,9 @@ const agreements = [
       { version: 2, date: '2026-07-12', note: 'Added VLV-40 Contract Price', terms: { base: ['p1', 'p8', 'p30'], quantity: ['p6'], limits: ['ol3'] } },
       { version: 1, date: '2026-01-03', note: 'Activated', terms: { base: ['p1', 'p8'], quantity: ['p6'], limits: ['ol3'] } },
     ] },
-  { id: 'ag2', number: 'CT-305', name: '2027 distributor terms', companyId: 'c2', locationIds: null, status: 'Inactive', version: 0, startDate: '2027-01-01', endDate: '2027-12-31',
-    terms: { base: ['p1'], quantity: [], limits: ['ol2', 'ol3'] }, history: [] },
+  { id: 'ag2', number: 'CT-305', name: '2027 distributor terms', companyId: 'c2', locationIds: null, status: 'Scheduled', version: 1, startDate: '2027-01-01', endDate: '2027-12-31',
+    terms: { base: ['p1'], quantity: [], limits: ['ol2', 'ol3'] },
+    history: [{ version: 1, date: '2026-07-10', note: 'Activated, starts Jan 1, 2027', terms: { base: ['p1'], quantity: [], limits: ['ol2', 'ol3'] } }] },
   { id: 'ag3', number: 'CT-274', name: '2025–26 negotiated terms', companyId: 'c4', locationIds: null, status: 'Expired', version: 1, startDate: '2025-07-01', endDate: '2026-06-30',
     terms: { base: ['p8'], quantity: [], limits: [] },
     history: [

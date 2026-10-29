@@ -82,8 +82,8 @@
 // two definitions, no buyer by buyer and no prices: where both apply, which one
 // replaces the other there (two order limits; two product limits, for the products
 // both have), plus an order limit's maximum quantity below a product limit's
-// minimum (the two kinds both apply). They're notes, never a block: the
-// merchant can adjust one of the two. Shown when saving a limit and turning one
+// minimum (the two kinds both apply: in an order with such a product, neither does —
+// cartProblems). They're notes, never a block: the merchant can adjust one of the two. Shown when saving a limit and turning one
 // on; a contract's editor checks the limits picked for it against each other
 // (contractLimitConflicts).
 //
@@ -689,7 +689,29 @@ const ownMessage = (limit) =>
 function cartProblemsIn(rec, lines, subtotal, spent = {}) {
   const totalQty = lines.reduce((n, l) => n + l.qty, 0);
   const problems = [];
-  const setting = (key) => (rec.settings[key]?.mode === 'set' ? rec.settings[key] : null);
+  // A product's variants together, with each variant's quantity for the pack.
+  const byProduct = new Map();
+  lines.forEach((line) => {
+    const p = byProduct.get(line.sku) || { sku: line.sku, title: line.title, qty: 0, each: [] };
+    p.qty += line.qty;
+    p.each.push(line.qty);
+    byProduct.set(line.sku, p);
+  });
+  // An order limit and a product limit that contradict — the least a product can be
+  // ordered in (its minimum, or a pack) above the order's maximum quantity — would
+  // leave no order with that product that can check out: in such an order, neither
+  // limit applies (`skipped`, by limit id).
+  const skipped = new Set();
+  const orderMaxQty = rec.settings.maxQty || rec.settings.thresholdQty;
+  if (orderMaxQty?.mode === 'set') {
+    byProduct.forEach((p) => {
+      const e = productEntry(rec, p.sku);
+      const q = quantities(e);
+      const least = q && (q.increment > 1 ? Math.ceil(Math.max(q.min || 1, 1) / q.increment) * q.increment : q.min);
+      if (least != null && least > orderMaxQty.value) [orderMaxQty.limit.id, e.limit.id].forEach((id) => skipped.add(id));
+    });
+  }
+  const setting = (key) => (rec.settings[key]?.mode === 'set' && !skipped.has(rec.settings[key].limit.id) ? rec.settings[key] : null);
   const add = (type, e, text, value, period = 'order', extra = {}) => problems.push({ type, limit: e.limit, message: ownMessage(e.limit) || text, value, period, ...extra });
 
   const minValue = setting('minValue');
@@ -707,21 +729,13 @@ function cartProblemsIn(rec, lines, subtotal, spent = {}) {
   if (minQty && totalQty < minQty.value) add('minQty', minQty, `Your order needs at least ${units(minQty.value)}. Add ${units(minQty.value - totalQty)} more.`);
   const maxQty = setting('maxQty');
   if (maxQty && totalQty > maxQty.value) add('maxQty', maxQty, `Orders can’t have more than ${units(maxQty.value)}.`, maxQty.value);
-  // A product's variants together, with each variant's quantity for the pack.
-  const byProduct = new Map();
-  lines.forEach((line) => {
-    const p = byProduct.get(line.sku) || { sku: line.sku, title: line.title, qty: 0, each: [] };
-    p.qty += line.qty;
-    p.each.push(line.qty);
-    byProduct.set(line.sku, p);
-  });
   const PRODUCT_ORDER = ['min', 'max', 'pack'];
   const productProblems = [];
   const productReviews = [];
   byProduct.forEach((p) => {
     const e = productEntry(rec, p.sku);
     const q = quantities(e);
-    if (!q) return;
+    if (!q || skipped.has(e.limit.id)) return;
     // Errors can show for the whole cart, not on a line — so the merchant's own message
     // is prefixed with the product it's about (`sku`, for a cart that shows it under the
     // product's line). Each field names the limit it came from.
@@ -908,11 +922,10 @@ function sharedProducts(a, b, db) {
 // other. Two limits of one kind don't combine: where both apply, one replaces the
 // other — the more specific, then the newer (`aNewer`: a is newer than b) — a
 // product limit only for the products both have. An order limit and a product
-// limit both apply, so an order maximum below a product minimum stops orders
-// (`stops`). `posOf`: where a limit is in the list (a draft not saved yet, or one
-// being turned on, is the newest).
+// limit both apply; with an order maximum below a product minimum, neither does in
+// an order with that product (cartProblems). `posOf`: where a limit is in the list
+// (a draft not saved yet, or one being turned on, is the newest).
 function pairNotes(db, a, b, places, names, aNewer, from, posOf) {
-  const stops = [];
   const notes = [];
   const other = (who) => (who === 'a' ? 'b' : 'a');
   const groups = byWinner(places, (p) => rankWinner(p) || { who: aNewer ? 'a' : 'b', why: 'newer' });
@@ -932,7 +945,7 @@ function pairNotes(db, a, b, places, names, aNewer, from, posOf) {
   } else {
     // An order limit's maximum units against a product limit's minimum (or pack).
     // Where a third order limit replaces the order limit (more specific, or as
-    // specific and newer), it doesn't apply, so it can't stop orders there.
+    // specific and newer), it doesn't apply, so they don't meet there.
     const [o, p, oSide, pSide] = a.kind === 'order' ? [a, b, 'a', 'b'] : [b, a, 'b', 'a'];
     const replaced = (pl) =>
       (db.limits || []).some((z) => {
@@ -953,20 +966,21 @@ function pairNotes(db, a, b, places, names, aNewer, from, posOf) {
         const skus = r === cov.all ? null : [...cov.bySku].filter(([, x]) => x === r).map(([sku]) => sku);
         const label = skus ? titles(skus, db) : cov.bySku.size ? 'All other products' : 'All products';
         const each = !skus || skus.length > 1 ? ' of each' : '';
-        stops.push(`${label} can’t be ordered${whereText(where)}: ${names[pSide]} needs at least ${min}${each}, but ${names[oSide]} allows at most ${units(maxQty)} per order.`);
+        const many = !skus || skus.length > 1;
+        notes.push(`${label}${whereText(where)}: ${names[pSide]} needs at least ${min}${each}, but ${names[oSide]} allows at most ${units(maxQty)} per order. In an order with ${many ? 'them' : 'it'}, neither limit applies.`);
       });
     }
   }
-  return { lines: [...stops, ...notes], stops: stops.length > 0, attention: stops.length > 0 };
+  return { lines: notes, stops: false, attention: false };
 }
 
 // The other limits a limit (a draft or a stored one) overlaps: ones of its kind it
-// replaces or that replace it for some of their buyers (or products), or ones that
-// together with it stop orders. One per other limit, the ones that stop orders first:
-//   { key, id, name, from, text, stops, attention }
-// `from`: the day they start to meet, when it's later than today. `attention`: it
-// stops orders. `self`: what to call the limit in the text
-// (its name by default; the editor says "this limit"). Last, for a limit on customer
+// replaces or that replace it for some of their buyers (or products), or ones of the
+// other kind it contradicts (neither applies in an order with those products). One
+// per other limit: { key, id, name, from, text, stops, attention } — `stops` and
+// `attention` stay false (overlaps never stop orders). `from`: the day they start to
+// meet, when it's later than today. `self`: what to call the limit in the text (its
+// name by default; the editor says "this limit"). Last, for a limit on customer
 // tags, a soft note when other tags already have limits of its kind (`soft`, no
 // `id`: see segmentNote).
 export function limitOverlaps(db, draft, { self } = {}) {
@@ -1038,8 +1052,8 @@ export function overlapsOf(db, nextLimits, ids) {
 // warning: it still saves). In one contract they apply at the same places, at the
 // same rank, on the contract's dates — so, as anywhere, two order limits don't
 // combine (the newest applies), two product limits don't for the products both have,
-// and an order maximum below a product minimum stops orders. Limits that are off
-// don't count.
+// and with an order maximum below a product minimum neither applies in an order with
+// that product. Limits that are off don't count.
 export function contractLimitConflicts(db, limits) {
   const list = db.limits || [];
   const pos = (l) => list.findIndex((x) => x.id === l.id);

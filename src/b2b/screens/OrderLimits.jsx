@@ -5,8 +5,8 @@ import { LimitEditor, withCatalog, deleteLimitText } from '../components/LimitEd
 import { LimitOverlapMessage } from '../components/LimitOverlapList.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import { Modal, IndexFiltersBar, useWcId, PageHeader } from '../../shared/wc.jsx';
-import { contractsHolding, fmtDay, isContractTerm, contractsLabel } from '../agreements.js';
-import { useContractLock, DraftsLosingIt } from '../components/ContractLock.jsx';
+import { contractsHolding, fmtDay, isContractTerm, contractsLabel, contractTermStatus } from '../agreements.js';
+import { useContractLock } from '../components/ContractLock.jsx';
 import { versionFlags } from '../../shared/versions.js';
 
 // Tabs by who a limit is for, like the Pricing list; the kind is a filter. Contract
@@ -196,7 +196,12 @@ export function OrderLimits() {
                     </s-table-cell>
                     <s-table-cell>{l.updatedAt || l.createdAt ? fmtDay(l.updatedAt || l.createdAt) : '—'}</s-table-cell>
                     <s-table-cell>
-                      <s-badge tone={STATE_TONE[limitState(l)]}>{limitState(l)}</s-badge>
+                      {/* A contract limit's status comes from its contracts (contractTermStatus). */}
+                      {forContracts ? (
+                        <s-badge tone={contractTermStatus(state.db, l.id).tone}>{contractTermStatus(state.db, l.id).label}</s-badge>
+                      ) : (
+                        <s-badge tone={STATE_TONE[limitState(l)]}>{limitState(l)}</s-badge>
+                      )}
                     </s-table-cell>
                     <s-table-cell>
                       <s-stack direction="inline" gap="small-400" justifyContent="end">
@@ -260,7 +265,6 @@ export function OrderLimits() {
         <Modal onClose={() => setConfirmDelete(null)} heading={`Delete ${confirmDelete.name}?`}>
           <s-stack gap="small">
             <s-paragraph>{deleteLimitText(confirmDelete, state.db)}</s-paragraph>
-            <DraftsLosingIt db={state.db} id={confirmDelete.id} />
           </s-stack>
           <s-button
             slot="primary-action"
