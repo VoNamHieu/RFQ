@@ -508,7 +508,7 @@ const agreements = [
   { id: 'ag2', number: 'CT-305', name: '2027 distributor terms', companyId: 'c2', locationIds: null, status: 'Scheduled', version: 1, startDate: '2027-01-01', endDate: '2027-12-31',
     terms: { base: ['p1'], quantity: [], limits: ['ol2', 'ol3'] },
     history: [{ version: 1, date: '2026-07-10', note: 'Activated, starts Jan 1, 2027', terms: { base: ['p1'], quantity: [], limits: ['ol2', 'ol3'] } }] },
-  { id: 'ag3', number: 'CT-274', name: '2025–26 negotiated terms', companyId: 'c4', locationIds: null, status: 'Expired', version: 1, startDate: '2025-07-01', endDate: '2026-06-30',
+  { id: 'ag3', number: 'CT-274', name: '2025 to 2026 negotiated terms', companyId: 'c4', locationIds: null, status: 'Expired', version: 1, startDate: '2025-07-01', endDate: '2026-06-30',
     terms: { base: CONTRACTS ? ['p8', 'pc274'] : ['p8'], quantity: [], limits: [] },
     history: [
       { version: 1, date: '2026-07-01', note: 'Expired' },

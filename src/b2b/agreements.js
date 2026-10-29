@@ -33,7 +33,8 @@
 // and keeps the terms, as a new version. The demo's "today" is TODAY.
 // Ending a contract takes off only what it added.
 import { addPricingToLocations, removeCompanySlot, companySlotArray, demoPolicyId } from './dbHelpers.js';
-import { hasOwnSlot, slotIds, scopeLabel, ruleAdjustmentLabel, ruleValuesSummary, ruleTypeLabel, ruleField, productVariants, TODAY } from './pricing.js';
+import { hasOwnSlot, slotIds, scopeLabel, ruleAdjustmentLabel, ruleValuesSummary, ruleValues, ruleField, productVariants, TODAY } from './pricing.js';
+import { money2 } from './format.js';
 import { limitKey, limitSummary, limitLevel, isD2CLimit, limitRules, defaultLimitMessage } from './limits.js';
 import { versionFlags } from '../shared/versions.js';
 
@@ -82,9 +83,11 @@ export const datesOverlap = (a, b) =>
   (!a.endDate || !b.startDate || b.startDate <= a.endDate) && (!b.endDate || !a.startDate || a.startDate <= b.endDate);
 // What going live gives it: Scheduled while its start date is still to come.
 export const liveStatus = (ag) => (ag.startDate && ag.startDate > TODAY ? 'Scheduled' : 'Active');
-export function agreementDatesLabel(ag) {
+// `between` joins the two dates: " – " by default, " to " where the copy says so
+// (the contract viewer).
+export function agreementDatesLabel(ag, between = ' – ') {
   if (!ag.startDate) return ag.endDate ? `Until ${fmtDay(ag.endDate)}` : 'No dates';
-  return ag.endDate ? `${fmtDay(ag.startDate)} – ${fmtDay(ag.endDate)}` : `From ${fmtDay(ag.startDate)}, no end date`;
+  return ag.endDate ? `${fmtDay(ag.startDate)}${between}${fmtDay(ag.endDate)}` : `From ${fmtDay(ag.startDate)}, no end date`;
 }
 
 export const PAST_STATUSES = ['Expired', 'Ended'];
@@ -642,39 +645,93 @@ export function snapshotTerms(db, ag) {
     limits: ag.terms.limits.map(lim).filter(Boolean).map((l) => ({ id: l.id, name: l.name, summary: limitTermSummary(l, db), config: copyOf(l) })),
   };
 }
-// A pricing's or limit's settings, as sections of lines — what its editor sets, for
-// reading a version's terms in full (ContractVersionModal). A line can carry its
-// adjustment as a badge ("35% off"), tinted like the editor's rules.
+// ── Reading a version's terms (ContractVersionModal) ─────────────────────────
+// An adjustment as plain text, amounts with cents: "10% off", "$6.90 off", "+5%",
+// "Set to $50.00" — or for a fixed price (`fixed`) the price alone, "$6.90".
+function adjustText(a, fixed = false) {
+  if (!a || a.rule === 'keep' || !Number(a.value)) return 'No change';
+  const amount = a.valueType === 'amount' ? money2(a.value) : `${a.value}%`;
+  if (a.rule === 'set') return fixed ? amount : `Set to ${amount}`;
+  return a.rule === 'increase' ? `+${amount}` : `${amount} off`;
+}
+// What a pricing covers, mid-sentence: "all products", "3 products", "Contractor assortment".
+function scopePhrase(p) {
+  const st = p.scopeType || (p.priceKind === 'quantity' ? 'products' : 'all');
+  if (st === 'all') return 'all products';
+  if (st === 'products') {
+    const n = (p.selectedProducts || []).length;
+    return `${n} product${n === 1 ? '' : 's'}`;
+  }
+  return scopeLabel(p);
+}
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const capital = (t) => (t ? t[0].toUpperCase() + t.slice(1) : t);
+const isFixed = (a) => a?.rule === 'set';
+// A quantity range: "1 to 9 units", "50 units or more".
+const rangeText = (r) => (r.to ? `${r.from} to ${r.to} units` : `${r.from} units or more`);
+
+// What a pricing or limit does, in one line, so a contract reads at a glance:
+// "10% off all products, 12 rules, 5 fixed prices".
+export function termSummary(db, x, isLimit) {
+  if (isLimit) return limitSummary(x, db);
+  if (x.priceKind === 'quantity') {
+    const ranges = (x.volumeRanges || []).filter((r) => Number(r.value));
+    const top = ranges.reduce((m, r) => (!m || Number(r.value) > Number(m.value) ? r : m), null);
+    return capital([plural((x.volumeRanges || []).length, 'quantity range'), top ? `up to ${adjustText({ rule: 'decrease', valueType: top.valueType, value: top.value })}` : 'no discounts', scopePhrase(x)].join(', '));
+  }
+  const overrides = Object.values(x.variantAdjustments || {});
+  const fixed = overrides.filter(isFixed).length;
+  const parts = [
+    x.pricingRule && x.pricingRule !== 'keep' ? `${adjustText({ rule: x.pricingRule, valueType: x.valueType, value: x.value })} ${scopePhrase(x)}` : null,
+    (x.conditionalRules || []).length ? plural(x.conditionalRules.length, 'rule') : null,
+    fixed ? plural(fixed, 'fixed price') : null,
+    overrides.length - fixed ? plural(overrides.length - fixed, 'product discount') : null,
+  ].filter(Boolean);
+  return capital(parts.join(', ')) || 'Shopify prices';
+}
+
+// A pricing's or limit's settings, as sections of lines (`text`, under it a `note`,
+// and its `value` on the right) — what its editor sets, for reading a version's terms
+// in full. A base pricing has two: its pricing rules (the default price first, then
+// each rule in order, noted with what it targets) and its product overrides.
+const RULE_TARGET = { collection: 'Collection', tag: 'Product tag', vendor: 'Vendor', productType: 'Product type' };
 export function termSettings(db, x, isLimit) {
-  const adjust = (a) => ({ badge: ruleAdjustmentLabel(a), tone: a && a.rule !== 'set' && a.rule !== 'keep' && a.value ? 'success' : undefined });
-  const none = (items) => (items.length ? items : [{ text: 'None', subdued: true }]);
+  const section = (label, items) => (items.length ? { label, items } : null);
   if (isLimit) {
     const message = x.message || defaultLimitMessage(x);
     return [
-      { label: 'Sets', items: none(limitRules(x, db).map((r) => ({ text: r.text }))) },
-      { label: 'Buyer message', items: [message ? { text: `“${message}”`, note: x.message ? null : 'Suggested message' } : { text: 'None', subdued: true }] },
-    ];
+      section('Sets', limitRules(x, db).map((r) => ({ text: r.text }))),
+      section('Buyer message', message ? [{ text: `“${message}”`, note: x.message ? null : 'Suggested message' }] : []),
+    ].filter(Boolean);
   }
   if (x.priceKind === 'quantity') {
     return [
-      { label: 'Products', items: [{ text: scopeLabel(x) }] },
-      { label: 'Quantity ranges', items: none((x.volumeRanges || []).map((r) => ({ text: range(r), ...adjust({ rule: 'decrease', valueType: r.valueType, value: r.value }) }))) },
-      { label: 'Discount off', items: [{ text: x.volumeBasis === 'base' ? 'The base price' : 'The Shopify price' }] },
-    ];
+      section('Products', [{ text: capital(scopePhrase(x)) }]),
+      section('Quantity ranges', (x.volumeRanges || []).map((r) => ({ text: rangeText(r), value: adjustText({ rule: 'decrease', valueType: r.valueType, value: r.value }) }))),
+      section('Discount off', [{ text: x.volumeBasis === 'base' ? 'The base price' : 'The Shopify price' }]),
+    ].filter(Boolean);
   }
-  // A product override is keyed by its variant: "Industrial filter, XL · Blue".
+  // A product override is keyed by its variant: "Industrial filter, XL · Heavy-duty".
   const variantName = (id) => {
     const product = (db.products || []).find((p) => productVariants(p).some((v) => v.id === id));
     const v = productVariants(product).find((y) => y.id === id);
     return product ? `${product.title}${v && v.title !== 'Default' && productVariants(product).length > 1 ? ` · ${v.title}` : ''}` : id;
   };
+  const rules = x.conditionalRules || [];
+  const overrides = Object.entries(x.variantAdjustments || {});
   return [
-    x.pricingRule && x.pricingRule !== 'keep' ? { label: 'Price', items: [{ text: scopeLabel(x), ...adjust({ rule: x.pricingRule, valueType: x.valueType, value: x.value }) }] } : null,
-    {
-      label: 'Rules',
-      items: none((x.conditionalRules || []).map((r, i) => ({ text: `Rule ${i + 1} · ${ruleTypeLabel(r)}${ruleField(r) === 'all' ? '' : ` · ${ruleValuesSummary(r)}`}`, ...adjust(r) }))),
-    },
-    { label: 'Product overrides', items: none(Object.entries(x.variantAdjustments || {}).map(([id, a]) => ({ text: variantName(id), ...adjust(a) }))) },
+    section('Pricing rules', [
+      ...(x.pricingRule && x.pricingRule !== 'keep'
+        ? [{ text: capital(scopePhrase(x)), note: 'Default price', value: adjustText({ rule: x.pricingRule, valueType: x.valueType, value: x.value }) }]
+        : []),
+      ...rules.map((r) =>
+        ruleField(r) === 'all'
+          ? { text: 'All products', value: adjustText(r) }
+          : { text: ruleValues(r).join(', ') || 'Nothing selected', note: RULE_TARGET[ruleField(r)], value: adjustText(r) },
+      ),
+    ]),
+    // A fixed price reads as the price ("$6.90"), a discount as one ("12% off").
+    section('Product overrides', overrides.map(([id, a]) => ({ text: variantName(id), value: adjustText(a, true) }))),
   ].filter(Boolean);
 }
 // A new version: its number, the note and a snapshot of the terms (mutates `ag`).
