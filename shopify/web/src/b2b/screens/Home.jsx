@@ -1,0 +1,476 @@
+import React, { useState } from 'react';
+import { useStore } from '../store.jsx';
+import { companyNeedsPrice, kindOf, policyStatus, policyUsageCount } from '../pricing.js';
+import { versionFlags, withVersion } from '../../shared/versions.js';
+import quotesArt from '../assets/quote-block.webp';
+import { heldOrders, heldParts, HeldOrderActions, buyerMessageText } from '../components/HeldOrders.jsx';
+import { money } from '../format.js';
+import { isContractTerm } from '../agreements.js';
+import { DevStrip } from '../../shared/DevStrip.jsx';
+import { Modal } from '../../shared/wc.jsx';
+import { CdPageHead, CdSection, StatusDot } from '../components/companyLayout.jsx';
+
+// Prototype: show the dev toggles in production too (flip to import.meta.env.DEV to hide in prod).
+const SHOW_DEV_TOOLS = true;
+const CLOSED_QUOTE = ['Deal Closed', 'Deal Rejected', 'Trashed'];
+
+// Wholesale B2B → app home, laid out on Shopify's App Home guidance
+// (shopify.dev/docs/apps/design, Homepage pattern, Built for Shopify 3.1.4 / 4.2.3):
+// a single-column, default-width page that says whether the app is set up and
+// working — a dismissible, collapsible setup guide (one step open at a time),
+// what needs attention now, key numbers for each core feature with one clear
+// action each, and help links in the page footer, out of the way.
+export function Home() {
+  const { state, dispatch } = useStore();
+  // Dev-only previews, one at a time: 'empty' (a brand-new merchant), 'noQuotes' (RFQ app
+  // installed, no quotes yet).
+  const [devPreview, setDevPreview] = useState(null);
+  const togglePreview = (mode) => setDevPreview((m) => (m === mode ? null : mode));
+  const devEmpty = devPreview === 'empty';
+  const db = devEmpty
+    ? { ...state.db, companies: [], policies: [], registrations: [], quotes: [], hasRegistrationForm: false, registrationFormPublished: false, rfqAppInstalled: false }
+    : devPreview === 'noQuotes'
+    ? { ...state.db, quotes: [], rfqAppInstalled: true }
+    : state.db;
+  const genuinelyEmpty = !state.db.companies.length && !state.db.policies.length && !state.db.hasRegistrationForm;
+  const flags = versionFlags();
+
+  const { companies, policies } = db;
+  const hasForm = !!db.hasRegistrationForm;
+  const formPublished = hasForm && !!db.registrationFormPublished;
+  const locations = companies.reduce((n, c) => n + (c.locations || []).length, 0);
+  const needPrice = companies.filter((c) => companyNeedsPrice(c, policies, db.defaults)).length;
+  const activePricing = policies.filter((p) => policyStatus(p, db).label !== 'Inactive').length;
+  // Assigned to nobody — a pricing the merchant turned off on purpose isn't flagged,
+  // nor a contract pricing (its contracts give it).
+  const unassignedPricing = policies.filter((p) => p.status !== 'Inactive' && !isContractTerm(p) && policyUsageCount(p, db) === 0).length;
+  const quantityPricing = policies.filter((p) => kindOf(p) === 'quantity').length;
+  const pending = (db.registrations || []).filter((r) => r.status === 'pending').length;
+  const openQuotes = (db.quotes || []).filter((q) => !CLOSED_QUOTE.includes(q.status));
+  const dealsClosed = (db.quotes || []).filter((q) => q.status === 'Deal Closed').length;
+  // Quotes come from the companion O:Request a Quote app, which may not be installed.
+  const rfqInstalled = !!db.rfqAppInstalled;
+  // Orders an order limit's maximum held back for review, waiting on the merchant.
+  const held = flags.orderLimits ? heldOrders(db) : [];
+
+  const toast = (m) => dispatch({ type: 'TOAST', message: m });
+  const nav = (view, patch) => dispatch({ type: 'NAVIGATE', view, patch });
+  const viewCompanies = (filter = 'all') => { dispatch({ type: 'SET_LIST_FILTER', filter }); nav('customers'); };
+  // The setup wizard belongs to the B2B Company list: land there, then open it on top.
+  const addCompany = () => { viewCompanies(); dispatch({ type: 'OPEN_ADD_COMPANY' }); };
+  // Pricing screen opens straight on its type chooser (base / quantity).
+  const createPricing = () => nav('pricing', { pricingChooser: true });
+  const openForm = () => nav('form', { formEntry: hasForm ? 'editor' : 'create' });
+  const viewRegistrations = (filter) => { if (filter) dispatch({ type: 'SET_REGISTRATION_FILTER', filter }); nav('registrations'); };
+  const openRfq = () => { window.location.href = withVersion('/'); };
+
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const steps = [
+    {
+      title: 'Add your first B2B company',
+      done: companies.length > 0,
+      desc: companies.length ? `You've added ${plural(companies.length, 'company', 'companies')}.` : 'Add a company so its buyers can shop at B2B prices.',
+      action: companies.length ? { content: 'View companies', onAction: () => viewCompanies() } : { content: 'Add company', onAction: addCompany },
+    },
+    {
+      title: 'Set up pricing',
+      done: policies.length > 0,
+      desc: policies.length ? `You've created ${plural(policies.length, 'pricing', 'pricings')}.` : 'Create and assign pricing so buyers see the right prices.',
+      action: policies.length ? { content: 'View pricing', onAction: () => nav('pricing') } : { content: 'Create pricing', onAction: createPricing },
+    },
+    {
+      title: 'Publish your registration form',
+      done: formPublished,
+      desc: formPublished ? 'Buyers can apply for B2B access from your storefront.' : 'Let buyers submit their business details from your storefront.',
+      action: { content: formPublished ? 'Edit form' : hasForm ? 'Preview form' : 'Create form', onAction: openForm },
+    },
+  ];
+  const doneCount = steps.filter((s) => s.done).length;
+  const setupComplete = doneCount === steps.length;
+
+  // What needs the merchant now — each row one action, most blocking first. Held
+  // orders have their own section below it.
+  const attention = [
+    needPrice && {
+      title: `${plural(needPrice, 'company needs', 'companies need')} B2B pricing`,
+      meta: 'No pricing applies to at least one of their locations.',
+      action: { content: 'Assign pricing', onAction: () => viewCompanies('need') },
+    },
+    pending && {
+      title: `${plural(pending, 'registration', 'registrations')} waiting for review`,
+      meta: 'Buyers applied for B2B access through your registration form.',
+      action: { content: 'Review registrations', onAction: () => viewRegistrations('pending') },
+    },
+    hasForm && !formPublished && {
+      title: "Your registration form isn't published",
+      meta: "Buyers can't apply until it's available on your storefront.",
+      action: { content: 'Publish form', onAction: openForm },
+    },
+    unassignedPricing && {
+      title: `${plural(unassignedPricing, 'pricing setup isn’t', 'pricing setups aren’t')} assigned`,
+      meta: 'Pricing stays inactive until it’s assigned to a company, location or customer.',
+      action: { content: 'View pricing', onAction: () => nav('pricing', { pricingStatus: 'inactive' }) },
+    },
+  ].filter(Boolean);
+
+  const guideVisible = !state.homeGuideHidden;
+
+  // The company page's look: a white page, the title with its two actions, then
+  // sections titled above bordered cards.
+  return (
+    <div className="cd-page">
+      <CdPageHead
+        title={setupComplete ? 'Wholesale B2B Solution' : 'Get your B2B selling workflow ready'}
+        subtitle={
+          setupComplete
+            ? 'Your B2B companies, pricing and registrations at a glance.'
+            : 'Complete a few setup steps to start accepting B2B registrations and selling with custom pricing.'
+        }
+        actions={
+          <>
+            <s-button onClick={addCompany}>Add company</s-button>
+            <s-button onClick={createPricing}>Create pricing</s-button>
+          </>
+        }
+      />
+      <div className="cd-stack">
+        {SHOW_DEV_TOOLS && (
+          <DevStrip id="home">
+            <s-stack direction="inline" gap="small-200" alignItems="center">
+              <s-badge tone="info">Dev</s-badge>
+              <s-text fontSize="small" color="subdued">
+                {devEmpty
+                  ? 'Previewing the empty state — companies, pricing and the form actually exist.'
+                  : devPreview === 'noQuotes'
+                  ? 'Previewing the Quotes card with the RFQ app installed but no quotes yet.'
+                  : genuinelyEmpty
+                  ? 'No companies, pricing or form exist, so the home is showing its empty state.'
+                  : 'Preview other states: a brand-new merchant, or the Quotes card before any quote arrives.'}
+              </s-text>
+              <s-press-button pressed={devEmpty} disabled={genuinelyEmpty} onClick={() => togglePreview('empty')}>
+                {devEmpty ? 'Show data' : 'Preview empty state'}
+              </s-press-button>
+              <s-press-button pressed={devPreview === 'noQuotes'} onClick={() => togglePreview('noQuotes')}>
+                {devPreview === 'noQuotes' ? 'Show quotes' : 'Preview empty quotes'}
+              </s-press-button>
+            </s-stack>
+          </DevStrip>
+        )}
+
+        {guideVisible && (
+          <SetupGuide key={devPreview || 'data'} steps={steps} doneCount={doneCount}
+            onDismiss={() => dispatch({ type: 'SET_HOME_GUIDE', hidden: true })} />
+        )}
+
+        <CdSection title="Needs attention">
+          <div className="cd-card">
+            {attention.length ? (
+              attention.map((a) => (
+                <div key={a.title} className="cd-list-row">
+                  <div>
+                    <span className="cd-primary">{a.title}</span>
+                    <span className="cd-sub">{a.meta}</span>
+                  </div>
+                  {a.action ? <s-button onClick={a.action.onAction}>{a.action.content}</s-button> : null}
+                </div>
+              ))
+            ) : (
+              <div className="cd-card__empty">You're all caught up. Nothing needs your attention right now.</div>
+            )}
+          </div>
+        </CdSection>
+
+        {/* Buyers are waiting on these; each order has its own decision. Why they wait is
+            in the ⓘ; a row opens the order (the whole reason, the buyer's message). */}
+        {held.length ? (
+          <CdSection
+            title={`Orders waiting for review (${held.length})`}
+            info="They’re over an order maximum, so the buyers sent them for your review instead of checking out. Approving one creates the order."
+          >
+            <HeldOrderList items={held} db={db} />
+          </CdSection>
+        ) : null}
+
+        <CdSection title="Your B2B at a glance" controls={flags.analytics ? <s-link onClick={() => nav('analytics')}>View analytics</s-link> : null}>
+          <div className="cd-feature-grid">
+            <FeatureCard icon="team" title="Companies" value={companies.length}
+              caption={`${locations} ${locations <= 1 ? 'location' : 'locations'}`}
+              desc="B2B companies with their locations, buyers and payment terms."
+              action={companies.length ? { content: 'View companies', onAction: () => viewCompanies() } : { content: 'Add company', onAction: addCompany }} />
+            <FeatureCard icon="product" title="B2B pricing" value={activePricing}
+              caption={policies.length ? `active · ${plural(quantityPricing, 'quantity break', 'quantity breaks')}` : 'active'}
+              desc="Base prices and quantity breaks for companies and customers."
+              action={policies.length ? { content: 'View pricing', onAction: () => nav('pricing') } : { content: 'Create pricing', onAction: createPricing }} />
+            <FeatureCard icon="note" title="Registrations" value={pending} caption="pending review"
+              desc="B2B applications from the registration form on your storefront."
+              action={hasForm ? { content: 'View registrations', onAction: () => viewRegistrations() } : { content: 'Create form', onAction: openForm }} />
+            {rfqInstalled ? (
+              <FeatureCard icon="clipboard" title="Quotes" value={openQuotes.length}
+                caption={`open · ${plural(dealsClosed, 'deal', 'deals')} closed`}
+                desc="Quote requests from the RFQ app, tracked on each company."
+                action={{ content: 'Open RFQ app', onAction: openRfq }} />
+            ) : (
+              <FeatureCard icon="clipboard" title="Quotes" badge={<StatusDot>Not installed</StatusDot>} art={quotesArt}
+                desc="Install O:Request a Quote to collect quote requests and turn accepted quotes into B2B pricing."
+                action={{ content: 'Install app', onAction: () => toast('Opening App Store') }} />
+            )}
+          </div>
+        </CdSection>
+
+        {!setupComplete && (
+          <div className="cd-card">
+            <div className="cd-card__body">
+              <s-grid gridTemplateColumns="auto minmax(0, 1fr)" gap="small" alignItems="start">
+                <s-icon type="info" tone="info" />
+                <div className="cd-next">
+                  <h2 className="cd-section__title">What happens next</h2>
+                  <p>Once you complete the setup, you can:</p>
+                  <ul>
+                    <li>Review registration requests from your storefront</li>
+                    <li>Approve and assign buyers to companies</li>
+                    <li>Reuse your B2B pricing across products and customer groups</li>
+                  </ul>
+                </div>
+              </s-grid>
+            </div>
+          </div>
+        )}
+
+        <s-box paddingBlock="large">
+          {/* text-align on an s-paragraph doesn't reach its shadow <p>; a native block centers inline s-text. */}
+          <div style={{ textAlign: 'center' }}>
+            <s-text>Learn more about </s-text>
+            <s-link onClick={() => toast('Opening guide')}>Wholesale B2B Solution</s-link>
+            <s-text> or </s-text>
+            <s-link onClick={() => toast('Opening support')}>contact support</s-link>
+            <s-text>.</s-text>
+          </div>
+        </s-box>
+      </div>
+    </div>
+  );
+}
+
+// Held orders in their own section under Needs attention, as the company page's Orders
+// card: a row each — the order (its date and buyer), the company and location, the total,
+// why it's held in short, and Decline / Approve. The buyer's message is a link under the
+// order (as on the Orders card) that opens it; the row opens the order's page (back to the home).
+const HELD_SHOWN = 5;
+const shortDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+function HeldOrderList({ items, db }) {
+  const { dispatch } = useStore();
+  const [noteOf, setNoteOf] = useState(null);
+  const shown = items.slice(0, HELD_SHOWN);
+  const own = (e) => e.stopPropagation();
+  const open = (company, order) =>
+    dispatch({
+      type: 'OPEN_ORDER',
+      companyId: company.id,
+      orderId: order.id,
+      backTo: { from: 'order', label: 'Home', view: 'home', patch: {} },
+    });
+  return (
+    <>
+      <div className="cd-card">
+        <div className="cd-table-scroll">
+          <table className="cd-table">
+            <thead>
+              <tr>
+                <th>Order</th>
+                <th>Company</th>
+                <th className="cd-num">Total</th>
+                <th>Why it’s held</th>
+                <th className="cd-actions">
+                  <span className="cd-visually-hidden">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map(({ order, company, location }) => {
+                const message = buyerMessageText(order);
+                return (
+                  <tr key={`${company.id}${order.id}`} className="cd-row-link" onClick={() => open(company, order)}>
+                    <td className="cd-nowrap">
+                      <button type="button" className="cd-link-button">
+                        {order.id}
+                      </button>
+                      <span className="cd-sub">{`${shortDate(order.date)} · ${order.buyer}`}</span>
+                      {message ? (
+                        <button
+                          type="button"
+                          className="cd-text-link"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setNoteOf(order);
+                          }}
+                        >
+                          Buyer message
+                        </button>
+                      ) : null}
+                    </td>
+                    <td>
+                      {company.name}
+                      {location ? <span className="cd-sub">{location.name}</span> : null}
+                    </td>
+                    <td className="cd-num cd-nowrap">
+                      <span className="cd-primary">{money(order.amount)}</span>
+                    </td>
+                    <td>{heldParts(order, db).held.text}</td>
+                    <td className="cd-actions" onClick={own}>
+                      {/* Decline and Approve on one line, however narrow the column. */}
+                      <div className="cd-held-actions">
+                        <HeldOrderActions companyId={company.id} order={order} />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {items.length > shown.length ? <p className="cd-note cd-note--after">{`And ${items.length - shown.length} more in each company’s Orders.`}</p> : null}
+      {noteOf ? (
+        <Modal onClose={() => setNoteOf(null)} heading={`Buyer message · ${noteOf.id}`}>
+          <s-stack gap="small">
+            <s-text color="subdued">{[noteOf.buyer, noteOf.location, shortDate(noteOf.date)].filter(Boolean).join(' · ')}</s-text>
+            <s-paragraph>{`“${noteOf.buyerMessage}”`}</s-paragraph>
+          </s-stack>
+          <s-button slot="secondary-actions" onClick={() => setNoteOf(null)}>
+            Close
+          </s-button>
+        </Modal>
+      ) : null}
+    </>
+  );
+}
+
+// Shopify's setup-guide composition: progress "X of Y", collapsible, dismissible,
+// one step open at a time (the first unfinished one by default); a click on a
+// step's title opens it instead.
+function SetupGuide({ steps, doneCount, onDismiss }) {
+  const firstOpen = steps.findIndex((s) => !s.done);
+  const [open, setOpen] = useState(firstOpen);
+  const [collapsed, setCollapsed] = useState(false);
+  const pct = Math.round((doneCount / steps.length) * 100);
+
+  // A bordered card, as the company page's.
+  return (
+    <div className="cd-card">
+      <div className="cd-card__body">
+      <s-stack gap="small">
+        {/* Header: title with its controls on one line, then the description, then progress. */}
+        <s-stack gap="small-400">
+          <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-400" alignItems="center">
+            <h2 className="cd-section__title">Setup guide</h2>
+            <s-stack direction="inline" gap="small-400">
+              <s-button variant="tertiary" icon="x" accessibilityLabel="Dismiss setup guide" onClick={onDismiss} />
+              <s-button variant="tertiary" icon={collapsed ? 'chevron-down' : 'chevron-up'}
+                accessibilityLabel={collapsed ? 'Expand setup guide' : 'Collapse setup guide'} onClick={() => setCollapsed((v) => !v)} />
+            </s-stack>
+          </s-grid>
+          <p className="cd-note">Use this guide to get your B2B store up and running.</p>
+        </s-stack>
+        <s-stack gap="small-300">
+          <s-paragraph fontSize="small" color="subdued">{`${doneCount} of ${steps.length} tasks completed`}</s-paragraph>
+          <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small" alignItems="center">
+            <s-progress value={pct} max={100} tone="success" accessibilityLabel="Setup progress" />
+            <s-text fontSize="small" color="subdued">{`${pct}%`}</s-text>
+          </s-grid>
+        </s-stack>
+        {!collapsed && (
+          <s-stack gap="small-400">
+            {steps.map((s, i) => (
+              <SetupStep key={s.title} step={s} open={i === open} current={i === firstOpen} onOpen={() => setOpen(i)} />
+            ))}
+          </s-stack>
+        )}
+      </s-stack>
+      </div>
+    </div>
+  );
+}
+
+// One setup-guide row. Open: description + the step's action (primary while the
+// step is unfinished). Closed: just the title, which opens it.
+function SetupStep({ step, open, current, onOpen }) {
+  return (
+    <s-box padding="small" borderRadius="base" background={open ? 'subdued' : 'transparent'}>
+      <s-grid gridTemplateColumns="auto minmax(0, 1fr)" gap="small" alignItems="start">
+        <StepMark state={step.done ? 'done' : current ? 'active' : 'todo'} />
+        <s-stack gap="small-400">
+          {open ? (
+            <s-paragraph fontWeight="semibold">{step.title}</s-paragraph>
+          ) : (
+            <s-paragraph>
+              <s-link tone="neutral" onClick={onOpen}>{step.title}</s-link>
+            </s-paragraph>
+          )}
+          {open && (
+            <>
+              <s-paragraph fontSize="small" color="subdued">{step.desc}</s-paragraph>
+              <s-box paddingBlockStart="small-200">
+                <s-button variant={step.done ? undefined : 'primary'} onClick={step.action.onAction}>{step.action.content}</s-button>
+              </s-box>
+            </>
+          )}
+        </s-stack>
+      </s-grid>
+    </s-box>
+  );
+}
+
+function StepMark({ state }) {
+  if (state === 'done') {
+    return (
+      <svg width="20" height="20" viewBox="0 0 20 20" aria-label="Done" style={{ flexShrink: 0 }}>
+        <circle cx="10" cy="10" r="10" fill="var(--p-color-bg-fill-success, #29845a)" />
+        <path d="M6 10.4l2.6 2.6L14 7.6" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  const stroke = state === 'active' ? 'var(--p-color-icon, #4a4a4a)' : 'var(--p-color-border-secondary, #c7c7c7)';
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-label="Not done" style={{ flexShrink: 0 }}>
+      <circle cx="10" cy="10" r="8.75" stroke={stroke} strokeWidth="1.5" fill="none" strokeDasharray={state === 'todo' ? '3 3' : undefined} />
+    </svg>
+  );
+}
+
+// Feature cards share one row height (.cd-feature-card in companyLayout.css): each card
+// fills it, so the action sits on the card's bottom edge.
+
+// A core feature: its key number, what it's for, and one action. Every card keeps the same
+// rows — while a feature has no number yet its slot shows the feature's art (or stays empty),
+// and the button is pinned to the bottom — so titles, numbers, descriptions and buttons line
+// up across the row.
+function FeatureCard({ icon, title, badge, value, caption, desc, action, art }) {
+  const noValue = value == null;
+  return (
+    <div className="cd-card cd-feature-card">
+      <s-stack direction="inline" justifyContent="space-between" alignItems="center" gap="small-200">
+        <s-stack direction="inline" gap="small-200" alignItems="center">
+          <s-icon type={icon} />
+          <h3 className="cd-section__title">{title}</h3>
+        </s-stack>
+        {badge}
+      </s-stack>
+      <div style={{ position: 'relative' }}>
+        <div aria-hidden={noValue || undefined} style={noValue ? { visibility: 'hidden' } : undefined}>
+          <s-stack gap="small-500">
+            <span className="cd-feature-card__value">{noValue ? '0' : String(value)}</span>
+            <span className="cd-sub">{caption || ' '}</span>
+          </s-stack>
+        </div>
+        {/* Art fills exactly the number's slot, centered, so the rows stay aligned. */}
+        {noValue && art && (
+          <img src={art} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'center' }} />
+        )}
+      </div>
+      <p className="cd-note">{desc}</p>
+      <div className="cd-feature-card__action">
+        <s-button inlineSize="fill" onClick={action.onAction}>{action.content}</s-button>
+      </div>
+    </div>
+  );
+}

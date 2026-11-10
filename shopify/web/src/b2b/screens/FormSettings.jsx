@@ -1,0 +1,1412 @@
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useStore } from '../store.jsx';
+import { SaveBar, Tabs, Modal, useWcId, PageHeader } from '../../shared/wc.jsx';
+import {
+  BUILTIN_FIELDS, BUILTIN_ORDER, TEMPLATE_FIELDS, DEFAULT_FORM, writeRegistrationForm, readRegistrationForm, deleteRegistrationForm,
+  canRequire, isLocked, isRequired, canRemove, headingLabel, choicesFor,
+} from '../../shared/registrationForm.js';
+// The storefront's own Dawn icons, so the page preview matches the real store.
+import {
+  SearchIcon as SfSearchIcon, AccountIcon as SfAccountIcon, CartIcon as SfCartIcon, BuildingIcon as SfBuildingIcon,
+} from '../../storefront/components/icons.jsx';
+import { PRODUCTS } from '../../storefront/data/products.js';
+
+// "Form settings" — the merchant-side builder for the storefront B2B registration
+// form (the admin counterpart of the storefront apply flow). Three steps:
+// empty → pick a template → the two-pane editor (Form details + Fields, with a
+// live Preview). Faithful to the Wholesale-B2B reference; field config is local
+// prototype state.
+
+// Polaris icon names (s-icon type) per field kind.
+const ICON = {
+  heading: 'text-title', text: 'text-font', company: 'store', email: 'email',
+  password: 'key', phone: 'phone', country: 'location', state: 'location', location: 'location',
+  submit: 'cursor', dropdown: 'caret-down', checkbox: 'checkbox', radio: 'list-bulleted',
+  textarea: 'text-block', number: 'hashtag', date: 'calendar', upload: 'upload',
+};
+
+// Every built-in field in its canonical form order. A built-in is either in the
+// form or offered in "Add field": removing one makes it re-addable, and adding
+// it puts it in its place in this order.
+const MENU_ICON = { apartment: 'store', marketing: 'notification' };
+const menuSection = (f) => (f.kind === 'submit' || f.kind === 'checkbox' ? 'Others' : 'Information fields');
+
+const CUSTOM_TYPES = [
+  { kind: 'dropdown', label: 'Dropdown' },
+  { kind: 'checkbox', label: 'Multiple checkbox' },
+  { kind: 'radio', label: 'Radio options' },
+  { kind: 'text', label: 'Text fields' },
+  { kind: 'textarea', label: 'Text area' },
+  { kind: 'heading', label: 'Heading' },
+  { kind: 'number', label: 'Number' },
+  { kind: 'date', label: 'Date field' },
+  { kind: 'upload', label: 'Upload files' },
+];
+
+// Responsive column sets (Polaris React InlineGrid `columns={{ xs, md }}`), sized
+// by the container's own width. (Track lists with parentheses must be quoted.)
+const COLS_1_2 = '@container (inline-size > 600px) "repeat(2, minmax(0, 1fr))", "minmax(0, 1fr)"';
+const COLS_2_3 = '@container (inline-size > 520px) "repeat(3, minmax(0, 1fr))", "repeat(2, minmax(0, 1fr))"';
+const COLS_2_4 = '@container (inline-size > 520px) "repeat(4, minmax(0, 1fr))", "repeat(2, minmax(0, 1fr))"';
+
+// `entry` = where Registrations sends you in: 'editor' ("Edit form") or 'create'
+// ("Create form", the template picker). Either skips the first-run landing, and
+// Back from that entry step returns to Registrations.
+export function FormSettings({ entry }) {
+  const { dispatch } = useStore();
+  const toast = (m) => dispatch({ type: 'TOAST', message: m });
+  const [step, setStep] = useState(entry === 'editor' || entry === 'create' ? entry : 'empty'); // 'empty' | 'create' | 'editor'
+  const toRegistrations = () => dispatch({ type: 'NAVIGATE', view: 'registrations', patch: { formEntry: null } });
+  const create = () => { dispatch({ type: 'CREATE_REGISTRATION_FORM' }); setStep('editor'); };
+
+  if (step === 'create') {
+    return <CreateStep toast={toast} onBack={entry === 'create' ? toRegistrations : () => setStep('empty')} onCreate={create} />;
+  }
+  if (step === 'editor') {
+    return entry === 'editor'
+      ? <EditorStep toast={toast} onBack={toRegistrations} title="B2B registration form" />
+      : <EditorStep toast={toast} onBack={() => setStep('create')} isNew />;
+  }
+  return <EmptyStep toast={toast} onCreate={() => setStep('create')} onManageList={toRegistrations} />;
+}
+
+// ── Step 1 — empty ────────────────────────────────────────────────────────────
+function EmptyStep({ toast, onCreate, onManageList }) {
+  return (
+    <s-page heading="Form settings">
+      <s-section>
+        <s-box padding="large-300">
+          <s-stack gap="small" alignItems="center">
+            <DocIllustration />
+            <s-heading fontSize="large">Manage your registration form</s-heading>
+            <s-box maxInlineSize="360px">
+              <div style={{ textAlign: 'center' }}>
+                <s-text color="subdued">Track and control registrations in one place.</s-text>
+              </div>
+            </s-box>
+            <s-box paddingBlockStart="small-200">
+              <s-stack direction="inline" gap="small" justifyContent="center">
+                <s-button onClick={onManageList}>Manage list</s-button>
+                <s-button variant="primary" onClick={onCreate}>Create form</s-button>
+              </s-stack>
+            </s-box>
+          </s-stack>
+        </s-box>
+      </s-section>
+      <LearnMore toast={toast} />
+    </s-page>
+  );
+}
+
+// ── Step 2 — pick a template ──────────────────────────────────────────────────
+function CreateStep({ toast, onBack, onCreate }) {
+  return (
+    <>
+    <PageHeader heading="Create from" backAction={{ content: 'Back', onAction: onBack }} />
+    <s-page>
+      <s-query-container>
+        <s-grid gridTemplateColumns={COLS_1_2} gap="base">
+          <TemplateCard
+            title="B2B registration form"
+            desc="Collect B2B applications with a simple, single-step form."
+            action={<s-button onClick={onCreate}>Create form</s-button>}
+          />
+          <TemplateCard
+            title="Multi-step registration"
+            badge="Coming soon"
+            desc="Collect more detailed business information with a guided, multi-step form."
+            action={<s-button disabled>Create form</s-button>}
+          />
+        </s-grid>
+      </s-query-container>
+      <LearnMore toast={toast} />
+    </s-page>
+    </>
+  );
+}
+
+function TemplateCard({ title, badge, desc, action }) {
+  return (
+    <s-section>
+      <s-stack gap="small-200">
+        <s-stack direction="inline" gap="small-200" alignItems="center">
+          <s-heading>{title}</s-heading>
+          {badge ? <s-badge tone="info">{badge}</s-badge> : null}
+        </s-stack>
+        <s-paragraph color="subdued">{desc}</s-paragraph>
+        <s-box paddingBlockStart="small-200">{action}</s-box>
+      </s-stack>
+    </s-section>
+  );
+}
+
+// ── Step 3 — editor ───────────────────────────────────────────────────────────
+// Four tabs, each answering one merchant question: what buyers fill in · how
+// registrations are reviewed · how it looks (optional) · where it goes live.
+const EDITOR_TABS = ['Form', 'Review process', 'Design', 'Publish form'];
+
+function EditorStep({ toast, onBack, isNew = false, title: pageTitle = 'Create B2B registration form' }) {
+  // Live = the form is on at least one storefront place (same state Home reads).
+  const { state, dispatch } = useStore();
+  const live = !!state.db.registrationFormPublished;
+  const off = !!state.db.registrationFormOff; // turned off: Off wins over Live / Draft
+  const [tab, setTab] = useState('Form');
+  // Which surface the full-screen preview shows, or null when it is closed. The card's
+  // "Desktop" button opens the surface on screen.
+  const [fullPreview, setFullPreview] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  // Form — a new form starts from the template; "Edit form" opens the saved one, the
+  // same config the storefront renders and the review screen reads.
+  const [saved0] = useState(() => (isNew ? null : readRegistrationForm()));
+  const [title, setTitle] = useState(saved0?.title ?? 'B2B registration form');
+  const [fields, setFields] = useState(saved0?.fields ?? TEMPLATE_FIELDS);
+  const [expandedId, setExpandedId] = useState(null);
+  const [slug, setSlug] = useState('b2b-registration');
+  // Review process
+  const [approval, setApproval] = useState('manual');
+  const [afterSubmit, setAfterSubmit] = useState('message');
+  const [message, setMessage] = useState(saved0?.message ?? DEFAULT_FORM.message);
+  const [redirectUrl, setRedirectUrl] = useState('');
+  const [tags, setTags] = useState('');
+  // Design
+  const [appr, setAppr] = useState({
+    headingAlign: 'center', headingFmt: 'B', labelSize: '13', helpSize: '12', fieldRadius: '8',
+    fieldFmt: '', btnSize: '13', btnFmt: 'B', btnAlign: 'center', btnRadius: '8',
+    borderThickness: '0', dropShadow: false, hover: false,
+  });
+  const setA = (k) => (v) => setAppr((p) => ({ ...p, [k]: v }));
+  // Publish form — where the form goes, and each place's progress
+  // (create: 'none' → 'live' on save; product / account: 'none' → 'live' via Add button).
+  const [places, setPlaces] = useState(['create']); // any of 'create' | 'product' | 'account'
+  const [status, setStatus] = useState({ create: 'none', product: 'none', account: 'none' });
+  // How the form shows on product pages: in a modal, or as a link to a page.
+  const [productMode, setProductMode] = useState('modal'); // 'modal' | 'link'
+  const [productLink, setProductLink] = useState(() => `https://${SHOP_PAGES}${slug}`);
+  const [productLinkText, setProductLinkText] = useState(APPLY_CTA);
+  // Which storefront surface the preview shows. The eye buttons on the Publish
+  // tab switch it; elsewhere the preview is always the registration page.
+  const [previewOn, setPreviewOn] = useState('page'); // 'page' | 'product-modal' | 'product-link' | 'account'
+  const shownOn = tab === 'Publish form' ? previewOn : 'page';
+  const [accountStep, setAccountStep] = useState('profile'); // account preview: 'profile' | 'form'
+  // Copy of the "apply" card on the account page (title also heads the form screen).
+  const [accountCopy, setAccountCopy] = useState({ title: APPLY_CTA, description: ACCOUNT_CTA_DESC, cta: 'Apply' });
+  const preview = { on: shownOn, slug, fields, productLink, productLinkText, accountStep, setAccountStep, accountCopy };
+
+  // Removed built-ins keep their edits (label, required) so re-adding restores them as they were.
+  const [removed, setRemoved] = useState({});
+
+  // ── Unsaved changes ─────────────────────────────────────────────────────────
+  // Everything the editor can change, in one object. The contextual save bar
+  // compares it with the last saved copy; what is only being LOOKED at (tab,
+  // expanded field, preview surface, full-screen preview) stays out — moving
+  // around the editor is not an edit. `status` stays out too: it is the publish
+  // PROGRESS (not added yet, live), not content —
+  // it must not make the form dirty again, and Discard must not undo it.
+  const draft = {
+    title, fields, slug, approval, afterSubmit, message, redirectUrl, tags, appr,
+    places, productMode, productLink, productLinkText, accountCopy, removed,
+  };
+  const [initialJson] = useState(() => JSON.stringify(draft)); // the template, as the editor opened
+  // A brand-new form has never been saved, so the bar is up from the start (nothing is live
+  // yet); an existing form starts clean and the bar appears on the first edit.
+  const [savedJson, setSavedJson] = useState(isNew ? null : initialJson);
+  const dirty = savedJson === null || JSON.stringify(draft) !== savedJson;
+  // The storefront's "Apply for a business account" page renders exactly these
+  // fields (shared/registrationForm), so it only changes when the merchant saves.
+  //
+  // Saving doesn't put the form on product / account pages — only the theme editor can.
+  // Ticked places not added there yet get a red warning under their section, and the
+  // first one's Add button takes focus (on the Publish tab) so the next step is obvious.
+  // `except` = the place being opened right now ("Save and open"), which needs no nudge.
+  const [themeWarn, setThemeWarn] = useState([]); // places flagged at the last save
+  const [focusPlace, setFocusPlace] = useState(null); // Add button to focus, then cleared
+  const save = ({ except } = {}) => {
+    writeRegistrationForm({ ...DEFAULT_FORM, title, fields, message });
+    setSavedJson(JSON.stringify(draft));
+    toast('Form saved');
+    // Create page needs no theme step: the app creates the page (Admin `pageCreate`) with
+    // the form already in it, so saving with it ticked puts the form live there.
+    if (places.includes('create') && status.create === 'none' && slug.trim()) {
+      setStatus((st) => ({ ...st, create: 'live' }));
+      dispatch({ type: 'PUBLISH_REGISTRATION_FORM' });
+    }
+    const pending = THEME_PLACES.filter((p) => p !== except && places.includes(p) && status[p] === 'none');
+    setThemeWarn(pending);
+    if (pending.length && !except) {
+      setTab('Publish form');
+      setFocusPlace(pending[0]);
+    }
+  };
+  const discard = () => {
+    const s = JSON.parse(savedJson ?? initialJson); // never saved → back to the template
+    setTitle(s.title); setFields(s.fields); setSlug(s.slug);
+    setApproval(s.approval); setAfterSubmit(s.afterSubmit); setMessage(s.message);
+    setRedirectUrl(s.redirectUrl); setTags(s.tags); setAppr(s.appr);
+    setPlaces(s.places); setProductMode(s.productMode);
+    setProductLink(s.productLink); setProductLinkText(s.productLinkText);
+    setAccountCopy(s.accountCopy); setRemoved(s.removed);
+    setExpandedId(null);
+  };
+
+  const available = BUILTIN_FIELDS
+    .filter((b) => !fields.some((f) => f.id === b.id))
+    .map((b) => ({ ...b, ...removed[b.id] }));
+
+  const setField = (id, patch) => setFields((fs) => fs.map((f) => (f.id === id ? { ...f, ...patch } : f)));
+  const removeField = (id) => {
+    const field = fields.find((f) => f.id === id);
+    if (!field || !canRemove(field)) return; // submit button + locked fields stay
+    if (BUILTIN_ORDER.includes(id)) setRemoved((r) => ({ ...r, [id]: field }));
+    setFields((fs) => fs.filter((f) => f.id !== id));
+  };
+  const addField = (type) => {
+    if (BUILTIN_ORDER.includes(type.id)) {
+      // Back in front of the next built-in that follows it, else at the end.
+      const later = BUILTIN_ORDER.slice(BUILTIN_ORDER.indexOf(type.id) + 1);
+      setFields((fs) => {
+        const at = fs.findIndex((f) => later.includes(f.id));
+        const i = at === -1 ? fs.length : at;
+        return [...fs.slice(0, i), type, ...fs.slice(i)];
+      });
+      return;
+    }
+    const id = `n${Date.now()}`;
+    setFields((fs) => {
+      const at = fs.findIndex((f) => f.kind === 'submit');
+      const i = at === -1 ? fs.length : at;
+      return [...fs.slice(0, i), { id, kind: type.kind, label: type.label }, ...fs.slice(i)];
+    });
+    setExpandedId(id);
+  };
+
+  const badge = off ? <s-badge>Off</s-badge> : live ? <s-badge tone="success">Live</s-badge> : isNew ? null : <s-badge tone="caution">Draft</s-badge>;
+
+  return (
+    <>
+      {dirty && <SaveBar message="Unsaved changes" onSave={() => save()} onDiscard={discard} />}
+      <PageHeader
+        heading={pageTitle}
+        backAction={{ content: 'Back', onAction: onBack }}
+        titleMetadata={badge}
+        secondaryActions={[
+          ...(isNew ? [] : [{ content: 'Delete form', destructive: true, onAction: () => setConfirmDelete(true) }]),
+          { content: off ? 'Turn form on' : 'Turn form off', onAction: () => dispatch({ type: 'SET_REGISTRATION_FORM_OFF', off: !off }) },
+        ]}
+      />
+      <s-page>
+        <s-stack gap="base">
+          <Tabs tabs={EDITOR_TABS} selected={EDITOR_TABS.indexOf(tab)} onSelect={(i) => setTab(EDITOR_TABS[i])} flush />
+
+          <s-query-container>
+            <s-grid gridTemplateColumns='@container (inline-size > 720px) "minmax(0, 1fr) 340px", "minmax(0, 1fr)"' gap="base" alignItems="start">
+              <s-stack gap="base">
+                {tab === 'Form' && (
+                  <FormTab
+                    title={title} setTitle={setTitle} fields={fields} expandedId={expandedId}
+                    setExpandedId={setExpandedId} setField={setField} removeField={removeField} addField={addField}
+                    available={available}
+                  />
+                )}
+                {tab === 'Review process' && (
+                  <ReviewTab
+                    approval={approval} setApproval={setApproval} afterSubmit={afterSubmit} setAfterSubmit={setAfterSubmit}
+                    message={message} setMessage={setMessage} redirectUrl={redirectUrl} setRedirectUrl={setRedirectUrl}
+                    tags={tags} setTags={setTags}
+                  />
+                )}
+                {tab === 'Design' && <DesignTab appr={appr} setA={setA} />}
+                {tab === 'Publish form' && (
+                  <PublishTab
+                    slug={slug} setSlug={setSlug} places={places} setPlaces={setPlaces} status={status} setStatus={setStatus}
+                    productMode={productMode} setProductMode={setProductMode} productLink={productLink} setProductLink={setProductLink}
+                    productLinkText={productLinkText} setProductLinkText={setProductLinkText}
+                    accountCopy={accountCopy} setAccountCopy={setAccountCopy}
+                    previewOn={previewOn} setPreviewOn={setPreviewOn} toast={toast}
+                    dirty={dirty} onSave={save}
+                    themeWarn={themeWarn} setThemeWarn={setThemeWarn}
+                    focusPlace={focusPlace} clearFocus={() => setFocusPlace(null)}
+                  />
+                )}
+              </s-stack>
+
+              <s-section>
+                <s-stack gap="small-200">
+                  <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
+                    <s-text color="subdued" fontSize="small">{PREVIEW_TITLE[shownOn]}</s-text>
+                    <s-button icon="maximize" variant="tertiary" onClick={() => setFullPreview(shownOn)}
+                      accessibilityLabel="Open full-screen desktop preview">Desktop</s-button>
+                  </s-grid>
+                  <StorefrontPreview {...preview} />
+                </s-stack>
+              </s-section>
+            </s-grid>
+          </s-query-container>
+        </s-stack>
+        {fullPreview && <DesktopPreview {...preview} on={fullPreview} onClose={() => setFullPreview(null)} />}
+        {confirmDelete && (
+          <Modal onClose={() => setConfirmDelete(false)} heading="Delete registration form?">
+            <s-paragraph>Buyers can’t apply anymore, and the form comes off every page it’s on. Registrations already submitted stay. This can’t be undone.</s-paragraph>
+            <s-button
+              slot="primary-action"
+              variant="primary"
+              tone="critical"
+              onClick={() => {
+                deleteRegistrationForm();
+                dispatch({ type: 'DELETE_REGISTRATION_FORM' });
+              }}
+            >
+              Delete form
+            </s-button>
+            <s-button slot="secondary-actions" onClick={() => setConfirmDelete(false)}>
+              Cancel
+            </s-button>
+          </Modal>
+        )}
+      </s-page>
+    </>
+  );
+}
+
+// ── Form tab (form details + the field builder) ───────────────────────────────
+function FormTab({ title, setTitle, fields, expandedId, setExpandedId, setField, removeField, addField, available }) {
+  return (
+    <>
+      <s-section heading="Form details">
+        <s-text-field label="Title" value={title} onInput={(e) => setTitle(e.currentTarget.value)} maxLength={255}
+          autocomplete="off" required details="This title is displayed internally" />
+      </s-section>
+      <s-section heading="Fields">
+        <div style={{ border: '1px solid #e3e3e3', borderRadius: 12, overflow: 'hidden' }}>
+          {fields.map((f, i) => (
+            <FieldRow key={f.id} field={f} first={i === 0} expanded={expandedId === f.id}
+              onToggle={() => setExpandedId(expandedId === f.id ? null : f.id)}
+              onChange={(patch) => setField(f.id, patch)} onRemove={() => removeField(f.id)} />
+          ))}
+        </div>
+        <s-box paddingBlockStart="small"><AddFieldButton available={available} onAdd={addField} /></s-box>
+      </s-section>
+    </>
+  );
+}
+
+// ── Review process tab (approval + after-submit experience) ───────────────────
+const dropzone = { border: '1px dashed #8a8a8a', borderRadius: 8, padding: '2.4rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 };
+
+// A radio group's change handler: set the picked value (never toggle — change can fire twice).
+const pickValue = (set) => (e) => {
+  const v = e.currentTarget.values?.[0];
+  if (v) set(v);
+};
+
+function ReviewTab({ approval, setApproval, afterSubmit, setAfterSubmit, message, setMessage, redirectUrl, setRedirectUrl, tags, setTags }) {
+  return (
+    <>
+      <s-section heading="Approval method">
+        <s-choice-list label="Approval method" labelAccessibilityVisibility="exclusive" name="approval" onChange={pickValue(setApproval)}>
+          <s-choice value="manual" selected={approval === 'manual'}>
+            Manual approval after registration
+            <s-text slot="details">You review and approve each registration before the account is activated.</s-text>
+          </s-choice>
+          <s-choice value="auto" selected={approval === 'auto'}>
+            Auto-approval after registration
+            <s-text slot="details">Accounts are approved automatically on submit.</s-text>
+          </s-choice>
+        </s-choice-list>
+      </s-section>
+      <AfterSubmitCard afterSubmit={afterSubmit} setAfterSubmit={setAfterSubmit} message={message} setMessage={setMessage}
+        redirectUrl={redirectUrl} setRedirectUrl={setRedirectUrl} />
+      <s-section heading="Tags" subheading="Apply tag to registered customers after admin approval">
+        <s-text-field label="Tags" labelAccessibilityVisibility="exclusive" placeholder="Enter tags" autocomplete="off" value={tags}
+          onInput={(e) => setTags(e.currentTarget.value)}
+          details="You can add multiple tags and separate them by commas. Ex: tagA,tagB,tagC" />
+      </s-section>
+    </>
+  );
+}
+
+function AfterSubmitCard({ afterSubmit, setAfterSubmit, message, setMessage, redirectUrl, setRedirectUrl }) {
+  return (
+    <s-section heading="After submit" subheading="What customers see after they submit the form">
+      <s-choice-list label="After submit" labelAccessibilityVisibility="exclusive" name="afterSubmit" onChange={pickValue(setAfterSubmit)}>
+        <s-choice value="message" selected={afterSubmit === 'message'}>
+          Display success message
+          {afterSubmit === 'message' && (
+            <div slot="secondary-content" style={{ paddingBlock: 8 }}>
+              <s-stack gap="small">
+                <s-text-area label="Message label" required rows={3} maxLength={1000} autocomplete="off" value={message}
+                  onInput={(e) => setMessage(e.currentTarget.value)} />
+                <s-stack gap="small-300">
+                  <s-text>Illustration image</s-text>
+                  <div style={dropzone}>
+                    <s-button>Add files</s-button>
+                    <s-text color="subdued" fontSize="small">Accepts .gif, .jpg, and .png</s-text>
+                  </div>
+                </s-stack>
+              </s-stack>
+            </div>
+          )}
+        </s-choice>
+        <s-choice value="login" selected={afterSubmit === 'login'} disabled>Redirect to login page</s-choice>
+        <s-choice value="url" selected={afterSubmit === 'url'}>
+          Redirect to URL
+          {afterSubmit === 'url' && (
+            <div slot="secondary-content" style={{ paddingBlockStart: 8 }}>
+              <s-text-field label="URL" labelAccessibilityVisibility="exclusive" placeholder="https://" autocomplete="off" value={redirectUrl}
+                onInput={(e) => setRedirectUrl(e.currentTarget.value)} />
+            </div>
+          )}
+        </s-choice>
+      </s-choice-list>
+    </s-section>
+  );
+}
+
+// ── Design tab (optional styling) ─────────────────────────────────────────────
+function DesignTab({ appr, setA }) {
+  return (
+    <s-section>
+      <s-stack gap="base">
+        <s-stack gap="small-400">
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            <s-heading>Design</s-heading>
+            <s-badge>Optional</s-badge>
+          </s-stack>
+          <s-paragraph color="subdued">The form follows your theme's defaults. Adjust colors, font sizes, borders, and shadows only if you need to.</s-paragraph>
+        </s-stack>
+
+        <SubHead>Form style</SubHead>
+        <Cols columns={COLS_2_4}>
+          <ColorField label="Background" hex="#FFFFFF" />
+          <ColorField label="Heading" hex="#303030" />
+          <SegField label="Heading alignment"><AlignSeg value={appr.headingAlign} onChange={setA('headingAlign')} /></SegField>
+          <SegField label="Heading format"><FmtSeg value={appr.headingFmt} onChange={setA('headingFmt')} /></SegField>
+        </Cols>
+        <s-divider />
+
+        <SubHead>Field size</SubHead>
+        <Cols columns={COLS_2_3}>
+          <PxField label="Label" value={appr.labelSize} onChange={setA('labelSize')} />
+          <PxField label="Help text" value={appr.helpSize} onChange={setA('helpSize')} />
+          <PxField label="Corner radius" value={appr.fieldRadius} onChange={setA('fieldRadius')} />
+        </Cols>
+        <s-divider />
+
+        <SubHead>Field style</SubHead>
+        <Cols columns={COLS_2_4}>
+          <ColorField label="Label" hex="#303030" />
+          <ColorField label="Help text" hex="#616161" />
+          <ColorField label="Border" hex="#8A8A8A" />
+          <SegField label="Field format"><FmtSeg value={appr.fieldFmt} onChange={setA('fieldFmt')} /></SegField>
+        </Cols>
+        <s-divider />
+
+        <SubHead>Button style</SubHead>
+        <Cols columns={COLS_2_4}>
+          <PxField label="Font size" value={appr.btnSize} onChange={setA('btnSize')} />
+          <SegField label="Button format"><FmtSeg value={appr.btnFmt} onChange={setA('btnFmt')} /></SegField>
+          <SegField label="Button alignment"><AlignSeg value={appr.btnAlign} onChange={setA('btnAlign')} /></SegField>
+          <PxField label="Corner radius" value={appr.btnRadius} onChange={setA('btnRadius')} />
+        </Cols>
+        <Cols columns={COLS_2_3}>
+          <PxField label="Border thickness" value={appr.borderThickness} onChange={setA('borderThickness')} />
+          <ColorField label="Button background" hex="#F8D846" />
+          <ColorField label="Button text" hex="#303030" />
+        </Cols>
+        <s-divider />
+
+        <s-stack gap="small-200">
+          <s-checkbox label="Drop shadow" checked={appr.dropShadow} onChange={(e) => setA('dropShadow')(e.currentTarget.checked)} />
+          <s-checkbox label="Hover" checked={appr.hover} onChange={(e) => setA('hover')(e.currentTarget.checked)} />
+        </s-stack>
+      </s-stack>
+    </s-section>
+  );
+}
+
+function Cols({ columns, children }) {
+  return (
+    <s-query-container>
+      <s-grid gridTemplateColumns={columns} gap="base">{children}</s-grid>
+    </s-query-container>
+  );
+}
+function SubHead({ children }) { return <s-heading>{children}</s-heading>; }
+function SegField({ label, children }) {
+  return <s-stack gap="small-300"><s-text>{label}</s-text>{children}</s-stack>;
+}
+function PxField({ label, value, onChange }) {
+  return <s-number-field label={label} value={value} onInput={(e) => onChange(e.currentTarget.value)} suffix="px" autocomplete="off" />;
+}
+function ColorField({ label, hex }) {
+  return (
+    <s-stack gap="small-300">
+      <s-text>{label}</s-text>
+      <s-stack direction="inline" gap="small-200" alignItems="center">
+        <span style={{ width: 32, height: 32, borderRadius: '50%', background: hex, border: '1px solid #d9d9d9', flex: '0 0 auto' }} />
+        <s-stack gap="none">
+          <s-text fontSize="small">{hex}</s-text>
+          <s-text fontSize="small" color="subdued">100%</s-text>
+        </s-stack>
+      </s-stack>
+    </s-stack>
+  );
+}
+function Seg({ items, value, onChange }) {
+  return (
+    <div style={{ display: 'inline-flex', border: '1px solid #d9d9d9', borderRadius: 8, overflow: 'hidden', width: 'fit-content' }}>
+      {items.map((it, i) => (
+        <button key={it.key} onClick={() => onChange(it.key)} style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 34,
+          border: 'none', borderLeft: i > 0 ? '1px solid #d9d9d9' : 'none', cursor: 'pointer',
+          background: value === it.key ? '#e3e3e3' : '#fff',
+        }}>{it.node}</button>
+      ))}
+    </div>
+  );
+}
+function AlignSeg({ value, onChange }) {
+  const items = [
+    { key: 'left', node: <s-icon type="text-align-left" color="subdued" /> },
+    { key: 'center', node: <s-icon type="text-align-center" color="subdued" /> },
+    { key: 'right', node: <s-icon type="text-align-right" color="subdued" /> },
+  ];
+  return <Seg items={items} value={value} onChange={onChange} />;
+}
+function FmtSeg({ value, onChange }) {
+  const items = [
+    { key: 'B', node: <span style={{ fontWeight: 700, fontSize: 14 }}>B</span> },
+    { key: 'I', node: <span style={{ fontStyle: 'italic', fontSize: 14 }}>I</span> },
+    { key: 'U', node: <span style={{ textDecoration: 'underline', fontSize: 14 }}>U</span> },
+  ];
+  // Format is a toggle: clicking the active one clears it.
+  return <Seg items={items} value={value} onChange={(k) => onChange(value === k ? '' : k)} />;
+}
+
+// ── Publish form tab ──────────────────────────────────────────────────────────
+// The places to publish to — any mix of Create page / Product page / Account
+// page, each with its own next step. The app creates the page itself; for every
+// place the merchant only confirms the app block in the Theme Editor (a theme app
+// extension can't add it). The fully manual route is a collapsed fallback.
+const SHOP_PAGES = '221baker.myshopify.com/pages/';
+const PLACE_LABEL = { create: 'Create page', product: 'Product page', account: 'Account page' };
+const PLACE_HINT = {
+  product: 'Show the form on your product pages.',
+  account: 'Show the form on the customer account page.',
+};
+// Product / account pages are theme surfaces: the block lives in the theme and renders what
+// the app has saved, so saving alone doesn't show the form there. After a save, each one
+// still to be added in the theme gets this warning under its section.
+const THEME_PLACES = ['product', 'account'];
+const THEME_WARN = "It won't appear on the dedicated page until you add this button to your theme. Please click Add button to go to your theme and add the app block.";
+
+function PublishTab({
+  slug, setSlug, places, setPlaces, status, setStatus,
+  productMode, setProductMode, productLink, setProductLink, productLinkText, setProductLinkText,
+  accountCopy, setAccountCopy,
+  previewOn, setPreviewOn, toast, dirty, onSave, themeWarn, setThemeWarn, focusPlace, clearFocus,
+}) {
+  const { dispatch } = useStore();
+  const formId = '01a0c21c-dffa-76e8-8d86-062f0ffd24f4';
+  const [manualOpen, setManualOpen] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(true);
+
+  // A place can move on only once its own inputs are filled in.
+  const ready = {
+    create: !!slug.trim(),
+    product: productMode === 'modal' || (!!productLink.trim() && !!productLinkText.trim()),
+    account: !!accountCopy.title.trim() && !!accountCopy.cta.trim(),
+  };
+  const allLive = places.length > 0 && places.every((p) => status[p] === 'live');
+
+  const setPlaceStatus = (place, s) => setStatus((st) => ({ ...st, [place]: s }));
+  // Create page has no button: saving creates it (see `save`). Real app: reuse the page
+  // if the handle already exists, otherwise Admin GraphQL `pageCreate` (write_online_store_pages).
+  // Real app: deep-links into the Theme Editor on that place's template (page /
+  // product / customer account) with the app block ready to add.
+  //
+  // The block renders whatever the app has SAVED, and leaving with unsaved edits would
+  // lose them — so a dirty form asks to save first, then opens the editor. Opening it
+  // counts as the block being added (the real app checks the theme for the app block);
+  // a ticked place that isn't added yet gets a warning on save (THEME_WARN).
+  const [confirmTheme, setConfirmTheme] = useState(null); // place whose save is being confirmed
+  const openTheme = (place) => { setPlaceStatus(place, 'live'); dispatch({ type: 'PUBLISH_REGISTRATION_FORM' }); toast('Opening Theme Editor'); };
+  const addToTheme = (place) => (dirty ? setConfirmTheme(place) : openTheme(place));
+  const saveAndOpen = () => { onSave({ except: confirmTheme }); openTheme(confirmTheme); setConfirmTheme(null); };
+
+  // Product page settings (two options + link fields) collapse behind a chevron
+  // that's always there — open it to compare/preview the options before ticking.
+  // It starts open only if Product page is already picked; ticking it opens it.
+  const [productOpen, setProductOpen] = useState(() => places.includes('product'));
+  // Sets (never toggles) the place from the checkbox — change can fire twice.
+  const togglePlace = (place, on) => {
+    setPlaces((ps) => (on ? (ps.includes(place) ? ps : [...ps, place]) : ps.filter((p) => p !== place)));
+    if (on && place === 'product') setProductOpen(true);
+    if (!on) setThemeWarn((w) => w.filter((p) => p !== place)); // re-ticking waits for the next save
+  };
+  // After a save flags places, move focus to the first one's Add button (opening Product
+  // page's settings first, and waiting for them to render).
+  useEffect(() => {
+    if (!focusPlace) return undefined;
+    if (focusPlace === 'product') setProductOpen(true);
+    const t = setTimeout(() => {
+      const btn = document.querySelector(`[data-theme-add="${focusPlace}"] s-button`);
+      if (btn) {
+        btn.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        btn.focus({ preventScroll: true, focusVisible: true });
+      }
+      clearFocus();
+    }, 250);
+    return () => clearTimeout(t);
+  }, [focusPlace]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Eyes swap the preview to a surface: Create page → the registration page,
+  // Account page → the account portal, each product option → that product view.
+  // The surface being previewed hides its own eye, so only the others show.
+  const eye = (target) => previewOn !== target && <PreviewEye target={target} onShow={setPreviewOn} />;
+
+  const setCopy = (k) => (v) => setAccountCopy((c) => ({ ...c, [k]: v }));
+  // One product-page option: its own radio (with help text) and, on the right, its eye.
+  // Each is a one-choice list, so `values` (not just `selected`) clears the other one.
+  const productOption = (mode, label, help) => (
+    <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="start">
+      <s-choice-list
+        label="Product page display"
+        labelAccessibilityVisibility="exclusive"
+        name={`productMode-${mode}`}
+        values={productMode === mode ? [mode] : []}
+        onChange={(e) => { if (e.currentTarget.values?.includes(mode)) setProductMode(mode); }}
+      >
+        <s-choice value={mode} selected={productMode === mode}>
+          {label}
+          <s-text slot="details">{help}</s-text>
+        </s-choice>
+      </s-choice-list>
+      {eye(`product-${mode}`)}
+    </s-grid>
+  );
+
+  const placeSettings = (place, picked) => (
+    <PlaceStep place={place} picked={picked} status={status[place]} ready={ready[place]}
+      warn={themeWarn.includes(place)}
+      onAddToTheme={() => addToTheme(place)}
+      onView={() => toast('Opening storefront')}>
+      {place === 'create' && (
+        // The handle is locked once the page exists on the online store.
+        <s-text-field label="Page URL" required value={slug} onInput={(e) => setSlug(e.currentTarget.value)} prefix={SHOP_PAGES}
+          autocomplete="off" disabled={status.create !== 'none'}
+          details={status.create !== 'none'
+            ? 'This page has been created on your online store.'
+            : 'Customers will access your B2B registration form from this page. It’s created when you save.'} />
+      )}
+      {place === 'product' && (
+        <s-stack gap="small-400">
+          {productOption('modal', 'Open modal', 'The form opens in a pop-up on the product page.')}
+          {productOption('link', 'Add redirect link', 'A link on the product page takes buyers to your registration form.')}
+          {productMode === 'link' && (
+            <s-box paddingInlineStart="large-200">
+              <s-stack gap="small-200">
+                <s-text-field label="Link text" required autocomplete="off" maxLength={80}
+                  value={productLinkText} onInput={(e) => setProductLinkText(e.currentTarget.value)} />
+                <s-text-field label="Redirect link" required placeholder="https://" autocomplete="off"
+                  value={productLink} onInput={(e) => setProductLink(e.currentTarget.value)} />
+              </s-stack>
+            </s-box>
+          )}
+        </s-stack>
+      )}
+      {place === 'account' && (
+        <s-stack gap="small-200">
+          <s-text-field label="Title" required autocomplete="off" maxLength={80}
+            value={accountCopy.title} onInput={(e) => setCopy('title')(e.currentTarget.value)} />
+          <s-text-area label="Description" autocomplete="off" rows={2} maxLength={200}
+            value={accountCopy.description} onInput={(e) => setCopy('description')(e.currentTarget.value)} />
+          <s-text-field label="Button text" required autocomplete="off" maxLength={40}
+            value={accountCopy.cta} onInput={(e) => setCopy('cta')(e.currentTarget.value)} />
+        </s-stack>
+      )}
+    </PlaceStep>
+  );
+
+  return (
+    <s-section>
+      <s-stack gap="base">
+        <s-stack gap="small">
+          {['create', 'product', 'account'].map((place) => {
+            const checked = places.includes(place);
+            // Product page's options stay reachable (behind its chevron) even unticked.
+            const settings = (checked || place === 'product') && (
+              <s-box paddingInlineStart="large-200">{placeSettings(place, checked)}</s-box>
+            );
+            return (
+              <s-stack key={place} gap="small-400">
+                <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
+                  <s-checkbox label={PLACE_LABEL[place]} checked={checked} onChange={(e) => togglePlace(place, e.currentTarget.checked)} />
+                  {place === 'create' && eye('page')}
+                  {place === 'account' && eye('account')}
+                  {place === 'product' && (
+                    <s-button icon={productOpen ? 'chevron-up' : 'chevron-down'} variant="tertiary"
+                      onClick={() => setProductOpen((v) => !v)}
+                      accessibilityLabel={productOpen ? 'Collapse product page settings' : 'Expand product page settings'} />
+                  )}
+                </s-grid>
+                {place === 'product' ? (productOpen ? settings : null) : settings}
+              </s-stack>
+            );
+          })}
+          {places.length === 0 && <s-text tone="critical">Select at least one place</s-text>}
+        </s-stack>
+        {/* Fallback only — hidden once every chosen place is live. */}
+        {!allLive && <s-divider />}
+        {!allLive && (
+        <s-stack gap="small">
+          <s-stack direction="inline">
+            <s-link onClick={() => setManualOpen((v) => !v)}>
+              Install manually instead
+            </s-link>
+          </s-stack>
+          {manualOpen && (
+            <s-stack gap="small">
+              <s-paragraph color="subdued">Place the form in a specific section of any page using the theme editor:</s-paragraph>
+              <s-stack gap="small-200">
+                <StepLine n="Step 1:">
+                  <s-text>Open</s-text>
+                  <s-link onClick={() => toast('Opening app embeds')}>app embed block settings</s-link>
+                  <s-icon type="external" color="subdued" />
+                </StepLine>
+                <StepLine n="Step 2:"><s-text>Choose a page you want to add the form</s-text></StepLine>
+                <StepLine n="Step 3:"><s-text>Add the "Registration form" block to a specific section</s-text></StepLine>
+                <StepLine n="Step 4:">
+                  <s-text>Copy the form ID</s-text>
+                  <IdChip id={formId} onCopy={() => toast('Form ID copied')} />
+                </StepLine>
+                <StepLine n="Step 5:"><s-text>Fill in form ID from the app and click Save</s-text></StepLine>
+              </s-stack>
+              {noteOpen && (
+                <s-banner tone="info" dismissible onDismiss={() => setNoteOpen(false)}>
+                  Note: If you add the form to "Customer register page", make sure you hide the "Shopify registration block".
+                </s-banner>
+              )}
+            </s-stack>
+          )}
+        </s-stack>
+        )}
+      </s-stack>
+      {confirmTheme && (
+        <Modal onClose={() => setConfirmTheme(null)} heading="Save your form first?">
+          <s-paragraph>The theme block shows the saved version of your form, so unsaved changes won’t appear on your storefront.</s-paragraph>
+          <s-button slot="primary-action" variant="primary" onClick={saveAndOpen}>Save and open</s-button>
+          <s-button slot="secondary-actions" onClick={() => setConfirmTheme(null)}>Cancel</s-button>
+        </Modal>
+      )}
+    </s-section>
+  );
+}
+
+// Eye that swaps the preview to a storefront surface.
+function PreviewEye({ target, onShow }) {
+  const tipId = useWcId('preview-eye');
+  return (
+    <>
+      <s-button icon="view" variant="tertiary" onClick={() => onShow(target)} accessibilityLabel={PREVIEW_TITLE[target]} interestFor={tipId} />
+      <s-tooltip id={tipId}>{PREVIEW_TITLE[target]}</s-tooltip>
+    </>
+  );
+}
+
+// One chosen place's progress + next step, nested under its checkbox. `children`
+// holds any per-place settings (e.g. how the form shows on product pages).
+// `picked` = the place is ticked; only then does it get its status + next step.
+function PlaceStep({ place, picked, status, ready, warn, onAddToTheme, onView, children }) {
+  const done = status === 'live' ? 'Live' : null;
+  return (
+    <s-box paddingBlockStart="small-400">
+      <s-stack gap="small-200">
+        {PLACE_HINT[place] && <s-paragraph fontSize="small" color="subdued">{PLACE_HINT[place]}</s-paragraph>}
+        {children}
+        {picked && done && (
+          <s-stack direction="inline" gap="small-400" alignItems="center">
+            <s-icon type="check-circle" tone="success" />
+            <s-text fontWeight="medium">{done}</s-text>
+          </s-stack>
+        )}
+        {/* Create page has no buttons (saving creates it; it just shows Live). Product /
+            account pages add an entry button in the theme. */}
+        {picked && place !== 'create' && <div data-theme-add={place}><s-stack direction="inline" gap="small-200">
+          {status === 'live' ? (
+            <s-button onClick={onView}>View storefront</s-button>
+          ) : (
+            <s-button onClick={onAddToTheme} disabled={!ready}>Add button</s-button>
+          )}
+        </s-stack></div>}
+        {/* Saved, but this theme place still isn't added — cleared once its Add is used. */}
+        {picked && warn && status === 'none' && <s-text tone="critical">{THEME_WARN}</s-text>}
+      </s-stack>
+    </s-box>
+  );
+}
+
+function StepLine({ n, children }) {
+  return (
+    <s-stack direction="inline" gap="small-300" alignItems="center">
+      <s-text color="subdued">{n}</s-text>
+      <s-stack direction="inline" gap="small-400" alignItems="center">{children}</s-stack>
+    </s-stack>
+  );
+}
+function IdChip({ id, onCopy }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, border: '1px solid #d9d9d9', borderRadius: 8, padding: '4px 10px' }}>
+      <button onClick={onCopy} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'inline-flex', padding: 0 }} aria-label="Copy form ID">
+        <s-icon type="clipboard" color="subdued" />
+      </button>
+      <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{id}</span>
+    </span>
+  );
+}
+
+// Every row's label is editable (the submit row's is the button text on the storefront).
+// Required follows the shared field rules: inputs only, and locked on the field the
+// review needs (email) — it, and the submit button, can't be removed.
+function FieldRow({ field, first, expanded, onToggle, onChange, onRemove }) {
+  const tipId = useWcId('field-lock');
+  const locked = isLocked(field);
+  const removable = canRemove(field);
+  return (
+    <div style={{ borderTop: first ? 'none' : '1px solid #e3e3e3', background: expanded ? '#f7f7f7' : '#fff' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px' }}>
+        <span style={{ display: 'inline-flex', cursor: 'grab', color: '#8a8a8a' }}><s-icon type="drag-handle" color="subdued" /></span>
+        <span style={{ display: 'inline-flex' }}><s-icon type={ICON[field.kind] || 'text-font'} color="subdued" /></span>
+        <button
+          onClick={onToggle}
+          style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit' }}
+        >
+          <s-text>
+            {field.label}{isRequired(field) ? <span style={{ color: '#d72c0d' }}> *</span> : null}
+          </s-text>
+        </button>
+        {removable ? (
+          <s-button variant="tertiary" icon="delete" accessibilityLabel="Remove field" onClick={onRemove} />
+        ) : (
+          <>
+            <s-button variant="tertiary" icon="delete" accessibilityLabel="This field can't be removed" disabled interestFor={tipId} />
+            <s-tooltip id={tipId}>{locked ? 'Needed to review applications' : 'Every form needs a submit button'}</s-tooltip>
+          </>
+        )}
+      </div>
+      {expanded ? (
+        <s-box padding="none small small">
+          <s-stack gap="small-200">
+            <s-text-field label="Label" labelAccessibilityVisibility="exclusive" value={field.label}
+              onInput={(e) => onChange({ label: e.currentTarget.value })} autocomplete="off" />
+            {canRequire(field) ? (
+              <s-checkbox label="Required" checked={isRequired(field)} disabled={locked}
+                details={locked ? 'Always required: needed to review applications.' : undefined}
+                onChange={(e) => onChange({ required: e.currentTarget.checked })} />
+            ) : null}
+          </s-stack>
+        </s-box>
+      ) : null}
+    </div>
+  );
+}
+
+function AddFieldButton({ available, onAdd }) {
+  const popoverId = useWcId('add-field');
+  const [menu, setMenu] = useState('root'); // 'root' | 'custom'
+  const [q, setQ] = useState('');
+  // The popover closes itself (light dismiss, or an item's --hide command); this resets it.
+  const reset = () => { setMenu('root'); setQ(''); };
+  const pick = (type) => { onAdd(type); reset(); };
+
+  // Built-ins not in the form (incl. removed ones), grouped; empty sections hide.
+  const matches = available.filter((f) => f.label.toLowerCase().includes(q.toLowerCase()));
+  const groups = ['Information fields', 'Others']
+    .map((section) => ({ section, items: matches.filter((f) => menuSection(f) === section) }))
+    .filter((g) => g.items.length > 0);
+
+  return (
+    <>
+      <s-button icon="plus" inlineSize="fill" commandFor={popoverId}>Add field</s-button>
+      <s-popover id={popoverId} onHide={reset}>
+        <div style={{ width: 320 }}>
+          <s-box padding="small-200">
+            <s-search-field label="Search" labelAccessibilityVisibility="exclusive" value={q}
+              onInput={(e) => setQ(e.currentTarget.value)} placeholder="Search" autocomplete="off" />
+          </s-box>
+          <s-divider />
+          <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+            {menu === 'root' ? (
+              <>
+                {groups.map((g) => (
+                  <React.Fragment key={g.section}>
+                    <s-box padding="small-200 small-200 small-400">
+                      <s-text fontSize="small" fontWeight="semibold" color="subdued">{g.section}</s-text>
+                    </s-box>
+                    {g.items.map((f) => (
+                      <MenuItem key={f.id} popoverId={popoverId} icon={MENU_ICON[f.id] || ICON[f.kind]} label={f.label} onClick={() => pick(f)} />
+                    ))}
+                  </React.Fragment>
+                ))}
+                {groups.length > 0 && <s-divider />}
+                <button onClick={() => setMenu('custom')} style={rowBtn}>
+                  <s-text fontWeight="medium">Custom fields</s-text>
+                  <s-icon type="chevron-right" color="subdued" />
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => setMenu('root')} style={{ ...itemBtn, gap: 6 }}>
+                  <span style={{ display: 'inline-flex', flex: '0 0 auto' }}><s-icon type="chevron-left" color="subdued" /></span>
+                  <s-text fontWeight="medium">Custom fields</s-text>
+                </button>
+                <s-divider />
+                {CUSTOM_TYPES.filter((t) => t.label.toLowerCase().includes(q.toLowerCase())).map((t) => (
+                  <MenuItem key={t.label} popoverId={popoverId} icon={ICON[t.kind]} label={t.label} onClick={() => pick(t)} />
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+      </s-popover>
+    </>
+  );
+}
+
+const rowBtn = {
+  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+  width: '100%', padding: '8px 12px', background: 'none', border: 'none',
+  cursor: 'pointer', font: 'inherit', textAlign: 'left',
+};
+
+// A menu row that picks a field type and closes the Add field popover.
+function MenuItem({ icon, label, onClick, popoverId }) {
+  return (
+    <s-clickable commandFor={popoverId} command="--hide" onClick={onClick} padding="small-200 small">
+      <s-stack direction="inline" gap="small-200" alignItems="center">
+        <s-icon type={icon} color="subdued" />
+        <s-text>{label}</s-text>
+      </s-stack>
+    </s-clickable>
+  );
+}
+
+const itemBtn = {
+  display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+  padding: '8px 12px', background: 'none', border: 'none',
+  cursor: 'pointer', font: 'inherit', textAlign: 'left',
+};
+
+
+// ── Live preview (the form in place, as buyers see it on the storefront) ──────
+// Three storefront surfaces, matching the storefront sub-app's look:
+//   page    — the registration page the app creates (Dawn chrome + page title)
+//   product — a product page, with the form in a modal or as a redirect link
+//   account — the customer account portal (Profile), with the form embedded
+// Mobile layout in the side panel; desktop layout in the full-screen preview.
+const STORE_FONT = "'Assistant', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+const SHOP = '221baker.myshopify.com';
+const PREVIEW_PRODUCT = PRODUCTS[0];
+const APPLY_CTA = 'Apply for a business account';
+const ACCOUNT_CTA_DESC = 'Ordering for a business? Unlock contract pricing, volume discounts and quote requests.';
+const MUTED = 'rgba(18,18,18,.6)';
+const HAIRLINE = '1px solid rgba(18,18,18,.08)';
+
+const pgBase = {
+  frame: { border: '1px solid #e3e3e3', borderRadius: 10, overflow: 'hidden', background: '#fff', fontFamily: STORE_FONT, color: '#121212' },
+  bar: { display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: '#f1f1f1', borderBottom: '1px solid #e3e3e3' },
+  dot: (c) => ({ width: 8, height: 8, borderRadius: '50%', background: c, flex: '0 0 auto' }),
+  url: { flex: 1, minWidth: 0, background: '#fff', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#616161', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'inherit' },
+  stack: { display: 'grid' },
+  layer: { gridArea: '1 / 1', minWidth: 0 },
+  // Dawn chrome
+  announce: { background: '#121212', color: '#fff', fontSize: 10, textAlign: 'center', padding: '5px 8px' },
+  header: { display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: '10px 12px', borderBottom: HAIRLINE },
+  logo: { fontWeight: 700, fontSize: 15, letterSpacing: '.02em' },
+  nav: { display: 'flex', gap: 24, justifyContent: 'center', fontSize: 15 },
+  icons: { display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' },
+  icon: { width: 16, height: 16, display: 'block' },
+  body: { padding: '18px 12px 22px' },
+  column: {},
+  title: { fontSize: 22, fontWeight: 400, lineHeight: 1.2, margin: '0 0 14px' },
+  footer: { borderTop: HAIRLINE, padding: '10px 12px', fontSize: 10, color: MUTED, display: 'flex', justifyContent: 'space-between', gap: 8 },
+  // Product page
+  pdp: { display: 'grid', gap: 14 },
+  media: { aspectRatio: '1 / 1', background: '#f3f3f3', overflow: 'hidden' },
+  img: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
+  vendor: { textTransform: 'uppercase', letterSpacing: '.08em', color: MUTED, fontSize: 10 },
+  pTitle: { fontSize: 20, fontWeight: 400, lineHeight: 1.2, margin: '4px 0 6px' },
+  price: { fontSize: 15, margin: '0 0 14px' },
+  btn: { display: 'block', textAlign: 'center', background: '#121212', color: '#fff', padding: '10px 0', fontSize: 13 },
+  btnOutline: { display: 'block', textAlign: 'center', border: '1px solid rgba(18,18,18,.55)', padding: '9px 0', fontSize: 13, marginTop: 8 },
+  applyLink: { display: 'inline-block', marginTop: 12, fontSize: 13, textDecoration: 'underline', textUnderlineOffset: 3 },
+  desc: { borderTop: HAIRLINE, marginTop: 16, paddingTop: 14, fontSize: 12, color: 'rgba(18,18,18,.85)', lineHeight: 1.5 },
+  // Modal over the product page
+  dim: { gridArea: '1 / 1', background: 'rgba(18,18,18,.45)', padding: '36px 10px 16px', display: 'flex', justifyContent: 'center', alignItems: 'flex-start' },
+  modal: { position: 'relative', width: '100%', background: '#fff', borderRadius: 8, padding: '30px 12px 14px', boxShadow: '0 12px 32px rgba(0,0,0,.25)' },
+  modalTitle: { fontSize: 16, fontWeight: 400, margin: '0 0 4px' },
+  modalClose: { position: 'absolute', top: 8, right: 12, fontSize: 18, lineHeight: 1 },
+  // Customer account portal
+  acctHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderBottom: '1px solid #ececec' },
+  avatar: { width: 24, height: 24, borderRadius: '50%', border: '1px solid #dcdcdc', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600 },
+  acctBody: { padding: '14px 12px 22px' },
+  acctGrid: {},
+  acctNav: { display: 'flex', gap: 16, fontSize: 13, color: MUTED, marginBottom: 14 },
+  acctNavActive: { color: '#121212', fontWeight: 700 },
+  acctCard: { border: '1px solid #e5e5e5', borderRadius: 10, padding: '10px 12px', fontSize: 12, marginBottom: 14 },
+  acctCta: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', border: '1px solid rgba(42,91,215,.3)', background: '#eef2fd', borderRadius: 10, padding: '10px 12px', fontSize: 12 },
+  acctCtaIcon: { width: 28, height: 28, borderRadius: 6, background: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: 'none' },
+  acctCtaSvg: { width: 16, height: 16, color: '#2a5bd7' },
+  acctCtaMain: { flex: 1, minWidth: 140 },
+  acctApply: { flex: 'none', background: '#2a5bd7', color: '#fff', border: 'none', padding: '7px 16px', fontSize: 12, fontFamily: 'inherit', cursor: 'pointer' },
+  backLink: { display: 'block', background: 'none', border: 'none', padding: 0, marginBottom: 10, fontFamily: 'inherit', fontSize: 12, color: '#2a5bd7', cursor: 'pointer' },
+};
+// Desktop mirrors the storefront's Dawn templates: logo · centred nav · actions,
+// page content in a narrow centred column, product media | info side by side.
+const pgDesktop = {
+  ...pgBase,
+  frame: { ...pgBase.frame, maxWidth: 1280, margin: '0 auto', boxShadow: '0 8px 24px rgba(0,0,0,.08)' },
+  url: { ...pgBase.url, fontSize: 12, maxWidth: 520 },
+  announce: { ...pgBase.announce, fontSize: 13, padding: '9px 16px' },
+  header: { ...pgBase.header, gridTemplateColumns: 'auto 1fr auto', gap: 32, padding: '20px 48px' },
+  logo: { ...pgBase.logo, fontSize: 22 },
+  icons: { ...pgBase.icons, gap: 16 },
+  icon: { width: 20, height: 20, display: 'block' },
+  body: { padding: '56px 48px 80px' },
+  column: { maxWidth: 640, margin: '0 auto' },
+  title: { ...pgBase.title, fontSize: 40, margin: '0 0 32px' },
+  footer: { ...pgBase.footer, padding: '24px 48px', fontSize: 13 },
+  pdp: { display: 'grid', gridTemplateColumns: '55fr 45fr', gap: 48, alignItems: 'start' },
+  vendor: { ...pgBase.vendor, fontSize: 13 },
+  pTitle: { ...pgBase.pTitle, fontSize: 36, margin: '6px 0 10px' },
+  price: { ...pgBase.price, fontSize: 20, margin: '0 0 24px' },
+  btn: { ...pgBase.btn, padding: '14px 0', fontSize: 15 },
+  btnOutline: { ...pgBase.btnOutline, padding: '13px 0', fontSize: 15, marginTop: 10 },
+  applyLink: { ...pgBase.applyLink, fontSize: 15, marginTop: 16 },
+  desc: { ...pgBase.desc, fontSize: 15, marginTop: 24, paddingTop: 24 },
+  dim: { ...pgBase.dim, padding: '64px 24px 48px' },
+  modal: { ...pgBase.modal, maxWidth: 560, padding: '40px 32px 28px' },
+  modalTitle: { ...pgBase.modalTitle, fontSize: 24, margin: '0 0 8px' },
+  modalClose: { ...pgBase.modalClose, top: 14, right: 18, fontSize: 22 },
+  acctHeader: { ...pgBase.acctHeader, padding: '20px 48px' },
+  avatar: { ...pgBase.avatar, width: 36, height: 36, fontSize: 15 },
+  acctBody: { padding: '28px 48px 80px' },
+  acctGrid: { display: 'grid', gridTemplateColumns: '200px minmax(0, 640px)', gap: 40, alignItems: 'start' },
+  acctNav: { display: 'flex', flexDirection: 'column', gap: 14, fontSize: 17, color: MUTED },
+  acctCard: { ...pgBase.acctCard, fontSize: 15, padding: '16px 20px', marginBottom: 24 },
+  acctCta: { ...pgBase.acctCta, gap: 14, padding: '16px 18px', fontSize: 15 },
+  acctCtaIcon: { ...pgBase.acctCtaIcon, width: 40, height: 40, borderRadius: 8 },
+  acctCtaSvg: { ...pgBase.acctCtaSvg, width: 22, height: 22 },
+  acctApply: { ...pgBase.acctApply, padding: '10px 20px', fontSize: 14 },
+  backLink: { ...pgBase.backLink, fontSize: 15, marginBottom: 16 },
+};
+
+const PREVIEW_TITLE = {
+  page: 'Preview on registration page',
+  'product-modal': 'Preview on product page · Modal',
+  'product-link': 'Preview on product page · Redirect link',
+  account: 'Preview on account page',
+};
+// The storefront surface a place renders on, with the form placed in it.
+function StorefrontPreview({ on, desktop, slug, fields, productLink, productLinkText, accountStep, setAccountStep, accountCopy }) {
+  // Product previews carry their own mode ('product-modal' / 'product-link'), so
+  // either option can be previewed whichever one is selected.
+  const productMode = on === 'product-link' ? 'link' : 'modal';
+  const pg = desktop ? pgDesktop : pgBase;
+  const form = <FormPreview fields={fields} />;
+  const onProduct = on === 'product-modal' || on === 'product-link';
+  const url = onProduct ? `${SHOP}/products/${PREVIEW_PRODUCT.handle}`
+    : on === 'account' ? `${SHOP}/account`
+      : `${SHOP_PAGES}${slug}`;
+
+  let content;
+  if (on === 'account') {
+    content = <AccountSurface pg={pg} step={accountStep} setStep={setAccountStep} copy={accountCopy}>{form}</AccountSurface>;
+  } else if (onProduct) {
+    const modal = productMode === 'modal' && (
+      <div style={pg.dim}>
+        <div style={pg.modal}>
+          <span style={pg.modalClose}>×</span>
+          <h2 style={pg.modalTitle}>{APPLY_CTA}</h2>
+          <FormPreview fields={fields} plain />
+        </div>
+      </div>
+    );
+    content = (
+      <DawnSurface pg={pg} desktop={desktop} overlay={modal}>
+        <ProductBody pg={pg} productMode={productMode} productLink={productLink} productLinkText={productLinkText} />
+      </DawnSurface>
+    );
+  } else {
+    content = (
+      <DawnSurface pg={pg} desktop={desktop}>
+        <div style={pg.column}>
+          <h1 style={pg.title}>B2B Registration</h1>
+          {form}
+        </div>
+      </DawnSurface>
+    );
+  }
+
+  return (
+    <div style={pg.frame}>
+      <div style={pg.bar}>
+        <span style={pg.dot('#ff5f57')} /><span style={pg.dot('#febc2e')} /><span style={pg.dot('#28c840')} />
+        <span style={pg.url}>{url}</span>
+      </div>
+      {content}
+    </div>
+  );
+}
+
+// Online-store page: announcement · header · body · footer. `overlay` (e.g. a
+// modal with its dimmed backdrop) stacks over the whole page in the same grid
+// cell, so the page grows to fit whichever is taller.
+function DawnSurface({ pg, desktop, overlay, children }) {
+  return (
+    <div style={pg.stack}>
+      <div style={pg.layer}>
+        <div style={pg.announce}>Free shipping on orders over $250</div>
+        <div style={pg.header}>
+          {desktop ? <span style={pg.logo}>221 Baker</span> : <MenuGlyph style={pg.icon} />}
+          {desktop ? (
+            <nav style={pg.nav}><span>Home</span><span>Catalog</span><span>About</span><span>Contact</span></nav>
+          ) : <span style={pg.logo}>221 Baker</span>}
+          <span style={pg.icons}>
+            <SfSearchIcon style={pg.icon} /><SfAccountIcon style={pg.icon} /><SfCartIcon style={pg.icon} />
+          </span>
+        </div>
+        <div style={pg.body}>{children}</div>
+        <div style={pg.footer}>
+          <span>© {new Date().getFullYear()} 221 Baker. Powered by Shopify</span>
+          {desktop && <span>Visa · Mastercard · Amex · Shop Pay</span>}
+        </div>
+      </div>
+      {overlay}
+    </div>
+  );
+}
+
+function ProductBody({ pg, productMode, productLink, productLinkText }) {
+  const p = PREVIEW_PRODUCT;
+  return (
+    <div style={pg.pdp}>
+      <div style={pg.media}><img src={p.image} alt="" style={pg.img} /></div>
+      <div>
+        <div style={pg.vendor}>{p.vendor}</div>
+        <h1 style={pg.pTitle}>{p.title}</h1>
+        <div style={pg.price}>${Number(p.list).toFixed(2)} USD</div>
+        <span style={pg.btn}>Add to cart</span>
+        {productMode === 'modal' ? (
+          <span style={pg.btnOutline}>{APPLY_CTA}</span>
+        ) : (
+          <span style={pg.applyLink} title={productLink}>{productLinkText}</span>
+        )}
+        {p.description && <div style={pg.desc}>{p.description}</div>}
+      </div>
+    </div>
+  );
+}
+
+// Shopify's customer account portal, previewed as the buyer's two screens:
+//   profile — Profile with the storefront's "Apply for a business account" card
+//   form    — after clicking Apply, the registration form (← Back returns)
+// The screen is clickable right in the preview, and shared by the side panel and
+// the desktop view so both show the same one.
+function AccountSurface({ pg, step, setStep, copy, children }) {
+  return (
+    <>
+      <div style={pg.acctHeader}>
+        <span style={pg.logo}>221baker</span>
+        <span style={pg.avatar}>W</span>
+      </div>
+      <div style={pg.acctBody}>
+        <div style={pg.acctGrid}>
+          <nav style={pg.acctNav}><span>Orders</span><span style={pg.acctNavActive}>Profile</span></nav>
+          {step === 'form' ? (
+            <div>
+              <button type="button" style={pg.backLink} onClick={() => setStep('profile')}>← Back to profile</button>
+              <h1 style={pg.title}>{copy.title}</h1>
+              {children}
+            </div>
+          ) : (
+            <div>
+              <h1 style={pg.title}>Profile</h1>
+              <div style={pg.acctCard}>
+                <div style={{ fontWeight: 600 }}>Watson James</div>
+                <div style={{ color: MUTED }}>watson@watsonco.com</div>
+              </div>
+              <div style={pg.acctCta}>
+                <span style={pg.acctCtaIcon}><SfBuildingIcon style={pg.acctCtaSvg} /></span>
+                <div style={pg.acctCtaMain}>
+                  <div style={{ fontWeight: 600 }}>{copy.title}</div>
+                  {copy.description && <div style={{ color: MUTED }}>{copy.description}</div>}
+                </div>
+                <button type="button" style={pg.acctApply} onClick={() => setStep('form')}>{copy.cta}</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// Full-screen desktop preview, portaled to <body> so the admin nav and top bar
+// don't paint over it (same pattern as Analytics' expanded tables).
+function DesktopPreview({ onClose, ...preview }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 519, display: 'flex', flexDirection: 'column', background: 'var(--p-color-bg, #f1f1f1)' }}>
+      <div style={{ background: 'var(--p-color-bg-surface)', borderBottom: '1px solid var(--p-color-border)', padding: 16 }}>
+        <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="base" alignItems="center">
+          <s-stack gap="small-500">
+            <s-heading fontSize="large">{PREVIEW_TITLE[preview.on]}</s-heading>
+            <s-text color="subdued" fontSize="small">Desktop</s-text>
+          </s-stack>
+          <s-button icon="x" variant="tertiary" onClick={onClose} accessibilityLabel="Close full-screen preview" />
+        </s-grid>
+      </div>
+      <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
+        <StorefrontPreview {...preview} desktop />
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function MenuGlyph(props) {
+  return (
+    <svg viewBox="0 0 24 24" {...props}>
+      <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+const pv = {
+  card: { border: '1px solid #e3e3e3', borderRadius: 12, background: '#fff', padding: 16 },
+  h: { fontWeight: 700, fontSize: 18, textAlign: 'center', margin: '14px 0 10px' },
+  label: { fontSize: 13, fontWeight: 500, margin: '10px 0 4px', display: 'block', color: '#303030' },
+  req: { color: '#d72c0d' },
+  input: { width: '100%', border: '1px solid #8a8a8a', borderRadius: 8, height: 36, padding: '0 10px', boxSizing: 'border-box', background: '#fff' },
+  area: { width: '100%', border: '1px solid #8a8a8a', borderRadius: 8, height: 64, padding: 10, boxSizing: 'border-box', background: '#fff' },
+  select: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#616161', border: '1px solid #8a8a8a', borderRadius: 8, height: 36, padding: '0 10px', boxSizing: 'border-box' },
+  flag: { display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #8a8a8a', borderRadius: 8, height: 36, padding: '0 10px', whiteSpace: 'nowrap' },
+  submit: { width: '100%', background: '#f4c000', border: 'none', borderRadius: 8, height: 44, fontWeight: 700, letterSpacing: '.04em', marginTop: 16, cursor: 'default' },
+  dashed: { width: '100%', border: '1px dashed #8a8a8a', borderRadius: 8, minHeight: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#616161', fontSize: 13 },
+};
+
+function Lbl({ f }) {
+  return <label style={pv.label}>{f.label}{isRequired(f) ? <span style={pv.req}> *</span> : null}</label>;
+}
+
+// `plain` drops the form's own card frame (used inside the product-page modal).
+function FormPreview({ fields: raw, plain }) {
+  // Headings as the storefront shows them ("(optional)" drops once a field below is required).
+  const fields = raw.map((f, i) => (f.kind === 'heading' ? { ...f, label: headingLabel(raw, i) } : f));
+  // Group consecutive half-width fields (e.g. First / Last name) into one row.
+  const rows = [];
+  for (let i = 0; i < fields.length; i++) {
+    const f = fields[i];
+    const n = fields[i + 1];
+    if (f.half && n && n.half) { rows.push([f, n]); i++; } else { rows.push([f]); }
+  }
+  return (
+    <div style={plain ? undefined : pv.card}>
+      {rows.map((row, i) => row.length === 2 ? (
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {row.map((f) => <div key={f.id}><Lbl f={f} /><input style={pv.input} readOnly /></div>)}
+        </div>
+      ) : <PreviewField key={row[0].id} f={row[0]} />)}
+    </div>
+  );
+}
+
+function PreviewField({ f }) {
+  switch (f.kind) {
+    case 'heading':
+      return <div style={pv.h}>{f.label}</div>;
+    case 'password':
+      return (
+        <div>
+          <Lbl f={f} />
+          <div style={{ position: 'relative' }}>
+            <input style={pv.input} type="password" readOnly />
+            <span style={{ position: 'absolute', right: 10, top: 9, opacity: 0.5, fontSize: 14 }}>⦸</span>
+          </div>
+        </div>
+      );
+    case 'phone':
+      return (
+        <div>
+          <Lbl f={f} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <span style={pv.flag}>🇻🇳 ▾</span>
+            <input style={{ ...pv.input, flex: 1 }} readOnly />
+          </div>
+        </div>
+      );
+    case 'country':
+      return <div><Lbl f={f} /><div style={pv.select}><span>Select country</span><span>⌄</span></div></div>;
+    case 'state':
+      return <div><Lbl f={f} /><div style={pv.select}><span>Select state</span><span>⌄</span></div></div>;
+    case 'dropdown':
+      return <div><Lbl f={f} /><div style={pv.select}><span>Select an option</span><span>⌄</span></div></div>;
+    case 'radio':
+      return (
+        <div>
+          <Lbl f={f} />
+          {choicesFor(f).map((o) => (
+            <div key={o} style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '4px 0' }}>
+              <input type="radio" readOnly /><span style={{ fontSize: 13 }}>{o}</span>
+            </div>
+          ))}
+        </div>
+      );
+    case 'checkbox':
+      return (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '12px 0 2px' }}>
+          <input type="checkbox" readOnly />
+          <span style={{ fontSize: 13 }}>{f.label}{isRequired(f) ? <span style={pv.req}> *</span> : null}</span>
+        </div>
+      );
+    case 'textarea':
+      return <div><Lbl f={f} /><textarea style={pv.area} readOnly /></div>;
+    case 'date':
+      return <div><Lbl f={f} /><div style={pv.select}><span>DD / MM / YYYY</span><span>📅</span></div></div>;
+    case 'upload':
+      return <div><Lbl f={f} /><div style={pv.dashed}>Click to upload files</div></div>;
+    case 'submit':
+      return <button style={pv.submit}>{f.label}</button>;
+    default: // text, email, number, company, location
+      return <div><Lbl f={f} /><input style={pv.input} type={f.kind === 'email' ? 'email' : f.kind === 'number' ? 'number' : 'text'} readOnly /></div>;
+  }
+}
+
+// ── bits ──────────────────────────────────────────────────────────────────────
+function LearnMore({ toast }) {
+  return (
+    <s-box paddingBlockStart="base">
+      <s-stack direction="inline" justifyContent="center" alignItems="center" gap="small-400">
+        <s-text color="subdued">Learn more about</s-text>
+        <s-link onClick={() => toast('Opening docs')}>registration form</s-link>
+      </s-stack>
+    </s-box>
+  );
+}
+
+function DocIllustration() {
+  return (
+    <svg width="128" height="128" viewBox="0 0 128 128" fill="none" aria-hidden="true">
+      <circle cx="64" cy="64" r="60" fill="#f1f1f1" />
+      <rect x="40" y="30" width="48" height="64" rx="4" fill="#fff" stroke="#c9c9c9" strokeWidth="2" />
+      <rect x="48" y="40" width="16" height="16" rx="2" fill="#f4a020" />
+      <rect x="48" y="62" width="32" height="3" rx="1.5" fill="#d9d9d9" />
+      <rect x="48" y="70" width="32" height="3" rx="1.5" fill="#d9d9d9" />
+      <rect x="48" y="78" width="22" height="3" rx="1.5" fill="#d9d9d9" />
+    </svg>
+  );
+}

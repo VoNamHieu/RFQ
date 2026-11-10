@@ -1,0 +1,316 @@
+import React, { useState, useRef, useLayoutEffect } from 'react';
+import { money } from '../format.js';
+
+// Measure the container's rendered width so SVG charts draw at real pixels
+// (fixed height, no proportional up-scaling) and stay responsive + crisp.
+function useMeasure() {
+  const ref = useRef(null);
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect?.width;
+      if (w) setWidth(w);
+    });
+    ro.observe(el);
+    setWidth(el.getBoundingClientRect().width);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, width];
+}
+
+const BRAND = 'var(--p-color-bg-fill-brand)';
+const TRACK = 'var(--p-color-bg-fill-tertiary, var(--p-color-bg-surface-secondary))';
+const AXIS = 'var(--p-color-text-secondary)';
+const GRID = 'var(--p-color-border)';
+const COMPARE = 'var(--p-color-text-secondary)';
+
+// Categorical palette for stacked segments / legends. Theme-aware Polaris tokens.
+export const PALETTE = [
+  'var(--p-color-bg-fill-brand)',
+  'var(--p-color-bg-fill-info)',
+  'var(--p-color-bg-fill-success)',
+  'var(--p-color-bg-fill-warning)',
+  'var(--p-color-bg-fill-magic)',
+  'var(--p-color-bg-fill-caution)',
+];
+
+// A single non-wrapping row (Polaris InlineStack gap="300" blockAlign="center" wrap={false}).
+const ROW = { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'nowrap' };
+
+const fmt = (v, prefix = '$') => prefix + Math.round(v).toLocaleString('en-US');
+
+// Sales-over-time line chart with area, dots, hover value label and an optional
+// dashed "previous period" comparison series (legacy renderAnalytics trendSvg).
+export function LineChart({ data, compare = null, height = 200, prefix = '$', label = 'Sales over time', empty = null }) {
+  const [ref, measured] = useMeasure();
+  const [hover, setHover] = useState(null);
+  const hasCompare = Array.isArray(compare) && compare.length > 0;
+  const w = Math.max(320, Math.round(measured || 640));
+  const h = height;
+  const pad = { t: 14, r: 16, b: 26, l: 48 };
+  const iw = w - pad.l - pad.r;
+  const ih = h - pad.t - pad.b;
+  const compareVals = hasCompare ? data.map((_, i) => Number(compare[i]?.value ?? compare[i] ?? 0)) : [];
+  // Keep only points with a known value — an unknown (null) bucket is a gap, not a 0.
+  const pts = data.map((d, i) => ({ i, v: d.value })).filter((p) => p.v != null);
+  // Per-block empty state: when there's nothing to plot (no points, or every point is 0), show a
+  // calm placeholder at the chart's height instead of a flat line pinned to the axis.
+  if (empty && (!pts.length || pts.every((p) => !Number(p.v)))) {
+    return <div style={{ height: h, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><s-paragraph color="subdued" fontSize="small">{empty}</s-paragraph></div>;
+  }
+  const max = Math.max(1, ...pts.map((p) => p.v), ...compareVals);
+  const x = (i) => pad.l + (data.length <= 1 ? iw / 2 : (i / (data.length - 1)) * iw);
+  const y = (v) => pad.t + ih - (v / max) * ih;
+  const line = pts.map((p) => `${x(p.i)},${y(p.v)}`).join(' ');
+  const area = pts.length ? `${x(pts[0].i)},${pad.t + ih} ${line} ${x(pts[pts.length - 1].i)},${pad.t + ih}` : '';
+  const cline = hasCompare ? compareVals.map((v, i) => `${x(i)},${y(v)}`).join(' ') : '';
+  const ticks = [0, 0.5, 1].map((f) => ({ v: max * f, yy: y(max * f) }));
+  const active = hover != null ? data[hover] : null;
+
+  return (
+    <s-stack gap="small-200">
+      {hasCompare && (
+        <s-stack direction="inline" gap="small">
+          <s-stack direction="inline" gap="small-400" alignItems="center">
+            <span style={{ width: 14, height: 3, borderRadius: 2, background: BRAND, display: 'inline-block' }} />
+            <s-text fontSize="small" color="subdued">Selected period</s-text>
+          </s-stack>
+          <s-stack direction="inline" gap="small-400" alignItems="center">
+            <span style={{ width: 14, height: 0, borderTop: `2px dashed ${COMPARE}`, display: 'inline-block' }} />
+            <s-text fontSize="small" color="subdued">Previous period</s-text>
+          </s-stack>
+        </s-stack>
+      )}
+      <div ref={ref} style={{ width: '100%' }}>
+        <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={label} style={{ display: 'block', maxWidth: '100%' }}>
+          {ticks.map((t, i) => (
+            <g key={i}>
+              <line x1={pad.l} x2={pad.l + iw} y1={t.yy} y2={t.yy} stroke={GRID} strokeWidth="1" />
+              <text x={pad.l - 8} y={t.yy + 3} textAnchor="end" fontSize="10" fill={AXIS}>
+                {prefix === '$' ? moneyShort(t.v) : Math.round(t.v)}
+              </text>
+            </g>
+          ))}
+          <polygon points={area} fill={BRAND} opacity="0.08" />
+          {hasCompare && (
+            <polyline points={cline} fill="none" stroke={COMPARE} strokeWidth="2" strokeDasharray="5 4" strokeLinejoin="round" strokeLinecap="round" opacity="0.75" />
+          )}
+          <polyline points={line} fill="none" stroke={BRAND} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+          {active && <line x1={x(hover)} x2={x(hover)} y1={pad.t} y2={pad.t + ih} stroke={AXIS} strokeWidth="1" strokeDasharray="3 3" opacity="0.5" />}
+          {hasCompare &&
+            compareVals.map((v, i) => <circle key={`c${i}`} cx={x(i)} cy={y(v)} r={hover === i ? 4 : 3} fill="var(--p-color-bg-surface)" stroke={COMPARE} strokeWidth="1.5" />)}
+          {data.map((d, i) => (
+            <g key={i}>
+              {d.value != null && <circle cx={x(i)} cy={y(d.value)} r={hover === i ? 5 : 3.5} fill={BRAND} stroke="var(--p-color-bg-surface)" strokeWidth="1.5" />}
+              <text x={x(i)} y={h - 8} textAnchor="middle" fontSize="10" fill={AXIS}>{d.label}</text>
+              <rect
+                x={x(i) - iw / (data.length * 2 || 1)}
+                y={pad.t}
+                width={Math.max(12, iw / (data.length || 1))}
+                height={ih}
+                fill="transparent"
+                style={{ cursor: 'pointer' }}
+                onMouseEnter={() => setHover(i)}
+                onMouseLeave={() => setHover(null)}
+              />
+            </g>
+          ))}
+          {active && (() => {
+            const rows = [active.label, active.value == null ? '—' : fmt(active.value, prefix)];
+            if (hasCompare) {
+              // Comparison line is aligned by slot, so this point's real date differs
+              // from the axis label — show that actual previous-period date (matches
+              // Shopify's period-over-period tooltip), falling back to "prev".
+              const prevLabel = compare[hover]?.label;
+              rows.push(`${prevLabel ? `${prevLabel} · ` : 'prev '}${fmt(compareVals[hover], prefix)}`);
+            }
+            const tw = 104;
+            const th = 12 + rows.length * 15;
+            const cx = x(hover);
+            const above = y(active.value) > th + 14;
+            const ty = above ? y(active.value) - th - 12 : y(active.value) + 12;
+            const tx = Math.min(Math.max(cx - tw / 2, 2), w - tw - 2);
+            return (
+              <g style={{ pointerEvents: 'none' }}>
+                <rect x={tx} y={ty} width={tw} height={th} rx="6" fill="var(--p-color-bg-surface)" stroke={GRID} strokeWidth="1" />
+                {rows.map((r, k) => (
+                  <text key={k} x={tx + tw / 2} y={ty + 16 + k * 15} textAnchor="middle" fontSize={k === 1 ? '12' : '11'} fontWeight={k === 1 ? '600' : '400'} fill={k === 2 ? AXIS : 'var(--p-color-text)'}>{r}</text>
+                ))}
+              </g>
+            );
+          })()}
+        </svg>
+      </div>
+    </s-stack>
+  );
+}
+
+// Rich ranked bars (legacy .analytics-rank): name + optional sub, magnitude
+// track, and a right-aligned value with an optional secondary caption. Bar width
+// comes from an explicit `width` (0-100) when provided, else value / max.
+export function RankBars({ rows, empty = 'No data in this filter.' }) {
+  if (!rows || !rows.length) {
+    return <s-paragraph color="subdued" fontSize="small">{empty}</s-paragraph>;
+  }
+  const max = Math.max(1, ...rows.map((r) => Number(r.value) || 0));
+  return (
+    <s-stack gap="small">
+      {rows.map((r, i) => {
+        const width = r.width != null ? r.width : ((Number(r.value) || 0) / max) * 100;
+        return (
+          <div key={r.key || r.name || i} style={ROW}>
+            <div style={{ flex: '1 1 42%', minWidth: 0 }}>
+              <s-paragraph fontSize="small" fontWeight="semibold" lineClamp={1}>{r.name}</s-paragraph>
+              {r.sub ? <s-paragraph fontSize="small" color="subdued" lineClamp={1}>{r.sub}</s-paragraph> : null}
+            </div>
+            <div style={{ flex: '1 1 34%', height: 10, borderRadius: 5, background: TRACK, overflow: 'hidden' }}>
+              {/* A sliver keeps small values visible; zero stays an empty track. */}
+              <div style={{ width: `${width > 0 ? Math.max(2, width) : 0}%`, height: '100%', background: BRAND, borderRadius: 5 }} />
+            </div>
+            <div style={{ flex: '0 0 auto', textAlign: 'right', minWidth: 92 }}>
+              <s-text fontSize="small" fontWeight="semibold">{r.valueLabel}</s-text>
+              {r.secondary ? <s-text fontSize="small" color="subdued">{` ${r.secondary}`}</s-text> : null}
+            </div>
+          </div>
+        );
+      })}
+    </s-stack>
+  );
+}
+
+// Horizontal 100%-stacked bar with a colored legend (share % + value).
+// segments: [{ name, value }]. Used for purchasing motion, purchase
+// relationship, pricing provenance and new-vs-existing revenue.
+export function StackedBar({ segments, format = money }) {
+  const total = segments.reduce((a, s) => a + (Number(s.value) || 0), 0) || 1;
+  return (
+    <s-stack gap="small">
+      <div style={{ display: 'flex', height: 22, borderRadius: 6, overflow: 'hidden', background: TRACK }}>
+        {segments.map((s, i) => (
+          <div
+            key={s.name}
+            style={{ width: `${((Number(s.value) || 0) / total) * 100}%`, background: PALETTE[i % PALETTE.length], height: '100%' }}
+            title={`${s.name}: ${format(s.value)}`}
+          />
+        ))}
+      </div>
+      <s-stack gap="small-300">
+        {segments.map((s, i) => (
+          <div key={s.name} style={{ ...ROW, justifyContent: 'space-between' }}>
+            <s-stack direction="inline" gap="small-300" alignItems="center">
+              <span style={{ width: 10, height: 10, borderRadius: 3, background: PALETTE[i % PALETTE.length], display: 'inline-block' }} />
+              <s-text fontSize="small">{s.name}</s-text>
+            </s-stack>
+            <s-text fontSize="small" fontWeight="medium">
+              {`${Math.round(((Number(s.value) || 0) / total) * 100)}% · ${format(s.value)}`}
+            </s-text>
+          </div>
+        ))}
+      </s-stack>
+    </s-stack>
+  );
+}
+
+// Multi-stage funnel (legacy .analytics-funnel-v2). Each stage carries a
+// pre-formatted value string + optional note; the bar width is count / firstCount.
+export function FunnelV2({ stages }) {
+  const top = Math.max(1, Number(stages[0]?.count) || 1);
+  return (
+    <s-stack gap="small">
+      {stages.map((s, i) => {
+        const width = (Number(s.count) || 0) / top * 100;
+        return (
+          <div key={s.name} style={ROW}>
+            <div style={{ flex: '0 0 34%', minWidth: 0 }}>
+              <s-text fontSize="small" fontWeight="medium">{s.name}</s-text>
+            </div>
+            <div style={{ flex: '1 1 auto', height: 16, borderRadius: 4, background: TRACK, overflow: 'hidden' }}>
+              <div style={{ width: `${Math.max(2, width)}%`, height: '100%', background: BRAND, opacity: 1 - i * 0.14, borderRadius: 4 }} />
+            </div>
+            <div style={{ flex: '0 0 auto', textAlign: 'right', minWidth: 150 }}>
+              <s-text fontSize="small" fontWeight="semibold">{s.value}</s-text>
+              {s.note ? <s-text fontSize="small" color="subdued">{` ${s.note}`}</s-text> : null}
+            </div>
+          </div>
+        );
+      })}
+    </s-stack>
+  );
+}
+
+// Simple vertical bar chart (e.g. order volume per month) with top value labels.
+export function VBarChart({ data, height = 200, prefix = '', label = 'Orders by period' }) {
+  const [ref, measured] = useMeasure();
+  const [hover, setHover] = useState(null);
+  const w = Math.max(320, Math.round(measured || 640));
+  const h = height;
+  const pad = { t: 22, r: 12, b: 26, l: 34 };
+  const iw = w - pad.l - pad.r;
+  const ih = h - pad.t - pad.b;
+  const max = Math.max(1, ...data.map((d) => d.value));
+  const slot = iw / Math.max(1, data.length);
+  const bw = Math.min(slot * 0.6, 56);
+  const ticks = [0, 0.5, 1].map((f) => ({ v: max * f, yy: pad.t + ih - ih * f }));
+  return (
+    <div ref={ref} style={{ width: '100%' }}>
+      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={label} style={{ display: 'block', maxWidth: '100%' }}>
+        {ticks.map((t, i) => (
+          <g key={i}>
+            <line x1={pad.l} x2={pad.l + iw} y1={t.yy} y2={t.yy} stroke={GRID} />
+            <text x={pad.l - 8} y={t.yy + 3} textAnchor="end" fontSize="10" fill={AXIS}>{prefix ? moneyShort(t.v) : Math.round(t.v)}</text>
+          </g>
+        ))}
+        {data.map((d, i) => {
+          const bh = (d.value / max) * ih;
+          const bx = pad.l + i * slot + (slot - bw) / 2;
+          const by = pad.t + ih - bh;
+          const on = hover === i;
+          return (
+            <g key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} style={{ cursor: 'pointer' }}>
+              <rect x={pad.l + i * slot} y={pad.t} width={slot} height={ih} fill="transparent" />
+              <rect x={bx} y={by} width={bw} height={Math.max(2, bh)} rx="5" fill={BRAND} opacity={on ? 1 : 0.82} />
+              <text x={bx + bw / 2} y={Math.max(14, by - 8)} textAnchor="middle" fontSize={on ? '12' : '11'} fontWeight="600" fill={on ? 'var(--p-color-text)' : AXIS}>
+                {prefix ? fmt(d.value, prefix) : d.value}
+              </text>
+              <text x={bx + bw / 2} y={h - 8} textAnchor="middle" fontSize="10" fill={AXIS}>{d.label}</text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+// Order cadence timeline for a single company (legacy .order-timeline):
+// a bar per completed order (height ∝ amount) with the gap since the prior order.
+export function Timeline({ events, empty = 'No completed orders.' }) {
+  if (!events || !events.length) {
+    return <s-paragraph color="subdued" fontSize="small">{empty}</s-paragraph>;
+  }
+  const maxAmt = Math.max(1, ...events.map((e) => Number(e.amount) || 0));
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, overflowX: 'auto', paddingBottom: 4 }}>
+      {events.map((e, i) => (
+        <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 44 }}>
+          <div style={{ height: 14, fontSize: 11, color: 'var(--p-color-text-secondary)' }}>{e.gapLabel || ''}</div>
+          <div
+            style={{ width: 26, height: Math.max(28, ((Number(e.amount) || 0) / maxAmt) * 150), background: BRAND, borderRadius: 5 }}
+            title={e.valueLabel}
+          />
+          <s-text fontSize="small" fontWeight="medium">{e.valueLabel}</s-text>
+          <s-text fontSize="small" color="subdued">{e.dateLabel}</s-text>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// moneyShort: compact currency (e.g. $1.2m / $12k / $340) — matches legacy.
+export function moneyShort(n) {
+  const v = Number(n) || 0;
+  if (v >= 1000000) return `$${(v / 1000000).toFixed(1)}m`;
+  if (v >= 1000) return `$${(v / 1000).toFixed(v >= 10000 ? 1 : 2)}k`;
+  return `$${Math.round(v)}`;
+}

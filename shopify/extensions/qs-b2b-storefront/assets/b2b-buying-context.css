@@ -1,0 +1,82 @@
+.qs-b2b-context {
+  border: 1px solid rgba(var(--color-foreground), 0.14);
+  border-radius: max(var(--buttons-radius, 0px), 10px);
+  background: rgba(var(--color-foreground), 0.025);
+  padding: 1.6rem;
+  color: rgb(var(--color-foreground));
+}
+
+.qs-b2b-context p { margin: 0; }
+
+.qs-b2b-context__topline,
+.qs-b2b-context__price-row,
+.qs-b2b-context__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.2rem;
+}
+
+.qs-b2b-context__eyebrow,
+.qs-b2b-context__label {
+  font-size: 1.2rem;
+  line-height: 1.4;
+  color: rgba(var(--color-foreground), 0.68);
+}
+
+.qs-b2b-context__identity,
+.qs-b2b-context__title {
+  margin-top: .25rem !important;
+  font-size: 1.5rem;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.qs-b2b-context__body,
+.qs-b2b-context__hint {
+  color: rgba(var(--color-foreground), 0.68);
+  font-size: 1.3rem;
+  line-height: 1.5;
+}
+
+.qs-b2b-context__body { margin-top: .6rem !important; }
+.qs-b2b-context__price-row {
+  align-items: end;
+  margin-top: 1.4rem;
+  padding-top: 1.4rem;
+  border-top: 1px solid rgba(var(--color-foreground), 0.1);
+}
+.qs-b2b-context__price { font-size: 2rem; font-weight: 650; line-height: 1.2; }
+.qs-b2b-context__hint { max-width: 25rem; text-align: right; }
+
+.qs-b2b-context__badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: .35rem .8rem;
+  background: rgba(29, 130, 74, .1);
+  color: rgb(24, 111, 63);
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.qs-b2b-context__locations {
+  margin-top: 1.2rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid rgba(var(--color-foreground), 0.1);
+  font-size: 1.3rem;
+}
+
+.qs-b2b-context__locations summary { cursor: pointer; font-weight: 600; }
+.qs-b2b-context__location-list { display: grid; gap: .6rem; margin-top: .9rem; }
+.qs-b2b-context__location-list a,
+.qs-b2b-context__link { color: rgb(var(--color-link, var(--color-foreground))); text-underline-offset: .25rem; }
+
+.qs-b2b-context__actions { justify-content: flex-start; flex-wrap: wrap; margin-top: 1.4rem; }
+.qs-b2b-context__button { min-height: 4rem; padding: 0 1.6rem; }
+.qs-b2b-context__link { font-size: 1.3rem; }
+
+@media screen and (max-width: 749px) {
+  .qs-b2b-context__price-row { align-items: flex-start; flex-direction: column; }
+  .qs-b2b-context__hint { max-width: none; text-align: left; }
+}

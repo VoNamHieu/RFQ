@@ -1,0 +1,82 @@
+{%- liquid
+  assign portal_url = block.settings.portal_url
+  if portal_url == blank
+    assign portal_url = routes.account_url
+  endif
+
+  assign visible = true
+  case block.settings.visibility
+    when 'customers'
+      unless customer
+        assign visible = false
+      endunless
+    when 'b2b'
+      unless customer.b2b?
+        assign visible = false
+      endunless
+  endcase
+-%}
+
+{%- if visible -%}
+  <div class="qs-b2b-portal-link qs-b2b-portal-link--{{ block.settings.alignment }}" {{ block.shopify_attributes }}>
+    {%- if block.settings.style == 'button' -%}
+      <a class="button button--secondary" href="{{ portal_url }}">{{ block.settings.label | escape }}</a>
+    {%- else -%}
+      <a class="qs-b2b-portal-link__link" href="{{ portal_url }}">{{ block.settings.label | escape }}</a>
+    {%- endif -%}
+  </div>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "B2B Portal link",
+  "target": "section",
+  "stylesheet": "b2b-portal-link.css",
+  "settings": [
+    {
+      "type": "text",
+      "id": "label",
+      "label": "Label",
+      "default": "B2B Portal"
+    },
+    {
+      "type": "url",
+      "id": "portal_url",
+      "label": "B2B Portal page URL",
+      "info": "Open B2B Portal in your customer account and copy its address. Leave empty to link to the customer account."
+    },
+    {
+      "type": "select",
+      "id": "visibility",
+      "label": "Show to",
+      "options": [
+        { "value": "everyone", "label": "Everyone" },
+        { "value": "customers", "label": "Logged-in customers" },
+        { "value": "b2b", "label": "B2B customers only" }
+      ],
+      "default": "everyone"
+    },
+    {
+      "type": "select",
+      "id": "style",
+      "label": "Style",
+      "options": [
+        { "value": "link", "label": "Link" },
+        { "value": "button", "label": "Button" }
+      ],
+      "default": "link"
+    },
+    {
+      "type": "select",
+      "id": "alignment",
+      "label": "Alignment",
+      "options": [
+        { "value": "start", "label": "Left" },
+        { "value": "center", "label": "Center" },
+        { "value": "end", "label": "Right" }
+      ],
+      "default": "start"
+    }
+  ]
+}
+{% endschema %}

@@ -1,0 +1,22 @@
+api_version = "2026-07"
+
+[[extensions]]
+uid = "88eab317-fe19-c8c4-4e93-1050eed7f87dc2ee725c"
+type = "ui_extension"
+name = "B2B account blocks"
+handle = "qs-b2b-account-blocks"
+
+[[extensions.targeting]]
+module = "./src/ProfileRegistration.jsx"
+target = "customer-account.profile.block.render"
+
+[[extensions.targeting]]
+module = "./src/CompanyPurchasingSummary.jsx"
+target = "customer-account.profile.company-details.render-after"
+
+[[extensions.targeting]]
+module = "./src/LocationPurchasingTerms.jsx"
+target = "customer-account.profile.company-location-payment.render-after"
+
+[extensions.capabilities]
+network_access = true

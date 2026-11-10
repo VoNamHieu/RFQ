@@ -1,0 +1,20 @@
+.qs-b2b-portal-link {
+  display: flex;
+  align-items: center;
+}
+
+.qs-b2b-portal-link--start { justify-content: flex-start; }
+.qs-b2b-portal-link--center { justify-content: center; }
+.qs-b2b-portal-link--end { justify-content: flex-end; }
+
+.qs-b2b-portal-link__link {
+  color: rgb(var(--color-foreground));
+  font-size: 1.4rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: .3rem;
+}
+
+.qs-b2b-portal-link__link:hover {
+  text-decoration-thickness: .2rem;
+}

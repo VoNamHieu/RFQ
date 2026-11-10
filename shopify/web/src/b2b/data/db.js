@@ -1,0 +1,682 @@
+// Raw demo seed extracted verbatim from rfq-x-b2b/b2b/index.html.
+// Do NOT apply normalize/migrate transforms here — the store applies those.
+import { versionFlags } from '../../shared/versions.js';
+
+const defaults = { b2bPolicyId: null, wholesalePolicyId: null };
+
+// Upcoming only (Contracts): pricing and limits made for contracts (`forContracts`)
+// are used only in contracts, which decide who gets them and when. Ones also assigned
+// outside a contract are split: the regular one keeps those assignments, and the
+// contracts use a contract copy with the same name (SPLIT: regular id → its copy).
+// Current has no contracts: every pricing and limit is regular.
+const CONTRACTS = versionFlags().agreements;
+const forContracts = CONTRACTS ? { forContracts: true } : {};
+const SPLIT = { p1: 'pc1', p22: 'pc22', p23: 'pc23', p27: 'pc27', ol2: 'olc2', ol3: 'olc3' };
+// ABC's Distributor Tier 2 comes from CT-301.
+const abcTier2 = CONTRACTS ? SPLIT.p1 : 'p1';
+
+// Each product carries its variants. The FIRST variant is the default and its
+// id equals the product SKU, so per-SKU pricing (seed overrides, RFQ→B2B sync)
+// keeps resolving to the default variant unchanged; extra variants get new ids.
+// `cost` is unit COGS, used by Analytics for gross profit / margin. Kept a bit
+// below list so realized (post-B2B-discount) margins land in a believable band.
+const products = [
+  { sku: 'FIL-XL', title: 'Industrial filter, XL', list: 96, cost: 62, stock: 840, vendor: 'FilterCo', productType: 'Filters', tags: ['industrial'],
+    variants: [{ id: 'FIL-XL', title: 'Standard', list: 96 }, { id: 'FIL-XL-HD', title: 'Heavy-duty', list: 118 }] },
+  { sku: 'FIL-STD', title: 'Industrial filter, standard', list: 62, cost: 44, stock: 1200, vendor: 'FilterCo', productType: 'Filters', tags: ['industrial', 'clearance'],
+    variants: [{ id: 'FIL-STD', title: 'Standard', list: 62 }] },
+  { sku: 'SEA-30', title: 'Sealant cartridge 300ml', list: 8, cost: 5, stock: 2600, vendor: 'SealPro', productType: 'Sealants', tags: ['consumable'],
+    variants: [{ id: 'SEA-30', title: '300 ml', list: 8 }] },
+  { sku: 'HOS-12', title: 'Reinforced hose, 12m', list: 145, cost: 104, stock: 210, vendor: 'HydroMax', productType: 'Hoses', tags: ['industrial', 'premium'],
+    variants: [{ id: 'HOS-12', title: '12 m', list: 145 }, { id: 'HOS-12-18M', title: '18 m', list: 205 }, { id: 'HOS-12-24M', title: '24 m', list: 265 }] },
+  { sku: 'VLV-40', title: 'Ball valve 40mm', list: 52, cost: 33, stock: 670, vendor: 'HydroMax', productType: 'Valves', tags: ['premium', 'clearance'],
+    variants: [{ id: 'VLV-40', title: '40 mm', list: 52 }] },
+  { sku: 'MCFC-TRAINING-JACKET', title: 'Manchester City Team Training Jacket', list: 1240, cost: 880, stock: 120, vendor: 'MCFC', productType: 'Apparel', tags: ['licensed'],
+    variants: [{ id: 'MCFC-TRAINING-JACKET', title: 'M', list: 1240 }, { id: 'MCFC-JACKET-L', title: 'L', list: 1240 }, { id: 'MCFC-JACKET-XL', title: 'XL', list: 1290 }] }
+];
+
+const companies = [
+  {
+    id: 'c1', name: 'ABC Construction', mainContact: 'John Nguyen', source: 'QuoteSnap RFQ',
+    pricing: { base: [{ id: abcTier2, priority: 1 }, { id: 'p30', priority: 5 }, { id: 'p8', priority: 2 }, { id: 'p20', priority: 3 }, { id: 'p21', priority: 4 }, { id: 'p22', priority: 5 }, { id: 'p23', priority: 6 }, { id: 'p24', priority: 7 }, { id: 'p25', priority: 8 }, { id: 'p26', priority: 9 }, { id: 'p27', priority: 10 }, { id: 'p28', priority: 11 }, { id: 'p29', priority: 12 }], quantity: 'p6' }, revenue: 124000,
+    locations: [
+      // Demo: Hanoi has its own base list — the company's, plus a pricing assigned to
+      // Hanoi only (p31), so pickers show it as "Hanoi · ABC Construction".
+      { id: 'l1', name: 'Hanoi', shipping: { company: 'ABC Construction', address1: '12 Tran Hung Dao', address2: 'Hoan Kiem', city: 'Hanoi', postal: '100000', country: 'VN', phone: '' }, ordering: 'Buys directly', terms: 'Net 30', lastOrder: '2026-07-15', buyers: 2,
+        pricing: { base: [{ id: abcTier2, priority: 1 }, { id: 'p30', priority: 5 }, { id: 'p8', priority: 2 }, { id: 'p20', priority: 3 }, { id: 'p21', priority: 4 }, { id: 'p22', priority: 5 }, { id: 'p23', priority: 6 }, { id: 'p24', priority: 7 }, { id: 'p25', priority: 8 }, { id: 'p26', priority: 9 }, { id: 'p27', priority: 10 }, { id: 'p28', priority: 11 }, { id: 'p29', priority: 12 }, { id: 'p31', priority: 1 }], quantity: null } },
+      // `catalog`: the collection its buyers can buy from (none = every product).
+      { id: 'l2', name: 'Bac Ninh site', shipping: { company: 'ABC Construction', address1: 'Lot 5, Que Vo Industrial Park', address2: '', city: 'Bac Ninh', postal: '220000', country: 'VN', phone: '' }, ordering: 'You approve first', terms: 'Due on receipt', lastOrder: '2026-06-28', buyers: 1, catalog: 'Contractor assortment' },
+      // Demo: deleted in Shopify (so not in the Shopify directory) — the app keeps the
+      // record, marked Deleted, until the merchant deletes it here too.
+      { id: 'l7', name: 'Hai Duong depot', shipping: { company: 'ABC Construction', address1: '34 Nguyen Luong Bang', address2: '', city: 'Hai Duong', postal: '170000', country: 'VN', phone: '' }, status: 'Deleted', ordering: 'Buys directly', terms: 'Net 30', lastOrder: '2026-03-04', buyers: 0 }
+    ],
+    contacts: [
+      { name: 'John Nguyen', email: 'john@abcconstruction.com', role: 'Location admin', access: 'Buys directly', locations: 'Hanoi' },
+      { name: 'Le Thu Ha', email: 'ha@abcconstruction.com', role: 'Ordering only', access: 'Buys directly', locations: 'Hanoi' },
+      { name: 'Pham Duc', email: 'duc@abcconstruction.com', role: 'Ordering only', access: 'You approve first', locations: 'Bac Ninh site' }
+    ],
+    quotes: [
+      { id: 'Q-1051', status: 'Negotiating', context: 'Special project pricing', updated: 'Jul 16' },
+      { id: 'Q-0982', status: 'Accepted', context: '2026 annual terms', updated: 'Jan 3' }
+    ],
+    exceptions: [{ id: '#1045', reason: 'Above the $10,000 maximum', location: 'Hanoi', amount: 12400, status: 'Needs review' }],
+    activity: [
+      { when: 'Jul 15', what: 'Order #1045 held for your review' },
+      { when: 'Jul 12', what: 'ABC Hanoi Negotiated reapplied to Hanoi' },
+      { when: 'Jul 02', what: 'FIL-XL price changed from $72 to $75' },
+      { when: 'Jun 30', what: 'John Nguyen signed in from Hanoi' }
+    ]
+  },
+  {
+    id: 'c2', name: 'Vinh Phat Trading', mainContact: 'Bui Quang', source: 'Merchant created',
+    pricing: { base: 'p1', quantity: null }, revenue: 86400,
+    locations: [{ id: 'l3', name: 'Da Nang', shipping: { company: 'Vinh Phat Trading', address1: '88 Bach Dang', address2: 'Hai Chau', city: 'Da Nang', postal: '550000', country: 'VN', phone: '' }, ordering: 'Buys directly', terms: 'Net 15', lastOrder: '2026-07-11', buyers: 1, catalog: 'Distributor assortment' }],
+    contacts: [{ name: 'Bui Quang', email: 'quang@vinhphat.vn', role: 'Location admin', access: 'Buys directly', locations: 'Da Nang' }],
+    quotes: [], exceptions: [],
+    activity: [
+      { when: 'Jul 16', what: 'Distributor Tier 2 is scheduled to activate Jul 17' },
+      { when: 'Jul 01', what: 'Location sync completed' }
+    ]
+  },
+  {
+    id: 'c3', name: 'Delta Mechanical', mainContact: 'Nguyen Hoa', source: 'ERP import',
+    pricing: { base: null, quantity: null }, revenue: 0,
+    locations: [{ id: 'l4', name: 'Ho Chi Minh City', shipping: { company: 'Delta Mechanical', address1: '210 Nguyen Van Linh', address2: 'District 7', city: 'Ho Chi Minh City', postal: '700000', country: 'VN', phone: '' }, ordering: 'Quote only', terms: 'Not set', lastOrder: null, buyers: 1 }],
+    contacts: [{ name: 'Nguyen Hoa', email: 'hoa@deltamechanical.vn', role: 'Ordering only', access: 'Quote only', locations: 'Ho Chi Minh City' }],
+    quotes: [], exceptions: [],
+    activity: [
+      { when: 'Jul 16', what: 'Imported from ERP and matched to a Shopify company' },
+      { when: 'Jul 16', what: 'No price assigned, ordering is off' }
+    ]
+  },
+  {
+    id: 'c4', name: 'Song Hong Interiors', mainContact: 'Do Lan', source: 'Company application',
+    pricing: { base: 'p1', quantity: null }, revenue: 41200,
+    locations: [{ id: 'l5', name: 'Hanoi', shipping: { company: 'Song Hong Interiors', address1: '45 Hang Bai', address2: 'Hoan Kiem', city: 'Hanoi', postal: '100000', country: 'VN', phone: '' }, ordering: 'Quote only', terms: 'Due on receipt', lastOrder: '2026-06-22', buyers: 1 }],
+    contacts: [{ name: 'Do Lan', email: 'lan@songhong.vn', role: 'Location admin', access: 'Quote only', locations: 'Hanoi' }],
+    quotes: [],
+    exceptions: [{ id: '#1046', reason: 'The negotiated price expired and no other price applies', location: 'Hanoi', amount: 3184, status: 'Blocked' }],
+    activity: [
+      { when: 'Jul 14', what: 'Order #1046 blocked at checkout' },
+      { when: 'Jul 01', what: 'CT-274 expired, negotiated price stopped applying' },
+      { when: 'Jul 01', what: 'Ordering switched to quote only; the account stays active' }
+    ]
+  },
+  // Demo: a second company named "Delta Mechanical" (Shopify allows duplicate names) —
+  // a registration for that name offers a Company picker ("Company — main contact").
+  {
+    id: 'c5', name: 'Delta Mechanical', mainContact: 'Le Van Tam', source: 'Merchant created',
+    pricing: { base: 'p1', quantity: null }, revenue: 0,
+    locations: [{ id: 'l6', name: 'Da Nang workshop', shipping: { company: 'Delta Mechanical', address1: '17 Ngo Quyen', address2: 'Son Tra', city: 'Da Nang', postal: '550000', country: 'VN', phone: '' }, ordering: 'Buys directly', terms: 'Net 15', lastOrder: null, buyers: 1 }],
+    contacts: [{ name: 'Le Van Tam', email: 'tam@deltamech-dn.vn', role: 'Location admin', access: 'Buys directly', locations: 'Da Nang workshop' }],
+    quotes: [], exceptions: [],
+    activity: [{ when: 'Aug 04', what: 'Created by the merchant for the Da Nang workshop' }]
+  },
+  // Demo: contracts per location (see the agreements below). Its own pricing outside
+  // them is Volume Tier A; each contract's pricing goes on its locations on load.
+  {
+    id: 'c7', name: 'Phu Thanh Hardware', mainContact: 'Tran Minh Khoa', source: 'Merchant created',
+    pricing: { base: [{ id: 'p20', priority: 3 }], quantity: null }, revenue: 158300,
+    locations: [
+      { id: 'l11', name: 'Ho Chi Minh City', shipping: { company: 'Phu Thanh Hardware', address1: '150 Cong Hoa', address2: 'Tan Binh', city: 'Ho Chi Minh City', postal: '700000', country: 'VN', phone: '' }, ordering: 'Buys directly', terms: 'Net 30', lastOrder: '2026-07-21', buyers: 2 },
+      { id: 'l12', name: 'Can Tho', shipping: { company: 'Phu Thanh Hardware', address1: '22 Hoa Binh', address2: 'Ninh Kieu', city: 'Can Tho', postal: '900000', country: 'VN', phone: '' }, ordering: 'Buys directly', terms: 'Net 15', lastOrder: '2026-07-09', buyers: 1 },
+      { id: 'l13', name: 'Vung Tau', shipping: { company: 'Phu Thanh Hardware', address1: '9 Tran Phu', address2: '', city: 'Vung Tau', postal: '790000', country: 'VN', phone: '' }, ordering: 'You approve first', terms: 'Net 15', lastOrder: '2026-06-30', buyers: 1 }
+    ],
+    contacts: [
+      { name: 'Tran Minh Khoa', email: 'khoa@phuthanh.vn', role: 'Location admin', access: 'Buys directly', locations: 'Ho Chi Minh City' },
+      { name: 'Nguyen Thi Mai', email: 'mai@phuthanh.vn', role: 'Ordering only', access: 'Buys directly', locations: 'Ho Chi Minh City' },
+      { name: 'Le Hoang Phuc', email: 'phuc@phuthanh.vn', role: 'Location admin', access: 'Buys directly', locations: 'Can Tho' },
+      { name: 'Pham Thanh Tung', email: 'tung@phuthanh.vn', role: 'Location admin', access: 'You approve first', locations: 'Vung Tau' }
+    ],
+    quotes: [], exceptions: [],
+    activity: [
+      { when: 'Jul 20', what: 'CT-304 scheduled for Can Tho from Feb 1, 2027' },
+      { when: 'May 01', what: 'CT-303 started for Vung Tau' },
+      { when: 'Feb 01', what: 'CT-302 started for Ho Chi Minh City and Can Tho' }
+    ]
+  }
+];
+
+const tagPricing = [
+  { id: 'retailer', name: 'retailer', defaultPolicyId: 'p3' },
+  { id: 'trade', name: 'trade', defaultPolicyId: 'p2' }
+];
+
+const customers = [
+  { id: 'w1', name: 'Lan Anh Home', email: 'purchasing@lananhhome.vn', status: 'Active', source: 'Wholesale application', tags: ['retailer'], policyId: null, lastOrder: '2026-07-13', orders: 8 },
+  { id: 'w2', name: 'Minh Decor Studio', email: 'buy@minhdecor.vn', status: 'Active', source: 'Merchant created', tags: ['trade'], policyId: 'p4', lastOrder: '2026-07-09', orders: 13 },
+  { id: 'w3', name: 'Thanh Tools', email: 'hello@thanhtools.vn', status: 'Qualified', source: 'Wholesale application', tags: ['applicant'], policyId: null, lastOrder: null, orders: 0 },
+  { id: 'w4', name: 'An Nam Retail', email: 'orders@annamretail.vn', status: 'Active', source: 'CSV import', tags: ['retailer', 'trade'], policyId: null, lastOrder: '2026-07-15', orders: 21 },
+  { id: 'w5', name: 'Bui Quang', email: 'quang@vinhphat.vn', status: 'Active', source: 'Shopify sync', tags: [], policyId: null, lastOrder: '2026-07-11', orders: 4 },
+  { id: 'w6', name: 'Hoa Sen Interiors', email: 'mua@hoasen.vn', status: 'Active', source: 'Shopify sync', tags: [], policyId: null, lastOrder: '2026-07-02', orders: 6 },
+  { id: 'w7', name: 'Bao Long Trading', email: 'sales@baolong.vn', status: 'Active', source: 'Shopify sync', tags: [], policyId: null, lastOrder: '2026-06-30', orders: 2 },
+  { id: 'w8', name: 'Nam Phuong Design', email: 'hello@namphuong.vn', status: 'Active', source: 'Shopify sync', tags: [], policyId: null, lastOrder: null, orders: 0 },
+  // Demo: a Shopify customer with the same email as the pending Saigon Build Mart
+  // registration — the review shows it as a duplicate and offers Merge.
+  { id: 'w9', name: 'Tuan Hoang', email: 'tuan@saigonbuildmart.vn', status: 'Active', source: 'Online store', tags: [], policyId: null, lastOrder: '2026-08-30', orders: 2 },
+];
+
+const policies = [
+  { id: 'p20', name: 'Volume Tier A', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 3, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 12, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  { id: 'p21', name: 'Volume Tier B', type: 'Reusable', status: 'Inactive', audienceType: 'b2b', priority: 4, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 15, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  { id: 'p22', name: 'Volume Tier C', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 5, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 18, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  { id: 'p23', name: 'Contractor Bulk', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 6, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 20, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  { id: 'p24', name: 'Government Rate', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 7, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 10, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  { id: 'p25', name: 'Loyalty Base', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 8, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 8, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  { id: 'p26', name: 'Seasonal 2026', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 9, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 22, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  { id: 'p27', name: 'Fleet Discount', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 10, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 14, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  { id: 'p28', name: 'Clearance Base', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 11, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 30, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  { id: 'p29', name: 'New Year Promo', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 12, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 25, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  // Demo: a location-only price — assigned to ABC Construction · Hanoi only (see that
+  // location's own base list), a little below Distributor Tier 2 on two products.
+  { id: 'p31', name: 'ABC Hanoi Site Rates', type: 'Account-specific', status: 'Active', audienceType: 'b2b', priority: 1, priceKind: 'base', scopeType: 'products', collection: '', selectedProducts: ['FIL-XL', 'SEA-30'], pricingRule: 'keep', valueType: 'amount', value: 0, variantAdjustments: { 'FIL-XL': { rule: 'set', valueType: 'amount', value: 58 }, 'SEA-30': { rule: 'set', valueType: 'amount', value: 4.8 } }, explicitEnabled: true, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  // Demo: an account-specific price pointed only at Ball valve 40mm (VLV-40). It
+  // loses to the higher-priority Distributor Tier 2, so it surfaces under "Also
+  // covers this product" in Preview price — the "why isn't my pricing applied?" case.
+  { id: 'p30', name: 'VLV-40 Contract Price', type: 'Account-specific', status: 'Active', audienceType: 'b2b', priority: 5, priceKind: 'base', scopeType: 'products', collection: '', selectedProducts: ['VLV-40'], pricingRule: 'decrease', valueType: 'percentage', value: 20, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '', ...forContracts },
+  {
+    id: 'p1', name: 'Distributor Tier 2', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 1,
+    priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: ['FIL-XL', 'FIL-STD', 'SEA-30', 'HOS-12', 'VLV-40'],
+    pricingRule: 'decrease', valueType: 'percentage', value: 25, variantAdjustments: {}, explicitEnabled: false,
+    conditionalRules: [
+      { id: 'cr1', conditions: [{ field: 'collection', operator: 'is', values: ['Contractor assortment'] }], match: 'ALL', rule: 'decrease', valueType: 'percentage', value: 35 },
+      { id: 'cr2', conditions: [{ field: 'tag', operator: 'contains', values: ['clearance'] }], match: 'ALL', rule: 'decrease', valueType: 'percentage', value: 30 },
+      { id: 'cr3', conditions: [{ field: 'vendor', operator: 'is', values: ['HydroMax'] }], match: 'ALL', rule: 'decrease', valueType: 'percentage', value: 15 }
+    ],
+    validityType: 'evergreen', startDate: '', endDate: ''
+  },
+  {
+    id: 'p2', name: 'Contractor Standard', type: 'Reusable', status: 'Active', audienceType: 'd2c',
+    priceKind: 'base', scopeType: 'collection', collection: 'Contractor assortment', selectedProducts: ['FIL-XL', 'FIL-STD', 'SEA-30', 'HOS-12', 'VLV-40'],
+    pricingRule: 'decrease', valueType: 'percentage', value: 20,
+    variantAdjustments: { 'FIL-XL': { rule: 'set', valueType: 'amount', value: 75 }, 'SEA-30': { rule: 'set', valueType: 'amount', value: 6.5 } },
+    explicitEnabled: true,
+    validityType: 'evergreen', startDate: '', endDate: ''
+  },
+  {
+    id: 'p3', name: 'Standard Wholesale', type: 'Reusable', status: 'Active', audienceType: 'd2c',
+    priceKind: 'base', priority: 0, scopeType: 'collection', collection: 'Wholesale assortment', selectedProducts: ['FIL-XL', 'FIL-STD', 'SEA-30', 'HOS-12', 'VLV-40'],
+    pricingRule: 'decrease', valueType: 'percentage', value: 20, variantAdjustments: {}, explicitEnabled: false,
+    validityType: 'evergreen', startDate: '', endDate: ''
+  },
+  {
+    id: 'p4', name: 'ABC Hanoi Negotiated', type: 'Account-specific', status: 'Active', audienceType: 'd2c',
+    priceKind: 'base', scopeType: 'products', collection: '', selectedProducts: ['FIL-XL', 'FIL-STD', 'SEA-30', 'HOS-12', 'VLV-40'],
+    pricingRule: 'keep', valueType: 'amount', value: 0,
+    variantAdjustments: {
+      'FIL-XL': { rule: 'set', valueType: 'amount', value: 75 }, 'FIL-STD': { rule: 'set', valueType: 'amount', value: 49 },
+      'SEA-30': { rule: 'set', valueType: 'amount', value: 6.5 }, 'HOS-12': { rule: 'set', valueType: 'amount', value: 118 },
+      'VLV-40': { rule: 'set', valueType: 'amount', value: 41 }
+    },
+    explicitEnabled: true,
+    validityType: 'dated', startDate: '2026-01-01', endDate: '2026-12-31'
+  },
+  {
+    id: 'p5', name: 'Riverside Project Pricing', type: 'Temporary', status: 'Scheduled', audienceType: 'b2b',
+    priceKind: 'base', scopeType: 'products', collection: '', selectedProducts: ['HOS-12', 'VLV-40'],
+    pricingRule: 'keep', valueType: 'amount', value: 0,
+    variantAdjustments: { 'HOS-12': { rule: 'set', valueType: 'amount', value: 104 }, 'VLV-40': { rule: 'set', valueType: 'amount', value: 36 } },
+    explicitEnabled: true,
+    validityType: 'dated', startDate: '2026-08-01', endDate: '2026-10-31'
+  },
+  {
+    id: 'p6', name: 'Pallet Breaks', type: 'Reusable', status: 'Active', audienceType: 'b2b',
+    priceKind: 'quantity', priority: 0, scopeType: 'all', collection: 'All B2B products',
+    selectedProducts: ['FIL-XL', 'FIL-STD', 'SEA-30', 'HOS-12', 'VLV-40'],
+    pricingRule: 'decrease', valueType: 'percentage', value: 10, variantAdjustments: {},
+    volumeRanges: [{ id: 'r1', from: 1, to: 9, valueType: 'percentage', value: 0 }, { id: 'r2', from: 10, to: 49, valueType: 'percentage', value: 10 }, { id: 'r3', from: 50, to: null, valueType: 'percentage', value: 20 }],
+    quantityBasis: 'all_selected', volumeBasis: 'base',
+    validityType: 'evergreen', startDate: '', endDate: '', ...forContracts
+  },
+  {
+    id: 'p7', name: 'Filter Case Pricing', type: 'Reusable', status: 'Active', audienceType: 'b2b',
+    priceKind: 'quantity', priority: 0, scopeType: 'products', collection: '',
+    selectedProducts: ['FIL-XL', 'FIL-STD'],
+    pricingRule: 'decrease', valueType: 'percentage', value: 15, variantAdjustments: {},
+    volumeRanges: [{ id: 'r1', from: 1, to: 11, valueType: 'percentage', value: 0 }, { id: 'r2', from: 12, to: null, valueType: 'percentage', value: 15 }],
+    quantityBasis: 'per_product', volumeBasis: 'shopify',
+    validityType: 'evergreen', startDate: '', endDate: ''
+  },
+  {
+    id: 'p8', name: 'Contract Base', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 2,
+    priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: ['FIL-XL', 'FIL-STD', 'SEA-30', 'HOS-12', 'VLV-40'],
+    pricingRule: 'decrease', valueType: 'percentage', value: 10, variantAdjustments: {}, explicitEnabled: false,
+    conditionalRules: [],
+    validityType: 'evergreen', startDate: '', endDate: '', ...forContracts
+  }
+];
+// The contract copies of pricing also assigned outside contracts (SPLIT).
+const contractCopy = (list, of) => ({ ...JSON.parse(JSON.stringify(list.find((x) => x.id === of))), id: SPLIT[of], forContracts: true });
+if (CONTRACTS) policies.push(...['p1', 'p22', 'p23', 'p27'].map((of) => contractCopy(policies, of)));
+// Song Hong's expired CT-274 also had a negotiated base with many rules and product
+// overrides — to read a long pricing in a past contract's version.
+const rule = (id, field, value, pct) => ({ id, conditions: [{ field, operator: field === 'tag' ? 'contains' : 'is', values: [value] }], match: 'ALL', rule: 'decrease', valueType: 'percentage', value: pct });
+if (CONTRACTS) {
+  policies.push({
+    id: 'pc274', name: 'Song Hong negotiated base', type: 'Account-specific', status: 'Active', audienceType: 'b2b', priority: 1,
+    priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: ['FIL-XL', 'FIL-STD', 'SEA-30', 'HOS-12', 'VLV-40'],
+    pricingRule: 'decrease', valueType: 'percentage', value: 10,
+    conditionalRules: [
+      rule('crs1', 'collection', 'Distributor assortment', 22),
+      rule('crs2', 'collection', 'Contractor assortment', 20),
+      rule('crs3', 'collection', 'Project assortment', 18),
+      rule('crs4', 'tag', 'clearance', 30),
+      rule('crs5', 'vendor', 'HydroMax', 15),
+      rule('crs6', 'vendor', 'FilterCo', 14),
+      rule('crs7', 'vendor', 'SealPro', 12),
+      rule('crs8', 'tag', 'consumable', 10),
+      rule('crs9', 'tag', 'premium', 8),
+      rule('crs10', 'productType', 'Hoses', 12),
+      rule('crs11', 'productType', 'Valves', 9),
+      rule('crs12', 'productType', 'Apparel', 5),
+    ],
+    variantAdjustments: {
+      'FIL-XL': { rule: 'set', valueType: 'amount', value: 82 },
+      'FIL-XL-HD': { rule: 'set', valueType: 'amount', value: 99 },
+      'FIL-STD': { rule: 'set', valueType: 'amount', value: 54 },
+      'SEA-30': { rule: 'set', valueType: 'amount', value: 6.9 },
+      'HOS-12': { rule: 'set', valueType: 'amount', value: 118 },
+      'HOS-12-18M': { rule: 'set', valueType: 'amount', value: 165 },
+      'HOS-12-24M': { rule: 'set', valueType: 'amount', value: 210 },
+      'VLV-40': { rule: 'decrease', valueType: 'percentage', value: 12 },
+    },
+    explicitEnabled: true,
+    validityType: 'evergreen', startDate: '', endDate: '', forContracts: true,
+  });
+}
+
+const attention = [
+  { sev: 'blocking', title: 'Order #1046 is blocked', meta: 'Song Hong Interiors · Hanoi · the negotiated price expired and nothing replaced it', cta: 'Fix pricing', company: 'c4' },
+  { sev: 'blocking', title: 'Delta Mechanical has no price', meta: 'Imported from ERP · this company cannot order until you assign a price', cta: 'Assign price', company: 'c3' },
+  { sev: 'blocking', title: 'Thanh Tools has no price', meta: 'Approved 6 days ago · tagged “applicant”, and that tag has no default price', cta: 'Assign price', customer: 'w3' },
+  { sev: 'blocking', title: 'Quote Q-1042 needs a decision', meta: 'Highland Fitout · one-time order, or an ongoing price?', cta: 'Decide', modal: 'quote' },
+  { sev: 'soon', title: 'ABC Hanoi terms expire in 168 days', meta: 'Renewal window opens before that', cta: 'Review', company: 'c1' },
+  { sev: 'soon', title: 'Distributor Tier 2 activates tomorrow', meta: '18 locations · 5 active carts will be repriced', cta: 'Preview', policy: 'p1' },
+  { sev: 'idea', title: 'Four quotes used the same product group', meta: 'A reusable price could replace repeated negotiation', cta: 'Look' },
+  { sev: 'idea', title: 'Truong Son Depot is 12 days past its usual reorder', meta: 'Nothing is broken, just a signal', cta: 'Look' }
+];
+
+const requests = [
+  { type: 'Company application', who: 'North Hub Retail', detail: 'Wants wholesale access · 3 locations', age: '2 days' },
+  { type: 'Accepted quote', who: 'Highland Fitout', detail: 'Q-1042 · 38 products', age: '2 days' },
+  { type: 'ERP import', who: '12 new companies', detail: 'Matched to Shopify · no price yet', age: '1 day' }
+];
+
+const health = [
+  { name: 'Product mapping', detail: '2 archived products are still used by active prices', state: 'Action required', tone: 'critical' },
+  { name: 'Shopify sync', detail: '43 companies · 51 locations · 6 minutes ago', state: 'Healthy', tone: 'success' },
+  { name: 'Checkout validation', detail: 'Prices are re-checked server-side on every B2B cart', state: 'Healthy', tone: 'success' },
+  { name: 'QuoteSnap connection', detail: 'Accepted quotes are arriving normally', state: 'Healthy', tone: 'success' }
+];
+
+// `refAtQuote` on a won quote's line = the company's assigned unit price SNAPSHOTTED at quote
+// time (companyPricingReferenceAtQuote). Company Analytics "Quoted price vs company pricing" reads
+// this frozen value — it must NOT re-run the current pricing engine on a historical quote (pricing
+// may have changed since). Seeded here for Deal Closed quotes; production captures it at quote time.
+const quotes = [
+  {
+    id: '1051074', company: 'c1', buyer: 'John Nguyen', email: 'john@abcconstruction.com', location: 'Hanoi',
+    created: '2026-08-05 11:10:08', updated: '2026-08-05', leadScore: null,
+    progress: 'Email Sent', status: 'Read', assignee: null, expires: null, source: 'RFQ form',
+    note: 'Cần gấp cho công trường Bac Ninh, giao trước 15/8.',
+    lines: [{ sku: 'FIL-XL', qty: 40, quoted: null }, { sku: 'HOS-12', qty: 12, quoted: null }],
+    timeline: [{ when: 'Aug 5', what: 'Buyer submitted an RFQ through the form' },
+      { when: 'Aug 5', what: 'Email sent to the buyer' }]
+  },
+  {
+    id: '1028991', company: 'c1', buyer: 'Le Thu Ha', email: 'ha@abcconstruction.com', location: 'Hanoi',
+    created: '2026-07-14 15:53:51', updated: '2026-07-22', leadScore: null,
+    progress: 'Draft Order Created', status: 'Deal Closed', assignee: 'Vo Nam Hieu', expires: '2026-08-22', source: 'RFQ form', note: '',
+    lines: [{ sku: 'FIL-STD', qty: 120, quoted: 44, refAtQuote: 40.3 }, { sku: 'SEA-30', qty: 300, quoted: 5.9, refAtQuote: 5.2 }],
+    timeline: [{ when: 'Jul 14', what: 'Buyer submitted an RFQ through the form' },
+      { when: 'Jul 18', what: 'Quote sent, valid 30 days' },
+      { when: 'Jul 22', what: 'Draft order created in Shopify' }]
+  },
+  {
+    id: '1030120', company: 'c1', buyer: 'John Nguyen', email: 'john@abcconstruction.com', location: 'Hanoi',
+    created: '2026-08-10 10:20:00', updated: '2026-08-12', leadScore: null,
+    progress: 'Draft Order Created', status: 'Deal Closed', assignee: 'Vo Nam Hieu', expires: '2026-09-10', source: 'RFQ form', note: '',
+    lines: [{ sku: 'FIL-XL', qty: 60, quoted: 70, refAtQuote: 62.4 }, { sku: 'HOS-12', qty: 20, quoted: 118, refAtQuote: 123.25 }, { sku: 'VLV-40', qty: 50, quoted: 39, refAtQuote: 36.4 }, { sku: 'MCFC-TRAINING-JACKET', qty: 30, quoted: 980, refAtQuote: 930 }, { sku: 'FIL-STD', qty: 100, quoted: 45, refAtQuote: 40.3 }],
+    timeline: [{ when: 'Aug 10', what: 'Buyer submitted an RFQ through the form' },
+      { when: 'Aug 12', what: 'Draft order created in Shopify' }]
+  },
+  {
+    id: '1028785', company: 'c1', buyer: 'Pham Duc', email: 'duc@abcconstruction.com', location: 'Bac Ninh site',
+    created: '2026-07-14 11:43:55', updated: '2026-07-14', leadScore: null,
+    progress: 'PDF Exported', status: 'New Received', assignee: null, expires: null, source: 'RFQ form', note: '',
+    lines: [{ sku: 'VLV-40', qty: 24, quoted: null }],
+    timeline: [{ when: 'Jul 14', what: 'Buyer submitted an RFQ through the form' },
+      { when: 'Jul 14', what: 'Quote exported as PDF' }]
+  },
+  {
+    id: '1027835', company: 'c2', buyer: 'Bui Quang', email: 'quang@vinhphat.vn', location: 'Da Nang',
+    created: '2026-07-13 16:26:47', updated: '2026-07-13', leadScore: null,
+    progress: 'Created', status: 'Updated', assignee: 'Vo Nam Hieu', expires: null, source: 'RFQ form',
+    note: 'Đang chờ quyết định có biến thành giá dài hạn hay không.',
+    lines: [{ sku: 'FIL-XL', qty: 80, quoted: 70 }, { sku: 'FIL-STD', qty: 80, quoted: 45 }, { sku: 'VLV-40', qty: 40, quoted: 39 }],
+    timeline: [{ when: 'Jul 13', what: 'Buyer submitted an RFQ through the form' },
+      { when: 'Jul 13', what: 'Buyer updated the requested quantities' }]
+  },
+  {
+    id: '1027687', company: 'c2', buyer: 'Bui Quang', email: 'quang@vinhphat.vn', location: 'Da Nang',
+    created: '2026-07-13 13:19:15', updated: '2026-07-16', leadScore: null,
+    progress: 'Auto Confirmed', status: 'Deal Closed', assignee: 'Vo Nam Hieu', expires: '2026-08-16', source: 'RFQ form', note: '',
+    lines: [{ sku: 'HOS-12', qty: 30, quoted: 118, refAtQuote: 123.25 }],
+    timeline: [{ when: 'Jul 13', what: 'Buyer submitted an RFQ through the form' },
+      { when: 'Jul 16', what: 'Auto confirmed at the quoted prices' }]
+  },
+  {
+    id: '1027628', company: 'c4', buyer: 'Do Lan', email: 'lan@songhong.vn', location: 'Hanoi',
+    created: '2026-07-13 11:44:41', updated: '2026-07-14', leadScore: null,
+    progress: 'Draft Order Created', status: 'Read', assignee: 'Vo Nam Hieu', expires: '2026-08-14', source: 'RFQ form', note: '',
+    lines: [{ sku: 'VLV-40', qty: 60, quoted: 38 }, { sku: 'SEA-30', qty: 200, quoted: 6.2 }],
+    timeline: [{ when: 'Jul 13', what: 'Buyer submitted an RFQ through the form' },
+      { when: 'Jul 14', what: 'Draft order created in Shopify' }]
+  },
+  {
+    id: '1026402', company: 'c4', buyer: 'Do Lan', email: 'lan@songhong.vn', location: 'Hanoi',
+    created: '2026-06-18 09:12:20', updated: '2026-06-25', leadScore: null,
+    progress: 'Email Sent', status: 'Deal Rejected', assignee: null, expires: '2026-07-18', source: 'RFQ form', note: '',
+    lines: [{ sku: 'FIL-XL', qty: 25, quoted: 74 }],
+    timeline: [{ when: 'Jun 18', what: 'Buyer submitted an RFQ through the form' },
+      { when: 'Jun 20', what: 'Quote sent, valid 30 days' },
+      { when: 'Jun 25', what: 'Buyer rejected the quote' }]
+  },
+  {
+    id: '1025110', company: 'c3', buyer: 'Tran Minh', email: 'minh@deltamechanical.vn', location: 'Ho Chi Minh City',
+    created: '2026-06-02 14:35:09', updated: '2026-06-02', leadScore: null,
+    progress: 'Created', status: 'Trashed', assignee: null, expires: null, source: 'RFQ form', note: '',
+    lines: [{ sku: 'HOS-12', qty: 20, quoted: null }],
+    timeline: [{ when: 'Jun 2', what: 'Buyer submitted an RFQ through the form' },
+      { when: 'Jun 2', what: 'Moved to trash' }]
+  },
+  // ── Previous-period quotes (Mar–May 2026) — the baseline for Analytics "Compare to → Previous
+  // period" on the default Last 3 months (prev window Feb 24 – May 24). All are finalized (won /
+  // lost / trashed) so the current-snapshot metrics (open value, stale, aging) are unchanged.
+  // Tuned for mixed signals: created / won / win rate up, lost down (good), avg quote value down.
+  {
+    id: '1024486', company: 'c1', buyer: 'John Nguyen', email: 'john@abcconstruction.com', location: 'Hanoi',
+    created: '2026-03-04 09:30:12', updated: '2026-03-11', leadScore: null,
+    progress: 'Draft Order Created', status: 'Deal Closed', assignee: 'Vo Nam Hieu', expires: '2026-04-05', source: 'RFQ form', note: '',
+    lines: [{ sku: 'FIL-XL', qty: 50, quoted: 68, refAtQuote: 62.4 }, { sku: 'SEA-30', qty: 400, quoted: 5.6, refAtQuote: 5.2 }],
+    timeline: [{ when: 'Mar 4', what: 'Buyer submitted an RFQ through the form' },
+      { when: 'Mar 6', what: 'Quote sent, valid 30 days' },
+      { when: 'Mar 11', what: 'Draft order created in Shopify' }]
+  },
+  {
+    id: '1022915', company: 'c2', buyer: 'Bui Quang', email: 'quang@vinhphat.vn', location: 'Da Nang',
+    created: '2026-03-18 10:02:44', updated: '2026-03-18', leadScore: null,
+    progress: 'Created', status: 'Trashed', assignee: null, expires: null, source: 'RFQ form', note: '',
+    lines: [{ sku: 'HOS-12', qty: 10, quoted: null }],
+    timeline: [{ when: 'Mar 18', what: 'Buyer submitted an RFQ through the form' },
+      { when: 'Mar 18', what: 'Moved to trash' }]
+  },
+  {
+    id: '1021730', company: 'c1', buyer: 'Pham Duc', email: 'duc@abcconstruction.com', location: 'Bac Ninh site',
+    created: '2026-03-26 14:05:40', updated: '2026-04-06', leadScore: null,
+    progress: 'Email Sent', status: 'Deal Rejected', assignee: 'Vo Nam Hieu', expires: '2026-04-29', source: 'RFQ form', note: '',
+    lines: [{ sku: 'HOS-12', qty: 25, quoted: 128 }, { sku: 'VLV-40', qty: 80, quoted: 42 }],
+    timeline: [{ when: 'Mar 26', what: 'Buyer submitted an RFQ through the form' },
+      { when: 'Mar 30', what: 'Quote sent, valid 30 days' },
+      { when: 'Apr 6', what: 'Buyer rejected the quote' }]
+  },
+  {
+    id: '1020388', company: 'c1', buyer: 'Le Thu Ha', email: 'ha@abcconstruction.com', location: 'Hanoi',
+    created: '2026-04-15 10:48:03', updated: '2026-04-24', leadScore: null,
+    progress: 'Email Sent', status: 'Deal Rejected', assignee: 'Vo Nam Hieu', expires: '2026-05-17', source: 'RFQ form', note: '',
+    lines: [{ sku: 'MCFC-TRAINING-JACKET', qty: 22, quoted: 1060 }],
+    timeline: [{ when: 'Apr 15', what: 'Buyer submitted an RFQ through the form' },
+      { when: 'Apr 17', what: 'Quote sent, valid 30 days' },
+      { when: 'Apr 24', what: 'Buyer rejected the quote' }]
+  },
+  {
+    id: '1019604', company: 'c4', buyer: 'Do Lan', email: 'lan@songhong.vn', location: 'Hanoi',
+    created: '2026-04-28 08:55:16', updated: '2026-05-08', leadScore: null,
+    progress: 'Email Sent', status: 'Deal Rejected', assignee: null, expires: '2026-05-30', source: 'RFQ form', note: '',
+    lines: [{ sku: 'FIL-XL', qty: 30, quoted: 76 }, { sku: 'SEA-30', qty: 150, quoted: 6.4 }],
+    timeline: [{ when: 'Apr 28', what: 'Buyer submitted an RFQ through the form' },
+      { when: 'Apr 30', what: 'Quote sent, valid 30 days' },
+      { when: 'May 8', what: 'Buyer rejected the quote' }]
+  },
+  {
+    id: '1018251', company: 'c2', buyer: 'Bui Quang', email: 'quang@vinhphat.vn', location: 'Da Nang',
+    created: '2026-05-06 16:12:27', updated: '2026-05-09', leadScore: null,
+    progress: 'Auto Confirmed', status: 'Deal Closed', assignee: 'Vo Nam Hieu', expires: '2026-06-09', source: 'RFQ form', note: '',
+    lines: [{ sku: 'FIL-STD', qty: 150, quoted: 43, refAtQuote: 40.3 }, { sku: 'VLV-40', qty: 60, quoted: 38, refAtQuote: 36.4 }],
+    timeline: [{ when: 'May 6', what: 'Buyer submitted an RFQ through the form' },
+      { when: 'May 9', what: 'Auto confirmed at the quoted prices' }]
+  }
+];
+
+// Order limits (see limits.js). Each setting says what it does: `set` a value,
+// `inherit` (left empty) or `none` (no limit here). Limits don't combine, so each
+// order limit sets everything its buyers get: Vinh Phat's own and ABC Hanoi's
+// replace the store-wide one there. The maximums sent for review held orders #1045
+// (ABC Hanoi's, $10,000) and #1048 (Vinh Phat's, $20,000) — see `heldAt` in orderSeed.
+const inherit = () => ({ mode: 'inherit' });
+const set = (value) => ({ mode: 'set', value });
+const orderSettings = (s) => ({ minValue: inherit(), maxValue: inherit(), minQty: inherit(), maxQty: inherit(), ...s });
+const limits = [
+  { id: 'ol1', createdAt: '2025-11-12', name: 'Wholesale minimum', kind: 'order', status: 'Active', maxAction: 'review', settings: orderSettings({ minValue: set(500), maxValue: set(20000) }),
+    storeWide: true, companyIds: [], locationKeys: [], message: '' },
+  { id: 'ol2', createdAt: '2025-12-08', name: 'Vinh Phat low minimum', kind: 'order', status: 'Active', maxAction: 'review', settings: orderSettings({ minValue: set(200), maxValue: set(20000) }),
+    storeWide: false, companyIds: ['c2'], locationKeys: [], message: '' },
+  { id: 'ol3', createdAt: '2025-12-15', name: 'Filter case packs', kind: 'product', status: 'Active', maxAction: 'block',
+    rules: [{ id: 'r1', scopeType: 'products', collection: '', selectedProducts: ['FIL-XL', 'FIL-STD'], min: set(12), max: inherit(), increment: set(12) }],
+    storeWide: false, companyIds: CONTRACTS ? ['c2'] : ['c1', 'c2'], locationKeys: [], message: '' },
+  { id: 'ol4', createdAt: '2026-04-21', name: 'ABC Hanoi review', kind: 'order', status: 'Active', maxAction: 'review', settings: orderSettings({ minValue: set(500), maxValue: set(10000) }),
+    storeWide: false, companyIds: [], locationKeys: ['c1::l1'], message: '' },
+  // Two storefront jerseys for ABC: over 5, one blocks checkout and one goes for
+  // review — the B2B demo account's cart starts over both (DEMO_ACCOUNTS).
+  { id: 'ol5', createdAt: '2026-07-20', name: 'Haaland jersey maximum', kind: 'product', status: 'Active', maxAction: 'block',
+    rules: [{ id: 'r1', scopeType: 'products', collection: '', selectedProducts: ['701242784-HAALAND'], min: inherit(), max: set(5), increment: inherit() }],
+    storeWide: false, companyIds: ['c1'], locationKeys: [], message: '' },
+  { id: 'ol6', createdAt: '2026-07-20', name: 'Foden jersey review', kind: 'product', status: 'Active', maxAction: 'review',
+    rules: [{ id: 'r1', scopeType: 'products', collection: '', selectedProducts: ['701242784-FODEN'], min: inherit(), max: set(5), increment: inherit() }],
+    storeWide: false, companyIds: ['c1'], locationKeys: [], message: '' },
+  // Off until the storefront cart's demo case "Order blocks + product review" turns
+  // it on (CART_CASES): newer, it replaces ABC Hanoi review there.
+  { id: 'ol7', createdAt: '2026-07-20', name: 'ABC Hanoi order maximum', kind: 'order', status: 'Inactive', maxAction: 'block', settings: orderSettings({ maxValue: set(800) }),
+    storeWide: false, companyIds: [], locationKeys: ['c1::l1'], message: '' },
+];
+// The contract copies of limits also assigned outside contracts (SPLIT), each right
+// after its regular one: CT-301 gives ABC its Filter case packs; CT-305's are for
+// when it's activated.
+if (CONTRACTS) {
+  const copies = { ol2: { ...contractCopy(limits, 'ol2'), companyIds: [] }, ol3: { ...contractCopy(limits, 'ol3'), companyIds: ['c1'] } };
+  limits.splice(0, limits.length, ...limits.flatMap((l) => (copies[l.id] ? [l, copies[l.id]] : [l])));
+}
+
+// Agreements (see agreements.js). ABC's CT-301 is live and its terms are the ones
+// assigned above (Distributor Tier 2, p8, p30, p6, Filter case packs — in Upcoming
+// the contract copies) — the rest of ABC's pricing is outside it.
+// It ends Aug 20, 2026 — within the renewal reminder. Vinh Phat's CT-305 is
+// scheduled for 2027; Song Hong's CT-274 expired (see its activity). Phu Thanh has a
+// contract per location: CT-302 (Ho Chi Minh City, Can Tho) and CT-303 (Vung Tau)
+// are seeded Scheduled with past start dates, so they start on load
+// (syncContractDates) and put their pricing on those locations; CT-304 takes Can Tho
+// over from CT-302 on Feb 1, 2027, the day after CT-302 ends (contracts at a location
+// never overlap). A version entry's `terms` (ids) becomes its snapshot on load
+// (seedSnapshots).
+const agreements = [
+  { id: 'ag1', number: 'CT-301', name: '2026 annual terms', companyId: 'c1', locationIds: null, status: 'Active', version: 2, startDate: '2026-01-03', endDate: '2026-08-20',
+    terms: { base: ['p1', 'p8', 'p30'], quantity: ['p6'], limits: ['ol3'] },
+    history: [
+      { version: 2, date: '2026-07-12', note: 'Added VLV-40 Contract Price', terms: { base: ['p1', 'p8', 'p30'], quantity: ['p6'], limits: ['ol3'] } },
+      { version: 1, date: '2026-01-03', note: 'Activated', terms: { base: ['p1', 'p8'], quantity: ['p6'], limits: ['ol3'] } },
+    ] },
+  { id: 'ag2', number: 'CT-305', name: '2027 distributor terms', companyId: 'c2', locationIds: null, status: 'Scheduled', version: 1, startDate: '2027-01-01', endDate: '2027-12-31',
+    terms: { base: ['p1'], quantity: [], limits: ['ol2', 'ol3'] },
+    history: [{ version: 1, date: '2026-07-10', note: 'Activated, starts Jan 1, 2027', terms: { base: ['p1'], quantity: [], limits: ['ol2', 'ol3'] } }] },
+  { id: 'ag3', number: 'CT-274', name: '2025 to 2026 negotiated terms', companyId: 'c4', locationIds: null, status: 'Expired', version: 1, startDate: '2025-07-01', endDate: '2026-06-30',
+    terms: { base: CONTRACTS ? ['p8', 'pc274'] : ['p8'], quantity: [], limits: [] },
+    history: [
+      { version: 1, date: '2026-07-01', note: 'Expired' },
+      { version: 1, date: '2025-07-01', note: 'Activated', terms: { base: CONTRACTS ? ['p8', 'pc274'] : ['p8'], quantity: [], limits: [] } },
+    ] },
+  { id: 'ag4', number: 'CT-302', name: 'South region terms', companyId: 'c7', locationIds: ['l11', 'l12'], status: 'Scheduled', version: 1, startDate: '2026-02-01', endDate: '2027-01-31',
+    terms: { base: ['p23'], quantity: [], limits: [] },
+    history: [{ version: 1, date: '2026-01-20', note: 'Activated, starts Feb 1, 2026', terms: { base: ['p23'], quantity: [], limits: [] } }] },
+  { id: 'ag5', number: 'CT-303', name: 'Vung Tau port terms', companyId: 'c7', locationIds: ['l13'], status: 'Scheduled', version: 1, startDate: '2026-05-01', endDate: '',
+    terms: { base: ['p27'], quantity: [], limits: [] },
+    history: [{ version: 1, date: '2026-04-22', note: 'Activated, starts May 1, 2026', terms: { base: ['p27'], quantity: [], limits: [] } }] },
+  { id: 'ag6', number: 'CT-304', name: 'Can Tho 2027–28 terms', companyId: 'c7', locationIds: ['l12'], status: 'Scheduled', version: 1, startDate: '2027-02-01', endDate: '2028-01-31',
+    terms: { base: ['p22'], quantity: [], limits: [] },
+    history: [{ version: 1, date: '2026-07-20', note: 'Activated, starts Feb 1, 2027', terms: { base: ['p22'], quantity: [], limits: [] } }] },
+];
+
+// The contracts use the contract copies (SPLIT), in their versions too.
+if (CONTRACTS) {
+  agreements.forEach((a) =>
+    [a.terms, ...(a.history || []).map((h) => h.terms).filter(Boolean)].forEach((t) =>
+      ['base', 'quantity', 'limits'].forEach((k) => {
+        t[k] = t[k].map((id) => SPLIT[id] || id);
+      }),
+    ),
+  );
+}
+
+export const dbSeed = { defaults, products, companies, tagPricing, customers, policies, limits, agreements, attention, requests, health, quotes };
+
+export const orderSeed = {
+  c1: [
+    {
+      id: '#1045', location: 'Hanoi', buyer: 'John Nguyen', date: '2026-07-15', amount: 12400, lines: 3, po: 'PO-9821',
+      // Demo: what the buyer wrote with the order request (Note for the seller).
+      buyerMessage: 'We need these before our Aug 1 store opening in Hanoi — the jerseys are for the launch event and the first week of sales. It is above our usual limit because it covers two months of stock. Happy to pay half upfront if that helps, or split it into two deliveries.',
+      // Its products, at the negotiated prices, for the buyer's order page on the storefront.
+      items: [
+        { sku: '701242690-HAALAND', title: "Manchester City Home Authentic Jersey 2026/27 With HAALAND 9 Printing in Gift Box", qty: 40, price: 130 },
+        { sku: '701242808', title: "Women's Manchester City Home Jersey 2026/27 With CHERKI 10 Printing", qty: 50, price: 90 },
+        { sku: '701242812-CHERKI', title: "Kids' Manchester City Home Jersey 2026/27 Long Sleeve With CHERKI 10 Printing", qty: 40, price: 67.5 },
+      ],
+      pricing: 'ABC Hanoi Negotiated', pricingSource: 'Location price', source: 'Direct checkout',
+      status: 'Needs review', shopifyStatus: 'Draft order', reason: 'Above the $10,000 maximum', heldBy: 'ol4', heldAt: { value: 10000, limitId: 'ol4', limitName: 'ABC Hanoi review' }
+    },
+    {
+      // Approved after review: the invoice is sent, waiting for the buyer to check out.
+      id: '#1047', location: 'Hanoi', buyer: 'John Nguyen', date: '2026-08-03', amount: 12200, lines: 2, po: 'PO-9840',
+      items: [
+        { sku: '701242784-CHERKI', title: "Manchester City Home Jersey 2026/27 With CHERKI 10 Printing", qty: 80, price: 85 },
+        { sku: '701242808-GVARDIOL', title: "Women's Manchester City Home Jersey 2026/27 With GVARDIOL 24 Printing", qty: 60, price: 90 },
+      ],
+      pricing: 'ABC Hanoi Negotiated', pricingSource: 'Location price', source: 'Direct checkout',
+      status: 'Invoice sent', shopifyStatus: 'Draft order', reason: 'Above the $10,000 maximum', heldBy: 'ol4', heldAt: { value: 10000, limitId: 'ol4', limitName: 'ABC Hanoi review' }
+    },
+    {
+      id: '#1044', location: 'Hanoi', buyer: 'Le Thu Ha', date: '2026-07-14', amount: 5860, lines: 2, po: 'PO-9814',
+      // Demo: its products, at the prices it was placed at (as Analytics has them).
+      items: [
+        { sku: 'FIL-XL', title: "Industrial filter, XL", qty: 40, price: 77.5 },
+        { sku: 'VLV-40', title: "Ball valve 40mm", qty: 60, price: 46.0 },
+      ],
+      pricing: 'ABC Hanoi Negotiated', pricingSource: 'Location price', source: 'Sales-assisted',
+      status: 'Fulfilled', shopifyStatus: 'Fulfilled', reason: null
+    },
+    {
+      id: '#1039', location: 'Hanoi', buyer: 'John Nguyen', date: '2026-06-28', amount: 6120, lines: 3, po: 'PO-9770',
+      // Demo: its products, at the prices it was placed at (as Analytics has them).
+      items: [
+        { sku: 'FIL-XL', title: "Industrial filter, XL", qty: 40, price: 72.5 },
+        { sku: 'FIL-STD', title: "Industrial filter, standard", qty: 40, price: 47.5 },
+        { sku: 'SEA-30', title: "Sealant cartridge 300ml", qty: 200, price: 6.6 },
+      ],
+      pricing: 'ABC Hanoi Negotiated', pricingSource: 'Location price', source: 'Reorder',
+      status: 'Paid', shopifyStatus: 'Paid', reason: null
+    },
+    {
+      id: '#1028', location: 'Bac Ninh site', buyer: 'Pham Duc', date: '2026-06-12', amount: 4380, lines: 4, po: 'PO-9651',
+      // Demo: its products, at the prices it was placed at (as Analytics has them).
+      items: [
+        { sku: 'HOS-12', title: "Reinforced hose, 12m", qty: 20, price: 119.0 },
+        { sku: 'VLV-40', title: "Ball valve 40mm", qty: 30, price: 40.0 },
+        { sku: 'SEA-30', title: "Sealant cartridge 300ml", qty: 100, price: 8.0 },
+      ],
+      pricing: 'Contractor Standard', pricingSource: 'Company price', source: 'Direct checkout',
+      status: 'Fulfilled', shopifyStatus: 'Fulfilled', reason: null
+    },
+    {
+      id: '#1017', location: 'Hanoi', buyer: 'John Nguyen', date: '2026-05-19', amount: 7275, lines: 5, po: 'PO-9518',
+      // Demo: its products, at the prices it was placed at (as Analytics has them).
+      items: [
+        { sku: 'FIL-XL', title: "Industrial filter, XL", qty: 40, price: 75.0 },
+        { sku: 'FIL-STD', title: "Industrial filter, standard", qty: 40, price: 45.0 },
+        { sku: 'HOS-12', title: "Reinforced hose, 12m", qty: 11, price: 1475 / 11 },
+        { sku: 'SEA-30', title: "Sealant cartridge 300ml", qty: 150, price: 1000 / 150 },
+      ],
+      pricing: 'ABC Hanoi Negotiated', pricingSource: 'Location price', source: 'Direct checkout',
+      status: 'Fulfilled', shopifyStatus: 'Fulfilled', reason: null
+    }
+  ],
+  c2: [
+    {
+      id: '#1048', location: 'Da Nang', buyer: 'Bui Quang', date: '2026-08-07', amount: 21500, lines: 8, po: 'PO-4470',
+      // Demo: its products, at the prices it was placed at.
+      items: [
+        { sku: '701242784-HAALAND', title: "Manchester City Home Jersey 2026/27 With HAALAND 9 Printing", qty: 19, price: 85.55 },
+        { sku: '701242690-FODEN', title: "Manchester City Home Authentic Jersey 2026/27 With FODEN 47 Printing in Gift Box", qty: 28, price: 119.84 },
+        { sku: '701242785-FODEN', title: "Manchester City Home Jersey 2026/27 Long Sleeve With FODEN 47 Printing", qty: 16, price: 97.82 },
+        { sku: '701237145-FODEN', title: "Kids' Manchester City Third Jersey 2025/26 With FODEN 47 Printing", qty: 75, price: 26.23 },
+        { sku: '701242808-GVARDIOL', title: "Women's Manchester City Home Jersey 2026/27 With GVARDIOL 24 Printing", qty: 36, price: 88.35 },
+        { sku: '701242784-GVARDIOL', title: "Manchester City Home Jersey 2026/27 With GVARDIOL 24 Printing", qty: 39, price: 81.92 },
+        { sku: '701242813-FODEN', title: "Kids' Manchester City Home MINI KIT 2026/27 With FODEN 47 Printing", qty: 39, price: 66.62 },
+        { sku: '701242784-CHERKI', title: "Manchester City Home Jersey 2026/27 With CHERKI 10 Printing", qty: 50, price: 80.26 },
+      ],
+      pricing: 'Distributor Tier 2', pricingSource: 'Company price', source: 'Direct checkout',
+      status: 'Needs review', shopifyStatus: 'Draft order', reason: 'Above the $20,000 maximum', heldBy: 'ol2', heldAt: { value: 20000, limitId: 'ol2', limitName: 'Vinh Phat low minimum' }
+    },
+    {
+      id: '#1041', location: 'Da Nang', buyer: 'Bui Quang', date: '2026-07-11', amount: 1560, lines: 1, po: 'None',
+      // Demo: its products, at the prices it was placed at (as Analytics has them).
+      items: [
+        { sku: 'VLV-40', title: "Ball valve 40mm", qty: 40, price: 39.0 },
+      ],
+      pricing: 'Distributor Tier 2', pricingSource: 'Company price', source: 'Direct checkout',
+      status: 'Fulfilled', shopifyStatus: 'Fulfilled', reason: null
+    },
+    {
+      id: '#1033', location: 'Da Nang', buyer: 'Bui Quang', date: '2026-06-18', amount: 8920, lines: 6, po: 'PO-4432',
+      // Demo: its products, at the prices it was placed at (as Analytics has them).
+      items: [
+        { sku: 'HOS-12', title: "Reinforced hose, 12m", qty: 30, price: 120.0 },
+        { sku: 'FIL-STD', title: "Industrial filter, standard", qty: 60, price: 47.0 },
+        { sku: 'SEA-30', title: "Sealant cartridge 300ml", qty: 400, price: 6.25 },
+      ],
+      pricing: 'Distributor Tier 2', pricingSource: 'Company price', source: 'Reorder',
+      status: 'Paid', shopifyStatus: 'Paid', reason: null
+    },
+    {
+      id: '#1055', location: 'Da Nang', buyer: 'Bui Quang', date: '2026-08-05', amount: 2600, lines: 1, po: 'None',
+      // Demo: its products, at the prices it was placed at (as Analytics has them).
+      items: [
+        { sku: 'HOS-12', title: "Reinforced hose, 12m", qty: 20, price: 130.0 },
+      ],
+      pricing: 'None', pricingSource: 'Manual price', source: 'Sales-assisted',
+      status: 'Fulfilled', shopifyStatus: 'Fulfilled', reason: 'Custom price keyed on the draft order'
+    }
+  ],
+  c3: [],
+  c4: [
+    {
+      id: '#1046', location: 'Hanoi', buyer: 'Do Lan', date: '2026-07-14', amount: 3184, lines: 2, po: 'None',
+      // Demo: its products, at the prices it was placed at.
+      items: [
+        { sku: '701242690', title: "Manchester City Home Authentic Jersey 2026/27 With CHERKI 10 Printing in Gift Box", qty: 8, price: 117.28 },
+        { sku: 'yellow-snowboard', title: "Yellow Snowboard", qty: 29, price: 77.44 },
+      ],
+      pricing: 'None', pricingSource: 'None', source: 'Direct checkout',
+      status: 'Blocked', shopifyStatus: 'Draft order', reason: 'The negotiated price expired and no other price applies'
+    },
+    {
+      id: '#1021', location: 'Hanoi', buyer: 'Do Lan', date: '2026-06-22', amount: 2940, lines: 3, po: 'None',
+      // Demo: its products, at the prices it was placed at (as Analytics has them).
+      items: [
+        { sku: 'FIL-STD', title: "Industrial filter, standard", qty: 25, price: 48.0 },
+        { sku: 'SEA-30', title: "Sealant cartridge 300ml", qty: 150, price: 940 / 150 },
+        { sku: 'VLV-40', title: "Ball valve 40mm", qty: 20, price: 40.0 },
+      ],
+      pricing: 'Standard Wholesale', pricingSource: 'Previous agreement', source: 'Direct checkout',
+      status: 'Fulfilled', shopifyStatus: 'Fulfilled', reason: null
+    }
+  ]
+};

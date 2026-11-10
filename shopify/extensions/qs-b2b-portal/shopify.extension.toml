@@ -1,0 +1,14 @@
+api_version = "2026-07"
+
+[[extensions]]
+uid = "aa8713d7-8a4c-3609-8b29-3b0575f63932ea1a6e04"
+type = "ui_extension"
+name = "B2B Portal"
+handle = "qs-b2b-portal"
+
+[[extensions.targeting]]
+module = "./src/FullPageExtension.jsx"
+target = "customer-account.page.render"
+
+[extensions.capabilities]
+network_access = true

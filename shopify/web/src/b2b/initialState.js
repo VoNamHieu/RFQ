@@ -1,0 +1,168 @@
+// Initial store state, applying cross-app persistence + handoff from the RFQ app
+// (legacy restoreRfqCompanies + receiveRfqHandoff at b2b/index.html §8190-8262).
+import { dbSeed } from './data/db.js';
+import { registrationSeed } from './data/registrations.js';
+import { DEMO_STATE_KEY, readJSON, consumeHandoff, readOrderRequests, publishedOrderLimits, readBuyerEvents } from '../shared/persistence.js';
+import { applyBuyerEvents } from './buyerEvents.js';
+import { versionFlags } from '../shared/versions.js';
+import { upgradeLimits } from './limits.js';
+import { normalizeDb, injectRfqCompany, applyQuotePricingTransfer, injectOrderRequests } from './dbHelpers.js';
+import { syncContractDates, seedSnapshots, stampContractLimits, ownContractTerms } from './agreements.js';
+import { shopifyScreenFor, shopifyScreenExists } from './shopifyRoutes.js';
+
+// Prototype: the storefront docks this app's Order limits screen (?embed=limits),
+// without the admin frame, so a limit change shows in its cart right away. Inside
+// Shopify admin (b2b/shopify.html sets QS_EMBED = 'shopify') it shows without the
+// mock admin frame too: Shopify admin is the frame, with the app's nav.
+export const EMBEDDED = (() => {
+  try {
+    return new URLSearchParams(window.location.search).get('embed') || window.QS_EMBED || null;
+  } catch {
+    return null;
+  }
+})();
+// Views Shopify admin's nav for this app opens (?view=…, b2b/shopify.html).
+const NAV_VIEWS = ['home', 'registrations', 'customers', 'pricing', 'terms', 'analytics', 'manualOrders', 'discounts', 'others'];
+
+// `db`: the store's records inside Shopify admin (live/shopifyLive.js); none, the demo's.
+export function makeBaseState(db = null) {
+  return {
+    view: 'home', // home | customers | company | pricing | limits | agreements | analytics | settings | quote | location | registrations | registration | form
+    selectedCompany: db ? db.companies[0]?.id || null : 'c1',
+    // Registrations (storefront form submissions)
+    selectedRegistration: null,
+    registrationFilter: 'pending', // pending | approved | declined | all
+    registrationSearch: '',
+    registrationSort: 'submitted desc', // `${field} ${dir}` — see Registrations SORT_OPTIONS
+    formEntry: null, // from Registrations: 'editor' (Edit form) | 'create' (Create form → template picker)
+    companyTab: 'pricing',
+    homeGuideHidden: false, // app home: "Hide guide" collapses the setup guide
+    pricingChooser: false, // open the Pricing screen straight on its type chooser (from app home)
+    pricingStatus: null, // open the Pricing screen pre-filtered by status, e.g. 'inactive' (from app home)
+    selectedQuote: null,
+    selectedLocation: null,
+    // Companies list
+    listFilter: 'all',
+    companySearch: '',
+    companySortField: 'name', // name | locations | status
+    companySortDir: 'asc', // asc | desc
+    recentCompanyIds: [], // just added from Shopify — listed first until a sort is picked
+    // Base pricing pagination (spec §5.1)
+    basePricingSearch: '',
+    basePage: 1,
+    basePageSize: 5,
+    // Pricing editor (spec §5.3)
+    builder: null, // working policy copy, or null when the editor is closed
+    pricingBuilderTab: 'settings', // 'settings' | 'appearance' — the editor's two tabs (god file)
+    ruleEdit: null, // index of the conditional-rule open for inline edit
+    addRuleMenu: false,
+    editorContext: null, // { mode:'edit'|'add-base'|'swap', companyId, swapId }
+    // Build pricing from closed quotes (spec §5.4)
+    buildQuotes: null, // { companyId, rows:[{sku,quoted,proposed,from}], dest }
+    priceBoard: null, // { companyId, search } — resolved-prices preview
+    assign: null, // { companyId, mode:'add'|'swap', swapId, selectedId } — assign/swap base
+    assignMulti: null, // { policyId } — assign one policy to many companies/customers/tags/global
+    limitEditor: null, // { draft, returnTo, contractTerm } — the order-limit editor (see limits.js)
+    limitChooser: null, // { returnTo } — Select limit type for a contract limit, from the contract editor
+    agreementEditor: null, // { draft, staged, returnTo } — the agreement editor (see agreements.js)
+    addCompany: null, // { selected: shopifyCompanyIds, unticked: { [shopifyCompanyId]: locationIds }, search, autoAddLocations } — add-company picker
+    shopifyNewLocations: {}, // { [shopifyCompanyId]: [location] } — created in Shopify this session (Settings → Prototype)
+    emptyMode: false, // "show the app with no data" (fresh-install simulation)
+    emptyBackup: null,
+    // The seeded registrations came in through the form, so it already exists. It starts
+    // unpublished so Home shows the "form isn't published" warning without any clicks.
+    // Contracts start and expire by date (the daily job, run once on load here). Each
+    // contract's pricing and limits are its own (ownContractTerms).
+    db: db || stampContractLimits(syncContractDates(seedSnapshots(ownContractTerms(normalizeDb({ ...dbSeed, registrations: registrationSeed, hasRegistrationForm: true, registrationFormPublished: false, rfqAppInstalled: true }))))),
+    toast: null,
+  };
+}
+
+// Inside Shopify admin (`live`): the store's records, and the screen its link names.
+// Nothing comes from this browser's storage there: that's the demo's.
+export function buildInitialState(live = null) {
+  if (live) {
+    const s = makeBaseState(live.db);
+    openShopifyScreen(s);
+    return s;
+  }
+  const s = makeBaseState();
+  // 1) Rebuild every company created/synced from RFQ, persisted across reloads.
+  const demo = readJSON(DEMO_STATE_KEY);
+  if (demo && demo.b2bCompanies) {
+    Object.values(demo.b2bCompanies).forEach((p) => injectRfqCompany(s.db, p));
+  }
+  // Order limits as last saved (they're shared with the storefront), and order
+  // requests buyers sent from it, waiting for review.
+  const limits = publishedOrderLimits();
+  // Saved before contracts had their own limits (the seed's have a contract, the saved
+  // list's none): the seed's limits instead, so its contracts find theirs.
+  const beforeContractLimits = Array.isArray(limits) && (s.db.limits || []).some((l) => l.contractId) && !limits.some((l) => l.contractId);
+  if (Array.isArray(limits) && !beforeContractLimits) {
+    // Limits saved before they had a created date take the seed's.
+    const created = Object.fromEntries((s.db.limits || []).map((l) => [l.id, l.createdAt]));
+    s.db = stampContractLimits({ ...s.db, limits: upgradeLimits(limits).map((l) => (l.createdAt || !created[l.id] ? l : { ...l, createdAt: created[l.id] })) });
+  }
+  injectOrderRequests(s.db, readOrderRequests());
+  // What buyers sent from the storefront's B2B Portal (answers to upcoming contracts).
+  applyBuyerEvents(s.db, readBuyerEvents());
+  if (EMBEDDED === 'limits' && versionFlags().orderLimits) s.view = 'limits';
+  // 2) One-shot handoff: open the specific company just handed over from RFQ.
+  const handoff = consumeHandoff();
+  if (handoff) {
+    const id = injectRfqCompany(s.db, handoff);
+    if (id) {
+      s.selectedCompany = id;
+      const lines = handoff.quote && Array.isArray(handoff.quote.lines) ? handoff.quote.lines : [];
+      const hasLines = lines.length > 0;
+      if (hasLines && handoff.pricingTransfer) {
+        // Quote → B2B price transfer lands on the company's Pricing tab.
+        s.view = 'company';
+        s.companyTab = 'pricing';
+        s.toast = applyQuotePricingTransfer(s.db, id, lines, handoff.pricingTransfer);
+      } else if (handoff.openPricing) {
+        // "Create pricing" from the RFQ "no B2B pricing" prompt → land on the B2B
+        // app's Pricing screen. The company is still created so it can be assigned
+        // a pricing there.
+        s.view = 'pricing';
+      } else {
+        s.view = 'company';
+        s.companyTab = 'locations';
+      }
+    }
+  } else {
+    // 3) No handoff: honor a deep-link hash (e.g. RFQ "Create pricing" → Pricing
+    // library) so a redirect can land on a view other than the default.
+    const view = viewFromHash(typeof window !== 'undefined' ? window.location.hash : '');
+    if (view) s.view = view;
+    if (EMBEDDED === 'shopify') openShopifyScreen(s);
+  }
+  return s;
+}
+
+// Inside Shopify admin: the screen's link (/b2b/shopify/…, shopifyRoutes.js), or ?view=….
+function openShopifyScreen(s) {
+  if (typeof window === 'undefined') return;
+  const screen = shopifyScreenFor(window.location.pathname, window.location.search);
+  if (screen && screen.view !== 'home' && shopifyScreenExists(screen, s.db)) Object.assign(s, { view: screen.view, ...screen.patch });
+  const navView = new URLSearchParams(window.location.search).get('view');
+  if (navView && NAV_VIEWS.includes(navView)) s.view = navView;
+}
+
+// Map the URL hash (kept in sync by the nav's `url`s) to an initial view.
+function viewFromHash(hash) {
+  const map = {
+    '#/b2b': 'home',
+    '#/b2b/registrations': 'registrations',
+    '#/b2b/pricing': 'pricing',
+    '#/b2b/order-limits': 'limits',
+    '#/b2b/order-limit-tests': 'limitTests',
+    '#/b2b/agreements': 'agreements',
+    '#/b2b/contracts-and-limits': 'terms',
+    '#/b2b/orders-and-rules': 'terms',
+    '#/b2b/company': 'customers',
+    '#/b2b/analytics': 'analytics',
+    '#/b2b/settings': 'settings',
+  };
+  return map[hash] || null;
+}

@@ -1,0 +1,14 @@
+api_version = "2026-07"
+
+[[extensions]]
+uid = "e3f0997c-a9ea-7a1c-8a9a-ef92ff591ebbce0ce078"
+type = "ui_extension"
+name = "B2B Quotes"
+handle = "qs-b2b-quotes"
+
+[[extensions.targeting]]
+module = "./src/FullPageExtension.jsx"
+target = "customer-account.page.render"
+
+[extensions.capabilities]
+network_access = true

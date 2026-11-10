@@ -1,0 +1,44 @@
+{%- comment -%}
+  A B2B buyer's company price, quantity prices and order limits for this product,
+  as the QuoteSnap B2B app saved them for their company location
+  (app-data metafield qs_b2b.storefront). Shows nothing to anyone else.
+{%- endcomment -%}
+{%- liquid
+  assign loc = blank
+  if customer.b2b? and customer.current_location
+    assign loc_key = customer.current_location.id | append: ''
+    assign loc = app.metafields.qs_b2b.storefront.value.locations[loc_key]
+  endif
+-%}
+{%- if loc != blank -%}
+  <div class="qs-b2b" data-qs-b2b-product {{ block.shopify_attributes }}>
+    <script type="application/json">
+      {
+        "currency": {{ cart.currency.iso_code | json }},
+        "product": {{ product.id | append: '' | json }},
+        "title": {{ product.title | json }},
+        "variant": {{ product.selected_or_first_available_variant.id | append: '' | json }},
+        "variants": {
+          {%- for v in product.variants -%}
+            {{ v.id | append: '' | json }}: {{ v.price | divided_by: 100.0 | json }}{% unless forloop.last %},{% endunless %}
+          {%- endfor -%}
+        },
+        "loc": {{ loc | json }}
+      }
+    </script>
+    <div data-qs-b2b-out></div>
+  </div>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "B2B price & limits",
+  "target": "section",
+  "javascript": "qs-b2b-limits.js",
+  "stylesheet": "qs-b2b-limits.css",
+  "enabled_on": {
+    "templates": ["product"]
+  },
+  "settings": []
+}
+{% endschema %}

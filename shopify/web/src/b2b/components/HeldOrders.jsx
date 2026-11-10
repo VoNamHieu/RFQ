@@ -1,0 +1,165 @@
+import React, { useState } from 'react';
+import { useStore } from '../store.jsx';
+import { money } from '../format.js';
+import { reviewMaximumFor, spentSoFar } from '../limits.js';
+import { Modal } from '../../shared/wc.jsx';
+import { LIVE, reviewRequest } from '../live/shopifyLive.js';
+
+// Orders a maximum (order limits: an order value, or a product's) held back for review: status 'Needs review',
+// `heldAt` = what it broke then ({ value, limitId, limitName }, plus `sku` and `item` for a product). The buyer couldn't check out, so the order waits as a
+// draft order until the merchant approves it (an invoice goes to the buyer: 'Invoice
+// sent', a real order once they check out from it) or declines it. Listed on app
+// home and in the location / company orders.
+export const isHeld = (o) => o.status === 'Needs review';
+
+// Held orders across every company, the longest-waiting first.
+export function heldOrders(db) {
+  return (db.companies || [])
+    .flatMap((company) =>
+      (company.orders || []).filter(isHeld).map((order) => ({
+        order,
+        company,
+        location: (company.locations || []).find((l) => l.name === order.location) || null,
+      })),
+    )
+    .sort((a, b) => String(a.order.date).localeCompare(String(b.order.date)));
+}
+
+// Why an order is waiting: what it broke when it was held (`heldAt`), next to the
+// maximum in effect at its location now, read off the location's record — the
+// limits can change while it waits (a limit edited, turned off or deleted, a
+// contract starting or ending). It stays held either way: under the maximum now,
+// it still waits for the merchant to approve or decline it.
+export function heldReason(order, db) {
+  const company = (db.companies || []).find((c) => (c.orders || []).some((o) => o.id === order.id));
+  const location = company && (company.locations || []).find((l) => (order.locationId ? l.id === order.locationId : l.name === order.location));
+  if (!location) return order.reason || 'Held for your review';
+  const held = order.heldAt;
+  // A product, or the order quantity, over its maximum: what it broke when it was held.
+  if (held?.sku) return `${held.item} over the maximum of ${held.value} · ${held.limitName}`;
+  if (held?.basis === 'qty') return `Over the ${held.value}-unit maximum · ${held.limitName}`;
+  // A weekly or monthly maximum counts this order on top of the location's other
+  // orders in that period.
+  const period = held?.period || 'order';
+  const per = period === 'order' ? '' : ` ${period}ly`;
+  const max = reviewMaximumFor(db, company.id, location.id, period);
+  const atLocation = (o) => (o.locationId ? o.locationId === location.id : o.location === location.name);
+  const others = period === 'order' ? 0 : spentSoFar((company.orders || []).filter((o) => o.id !== order.id && atLocation(o)), order.date)[period];
+  const total = others + order.amount;
+  const now = max
+    ? `${total > max.value ? 'over' : 'within'} the ${money(max.value)}${per} maximum · ${max.limit.name}`
+    : 'no longer over a limit';
+  if (!held) return now[0].toUpperCase() + now.slice(1);
+  if (max && max.value === held.value && max.limit.id === held.limitId) return `Over the ${money(held.value)}${per} maximum · ${max.limit.name}`;
+  return `Held over ${money(held.value)}${per} · now ${now}`;
+}
+
+// heldReason in parts, for an order's page: `held` — what held it, with its limit (null
+// when it has since been deleted; `name` is the one it had) — and `now`, where the order
+// stands today when the limits have changed since (else null). A weekly or monthly
+// maximum also gives what was ordered before it in the period (`others`, `period`).
+export function heldParts(order, db) {
+  const company = (db.companies || []).find((c) => (c.orders || []).some((o) => o.id === order.id));
+  const location = company && (company.locations || []).find((l) => (order.locationId ? l.id === order.locationId : l.name === order.location));
+  const limitOf = (id) => (db.limits || []).find((l) => l.id === id) || null;
+  const held = order.heldAt;
+  const part = (text, id, name) => ({ text, limit: id ? limitOf(id) : null, name: name || null });
+  if (!location) return { held: part(order.reason || 'Held for your review'), now: null, others: 0, period: 'order' };
+  if (held?.sku) return { held: part(`${held.item} over the maximum of ${held.value}`, held.limitId, held.limitName), now: null, others: 0, period: 'order' };
+  if (held?.basis === 'qty') return { held: part(`Over the ${held.value}-unit maximum`, held.limitId, held.limitName), now: null, others: 0, period: 'order' };
+  const period = held?.period || 'order';
+  const per = period === 'order' ? '' : ` ${period}ly`;
+  const max = reviewMaximumFor(db, company.id, location.id, period);
+  const atLocation = (o) => (o.locationId ? o.locationId === location.id : o.location === location.name);
+  const others = period === 'order' ? 0 : spentSoFar((company.orders || []).filter((o) => o.id !== order.id && atLocation(o)), order.date)[period];
+  const now = max
+    ? part(`${others + order.amount > max.value ? 'Over' : 'Within'} the ${money(max.value)}${per} maximum`, max.limit.id, max.limit.name)
+    : part('No longer over a limit');
+  if (!held) return { held: now, now: null, others, period };
+  const same = max && max.value === held.value && max.limit.id === held.limitId;
+  return { held: part(`Over the ${money(held.value)}${per} maximum`, held.limitId, held.limitName), now: same ? null : now, others, period };
+}
+
+// What the buyer wrote with the order request (Note for the seller), shown where the merchant decides.
+export const buyerMessageText = (order) => (order.buyerMessage ? `Buyer’s note: “${order.buyerMessage}”` : null);
+
+// Held first, then newest — so what's waiting sits on top of an order list.
+export const heldFirst = (a, b) => Number(isHeld(b)) - Number(isHeld(a)) || String(b.date).localeCompare(String(a.date));
+
+// Approve, or decline — optionally with a message telling the buyer why, which
+// their account on the storefront shows with the declined order.
+export function HeldOrderActions({ companyId, order }) {
+  const { dispatch } = useStore();
+  const [confirm, setConfirm] = useState(false);
+  const [withMessage, setWithMessage] = useState(false);
+  const [message, setMessage] = useState('');
+  // Inside Shopify admin, an order request (a draft order from the storefront) is
+  // approved or declined in Shopify first (live/shopifyLive.js reviewRequest).
+  const [busy, setBusy] = useState(false);
+  const decide = async (approve, text = '') => {
+    const action = approve ? { type: 'APPROVE_ORDER', companyId, orderId: order.id } : { type: 'DECLINE_ORDER', companyId, orderId: order.id, message: text };
+    if (!(LIVE && order.draftId)) return dispatch(action);
+    setBusy(true);
+    try {
+      await reviewRequest(order, approve, text);
+      dispatch(action);
+    } catch (e) {
+      window.shopify?.toast?.show(`Couldn’t ${approve ? 'approve' : 'decline'} ${order.id}: ${e.message}`, { isError: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const close = () => {
+    setConfirm(false);
+    setWithMessage(false);
+    setMessage('');
+  };
+  return (
+    // Keep clicks off the row underneath (rows can open the order's location).
+    <div onClick={(e) => e.stopPropagation()}>
+      <s-stack direction="inline" gap="small-200">
+        <s-button disabled={busy} onClick={() => setConfirm(true)}>Decline</s-button>
+        <s-button variant="primary" loading={busy || undefined} onClick={() => decide(true)}>
+          Approve
+        </s-button>
+      </s-stack>
+      {confirm && (
+        <Modal onClose={close} heading={`Decline order ${order.id}?`}>
+          <s-stack gap="base">
+            <s-paragraph>
+              {`The draft order for ${money(order.amount)} is cancelled and ${order.buyer || 'the buyer'} is told it wasn’t approved. They can change the order and submit it again.`}
+            </s-paragraph>
+            <s-checkbox label="Add a message for the buyer" checked={withMessage} onChange={(e) => setWithMessage(e.currentTarget.checked)} />
+            {withMessage && (
+              <s-text-area
+                label="Message to the buyer"
+                rows={3}
+                maxLength={500}
+                value={message}
+                onInput={(e) => setMessage(e.currentTarget.value)}
+                placeholder="e.g. We can’t take an order this size before your credit review. Please split it into orders under $10,000."
+                details="Shown with the declined order in their account on your store."
+                autocomplete="off"
+              />
+            )}
+          </s-stack>
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            tone="critical"
+            onClick={() => {
+              const text = withMessage ? message.trim() : '';
+              close();
+              decide(false, text);
+            }}
+          >
+            Decline order
+          </s-button>
+          <s-button slot="secondary-actions" onClick={close}>
+            Cancel
+          </s-button>
+        </Modal>
+      )}
+    </div>
+  );
+}
