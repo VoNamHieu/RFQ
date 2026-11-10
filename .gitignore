@@ -14,3 +14,10 @@ dist/
 
 # Production frontend archives (contain .env secrets) — never commit
 *.rar
+
+# Docs (specs, screenshots) — kept local only, not on GitHub
+/APP-HOME.md
+/LOCATION-PRICING.md
+/ORDER-LIMITS.md
+/REGISTRATION-FORM.md
+/docs/
