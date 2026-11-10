@@ -1,0 +1,127 @@
+{%- liquid
+  assign current_variant = product.selected_or_first_available_variant
+  assign quote_url = block.settings.quote_url
+  assign registration_url = block.settings.registration_url
+  assign quotes_url = block.settings.quotes_url
+
+  if registration_url == blank
+    assign registration_url = routes.account_url
+  endif
+
+  if quotes_url == blank
+    assign quotes_url = routes.account_url
+  endif
+-%}
+
+<div class="qs-b2b-context" data-qs-b2b-context>
+  {%- if customer.b2b? -%}
+    <div class="qs-b2b-context__topline">
+      <div>
+        <p class="qs-b2b-context__eyebrow">{{ block.settings.heading }}</p>
+        <p class="qs-b2b-context__identity">
+          {{ customer.current_company.name }}
+          {%- if customer.current_location -%}
+            <span aria-hidden="true"> · </span>{{ customer.current_location.name }}
+          {%- endif -%}
+        </p>
+      </div>
+      <span class="qs-b2b-context__badge">Active</span>
+    </div>
+
+    {%- if block.settings.show_price_context and current_variant -%}
+      <div class="qs-b2b-context__price-row">
+        <div>
+          <p class="qs-b2b-context__label">Your company price</p>
+          <p class="qs-b2b-context__price">{{ current_variant.price | money }}</p>
+        </div>
+        <p class="qs-b2b-context__hint">Pricing is based on your current company location.</p>
+      </div>
+    {%- endif -%}
+
+    {%- if block.settings.show_location_switcher and customer.company_available_locations.size > 1 -%}
+      <details class="qs-b2b-context__locations">
+        <summary>Purchasing for {{ customer.current_location.name }}</summary>
+        <div class="qs-b2b-context__location-list">
+          {%- for location in customer.company_available_locations -%}
+            {%- unless location.current? -%}
+              <a href="{{ location.url_to_set_as_current }}">{{ location.name }}</a>
+            {%- endunless -%}
+          {%- endfor -%}
+        </div>
+      </details>
+    {%- endif -%}
+
+    <div class="qs-b2b-context__actions">
+      {%- if quote_url != blank -%}
+        <a
+          class="button button--secondary qs-b2b-context__button"
+          href="{{ quote_url }}?product_id={{ product.id | url_encode }}&variant_id={{ current_variant.id | url_encode }}"
+        >
+          Request a quote
+        </a>
+      {%- endif -%}
+      <a class="qs-b2b-context__link" href="{{ quotes_url }}">View business account</a>
+    </div>
+  {%- elsif customer -%}
+    <p class="qs-b2b-context__eyebrow">Business purchasing</p>
+    <p class="qs-b2b-context__title">Buying for a business?</p>
+    <p class="qs-b2b-context__body">Apply for company pricing, volume pricing, and B2B purchasing access.</p>
+    <a class="qs-b2b-context__link" href="{{ registration_url }}">Apply for a business account</a>
+  {%- else -%}
+    <p class="qs-b2b-context__eyebrow">Business purchasing</p>
+    <p class="qs-b2b-context__title">Already a business buyer?</p>
+    <p class="qs-b2b-context__body">Log in to use your company pricing and purchasing terms.</p>
+    <div class="qs-b2b-context__actions">
+      <a class="button button--secondary qs-b2b-context__button" href="{{ routes.account_login_url }}">Log in</a>
+      {%- if block.settings.registration_url != blank -%}
+        <a class="qs-b2b-context__link" href="{{ block.settings.registration_url }}">Apply for a business account</a>
+      {%- endif -%}
+    </div>
+  {%- endif -%}
+</div>
+
+{% schema %}
+{
+  "name": "B2B buying context",
+  "target": "section",
+  "stylesheet": "b2b-buying-context.css",
+  "enabled_on": {
+    "templates": ["product"]
+  },
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Business purchasing"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_price_context",
+      "label": "Show current company price",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_location_switcher",
+      "label": "Allow B2B buyers to switch location",
+      "default": true
+    },
+    {
+      "type": "url",
+      "id": "quote_url",
+      "label": "Request a quote URL"
+    },
+    {
+      "type": "url",
+      "id": "registration_url",
+      "label": "Business registration URL"
+    },
+    {
+      "type": "url",
+      "id": "quotes_url",
+      "label": "Customer account / Quotes URL"
+    }
+  ]
+}
+{% endschema %}

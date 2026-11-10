@@ -1,0 +1,15 @@
+api_version = "2026-07"
+
+[[extensions]]
+uid = "5ed57768-b87c-b15c-faa0-6ce064a41aad64cfa5e3"
+type = "ui_extension"
+name = "B2B Portal link"
+handle = "qs-b2b-portal-link"
+
+[[extensions.targeting]]
+module = "./src/PortalLinkBlock.jsx"
+target = "customer-account.profile.block.render"
+
+[[extensions.targeting]]
+module = "./src/PortalLinkBlock.jsx"
+target = "customer-account.order-index.block.render"

@@ -1,0 +1,2155 @@
+import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Tabs, wcTone } from '../../shared/wc.jsx';
+import { useStore } from '../store.jsx';
+import { money } from '../format.js';
+import { LineChart, VBarChart, StackedBar, FunnelV2, RankBars, Timeline, moneyShort } from '../components/charts.jsx';
+import { MetricTooltip } from '../components/MetricTooltip.jsx';
+import { QuoteAppCrossSell, noQuotesFromRfqApp } from '../components/QuoteAppCrossSell.jsx';
+import { resolveDetail, defaultVariant } from '../pricing.js';
+import { buildAttributedLines, pricingProfileRows } from '../pricingAttribution.js';
+import {
+  analyticsOrderItems,
+  analyticsCompanyActivation,
+  analyticsQuantityEvents,
+  analyticsPricingChanges,
+} from '../data/analytics.js';
+import { DevStrip } from '../../shared/DevStrip.jsx';
+
+// Fixed demo anchors (legacy renderAnalytics: analyticsToday / analyticsNow).
+const TODAY = new Date('2026-08-24T00:00:00');
+const NOW = new Date('2026-08-24T16:43:00');
+const DAY = 86400000;
+const COMPLETED = new Set(['Fulfilled', 'Paid']);
+
+// ── Dev-only event-basis overlay (toggled by the "Inject test data" dev button) ──
+// The demo seeds only a flat `order.amount` and full line items — there are no
+// discounts or returns, so the PRODUCTION definitions (Net sales = gross − discounts
+// − reversals; COGS reversed on returned units) can't visibly diverge from the proxy.
+// This overlay injects exactly that, keyed by order id, so the divergence is
+// demonstrable in dev without baking it into the default demo. It rewrites both the
+// order `amount` AND the line items, so every downstream metric (Net sales, GP via
+// orderCogs, Top products revenue/units, company/pricing rows, repeat, trailing-90 GP)
+// picks up the event basis with no formula changes. Never applied in a prod build.
+const EVENT_OVERLAY = {
+  // #1039 — a $400 order-level discount: Net sales drops, GP drops by the same $400
+  // (nothing returned, so COGS is unchanged). Demonstrates "− Discounts".
+  '#1039': { discount: 400 },
+  // #1033 — a partial return of SEA-30 (200 of 400 units, $1,250 of the $2,500 line).
+  // Reverses $1,250 of sales AND 200 × $5 = $1,000 of COGS, so GP drops only $250 and
+  // margin recomputes. Also drops SEA-30's Top-products revenue/units. Demonstrates
+  // "− Sales reversals" + Net COGS reversal on the same event.
+  '#1033': { returnSku: 'SEA-30', returnQty: 200, returnValue: 1250 },
+};
+
+// ── Dev-only missing-cost case (toggled by the "Inject missing cost" dev button) ──
+// Strips the unit cost from one SKU so its lines drop out of GP/Margin. Used to demo the
+// cost-coverage disclosures — Hero "% of sales have cost data", the margin-threshold card
+// footer, and per-source coverage on Margin by price source — which stay hidden while the
+// seed is fully costed. SEA-30 sells across several price sources, so coverage falls on
+// multiple rows at once. Never applied in a prod build.
+const DEV_MISSING_COST_SKU = 'SEA-30';
+// Prototype: show the dev toggles in production too (flip to import.meta.env.DEV to hide in prod).
+const SHOW_DEV_TOOLS = true;
+
+// ── small numeric helpers (ported verbatim from the god file) ────────────────
+const toDate = (d) => (d ? new Date(String(d).slice(0, 10) + 'T00:00:00') : null);
+const pct = (n, d) => (d ? Math.round((n / d) * 100) : 0);
+const pctChange = (cur, prev) => (prev ? Math.round(((cur - prev) / prev) * 100) : null);
+const daysBetween = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / DAY);
+const daysAgo = (d) => (d ? Math.round((TODAY - toDate(d)) / DAY) : null);
+const median = (arr) => {
+  const a = arr.filter((x) => Number.isFinite(x)).slice().sort((x, y) => x - y);
+  if (!a.length) return null;
+  const m = Math.floor(a.length / 2);
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+};
+const monthLabel = (d) => d.toLocaleString('en-US', { month: 'short' });
+const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+const monthsBetween = (startDate, endDate) => {
+  const out = [];
+  const s = startDate ? new Date(startDate.getFullYear(), startDate.getMonth(), 1) : new Date(endDate.getFullYear(), endDate.getMonth() - 3, 1);
+  const e = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+  for (const d = new Date(s); d <= e; d.setMonth(d.getMonth() + 1)) out.push(new Date(d));
+  return out;
+};
+const formatTypicalTime = (d) => {
+  if (d == null || !Number.isFinite(d)) return '—';
+  if (d < 1) return `${Math.max(1, Math.round(d * 24))}h`;
+  const whole = Math.floor(d);
+  const h = Math.round((d - whole) * 24);
+  return h ? `${whole}d ${h}h` : `${whole}d`;
+};
+
+// ── presentational helpers ───────────────────────────────────────────────────
+// `suffix` is the unit ('%', ' pp', or '' for counts). `goodDown` flips the colour for metrics
+// where a decrease is good (lost quotes, stale value, time-to-decision, below-margin value).
+function DeltaChip({ v, suffix = '%', goodDown = false }) {
+  if (v == null) {
+    // A compared metric whose previous period has no baseline (e.g. no quotes back then): still
+    // show a signal instead of nothing, so "compared but nothing to compare with" is visible.
+    return (
+      <MetricTooltip help="No data in the previous period to compare with.">
+        <s-text fontSize="small" color="subdued">—</s-text>
+      </MetricTooltip>
+    );
+  }
+  const up = v > 0;
+  const down = v < 0;
+  const good = goodDown ? down : up;
+  const bad = goodDown ? up : down;
+  return (
+    <s-text fontSize="small" tone={good ? 'success' : bad ? 'critical' : undefined} color={good || bad ? undefined : 'subdued'}>
+      {`${up ? '↑ ' : down ? '↓ ' : ''}${Math.abs(v)}${suffix}`}
+    </s-text>
+  );
+}
+
+// Non-wrapping inline row (Polaris InlineStack wrap={false}): s-stack inline always wraps.
+const nowrapRow = (gap) => ({ display: 'flex', alignItems: 'center', gap, flexWrap: 'nowrap', minWidth: 0 });
+
+// A nested visual card inside the tab card (Polaris Card nested in Card).
+function Panel({ children, padding = 'base' }) {
+  return (
+    <s-box background="base" border="base" borderRadius="base" padding={padding}>
+      {children}
+    </s-box>
+  );
+}
+
+// Responsive columns (Polaris InlineGrid columns={{ xs: 1, sm: min(n, 2), md: n }}), measured
+// on the container rather than the viewport. (Responsive values are comma-separated, so the
+// track lists can't use repeat() / minmax() — spell the columns out; when several conditions
+// match, the LAST one wins, so list them from narrow to wide.)
+function ResponsiveGrid({ n, gap = 'base', children }) {
+  const cols = (k) => Array.from({ length: k }, () => '1fr').join(' ');
+  return (
+    <s-query-container>
+      <s-grid gridTemplateColumns={`@container (inline-size > 400px) ${cols(Math.min(n, 2))}, (inline-size > 640px) ${cols(n)}, 1fr`} gap={gap}>
+        {children}
+      </s-grid>
+    </s-query-container>
+  );
+}
+
+// Two equal columns from md up (Polaris InlineGrid columns={{ xs: 1, md: 2 }}).
+function TwoColumns({ children }) {
+  return (
+    <s-query-container>
+      <s-grid gridTemplateColumns="@container (inline-size > 640px) 1fr 1fr, 1fr" gap="base">
+        {children}
+      </s-grid>
+    </s-query-container>
+  );
+}
+
+// Polaris Select replacement: options [{ label, value }], onChange(value).
+function SelectField({ label, labelHidden = false, options, value, onChange, disabled = false }) {
+  return (
+    <s-select
+      label={label}
+      labelAccessibilityVisibility={labelHidden ? 'exclusive' : 'visible'}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.currentTarget.value)}
+    >
+      {options.map((o) => (
+        <s-option key={o.value} value={o.value}>
+          {o.label}
+        </s-option>
+      ))}
+    </s-select>
+  );
+}
+
+// IndexTable `emptyState` replacement, shown under the table when it has no rows.
+function TableEmpty({ show, children }) {
+  if (!show) return null;
+  return (
+    <s-box padding="base">
+      {/* Centred by a flex wrapper: s-paragraph's inner <p> sets its own text-align, so
+          neither a style prop on the host nor an inherited text-align centres it. */}
+      <div style={{ display: 'flex', justifyContent: 'center', textAlign: 'center' }}>
+        <s-paragraph color="subdued">{children}</s-paragraph>
+      </div>
+    </s-box>
+  );
+}
+
+// The ⓘ icon that opens a metric tooltip.
+function InfoTip({ title, help, formula }) {
+  return (
+    <MetricTooltip title={title} help={help} formula={formula}>
+      <span style={{ display: 'inline-flex', cursor: 'help' }}><s-icon type="info" color="subdued" /></span>
+    </MetricTooltip>
+  );
+}
+
+// A row of KPI scorecards (label / big value / delta+foot).
+function ScoreGrid({ items }) {
+  const n = items.length;
+  return (
+    <ResponsiveGrid n={n}>
+      {items.map((it) => (
+        <Panel key={it.label}>
+          <s-stack gap="small-400">
+            {it.help ? (
+              <div style={nowrapRow(2)}>
+                <s-text fontSize="small" color="subdued">{it.label}</s-text>
+                <InfoTip title={it.label} help={it.help} formula={it.formula} />
+              </div>
+            ) : (
+              <s-text fontSize="small" color="subdued">{it.label}</s-text>
+            )}
+            <s-heading fontSize="large-200">{it.value}</s-heading>
+            {(it.delta || it.foot) && (
+              <div style={nowrapRow(6)}>
+                {it.delta || null}
+                {it.foot ? <s-text fontSize="small" color="subdued">{it.foot}</s-text> : null}
+              </div>
+            )}
+          </s-stack>
+        </Panel>
+      ))}
+    </ResponsiveGrid>
+  );
+}
+
+// A bordered strip of secondary metrics (legacy .analytics-mini-compare).
+function MiniCompare({ items, plain = false }) {
+  const n = items.length;
+  const grid = (
+    <ResponsiveGrid n={n} gap="small">
+      {items.map((it) => (
+        <s-stack gap="small-500" key={it.label}>
+          {it.help ? (
+            <MetricTooltip title={it.label} help={it.help} formula={it.formula}>
+              <s-text fontSize="small" color="subdued">
+                <span style={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 2 }}>{it.label}</span>
+              </s-text>
+            </MetricTooltip>
+          ) : (
+            <s-text fontSize="small" color="subdued">{it.label}</s-text>
+          )}
+          <div style={nowrapRow(6)}>
+            <s-text fontSize="large" fontWeight="semibold">{it.value}</s-text>
+            {it.delta || null}
+          </div>
+          {it.sub ? <s-text fontSize="small" color="subdued">{it.sub}</s-text> : null}
+        </s-stack>
+      ))}
+    </ResponsiveGrid>
+  );
+  if (plain) return grid;
+  return (
+    <s-box border="base" borderRadius="base" padding="small">
+      {grid}
+    </s-box>
+  );
+}
+
+// Needs-attention insight card (spec §3.4): a framing line, a big value, the
+// supporting context, and a CTA that jumps to the relevant screen.
+function InsightCard({ headline, value, tone, context, note, cta, onAction }) {
+  return (
+    <Panel>
+      <s-stack gap="small-200">
+        <s-stack gap="small-500">
+          <s-text fontSize="small" color="subdued">{headline}</s-text>
+          <s-heading fontSize="large-200">{tone ? <s-text tone={tone}>{value}</s-text> : value}</s-heading>
+          {context ? <s-paragraph fontSize="small" color="subdued">{context}</s-paragraph> : null}
+        </s-stack>
+        {note ? <s-text fontSize="small-200" color="subdued">{note}</s-text> : null}
+        {cta ? (
+          <s-box>
+            <s-link onClick={onAction}>{cta}</s-link>
+          </s-box>
+        ) : null}
+      </s-stack>
+    </Panel>
+  );
+}
+
+// A table column heading with a dotted underline + hover tooltip explaining the metric.
+// Used on the Pricing performance table so each column's definition is one hover away.
+function HeadHelp({ label, help, formula }) {
+  return (
+    <MetricTooltip title={label} help={help} formula={formula}>
+      <span style={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 3 }}>{label}</span>
+    </MetricTooltip>
+  );
+}
+
+// An h4 sub-card heading with a dotted underline + hover tooltip (same idea as HeadHelp).
+function HeadingHelp({ label, help, formula }) {
+  return (
+    <s-heading fontSize="small">
+      <MetricTooltip title={label} help={help} formula={formula}>
+        <span style={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 3 }}>{label}</span>
+      </MetricTooltip>
+    </s-heading>
+  );
+}
+
+// How each relationship state is defined — surfaced as a tooltip on the "Relationship
+// state" card so the 5 states read as an explainable rule, not an opaque score.
+// Reorder ratio = days since last order ÷ the company's own median reorder interval.
+const RELATIONSHIP_STATE_DEFS = [
+  ['Healthy', 'Ordering within its usual rhythm.'],
+  ['Watch', 'Slightly overdue compared with its usual rhythm.'],
+  ['At risk', 'Meaningfully overdue compared with its usual rhythm.'],
+  ['Inactive', 'More than twice its usual reorder interval has passed since the last order.'],
+  ['Insufficient history', 'Not enough order history to establish a reliable rhythm. Requires at least 4 orders.'],
+];
+// Tooltip content: s-tooltip only shows s-paragraph / s-text children.
+function RelationshipStateHelp() {
+  return (
+    <>
+      <s-paragraph>Relationship state shows whether a company is ordering on its usual schedule, based on its own order history.</s-paragraph>
+      {RELATIONSHIP_STATE_DEFS.map(([name, def]) => (
+        <s-paragraph key={name}>
+          <s-text fontWeight="semibold">{name}</s-text> <s-text color="subdued">{def}</s-text>
+        </s-paragraph>
+      ))}
+    </>
+  );
+}
+
+function ReportCard({ title, subtitle, controls, help, formula, children }) {
+  return (
+    <Panel>
+      <s-stack gap="small">
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          <s-stack gap="small-500">
+            {/* With controls, the help icon sits next to the title (a card with a wide
+                controls row shouldn't push the ⓘ to the far right past the controls).
+                Without controls, it goes in the right slot below, pinned flush-right. */}
+            {help && controls ? (
+              <div style={nowrapRow(4)}>
+                <s-heading>{title}</s-heading>
+                <InfoTip title={title} help={help} formula={formula} />
+              </div>
+            ) : (
+              <s-heading>{title}</s-heading>
+            )}
+            {subtitle ? <s-paragraph fontSize="small" color="subdued">{subtitle}</s-paragraph> : null}
+          </s-stack>
+          {(controls || (help && !controls)) ? (
+            <div style={nowrapRow(8)}>
+              {controls || null}
+              {help && !controls ? <InfoTip title={title} help={help} formula={formula} /> : null}
+            </div>
+          ) : null}
+        </div>
+        {children}
+      </s-stack>
+    </Panel>
+  );
+}
+
+function SectionTitle({ kicker, title, subtitle }) {
+  return (
+    <s-stack gap="small-500">
+      {kicker ? <s-text fontSize="small" color="subdued" fontWeight="medium">{kicker}</s-text> : null}
+      <s-heading fontSize="large">{title}</s-heading>
+      {subtitle ? <s-paragraph fontSize="small" color="subdued">{subtitle}</s-paragraph> : null}
+    </s-stack>
+  );
+}
+
+// Small inline share bar for the breakdown table's "Share" cell.
+function ShareBar({ share }) {
+  return (
+    <div style={nowrapRow(6)}>
+      <div style={{ flex: '1 1 auto', minWidth: 56, height: 6, borderRadius: 3, background: 'var(--p-color-bg-fill-tertiary, var(--p-color-bg-surface-secondary))', overflow: 'hidden' }}>
+        <div style={{ width: `${Math.max(2, Math.round(share || 0))}%`, height: '100%', background: 'var(--p-color-bg-fill-brand)' }} />
+      </div>
+      <s-text fontSize="small" color="subdued">{Math.round(share || 0)}%</s-text>
+    </div>
+  );
+}
+
+// Ranked-magnitude bars from god-file rankRows(rows, measure, limit).
+function rankRowsFor(rows, measure, limit = 8) {
+  const sorted = rows.slice().sort((a, b) => (Number(b[measure]) || 0) - (Number(a[measure]) || 0)).slice(0, limit);
+  return sorted.map((r) => ({
+    key: r.id || r.name,
+    name: r.name,
+    sub: r.sub,
+    value: Number(r[measure]) || 0,
+    valueLabel: measure === 'orders' ? String(r.orders || 0) : money(r.revenue || 0),
+    secondary: r.share != null ? `· ${Math.round(r.share)}%` : undefined,
+  }));
+}
+
+export function Analytics({ embeddedCompanyId = null }) {
+  const { state } = useStore();
+  const companies = state.db.companies;
+  const products = state.db.products;
+  const policies = state.db.policies || [];
+  const companyById = (id) => companies.find((c) => c.id === id);
+  const allQuotes = state.db.quotes || [];
+
+  const [companyFilter, setCompanyFilter] = useState(embeddedCompanyId || 'all');
+  const [period, setPeriod] = useState('3m'); // 30d | 3m | 6m | 12m | custom
+  const [compare, setCompare] = useState('none'); // none | previous
+  const [customStart, setCustomStart] = useState(''); // YYYY-MM-DD (custom range)
+  const [customEnd, setCustomEnd] = useState('');
+  const [tab, setTab] = useState(0);
+  const [measure, setMeasure] = useState('revenue'); // revenue | orders
+  const [showAllProducts, setShowAllProducts] = useState(false); // Overview top-products "View all"
+  const [healthFilter, setHealthFilter] = useState('all'); // Companies table: relationship health
+  const [lifecycleFilter, setLifecycleFilter] = useState('all'); // Companies table: lifecycle
+  const [pricingFilter, setPricingFilter] = useState('all'); // Companies table: has pricing
+  const [companySort, setCompanySort] = useState('default'); // Companies table sort key
+  const [companyModalOpen, setCompanyModalOpen] = useState(false); // Company performance full-screen view
+  const [quoteFunnelMode, setQuoteFunnelMode] = useState('count'); // Quotes funnel: count | value
+  const [trendMetric, setTrendMetric] = useState('sales'); // Overview trend: sales | gp | margin
+  const [advancedPipeline, setAdvancedPipeline] = useState(false); // Quotes §5.7 expander
+  const [advancedPricing, setAdvancedPricing] = useState(false); // Pricing §6.5 expander
+  const [marginThreshold, setMarginThreshold] = useState('20'); // §6.1 margin-exception threshold
+  const [devInject, setDevInject] = useState(false); // dev-only: inject event-basis test data (returns/discounts)
+  const [devMissingCost, setDevMissingCost] = useState(false); // dev-only: strip one SKU's cost to demo coverage disclosures
+  const [devEmpty, setDevEmpty] = useState(false); // dev-only: preview the empty state while data exists
+  const [compareOnly, setCompareOnly] = useState(false); // dev-only: "Compare only" — data only where there's a previous-period comparison
+
+  const activeCompanyId = embeddedCompanyId || companyFilter;
+  // Empty state: no B2B orders anywhere and no quotes at all (or the dev "Preview empty state"
+  // toggle is on). Zeroing the source data — orders, quotes and the event feeds — makes every
+  // block render its own per-block empty state (empty charts, "—" KPIs, "No … yet" tables) while
+  // the whole dashboard layout, controls and tabs stay put.
+  const genuinelyEmpty = !companies.some((c) => (c.orders || []).length > 0) && !allQuotes.length;
+  const showEmpty = genuinelyEmpty || devEmpty;
+  // No quote has come in from the RFQ app (or the empty-state preview is on): the Quotes tab
+  // leads with a cross-sell to the app.
+  const showQuoteCrossSell = devEmpty || noQuotesFromRfqApp(state.db);
+  const scopedBase = activeCompanyId === 'all' ? companies.slice() : companies.filter((c) => c.id === activeCompanyId);
+  const scopedCompanies = showEmpty ? scopedBase.map((c) => ({ ...c, orders: [] })) : scopedBase;
+  const selected = activeCompanyId === 'all' ? null : scopedCompanies[0] || null;
+  const scopedIds = new Set(scopedCompanies.map((c) => c.id));
+
+  const productBySku = (sku) => products.find((p) => p.sku === sku);
+
+  // ── date range (day-based; Phase 1 spec §2.1) ───────────────────────────────
+  // period: '30d' | '3m' | '6m' | '12m' | 'custom'. Current window = [rangeStart,
+  // rangeEnd] inclusive (ending TODAY, or the custom dates). "Compare to → Previous
+  // period" is the same-length span immediately before it. PERIOD metrics filter on
+  // this window (inPeriod); CURRENT SNAPSHOT metrics ignore it (see snapshotQuotes)
+  // and only honour the Company filter.
+  const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+  const addMonths = (d, n) => new Date(d.getFullYear(), d.getMonth() + n, d.getDate());
+  let rangeStart;
+  let rangeEnd = TODAY;
+  if (period === 'custom') {
+    rangeStart = customStart ? startOfDay(toDate(customStart)) : addDays(TODAY, -29);
+    rangeEnd = customEnd ? startOfDay(toDate(customEnd)) : TODAY;
+    if (rangeEnd < rangeStart) { const t = rangeStart; rangeStart = rangeEnd; rangeEnd = t; }
+  } else if (period === '30d') {
+    rangeStart = addDays(TODAY, -29);
+  } else {
+    const m = period === '6m' ? 6 : period === '12m' ? 12 : 3;
+    rangeStart = addDays(addMonths(TODAY, -m), 1);
+  }
+  const spanDays = Math.max(1, Math.round((rangeEnd - rangeStart) / DAY) + 1);
+  const currentPeriodStart = rangeStart;
+  const currentPeriodEnd = rangeEnd;
+  const previousPeriodEnd = addDays(rangeStart, -1);
+  const previousPeriodStart = addDays(previousPeriodEnd, -(spanDays - 1));
+  const hasPrev = true; // a previous period always exists with the day-based windows
+  const compareEnabled = compare === 'previous' || compareOnly;
+  // Dev "Compare only": the layout stays exactly the same, but only metrics / blocks WITH a
+  // previous-period comparison show data. KPI items flagged `cmp` keep their value + delta; every
+  // other KPI shows "—", and blocks with no comparison render their own per-block empty state
+  // (rows/segments emptied via blankRows → "No … " table/chart messages).
+  const cmpOnly = (items) => (compareOnly ? items.map((it) => (it.cmp ? it : { label: it.label, help: it.help, formula: it.formula, value: '—' })) : items);
+  const blankRows = (rows) => (compareOnly ? [] : rows);
+
+  const inDateRange = (d, start, end) => {
+    const dt = toDate(d);
+    return !!dt && (!start || dt >= start) && (!end || dt <= end);
+  };
+  const inPeriod = (d) => inDateRange(d, rangeStart, rangeEnd);
+  const monthKeyOf = (d) => String(d || '').slice(0, 7);
+  const sumRevenueInRange = (rows, start, end) => rows.filter((o) => inDateRange(o.date, start, end)).reduce((a, o) => a + (Number(o.amount) || 0), 0);
+
+  // Trend buckets: the calendar months each window spans, so the monthly chart keeps
+  // working across day-based ranges (orders are already window-filtered before use).
+  const currentMonths = monthsBetween(rangeStart, rangeEnd);
+  const previousMonths = compareEnabled ? monthsBetween(previousPeriodStart, previousPeriodEnd) : [];
+
+  // ── orders / quotes in scope ────────────────────────────────────────────────
+  // Dev-only: rewrite an order to its event basis (see EVENT_OVERLAY). Subtracts
+  // discounts and returned value from `amount`, and shrinks the returned line's
+  // qty/revenue so COGS/units follow. A no-op unless the dev toggle is on.
+  const applyEventOverlay = (o) => {
+    const ov = devInject ? EVENT_OVERLAY[o.id] : null;
+    if (!ov) return o;
+    let amount = Number(o.amount) || 0;
+    let items = o.items;
+    if (ov.discount) amount -= ov.discount;
+    if (ov.returnValue) {
+      amount -= ov.returnValue;
+      items = items.map((it) =>
+        it.sku === ov.returnSku
+          ? { ...it, qty: Math.max(0, (Number(it.qty) || 0) - (ov.returnQty || 0)), revenue: Math.max(0, (Number(it.revenue) || 0) - ov.returnValue) }
+          : it,
+      );
+    }
+    return { ...o, amount: Math.max(0, amount), items, _event: ov };
+  };
+  const attach = (o, c) => applyEventOverlay({ ...o, companyId: c.id, companyName: c.name, items: analyticsOrderItems[o.id] || [] });
+  const allScopedOrders = scopedCompanies.flatMap((c) => (c.orders || []).map((o) => attach(o, c))).filter((o) => COMPLETED.has(o.status));
+  const orders = allScopedOrders.filter((o) => inPeriod(o.date));
+  const previousOrders = compareEnabled ? allScopedOrders.filter((o) => inDateRange(o.date, previousPeriodStart, previousPeriodEnd)) : [];
+  // Period-over-period delta helpers (Compare = previous). `dPct` = % change, `dPP` = pp diff.
+  const dPct = (cur, prev) => (compareEnabled ? pctChange(cur, prev) : null);
+  const dPP = (cur, prev) => (compareEnabled && cur != null && prev != null ? Math.round(cur - prev) : null);
+  // Delta slot for a compared (period) metric: with Compare on it ALWAYS renders a signal — ↑/↓,
+  // "0" when flat, or "—" when the previous period has no baseline. Off → nothing.
+  const cmpDelta = (v, opts = {}) => (compareEnabled ? <DeltaChip v={v} {...opts} /> : null);
+
+  const quotes = showEmpty ? [] : allQuotes.filter((q) => scopedIds.has(q.company) && inPeriod(q.created));
+  const previousQuotes = compareEnabled && !showEmpty ? allQuotes.filter((q) => scopedIds.has(q.company) && inDateRange(q.created, previousPeriodStart, previousPeriodEnd)) : [];
+
+  // Snapshot quotes: every scoped quote regardless of when it was created. Open value is
+  // a current-state metric, so it ignores the DATE RANGE (a quote opened 5 months ago but
+  // still open must appear). Company scope still applies.
+  const snapshotQuotes = showEmpty ? [] : allQuotes.filter((q) => scopedIds.has(q.company));
+
+  const sales = orders.reduce((a, o) => a + (Number(o.amount) || 0), 0);
+  const orderCount = orders.length;
+  const aov = orderCount ? sales / orderCount : 0;
+  const activeCompanyIds = new Set(orders.map((o) => o.companyId));
+
+  // ── gross profit / margin (spec §3.1) ───────────────────────────────────────
+  // COGS = order-line qty × product unit cost (Shopify InventoryItem.unitCost).
+  // When cost is unknown — a product without a cost, or an order with no line items —
+  // we return null and let GP/Margin stay null instead of fabricating an estimate.
+  // For a financial metric, "not available" (—) beats a guess that looks like a real
+  // number, because GP/Margin flow into the Hero KPIs, product and company analytics.
+  const productCost = (sku) => { if (devMissingCost && sku === DEV_MISSING_COST_SKU) return null; const c = productBySku(sku)?.cost; return c == null ? null : (Number(c) || 0); };
+  const orderCogs = (o) => {
+    const items = o.items || [];
+    if (!items.length) return null;
+    let sum = 0;
+    for (const it of items) {
+      const c = productCost(it.sku);
+      if (c === null) return null; // any line without a cost → whole order is uncosted
+      sum += c * (Number(it.qty) || 0);
+    }
+    return sum;
+  };
+  const orderGP = (o) => { const c = orderCogs(o); return c === null ? null : (Number(o.amount) || 0) - c; };
+  // GP over a set of orders, computed on the COSTED portion only — no fabricated
+  // estimates. `coverage` = share of the set's sales that has cost data, so a partial
+  // GP/Margin is always shown WITH how complete it is (never as if it were the full total).
+  const gpStats = (os) => {
+    // No orders → GP is a real $0 (nothing sold = no profit), but MARGIN is not
+    // applicable (denominator 0): show "—", not "0%". A 0% margin would read as "sold
+    // but made no profit"; an empty scope simply has no sales to have a margin on.
+    if (!os.length) return { gp: 0, margin: null, coverage: null };
+    let gp = 0, costedRev = 0, totalRev = 0, n = 0;
+    for (const o of os) {
+      const amt = Number(o.amount) || 0; totalRev += amt;
+      const g = orderGP(o);
+      if (g !== null) { gp += g; costedRev += amt; n += 1; }
+    }
+    return { gp: n ? gp : null, margin: n && costedRev ? (gp / costedRev) * 100 : null, coverage: totalRev ? (costedRev / totalRev) * 100 : null };
+  };
+  const marginOf = (gp, rev) => (gp === null ? null : rev ? (gp / rev) * 100 : 0);
+  const gpAll = gpStats(orders);
+  const grossProfit = gpAll.gp;
+  const grossMargin = gpAll.margin;
+  const costCoverage = gpAll.coverage; // % of net sales that has cost data (100 = fully costed)
+  // Null-safe formatters: an unknown (uncosted) value renders as "—", never as $0 or 0%.
+  const moneyN = (v) => (v == null ? '—' : money(v));
+  const moneyShortN = (v) => (v == null ? '—' : moneyShort(v));
+  const pctN = (v) => (v == null ? '—' : `${Math.round(v)}%`);
+  const pct1N = (v) => (v == null ? '—' : `${v.toFixed(1)}%`);
+  const unitsSold = orders.reduce((a, o) => a + (o.items || []).reduce((s, it) => s + (Number(it.qty) || 0), 0), 0);
+  const prevUnits = previousOrders.reduce((a, o) => a + (o.items || []).reduce((s, it) => s + (Number(it.qty) || 0), 0), 0);
+  const unitsDelta = dPct(unitsSold, prevUnits);
+  const gpPrev = gpStats(previousOrders);
+  const previousGrossProfit = gpPrev.gp;
+  const previousSalesGP = previousOrders.reduce((a, o) => a + (Number(o.amount) || 0), 0);
+  const previousGrossMargin = gpPrev.margin;
+  const gpDelta = compareEnabled && grossProfit !== null && previousGrossProfit ? pctChange(grossProfit, previousGrossProfit) : null;
+  const marginDelta = compareEnabled && grossMargin !== null && previousGrossMargin !== null && previousSalesGP ? Math.round((grossMargin - previousGrossMargin) * 10) / 10 : null; // pp
+
+  // Repeat = every completed order after a company's first completed order.
+  const repeatKeys = new Set();
+  scopedCompanies.forEach((c) => {
+    const hist = (c.orders || []).filter((o) => COMPLETED.has(o.status)).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.id).localeCompare(String(b.id)));
+    hist.slice(1).forEach((o) => repeatKeys.add(`${c.id}::${o.id}`));
+  });
+  const isRepeat = (o) => repeatKeys.has(`${o.companyId}::${o.id}`);
+  const repeatOrders = orders.filter(isRepeat);
+  const repeatRevenue = repeatOrders.reduce((a, o) => a + (Number(o.amount) || 0), 0);
+  const repeatShare = sales ? Math.round((repeatRevenue / sales) * 100) : 0;
+
+  const received = quotes.length;
+  const pricedQuotes = quotes.filter((q) => (q.lines || []).some((l) => l.quoted != null) || ['Email Sent', 'PDF Exported', 'Draft Order Created', 'Auto Confirmed'].includes(q.progress));
+  const sentQuotes = quotes.filter((q) => ['Email Sent', 'PDF Exported', 'Draft Order Created', 'Auto Confirmed'].includes(q.progress) || q.status === 'Deal Closed');
+  const orderQuotes = quotes.filter((q) => q.progress === 'Draft Order Created' || q.progress === 'Auto Confirmed' || q.status === 'Deal Closed');
+  // Open quotes = a current snapshot: all scoped open quotes, not just those created
+  // in the date window (a quote opened 5 months ago but still open must appear).
+  const openQuotes = snapshotQuotes.filter((q) => !['Deal Closed', 'Deal Rejected', 'Trashed'].includes(q.status));
+  const quoteValue = quotes.reduce((s, q) => s + (q.lines || []).reduce((n, l) => n + (Number(l.quoted) || 0) * (Number(l.qty) || 0), 0), 0);
+
+  // First priced-response time (from the quote timeline).
+  const timelineDate = (label) => {
+    const m = String(label || '').match(/([A-Z][a-z]{2})\s+(\d{1,2})/);
+    if (!m) return null;
+    const month = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 }[m[1]];
+    return month == null ? null : new Date(2026, month, Number(m[2]));
+  };
+  const responseDays = pricedQuotes
+    .map((q) => {
+      const created = String(q.created || '').slice(0, 10);
+      if (!created) return null;
+      const first = (q.timeline || []).find((e) => /quote sent|email sent|exported as pdf|priced/i.test(String(e.what || '')));
+      const d = first ? timelineDate(first.when) : null;
+      if (!d) return null;
+      return Math.max(0, (d - new Date(created + 'T00:00:00')) / DAY);
+    })
+    .filter((x) => x != null);
+
+  // ── monthly series ──────────────────────────────────────────────────────────
+  // hasPrev → the fixed N-month window (from the period block); all-time → every
+  // month back to the earliest order in scope.
+  const trendMonths = currentMonths || monthsBetween(
+    orders.reduce((min, o) => { const dt = toDate(o.date); return dt && (!min || dt < min) ? dt : min; }, null) || new Date(TODAY.getFullYear(), TODAY.getMonth() - 3, 1),
+    TODAY,
+  );
+  const monthly = trendMonths.map((d) => {
+    const key = monthKey(d);
+    const os = orders.filter((o) => String(o.date || '').startsWith(key));
+    const rev = os.reduce((a, o) => a + (Number(o.amount) || 0), 0);
+    return { key, label: monthLabel(d), sales: rev, orders: os.length };
+  });
+  const previousMonthly = compareEnabled
+    ? previousMonths.map((d) => {
+        const key = monthKey(d);
+        const os = previousOrders.filter((o) => String(o.date || '').startsWith(key));
+        return { key, label: monthLabel(d), sales: os.reduce((a, o) => a + (Number(o.amount) || 0), 0), orders: os.length };
+      })
+    : [];
+  const previousSales = previousOrders.reduce((a, o) => a + (Number(o.amount) || 0), 0);
+  const previousOrderCount = previousOrders.length;
+  const previousRepeatRevenue = previousOrders.filter(isRepeat).reduce((a, o) => a + (Number(o.amount) || 0), 0);
+  const previousRepeatShare = previousSales ? (previousRepeatRevenue / previousSales) * 100 : 0;
+  const salesDelta = compareEnabled && previousSales ? pctChange(sales, previousSales) : null;
+  const orderDelta = compareEnabled && previousOrderCount ? pctChange(orderCount, previousOrderCount) : null;
+  const aovDelta = compareEnabled && previousOrderCount ? pctChange(aov, previousSales / previousOrderCount) : null;
+  const repeatDelta = compareEnabled && previousSales ? Math.round(repeatShare - previousRepeatShare) : null;
+
+  // ── company / location rows ────────────────────────────────────────────────
+  const companyRows = scopedCompanies
+    .map((c) => {
+      const history = (c.orders || []).map((o) => attach(o, c)).filter((o) => COMPLETED.has(o.status));
+      const scopedHistory = history;
+      const os = scopedHistory.filter((o) => inPeriod(o.date));
+      const rev = os.reduce((a, o) => a + (Number(o.amount) || 0), 0);
+      const currentRange = sumRevenueInRange(scopedHistory, currentPeriodStart, currentPeriodEnd);
+      const previousRange = hasPrev ? sumRevenueInRange(scopedHistory, previousPeriodStart, previousPeriodEnd) : 0;
+      const last = os.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)))[0]?.date || null;
+      const rep = os.filter(isRepeat).reduce((a, o) => a + (Number(o.amount) || 0), 0);
+      const st = gpStats(os);
+      return { name: c.name, id: c.id, revenue: rev, orders: os.length, aov: os.length ? rev / os.length : 0, share: sales ? (rev / sales) * 100 : 0, growth: compareEnabled && previousRange ? pctChange(currentRange, previousRange) : null, repeat: rev ? (rep / rev) * 100 : 0, last, gp: st.gp, margin: st.margin, coverage: st.coverage };
+    })
+    .sort((a, b) => b.revenue - a.revenue);
+
+  const allLocationRows = scopedCompanies
+    .flatMap((c) =>
+      (c.locations || []).map((l) => {
+        const history = (c.orders || []).map((o) => attach(o, c)).filter((o) => COMPLETED.has(o.status) && o.location === l.name);
+        const scopedHistory = history;
+        const os = scopedHistory.filter((o) => inPeriod(o.date));
+        const rev = os.reduce((a, o) => a + (Number(o.amount) || 0), 0);
+        const currentRange = sumRevenueInRange(scopedHistory, currentPeriodStart, currentPeriodEnd);
+        const previousRange = hasPrev ? sumRevenueInRange(scopedHistory, previousPeriodStart, previousPeriodEnd) : 0;
+        return { name: l.name, sub: c.name, id: `${c.id}::${l.name}`, revenue: rev, orders: os.length, aov: os.length ? rev / os.length : 0, share: sales ? (rev / sales) * 100 : 0, growth: compareEnabled && previousRange ? pctChange(currentRange, previousRange) : null };
+      }),
+    )
+    .sort((a, b) => b.revenue - a.revenue);
+
+  // ── product / collection ────────────────────────────────────────────────────
+  const productMap = new Map();
+  orders.forEach((o) =>
+    (o.items || []).forEach((i) => {
+      const p = productBySku(i.sku) || { sku: i.sku, title: i.sku, productType: 'Other' };
+      const cur = productMap.get(i.sku) || { name: p.title, sub: p.productType, sku: i.sku, revenue: 0, cogs: 0, costKnown: true, units: 0, orderIds: new Set(), companies: new Set() };
+      cur.revenue += Number(i.revenue) || 0;
+      { const c = productCost(i.sku); if (c === null) cur.costKnown = false; else cur.cogs += c * (Number(i.qty) || 0); }
+      cur.units += Number(i.qty) || 0;
+      cur.orderIds.add(o.id); // distinct orders, not line items — a SKU twice in one order counts once
+      cur.companies.add(o.companyId);
+      productMap.set(i.sku, cur);
+    }),
+  );
+  const productRows = [...productMap.values()]
+    .map((x) => { const gp = x.costKnown ? x.revenue - x.cogs : null; const orders = x.orderIds.size; return { name: x.name, sub: x.sub, sku: x.sku, revenue: x.revenue, units: x.units, orders, companies: x.companies.size, gp, margin: marginOf(gp, x.revenue), aov: orders ? x.revenue / orders : 0, share: sales ? (x.revenue / sales) * 100 : 0 }; })
+    .sort((a, b) => b.revenue - a.revenue);
+
+  // ── shared pricing attribution (line-level, snapshot AT ORDER CREATION) ───────
+  // Analytics evaluates pricing by the price actually applied to each line WHEN THE ORDER
+  // WAS CREATED, in two merchant-facing groups only:
+  //   • B2B pricing   — the line used a Company / Location / app pricing at creation
+  //                     (pricing synced from a quote counts as B2B once it's applied).
+  //   • Other pricing — the line did not (a manual custom price, the Shopify default, …).
+  // Later adjustments (discount, refund, price edit, reversal) do NOT change a line's group
+  // or its margin-at-applied-price here. `synced_from_quote` stays internal origin metadata,
+  // not an analytics dimension. Each line's snapshot carries BOTH the pricing-engine output
+  // (BEFORE any manual override) and the price actually applied at creation:
+  //   • resolved*  = engine output — `resolvedPricingSource` / `resolvedPricingId` /
+  //     (prod) `resolvedUnitPrice`: the B2B pricing that WAS resolved, even if later overridden.
+  //   • *AtCreation = the effective price present when the order was created —
+  //     `pricingSourceAtCreation` / `appliedUnitPriceAtCreation` (an override wins; a discount
+  //     already present at creation is INCLUDED), plus `wasPriceOverridden`. `costAtCreation` too.
+  // Provenance & economics use *AtCreation (an overridden line → Other pricing); Manual-price-
+  // changes uses resolved* + wasPriceOverridden (so we still know WHICH B2B pricing was overridden
+  // — pricingSourceAtCreation alone would lose that). Adjustments AFTER creation (discount/refund/
+  // edit/reversal) are ignored. The demo derives the snapshot from the seed (`line.revenue` =
+  // applied value at creation; `overridden` = a manual price replaced a resolved B2B price; there
+  // is no separate resolvedUnitPrice number in the seed). Both Overview and Pricing read this layer.
+  // The ONE engine, extracted to `pricingAttribution.js` and shared with Company Analytics — see
+  // PRICING-METRICS.md §0 for snapshot semantics (resolved* vs *AtCreation, two groups). §6.4
+  // Pricing performance = named B2B profiles only (no "Other" row). Manual-price-changes was
+  // removed from merchant-facing analytics; the snapshot still carries resolved*/wasPriceOverridden.
+  const attributedLines = buildAttributedLines(orders, productCost);
+  const pricingUsage = pricingProfileRows(attributedLines, productBySku);
+
+  // §6.2 footprint — ORDER VALUE / orders that used B2B pricing at creation (line-level).
+  // "Order value" (not "sales"): Σ initial line value on B2B-priced lines — a snapshot at
+  // creation, deliberately NOT reconciled with Overview Net sales (which nets discounts/refunds).
+  const b2bLines = attributedLines.filter((s) => s.isB2B);
+  const b2bValue = b2bLines.reduce((a, s) => a + s.lineValue, 0);
+  const b2bOrderIds = new Set(b2bLines.map((s) => s.order.id));
+  const orderValueTotal = attributedLines.reduce((a, s) => a + s.lineValue, 0);
+  const b2bValueShare = orderValueTotal ? (b2bValue / orderValueTotal) * 100 : 0;
+  const orderCountAll = new Set(attributedLines.map((s) => s.order.id)).size;
+  const b2bOrderShare = orderCountAll ? (b2bOrderIds.size / orderCountAll) * 100 : 0;
+
+  // §6.1 core economics — ALL at the price applied WHEN THE ORDER WAS CREATED (not realized Net
+  // sales/GP; those belong to Overview). Applied B2B vs Shopify compares B2B-priced lines' applied
+  // value with their Shopify list; "Margin at order creation" = line GP / costed applied value;
+  // "Order value below margin threshold" = initial line value of lines with margin-at-creation < floor.
+  // "B2B price vs Shopify" = the PRICING-ENGINE metric: RESOLVED B2B price vs Shopify list, on
+  // resolved-B2B lines whose resolved price is known (`resolvedLineValue`). Uses resolvedUnitPrice,
+  // NOT the applied price — a draft discount present at creation must NOT drag it down (that shows
+  // in margin / order value). Overridden lines are excluded (pre-override resolved price uncaptured).
+  const resolvedPricedLines = attributedLines.filter((s) => s.resolvedLineValue !== null);
+  const resolvedB2BValue = resolvedPricedLines.reduce((a, s) => a + s.resolvedLineValue, 0);
+  const resolvedB2BReference = resolvedPricedLines.reduce((a, s) => a + (Number(productBySku(s.sku)?.list) || 0) * s.qty, 0);
+  const b2bVsShopifyDelta = resolvedB2BValue - resolvedB2BReference;
+  const b2bVsShopifyPct = resolvedB2BReference ? (b2bVsShopifyDelta / resolvedB2BReference) * 100 : null;
+  // "Margin at order creation" & "Order value" use the APPLIED price at creation (incl. pre-creation discount).
+  let appliedGP = 0;
+  let appliedCostedValue = 0;
+  attributedLines.forEach((s) => { if (s.lineCost !== null) { appliedGP += s.lineValue - s.lineCost; appliedCostedValue += s.lineValue; } });
+  const appliedMargin = appliedCostedValue ? (appliedGP / appliedCostedValue) * 100 : null;
+  const appliedMarginCoverage = orderValueTotal ? (appliedCostedValue / orderValueTotal) * 100 : null;
+  const lineMarginAtCreation = (s) => { if (s.lineCost === null) return null; return s.lineValue ? ((s.lineValue - s.lineCost) / s.lineValue) * 100 : 0; };
+  const marginFloor = Number(marginThreshold) || 20;
+  const marginExceptionLines = attributedLines.filter((s) => { const m = lineMarginAtCreation(s); return m !== null && m < marginFloor; });
+  const marginExceptionValue = marginExceptionLines.reduce((a, s) => a + s.lineValue, 0);
+  // Previous-period pricing + deltas (Compare = previous → delta chips on the Pricing tab).
+  const pLines = buildAttributedLines(previousOrders, productCost);
+  const pB2bOrderIds = new Set(pLines.filter((s) => s.isB2B).map((s) => s.order.id));
+  const pOrderCountAll = new Set(pLines.map((s) => s.order.id)).size;
+  const pB2bOrderShare = pOrderCountAll ? (pB2bOrderIds.size / pOrderCountAll) * 100 : 0;
+  let pAppliedGP = 0, pAppliedCostedValue = 0;
+  pLines.forEach((s) => { if (s.lineCost !== null) { pAppliedGP += s.lineValue - s.lineCost; pAppliedCostedValue += s.lineValue; } });
+  const pAppliedMargin = pAppliedCostedValue ? (pAppliedGP / pAppliedCostedValue) * 100 : null;
+  const pMarginExceptionValue = pLines.filter((s) => { const m = lineMarginAtCreation(s); return m !== null && m < marginFloor; }).reduce((a, s) => a + s.lineValue, 0);
+  const appliedMarginDelta = dPP(appliedMargin == null ? null : Math.round(appliedMargin), pAppliedMargin == null ? null : Math.round(pAppliedMargin));
+  const b2bOrderShareDelta = orderCountAll && pOrderCountAll ? dPP(Math.round(b2bOrderShare), Math.round(pB2bOrderShare)) : null;
+  const marginExceptionDelta = dPct(marginExceptionValue, pMarginExceptionValue);
+  const pB2bValue = pLines.filter((s) => s.isB2B).reduce((a, s) => a + s.lineValue, 0);
+  const b2bValueDelta = dPct(b2bValue, pB2bValue);
+  const marginCostedValue = attributedLines.reduce((a, s) => a + (s.lineCost !== null ? s.lineValue : 0), 0);
+  const marginCoverage = orderValueTotal ? (marginCostedValue / orderValueTotal) * 100 : null;
+  const hasPricingFn = (c) => (c?.pricing?.base?.length > 0) || (c?.pricing?.quantity?.length > 0);
+  const activePolicyCount = (state.db.policies || []).filter((p) => p.status !== 'Inactive' && p.audienceType === 'b2b').length;
+  const companiesWithPricing = scopedCompanies.filter(hasPricingFn).length;
+
+  // ── purchasing motion / relationship / price sources ────────────────────────
+  const sourceMap = new Map();
+  orders.forEach((o) => {
+    const name = String(o.source || '').toLowerCase() === 'sales-assisted' ? 'Sales-assisted' : 'Direct / self-serve';
+    const cur = sourceMap.get(name) || { name, revenue: 0, orders: 0 };
+    cur.revenue += Number(o.amount) || 0;
+    cur.orders += 1;
+    sourceMap.set(name, cur);
+  });
+  const orderSources = [...sourceMap.values()].map((x) => ({ ...x, share: sales ? (x.revenue / sales) * 100 : 0 })).sort((a, b) => b.revenue - a.revenue);
+  // Margin by pricing source (§6.3), at the price applied WHEN THE ORDER WAS CREATED. Two
+  // groups (B2B pricing / Other pricing) from the shared attribution layer: revenue = Σ initial
+  // line value, GP = Σ (initial value − costAtCreation×qty) on costed lines, margin = GP /
+  // costed initial value, coverage = costed share. Later discounts/refunds/edits are excluded.
+  const groupEcon = new Map();
+  attributedLines.forEach((s) => {
+    const cur = groupEcon.get(s.group) || { value: 0, cost: 0, costedValue: 0, costedN: 0 };
+    cur.value += s.lineValue; // order value at creation (not realized sales)
+    if (s.lineCost !== null) { cur.cost += s.lineCost; cur.costedValue += s.lineValue; cur.costedN += 1; }
+    groupEcon.set(s.group, cur);
+  });
+  const b2bPricingValue = groupEcon.get('B2B pricing')?.value || 0;
+  const otherPricingValue = groupEcon.get('Other pricing')?.value || 0;
+  const pricingSourceRows = ['B2B pricing', 'Other pricing']
+    .map((name) => {
+      const e = groupEcon.get(name) || { value: 0, cost: 0, costedValue: 0, costedN: 0 };
+      const gp = e.costedN ? e.costedValue - e.cost : null;
+      return { name, value: e.value, gp, margin: e.costedN && e.costedValue ? (gp / e.costedValue) * 100 : null, coverage: e.value ? (e.costedValue / e.value) * 100 : null };
+    })
+    .filter((s) => s.value > 0)
+    .sort((a, b) => b.value - a.value);
+  const pricingSourceMaxMargin = Math.max(1, ...pricingSourceRows.map((s) => s.margin).filter((m) => m !== null));
+
+  // ── quote rows / cadence ────────────────────────────────────────────────────
+  const quoteVal = (q) => (q.lines || []).reduce((s, l) => s + (Number(l.quoted) || 0) * (Number(l.qty) || 0), 0);
+  // Two distinct clocks — do not conflate:
+  //  • quoteAge     = how long the quote has existed (TODAY − created). "How old is it."
+  //    Drives Open quote aging (§5.3) and the Age column in Quote detail.
+  //  • quoteIdleAge = TODAY − last MEANINGFUL activity = the latest buyer/merchant
+  //    timeline event, NOT the raw `updated` field (an internal metadata write can bump
+  //    `updated` without any real activity). Drives Stale pipeline (§5.1). Falls back to
+  //    `updated` then `created` only when a quote has no timeline.
+  const quoteAge = (q) => {
+    const c = String(q.created || q.updated || '').slice(0, 10);
+    return c ? Math.max(0, Math.round((TODAY - new Date(c + 'T00:00:00')) / DAY)) : 0;
+  };
+  const lastActivity = (q) => {
+    const dates = (q.timeline || []).map((e) => timelineDate(e.when)).filter(Boolean);
+    if (dates.length) return new Date(Math.max(...dates.map((d) => d.getTime())));
+    const f = String(q.updated || q.created || '').slice(0, 10);
+    return f ? new Date(f + 'T00:00:00') : null;
+  };
+  const quoteIdleAge = (q) => {
+    const d = lastActivity(q);
+    return d ? Math.max(0, Math.round((TODAY - d) / DAY)) : 0;
+  };
+  const companyQuoteRows = scopedCompanies
+    .map((c) => {
+      const qs = quotes.filter((q) => q.company === c.id);
+      const oq = qs.filter((q) => q.progress === 'Draft Order Created' || q.progress === 'Auto Confirmed' || q.status === 'Deal Closed');
+      const val = qs.reduce((s, q) => s + quoteVal(q), 0);
+      return { name: c.name, id: c.id, rfqs: qs.length, quoted: val, conversion: qs.length ? (oq.length / qs.length) * 100 : null, open: qs.filter((q) => !['Deal Closed', 'Deal Rejected', 'Trashed'].includes(q.status)).length };
+    })
+    .filter((x) => x.rfqs)
+    .sort((a, b) => b.quoted - a.quoted);
+
+  const companyCadence = scopedCompanies
+    .map((c) => {
+      const os = (c.orders || []).filter((o) => COMPLETED.has(o.status)).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      const gaps = os.slice(1).map((o, i) => daysBetween(os[i].date, o.date)).filter((n) => n > 0).sort((a, b) => a - b);
+      const med = gaps.length >= 3 ? (gaps.length % 2 ? gaps[(gaps.length - 1) / 2] : Math.round((gaps[gaps.length / 2 - 1] + gaps[gaps.length / 2]) / 2)) : null;
+      const first = os[0]?.date || null;
+      const last = os[os.length - 1]?.date || null;
+      const since = last ? daysAgo(last) : null;
+      return { id: c.id, name: c.name, orders: os.length, typical: med, since, delta: med != null && since != null ? since - med : null, first, last };
+    })
+    .sort((a, b) => (b.delta || -999) - (a.delta || -999));
+
+  // Lifecycle and relationship state are SEPARATE concepts.
+  // Lifecycle: No purchase / New (first completed order ≤90d) / Established (>90d).
+  // Relationship state (§4.3) needs ≥4 completed orders (≥3 intervals): reorder ratio
+  // = days-since-last / median interval → Healthy ≤1.25×, Watch ≤1.5×, At risk ≤2×,
+  // Inactive >2×, else Insufficient history. An explainable state, not a 0–100 score.
+  const healthRows = companyCadence.map((r) => {
+    const firstAge = r.first ? daysAgo(r.first) : null;
+    // Lifecycle taxonomy is deliberately DISTINCT from the New-vs-existing revenue cohort
+    // (§4.6): lifecycle is about age-since-first-purchase ("Recently activated" ≤90d /
+    // "Established" >90d), the revenue split is about first purchase inside the selected
+    // period ("New" / "Existing"). Different words on purpose so one company can't read as
+    // both "New" and "Established" at once.
+    const lifecycle = r.orders === 0 ? 'No purchase' : firstAge != null && firstAge <= 90 ? 'Recently activated' : 'Established';
+    let health = 'Insufficient history';
+    let ratio = null;
+    let overdue = null;
+    if (r.typical != null && r.since != null) {
+      ratio = r.since / r.typical;
+      overdue = Math.max(0, r.since - r.typical);
+      health = ratio <= 1.25 ? 'Healthy' : ratio <= 1.5 ? 'Watch' : ratio <= 2 ? 'At risk' : 'Inactive';
+    }
+    return { ...r, lifecycle, health, ratio, overdue };
+  });
+  const healthOf = (id) => healthRows.find((r) => r.id === id)?.health || 'Insufficient history';
+  const countHealth = (s) => healthRows.filter((r) => r.health === s).length;
+  const countLifecycle = (s) => healthRows.filter((r) => r.lifecycle === s).length;
+
+  // New vs existing company revenue.
+  const firstOrderByCompany = new Map(
+    scopedCompanies.map((c) => {
+      const ds = (c.orders || []).filter((o) => COMPLETED.has(o.status)).map((o) => String(o.date || '').slice(0, 10)).filter(Boolean).sort();
+      return [c.id, ds[0] || null];
+    }),
+  );
+  // New = the company's first completed order falls inside the current window.
+  const newCompanyIds = new Set([...firstOrderByCompany.entries()].filter(([, d]) => d && new Date(d + 'T00:00:00') >= rangeStart).map(([id]) => id));
+  const previousNewCount = compareEnabled ? [...firstOrderByCompany.entries()].filter(([, d]) => d && inDateRange(d, previousPeriodStart, previousPeriodEnd)).length : 0;
+  const newDelta = compareEnabled ? newCompanyIds.size - previousNewCount : null;
+  const newCompanyRevenue = orders.filter((o) => newCompanyIds.has(o.companyId)).reduce((a, o) => a + (Number(o.amount) || 0), 0);
+  const existingCompanyRevenue = Math.max(0, sales - newCompanyRevenue);
+  // Revenue mix (Overview + Companies). No previous-period comparison → zeroed in "Compare only".
+  const revenueMix = [
+    { name: 'Existing companies', value: compareOnly ? 0 : existingCompanyRevenue },
+    { name: 'New companies', value: compareOnly ? 0 : newCompanyRevenue },
+  ];
+  const activeLocations = selected ? new Set(orders.map((o) => o.location)).size : allLocationRows.filter((r) => r.orders).length;
+  // New locations = locations of the selected company whose FIRST completed order falls in
+  // the period — the location-level parallel of "New buying companies". (Not "Active
+  // locations", which is a different activity concept and already shown in the Hero KPI.)
+  const newLocations = selected
+    ? (() => {
+        const firstByLoc = new Map();
+        (selected.orders || []).filter((o) => COMPLETED.has(o.status)).forEach((o) => {
+          const d = String(o.date || '').slice(0, 10);
+          if (d && (!firstByLoc.has(o.location) || d < firstByLoc.get(o.location))) firstByLoc.set(o.location, d);
+        });
+        return [...firstByLoc.values()].filter((d) => new Date(d + 'T00:00:00') >= rangeStart).length;
+      })()
+    : 0;
+
+  // ── activation ──────────────────────────────────────────────────────────────
+  let activationRows = showEmpty ? [] : analyticsCompanyActivation.filter((a) => inPeriod(a.registered));
+  if (selected) activationRows = activationRows.filter((a) => a.companyId === selected.id);
+  const activationApproved = activationRows.filter((a) => a.approved);
+  const activationPurchased = activationRows.filter((a) => a.firstOrder);
+  const activationRate = activationApproved.length ? Math.round((activationPurchased.length / activationApproved.length) * 100) : null;
+  const activationTypical = median(activationApproved.filter((a) => a.firstOrder).map((a) => daysBetween(a.approved, a.firstOrder)));
+
+  // ── quote pipeline: response / close / win / aging / discount ────────────────
+  const responseMedian = median(responseDays);
+  const closeDays = quotes
+    .filter((q) => q.status === 'Deal Closed')
+    .map((q) => {
+      const c = String(q.created || '').slice(0, 10);
+      const u = String(q.updated || '').slice(0, 10);
+      return c && u ? Math.max(0, daysBetween(c, u)) : null;
+    })
+    .filter((x) => x != null);
+  const closeMedian = median(closeDays);
+  const wonQuotes = quotes.filter((q) => q.status === 'Deal Closed');
+  const lostQuotes = quotes.filter((q) => q.status === 'Deal Rejected');
+  const finalizedQuotes = [...wonQuotes, ...lostQuotes];
+  const finalizedValue = finalizedQuotes.reduce((a, q) => a + quoteVal(q), 0);
+  const wonValue = wonQuotes.reduce((a, q) => a + quoteVal(q), 0);
+  const lostValue = lostQuotes.reduce((a, q) => a + quoteVal(q), 0);
+  const winRateCount = finalizedQuotes.length ? Math.round((wonQuotes.length / finalizedQuotes.length) * 100) : null;
+  const winRateValue = finalizedValue ? Math.round((wonValue / finalizedValue) * 100) : null;
+  // Previous-period quote metrics + deltas (Compare = previous → delta chips on the Quotes tab).
+  const pWonQuotes = previousQuotes.filter((q) => q.status === 'Deal Closed');
+  const pLostQuotes = previousQuotes.filter((q) => q.status === 'Deal Rejected');
+  const pFinalizedValue = [...pWonQuotes, ...pLostQuotes].reduce((a, q) => a + quoteVal(q), 0);
+  const pWonValue = pWonQuotes.reduce((a, q) => a + quoteVal(q), 0);
+  const pWinRateValue = pFinalizedValue ? Math.round((pWonValue / pFinalizedValue) * 100) : null;
+  const pFinalizedCount = pWonQuotes.length + pLostQuotes.length;
+  const pWinRateCount = pFinalizedCount ? Math.round((pWonQuotes.length / pFinalizedCount) * 100) : null;
+  const pQuoteValueTotal = previousQuotes.reduce((a, q) => a + quoteVal(q), 0);
+  const pReceived = previousQuotes.length;
+  const wonQuotesDelta = dPct(wonQuotes.length, pWonQuotes.length);
+  const lostQuotesDelta = dPct(lostQuotes.length, pLostQuotes.length);
+  const winRateValueDelta = dPP(winRateValue, pWinRateValue);
+  const winRateCountDelta = dPP(winRateCount, pWinRateCount);
+  const quoteValueTotalDelta = dPct(quotes.reduce((a, q) => a + quoteVal(q), 0), pQuoteValueTotal);
+  const avgQuoteValueDelta = dPct(quotes.length ? quotes.reduce((a, q) => a + quoteVal(q), 0) / quotes.length : 0, pReceived ? pQuoteValueTotal / pReceived : 0);
+  const avgWonValue = wonQuotes.length ? wonValue / wonQuotes.length : null;
+  const avgLostValue = lostQuotes.length ? lostValue / lostQuotes.length : null;
+  const openQuoteValue = openQuotes.reduce((a, q) => a + quoteVal(q), 0);
+  const agingBuckets = [
+    { name: '< 3 days', min: 0, max: 2 },
+    { name: '3–7 days', min: 3, max: 7 },
+    { name: '8–14 days', min: 8, max: 14 },
+    { name: '15+ days', min: 15, max: 9999 },
+  ].map((b) => {
+    const qs = openQuotes.filter((q) => {
+      const a = quoteAge(q);
+      return a >= b.min && a <= b.max;
+    });
+    return { ...b, count: qs.length, value: qs.reduce((a, q) => a + quoteVal(q), 0) };
+  });
+  // ── Discount / pricing analysis: three distinct questions (spec §5.7) ─────────
+  // Per-quote pricing facts, computed once against BOTH baselines:
+  //  • listVal/quotedVal   — vs Shopify LIST (stable, quote always ≤ list → ≥ 0).
+  //  • coRefVal/coQuotedVal — only over lines that resolve to a COMPANY price
+  //    (resolveDetail layer ≠ 'shopify'); used for a SIGNED variance (no clamp), since
+  //    a quote can be priced above OR below the company's standing policy.
+  //  • hasCompanyPricing    — did any priced line resolve from company pricing.
+  const quotePricingInfo = (q) => {
+    const company = companyById(q.company);
+    let listVal = 0, quotedVal = 0, coRefVal = 0, coQuotedVal = 0, hasCompanyPricing = false;
+    (q.lines || []).forEach((l) => {
+      const product = productBySku(l.sku);
+      if (!product) return;
+      const quoted = Number(l.quoted);
+      const qty = Number(l.qty) || 0;
+      if (!Number.isFinite(quoted) || quoted <= 0 || qty <= 0) return;
+      const list = Number(product.list) || 0;
+      if (list > 0) { listVal += list * qty; quotedVal += quoted * qty; }
+      const d = resolveDetail(company, product, policies, defaultVariant(product));
+      if (d.layer !== 'shopify') {
+        const ref = Number(d.price) || 0;
+        if (ref > 0) { coRefVal += ref * qty; coQuotedVal += quoted * qty; hasCompanyPricing = true; }
+      }
+    });
+    return {
+      listDiscount: listVal > 0 ? Math.max(0, ((listVal - quotedVal) / listVal) * 100) : null,
+      priceVariance: coRefVal > 0 ? ((coQuotedVal - coRefVal) / coRefVal) * 100 : null, // signed
+      hasCompanyPricing, listVal, quotedVal, coRefVal, coQuotedVal,
+    };
+  };
+  const periodPricing = quotes.map((q) => quotePricingInfo(q));
+  const finalizedPricing = finalizedQuotes.map((q) => ({ won: q.status === 'Deal Closed', ...quotePricingInfo(q) }));
+
+  // Metric 1 — Quoted discount vs Shopify LIST (discount depth). Weighted by list value.
+  const listWeighted = periodPricing.reduce((a, x) => a + x.listVal, 0);
+  const listQuotedWeighted = periodPricing.reduce((a, x) => a + x.quotedVal, 0);
+  const avgListDiscount = listWeighted ? Math.max(0, ((listWeighted - listQuotedWeighted) / listWeighted) * 100) : null;
+  const listDiscountRows = finalizedPricing.filter((x) => x.listDiscount != null);
+  const discountBuckets = [
+    { name: '0–5% off', min: 0, max: 5 },
+    { name: '5–10% off', min: 5, max: 10 },
+    { name: '10–15% off', min: 10, max: 15 },
+    { name: '15%+ off', min: 15, max: 999 },
+  ].map((b, i) => {
+    const rows = listDiscountRows.filter((x) => x.listDiscount >= b.min && (i === 0 ? x.listDiscount <= b.max : x.listDiscount > b.min) && x.listDiscount <= b.max);
+    const wins = rows.filter((x) => x.won).length;
+    return { ...b, count: rows.length, wins, rate: rows.length ? Math.round((wins / rows.length) * 100) : null };
+  });
+
+  // Metric 2 — Price variance vs COMPANY pricing (adherence / override). SIGNED, no clamp:
+  // + = quoted above the assigned company price, − = below. Only quotes with company pricing.
+  const varWeighted = periodPricing.reduce((a, x) => a + x.coRefVal, 0);
+  const varQuotedWeighted = periodPricing.reduce((a, x) => a + x.coQuotedVal, 0);
+  const avgPriceVariance = varWeighted ? ((varQuotedWeighted - varWeighted) / varWeighted) * 100 : null;
+  const varianceRows = finalizedPricing.filter((x) => x.priceVariance != null);
+  const varianceBuckets = [
+    { name: 'More than 5% above', test: (v) => v > 5 },
+    { name: 'Within 5%', test: (v) => v >= -5 && v <= 5 },
+    { name: '5–10% below', test: (v) => v < -5 && v >= -10 },
+    { name: 'More than 10% below', test: (v) => v < -10 },
+  ].map((b) => {
+    const rows = varianceRows.filter((x) => b.test(x.priceVariance));
+    const wins = rows.filter((x) => x.won).length;
+    return { name: b.name, count: rows.length, wins, rate: rows.length ? Math.round((wins / rows.length) * 100) : null };
+  });
+
+  // Metric 3 — win rate WITH vs WITHOUT company pricing (does pricing context convert?).
+  const winRateOf = (rows) => (rows.length ? Math.round((rows.filter((x) => x.won).length / rows.length) * 100) : null);
+  const withPricing = finalizedPricing.filter((x) => x.hasCompanyPricing);
+  const withoutPricing = finalizedPricing.filter((x) => !x.hasCompanyPricing);
+  const winWithPricing = winRateOf(withPricing);
+  const winWithoutPricing = winRateOf(withoutPricing);
+
+  // ── quantity rules / pricing changes ────────────────────────────────────────
+  const quantityEvents = showEmpty ? [] : analyticsQuantityEvents.filter((e) => inPeriod(e.date) && (activeCompanyId === 'all' || e.companyId === activeCompanyId));
+  // §6.6 = quantity-pricing EFFECTIVENESS only: of the purchases eligible for a tier, how many
+  // reached it (reach rate), the order value that went through tiers, and the discount realized.
+  // The friction/potential/behavior signals (MOQ-blocked demand, near-threshold, later-recovered)
+  // were cut from merchant-facing analytics — they measure demand/behavior, not whether quantity
+  // pricing works. Keep those as internal telemetry if product wants to study them.
+  const tierEvents = quantityEvents.filter((e) => e.type === 'tier_observed');
+  const tierReachedEvents = tierEvents.filter((e) => e.reached);
+  // Realized discount is value-weighted by the PRE-DISCOUNT reference value, not the post-discount
+  // order value — a $1,000-reference order at 20% must carry weight $1,000, not $800. The event
+  // holds the actual (post-discount) `orderValue`, so reference = orderValue / (1 − discount).
+  const eventReference = (e) => { const d = (Number(e.realizedDiscount) || 0) / 100; return d < 1 ? (Number(e.orderValue) || 0) / (1 - d) : (Number(e.orderValue) || 0); };
+  const wDiscount = (evs) => { const ref = evs.reduce((a, e) => a + eventReference(e), 0); return ref ? evs.reduce((a, e) => a + eventReference(e) * (Number(e.realizedDiscount) || 0), 0) / ref : null; };
+  const tierEligible = tierEvents.length;
+  const tierReached = tierReachedEvents.length;
+  const tierReachRate = tierEligible ? (tierReached / tierEligible) * 100 : null;
+  const tierOrderValue = tierReachedEvents.reduce((a, e) => a + (Number(e.orderValue) || 0), 0);
+  const tierAvgDiscount = wDiscount(tierReachedEvents);
+  const tierPolicies = [...new Set(tierEvents.map((e) => e.policy))].map((name) => {
+    const es = tierEvents.filter((e) => e.policy === name);
+    const reached = es.filter((e) => e.reached);
+    return { name, eligible: es.length, reached: reached.length, reachRate: es.length ? (reached.length / es.length) * 100 : null, orderValue: reached.reduce((a, e) => a + (Number(e.orderValue) || 0), 0), discount: wDiscount(reached) };
+  });
+  const ruleChanges = showEmpty ? [] : analyticsPricingChanges.filter((r) => activeCompanyId === 'all' || r.companyId === activeCompanyId);
+
+  // ── filter option lists ─────────────────────────────────────────────────────
+  const companyOptions = [{ label: 'All companies', value: 'all' }, ...companies.map((c) => ({ label: c.name, value: c.id }))];
+  const periodOptions = [
+    { label: 'Last 30 days', value: '30d' },
+    { label: 'Last 3 months', value: '3m' },
+    { label: 'Last 6 months', value: '6m' },
+    { label: 'Last 12 months', value: '12m' },
+    { label: 'Custom range', value: 'custom' },
+  ];
+  const compareOptions = [
+    { label: 'No comparison', value: 'none' },
+    { label: 'Previous period', value: 'previous' },
+  ];
+  const scopeText = selected ? `Filtered to ${selected.name}` : `Across ${companies.length} managed companies`;
+  const showClear = selected || period !== '3m' || compare !== 'none';
+  const clearFilters = () => {
+    setCompanyFilter(embeddedCompanyId || 'all');
+    setPeriod('3m');
+    setCompare('none');
+    setCustomStart('');
+    setCustomEnd('');
+  };
+
+
+  // Clickable company cell → drill into that company.
+  const CompanyLink = ({ id, children }) => (
+    <s-link onClick={() => setCompanyFilter(id)}>{children}</s-link>
+  );
+
+  // Four screens (spec §1). No Orders screen — order data feeds Overview, Companies
+  // and Pricing as the background that explains their performance.
+  const tabs = [
+    { id: 'overview', content: 'Overview' },
+    { id: 'accounts', content: 'Companies' },
+    { id: 'quotes', content: 'Quotes' },
+    { id: 'pricing', content: 'Pricing' },
+  ];
+
+  // Reusable breakdown metric table.
+  const metricTable = (rows, { entity = 'Company', clickable = false, showGrowth = true } = {}) => (
+    <>
+      <s-table>
+        <s-table-header-row>
+          <s-table-header listSlot="primary">{entity}</s-table-header>
+          <s-table-header listSlot="labeled" format="currency">Sales</s-table-header>
+          <s-table-header listSlot="labeled">Share</s-table-header>
+          <s-table-header listSlot="labeled" format="numeric">Orders</s-table-header>
+          <s-table-header listSlot="labeled" format="currency">AOV</s-table-header>
+          {showGrowth && <s-table-header listSlot="labeled" format="numeric">Vs previous period</s-table-header>}
+        </s-table-header-row>
+        <s-table-body>
+          {rows.map((r, i) => (
+            <s-table-row key={r.id || r.name || i}>
+              <s-table-cell>{clickable && r.id ? <CompanyLink id={r.id}>{r.name}</CompanyLink> : <s-text>{r.name}{r.sub ? <s-text color="subdued">{` · ${r.sub}`}</s-text> : null}</s-text>}</s-table-cell>
+              <s-table-cell>{money(r.revenue || 0)}</s-table-cell>
+              <s-table-cell><ShareBar share={r.share} /></s-table-cell>
+              <s-table-cell>{r.orders || 0}</s-table-cell>
+              <s-table-cell>{money(r.aov || 0)}</s-table-cell>
+              {showGrowth && <s-table-cell>{r.growth == null ? '—' : `${r.growth > 0 ? '+' : ''}${r.growth}%`}</s-table-cell>}
+            </s-table-row>
+          ))}
+        </s-table-body>
+      </s-table>
+      <TableEmpty show={rows.length === 0}>No completed-order data.</TableEmpty>
+    </>
+  );
+
+  // ── OVERVIEW ────────────────────────────────────────────────────────────────
+  // ── Overview derivations (spec §3) ──────────────────────────────────────────
+  const managedCount = companies.length;
+  const previousActiveCount = new Set(previousOrders.map((o) => o.companyId)).size;
+  const activeDelta = compareEnabled ? activeCompanyIds.size - previousActiveCount : null;
+
+
+  // Trailing-90-day helpers for Needs attention. Attach line items so GP resolves.
+  const t90Start = addDays(TODAY, -89);
+  const rawWithItems = (o) => ({ ...o, items: analyticsOrderItems[o.id] || [] });
+  const t90Orders = (id) => {
+    const c = companies.find((x) => x.id === id);
+    return (c?.orders || []).filter((o) => COMPLETED.has(o.status) && inDateRange(o.date, t90Start, TODAY)).map(rawWithItems);
+  };
+  // "Past their normal buying cycle" = reorder ratio beyond Healthy (Watch/At risk/
+  // Inactive). Exposure is stated as trailing-90-day sales AND gross profit — never
+  // called "revenue at risk", since there is no predictive model behind it (§4.4).
+  const pastCycleCompanies = healthRows.filter((r) => ['Watch', 'At risk', 'Inactive'].includes(r.health));
+  // Aggregate the group's trailing-90 orders ONCE so GP carries its own cost coverage
+  // (coverage-aware rule, §0): GP is computed on the costed portion only, and
+  // pastCycleCoverage says how much of the exposure that covers. It's surfaced next to
+  // the GP so $GP against $sales isn't misread as the group's true gross margin.
+  const pastCycleOrders = pastCycleCompanies.flatMap((r) => t90Orders(r.id));
+  const pastCycleSales = pastCycleOrders.reduce((a, o) => a + (Number(o.amount) || 0), 0);
+  const pastCycleStats = gpStats(pastCycleOrders);
+  const pastCycleGP = pastCycleStats.gp;
+  const pastCycleCoverage = pastCycleStats.coverage; // % of past-cycle sales that has cost data
+  const pastCycleCoverageNote = pastCycleGP != null && pastCycleCoverage != null && pastCycleCoverage < 99.5
+    ? `Based on ${Math.round(pastCycleCoverage)}% cost coverage`
+    : undefined;
+
+  // Stale pipeline — open quotes with no MEANINGFUL activity for >10 days (§3.4).
+  // Uses quoteIdleAge (days since last buyer/merchant timeline event), not quoteAge.
+  const staleQuotes = openQuotes.filter((q) => quoteIdleAge(q) > 10).map((q) => quoteVal(q)).sort((a, b) => b - a);
+  const staleValue = staleQuotes.reduce((a, v) => a + v, 0);
+
+  // Margin deterioration — the company whose gross margin fell most vs the previous
+  // period (§3.4). Only meaningful when comparing periods.
+  // Guardrail: a margin "drop" is only trustworthy when BOTH periods are well-costed.
+  // If e.g. this period is 30% cost-covered, its margin is the margin of that 30% — not
+  // comparable to a 100%-covered prior period, so we suppress the signal rather than
+  // raise a Needs-attention action on incomplete data. When shown, we expose the coverage.
+  const MARGIN_DROP_MIN_COVERAGE = 80;
+  const marginDrops = compareEnabled
+    ? companyRows
+        .map((r) => {
+          const c = companies.find((x) => x.id === r.id);
+          const prevOs = (c?.orders || []).map(rawWithItems).filter((o) => COMPLETED.has(o.status) && inDateRange(o.date, previousPeriodStart, previousPeriodEnd));
+          const prev = gpStats(prevOs);
+          const minCoverage = Math.min(r.coverage ?? 0, prev.coverage ?? 0);
+          const trustworthy = r.coverage != null && prev.coverage != null && r.coverage >= MARGIN_DROP_MIN_COVERAGE && prev.coverage >= MARGIN_DROP_MIN_COVERAGE;
+          const drop = trustworthy && prev.margin != null && r.margin != null && r.revenue > 0 ? prev.margin - r.margin : null;
+          return { name: r.name, id: r.id, drop, salesAffected: r.revenue, coverage: minCoverage };
+        })
+        .filter((x) => x.drop != null && x.drop >= 1)
+        .sort((a, b) => b.drop - a.drop)
+    : [];
+  const worstMargin = marginDrops[0] || null;
+
+  // Sales & profit over time — adaptive buckets (§3.3): day ≤31d, week ≤92d, else month.
+  const bucketMode = spanDays <= 31 ? 'day' : spanDays <= 92 ? 'week' : 'month';
+  const dayLabel = (d) => `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()]} ${d.getDate()}`;
+  const buildBuckets = (start, end) => {
+    const out = [];
+    if (bucketMode === 'month') {
+      monthsBetween(start, end).forEach((d) => out.push({ from: startOfDay(d), to: addDays(addMonths(d, 1), -1), label: monthLabel(d) }));
+    } else {
+      const step = bucketMode === 'week' ? 7 : 1;
+      for (let cur = startOfDay(start); cur <= end; cur = addDays(cur, step)) {
+        const bEnd = addDays(cur, step - 1);
+        out.push({ from: cur, to: bEnd > end ? end : bEnd, label: dayLabel(cur) });
+      }
+    }
+    return out;
+  };
+  const fillBuckets = (buckets, ordersList) =>
+    buckets.map((b) => {
+      const os = ordersList.filter((o) => inDateRange(o.date, b.from, b.to));
+      const bs = os.reduce((a, o) => a + (Number(o.amount) || 0), 0);
+      const st = gpStats(os);
+      return { label: b.label, sales: bs, orders: os.length, gp: st.gp, margin: st.margin };
+    });
+  const overviewSeries = fillBuckets(buildBuckets(rangeStart, rangeEnd), orders);
+  const overviewPrevSeries = compareEnabled ? fillBuckets(buildBuckets(previousPeriodStart, previousPeriodEnd), previousOrders) : [];
+  const seriesVal = (b) => (trendMetric === 'gp' ? b.gp : trendMetric === 'margin' ? b.margin : b.sales);
+
+  const shownProducts = blankRows(showAllProducts ? productRows : productRows.slice(0, 5));
+
+  const overviewTab = (
+    <s-stack gap="large">
+      {/* §3.1 — Hero KPIs */}
+      <ScoreGrid
+        items={cmpOnly([
+          { cmp: true, label: 'Net B2B sales', value: money(sales), delta: cmpDelta(salesDelta), foot: compareEnabled ? 'vs previous period' : 'net completed orders', help: 'Sales from completed B2B orders in the selected period, after discounts and returns. Orders that are blocked or not yet completed aren’t counted.', formula: 'Net B2B sales = gross sales − discounts − returns' },
+          { cmp: true, label: 'Gross profit', value: moneyN(grossProfit), delta: cmpDelta(gpDelta), foot: costCoverage != null && costCoverage < 99.5 ? `${Math.round(costCoverage)}% of sales have cost data` : compareEnabled ? 'vs previous period' : 'net sales − COGS', help: 'What you keep from sales after paying for the products you sold. Only orders with product costs are counted — if some costs are missing, the note below shows how much of your sales this covers.', formula: 'Gross profit = net sales − product costs' },
+          { cmp: true, label: 'Gross margin', value: pct1N(grossMargin), delta: cmpDelta(marginDelta, { suffix: ' pp' }), foot: costCoverage != null && costCoverage < 99.5 ? `on ${Math.round(costCoverage)}% of sales with cost data` : compareEnabled ? 'vs previous period' : 'gross profit / net sales', help: 'The share of sales you keep as profit after product costs. Only orders with product costs are counted — if some costs are missing, the note below shows how much of your sales this covers.', formula: 'Gross margin = gross profit / net sales' },
+          selected
+            ? { label: 'Active locations', value: `${activeLocations} / ${selected?.locations?.length || 0}`, foot: 'locations with an order', help: 'Locations of this company with at least one completed order in the period, out of its total locations.' }
+            : { cmp: true, label: 'Active companies', value: String(activeCompanyIds.size), delta: cmpDelta(activeDelta, { suffix: '' }), foot: `of ${managedCount} managed companies`, help: 'Managed companies with at least one completed order in the period, out of all the companies you manage.' },
+          { cmp: true, label: 'Repeat revenue', value: `${repeatShare}%`, delta: cmpDelta(repeatDelta, { suffix: ' pp' }), foot: money(repeatRevenue), help: "Share of sales that came from reorders — every order after a company's first one.", formula: 'Repeat revenue = sales from reorders / net sales' },
+        ])}
+      />
+
+      {/* §3.2 — Baseline context */}
+      <MiniCompare
+        items={cmpOnly([
+          { cmp: true, label: 'Orders', value: String(orderCount), delta: cmpDelta(orderDelta) },
+          { cmp: true, label: 'Average order value', value: money(aov), delta: cmpDelta(aovDelta) },
+          { cmp: true, label: 'Units sold', value: unitsSold.toLocaleString('en-US'), delta: cmpDelta(unitsDelta) },
+          { cmp: !selected, label: selected ? 'New locations' : 'New buying companies', value: selected ? String(newLocations) : String(newCompanyIds.size), delta: selected ? null : cmpDelta(newDelta, { suffix: '' }) },
+        ])}
+      />
+
+      {/* §3.3 — Sales & profit trend */}
+      <ReportCard
+        title="Sales & profit over time"
+        subtitle={`Completed ${trendMetric === 'gp' ? 'gross profit' : trendMetric === 'margin' ? 'gross margin' : 'net sales'} in the current scope, by ${bucketMode}.`}
+        controls={
+          <div style={{ display: 'inline-flex', border: '1px solid var(--p-color-border)', borderRadius: 8, overflow: 'hidden' }}>
+            {[['sales', 'Sales'], ['gp', 'Gross profit'], ['margin', 'Gross margin']].map(([m, lbl]) => (
+              <button key={m} type="button" onClick={() => setTrendMetric(m)} style={{ padding: '5px 12px', border: 0, cursor: 'pointer', font: 'inherit', background: trendMetric === m ? 'var(--p-color-bg-fill-brand)' : 'transparent', color: trendMetric === m ? 'var(--p-color-text-brand-on-bg-fill)' : 'var(--p-color-text)' }}>{lbl}</button>
+            ))}
+          </div>
+        }
+      >
+        <LineChart
+          data={overviewSeries.map((b) => ({ label: b.label, value: seriesVal(b) }))}
+          compare={compareEnabled ? overviewPrevSeries.map((b) => ({ label: b.label, value: seriesVal(b) })) : null}
+          empty="No completed sales in this period yet."
+        />
+      </ReportCard>
+
+      {/* §3.4 — Needs attention (problem → financial context → CTA) */}
+      {!selected && (
+        <s-stack gap="small">
+          <SectionTitle title="Needs attention" subtitle="Each signal with its financial context and where to act." />
+          <TwoColumns>
+            <InsightCard
+              headline="Past their normal reorder cycle"
+              value={compareOnly ? '—' : `${pastCycleCompanies.length} compan${pastCycleCompanies.length === 1 ? 'y' : 'ies'}`}
+              context={compareOnly ? undefined : `${moneyN(pastCycleGP)} gross profit in the last 90 days`}
+              note={compareOnly ? undefined : pastCycleCoverageNote}
+              cta="Review companies →"
+              onAction={() => setTab(1)}
+            />
+            <InsightCard
+              headline="Current open quote value"
+              value={compareOnly ? '—' : money(openQuoteValue)}
+              context={compareOnly ? undefined : openQuotes.length ? `${openQuotes.length} quote${openQuotes.length === 1 ? '' : 's'} still open` : 'No open quotes'}
+              note={compareOnly ? undefined : 'Current snapshot · not affected by date range'}
+              cta="Review quotes →"
+              onAction={() => setTab(2)}
+            />
+            {worstMargin && (
+              <InsightCard
+                headline={`Gross margin fell for ${worstMargin.name}`}
+                value={`↓ ${worstMargin.drop.toFixed(1)} pp`}
+                tone="critical"
+                context={`${money(worstMargin.salesAffected)} sales affected this period`}
+                note={worstMargin.coverage < 99.5 ? `Based on ${Math.round(worstMargin.coverage)}% cost coverage` : undefined}
+                cta="Review pricing →"
+                onAction={() => setTab(3)}
+              />
+            )}
+          </TwoColumns>
+        </s-stack>
+      )}
+
+      {/* §3.6 Top companies + §3.2 revenue mix */}
+      {!selected && (
+        <>
+          <ReportCard
+            title="Top companies"
+            subtitle="Sales, gross profit and margin by company. Click a company to filter, or open the full ranking."
+            controls={<s-link onClick={() => setTab(1)}>View all companies</s-link>}
+          >
+            <s-table>
+              <s-table-header-row>
+                <s-table-header listSlot="primary">Company</s-table-header>
+                <s-table-header listSlot="labeled" format="currency">Sales</s-table-header>
+                <s-table-header listSlot="labeled" format="currency">Gross profit</s-table-header>
+                <s-table-header listSlot="labeled" format="numeric">Margin</s-table-header>
+                <s-table-header listSlot="labeled" format="numeric">% of sales</s-table-header>
+              </s-table-header-row>
+              <s-table-body>
+                {blankRows(companyRows).slice(0, 5).map((r) => (
+                  <s-table-row key={r.id}>
+                    <s-table-cell><CompanyLink id={r.id}>{r.name}</CompanyLink></s-table-cell>
+                    <s-table-cell>{money(r.revenue || 0)}</s-table-cell>
+                    <s-table-cell>{moneyN(r.gp)}</s-table-cell>
+                    <s-table-cell>{pctN(r.margin)}</s-table-cell>
+                    <s-table-cell>{`${Math.round(r.share || 0)}%`}</s-table-cell>
+                  </s-table-row>
+                ))}
+              </s-table-body>
+            </s-table>
+            <TableEmpty show={Math.min(5, blankRows(companyRows).length) === 0}>No completed-order data.</TableEmpty>
+          </ReportCard>
+          <ReportCard title="New vs existing revenue" subtitle="Revenue by whether the company first purchased in the selected period.">
+            <StackedBar segments={revenueMix} />
+          </ReportCard>
+        </>
+      )}
+
+      {/* §3.7 — Top products */}
+      <ReportCard
+        title="Top products"
+        subtitle="Sales, units and margin by product."
+        controls={blankRows(productRows).length > 5 ? <s-link onClick={() => setShowAllProducts((v) => !v)}>{showAllProducts ? 'Show top 5' : 'View all'}</s-link> : null}
+      >
+        <s-table>
+          <s-table-header-row>
+            <s-table-header listSlot="primary">Product</s-table-header>
+            <s-table-header listSlot="labeled" format="currency">Sales</s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">Units</s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">Orders</s-table-header>
+            <s-table-header listSlot="labeled" format="numeric">Margin</s-table-header>
+          </s-table-header-row>
+          <s-table-body>
+            {shownProducts.map((r, i) => (
+              <s-table-row key={r.sku || i}>
+                <s-table-cell>
+                  <s-stack gap="small-500">
+                    <s-text fontWeight="medium">{r.name}</s-text>
+                    {r.sub ? <s-text fontSize="small" color="subdued">{r.sub}</s-text> : null}
+                  </s-stack>
+                </s-table-cell>
+                <s-table-cell>{money(r.revenue || 0)}</s-table-cell>
+                <s-table-cell>{(r.units || 0).toLocaleString('en-US')}</s-table-cell>
+                <s-table-cell>{r.orders || 0}</s-table-cell>
+                <s-table-cell>{pctN(r.margin)}</s-table-cell>
+              </s-table-row>
+            ))}
+          </s-table-body>
+        </s-table>
+        <TableEmpty show={shownProducts.length === 0}>No line-level product data.</TableEmpty>
+      </ReportCard>
+    </s-stack>
+  );
+
+  // ── COMPANIES (spec §4) ─────────────────────────────────────────────────────
+  const HEALTH_TONE = { Healthy: 'success', Watch: 'attention', 'At risk': 'warning', Inactive: 'critical', 'Insufficient history': undefined };
+  const HEALTH_ORDER = { 'At risk': 0, Inactive: 1, Watch: 2, Healthy: 3, 'Insufficient history': 4 };
+  const HEALTH_SEGMENTS = [
+    ['Healthy', 'var(--p-color-bg-fill-success, #29845a)'],
+    ['Watch', 'var(--p-color-bg-fill-caution, #ffd79d)'],
+    ['At risk', 'var(--p-color-bg-fill-warning, #ffa64b)'],
+    ['Inactive', 'var(--p-color-bg-fill-critical, #e0431f)'],
+    ['Insufficient history', 'var(--p-color-bg-fill-tertiary, #e3e3e3)'],
+  ];
+  const companyHasPricing = (c) => (c?.pricing?.base?.length > 0) || (c?.pricing?.quantity?.length > 0);
+
+  // §4.6 rows: period performance (companyRows) + snapshot health (healthRows).
+  const companyTableRows = companyRows.map((r) => {
+    const h = healthRows.find((x) => x.id === r.id) || {};
+    const c = companies.find((x) => x.id === r.id);
+    const histSales = (c?.orders || []).filter((o) => COMPLETED.has(o.status)).reduce((a, o) => a + (Number(o.amount) || 0), 0);
+    return { ...r, typical: h.typical ?? null, since: h.since ?? null, overdue: h.overdue ?? null, ratio: h.ratio ?? null, health: h.health || 'Insufficient history', lifecycle: h.lifecycle || 'No purchase', hasPricing: companyHasPricing(c), histSales };
+  });
+  const filteredCompanyRows = companyTableRows.filter(
+    (r) =>
+      (healthFilter === 'all' || r.health === healthFilter) &&
+      (lifecycleFilter === 'all' || r.lifecycle === lifecycleFilter) &&
+      (pricingFilter === 'all' || (pricingFilter === 'has' ? r.hasPricing : !r.hasPricing)),
+  );
+  const sortedCompanyRows = [...filteredCompanyRows].sort((a, b) => {
+    switch (companySort) {
+      case 'sales': return (b.revenue || 0) - (a.revenue || 0);
+      case 'growth': return (b.growth ?? -Infinity) - (a.growth ?? -Infinity);
+      case 'repeat': return (b.repeat || 0) - (a.repeat || 0);
+      case 'recency': return (a.since ?? Infinity) - (b.since ?? Infinity);
+      case 'overdue': return (b.overdue ?? -1) - (a.overdue ?? -1);
+      default: {
+        // At risk → Inactive → Healthy → Insufficient history, then all-time sales desc.
+        const ho = HEALTH_ORDER[a.health] - HEALTH_ORDER[b.health];
+        return ho !== 0 ? ho : (b.histSales || 0) - (a.histSales || 0);
+      }
+    }
+  });
+
+  const companiesScores = selected
+    ? [
+        { label: 'Company sales', value: money(sales), foot: 'completed sales' },
+        { label: 'Active locations', value: `${activeLocations} / ${selected.locations.length}`, foot: 'locations with a completed order' },
+        { label: 'Repeat revenue', value: `${repeatShare}%`, foot: money(repeatRevenue) },
+        {
+          label: 'Relationship health',
+          value: healthOf(selected.id),
+          foot: (() => { const h = healthRows.find((x) => x.id === selected.id); return h?.ratio != null ? `${h.ratio.toFixed(1)}× reorder ratio` : 'not enough order history'; })(),
+        },
+      ]
+    : [
+        { label: 'Companies', value: String(managedCount), foot: 'managed in the B2B app' },
+        { cmp: true, label: 'Active', value: String(activeCompanyIds.size), delta: cmpDelta(activeDelta, { suffix: '' }), foot: 'completed an order this period' },
+        { cmp: true, label: 'New', value: String(newCompanyIds.size), delta: cmpDelta(newDelta, { suffix: '' }), foot: 'first order this period' },
+        // Count only — the trailing-90 GP + its cost coverage live on the §4.4 exposure
+        // card, so the reliability disclosure ("Based on X% cost coverage") isn't shown
+        // in one place and dropped in another for the same number.
+        { label: 'Past buying cycle', value: String(pastCycleCompanies.length), foot: 'behind their usual reorder cadence' },
+      ];
+
+  const healthCounts = HEALTH_SEGMENTS.map(([name, color]) => ({ name, color, count: compareOnly ? 0 : countHealth(name) }));
+  const healthTotal = Math.max(1, healthCounts.reduce((a, s) => a + s.count, 0));
+
+  const companyPerfTable = selected ? (
+    metricTable(allLocationRows, { entity: 'Location', clickable: false, showGrowth: compareEnabled })
+  ) : (
+    <>
+      <s-table>
+        <s-table-header-row>
+          <s-table-header listSlot="primary">Company</s-table-header>
+          <s-table-header listSlot="labeled" format="currency">Sales</s-table-header>
+          <s-table-header listSlot="labeled" format="currency">Gross profit</s-table-header>
+          <s-table-header listSlot="labeled" format="numeric">Margin</s-table-header>
+          {compareEnabled && <s-table-header listSlot="labeled" format="numeric">Growth</s-table-header>}
+          <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Repeat revenue" help="Share of sales from repeat orders." formula="Repeat revenue = sales after first order / company sales" /></s-table-header>
+          <s-table-header listSlot="labeled" format="numeric">Last order</s-table-header>
+          <s-table-header listSlot="labeled" format="numeric">Typical reorder</s-table-header>
+          <s-table-header listSlot="secondary">Status</s-table-header>
+        </s-table-header-row>
+        <s-table-body>
+          {sortedCompanyRows.map((r) => (
+            <s-table-row key={r.id}>
+              <s-table-cell><CompanyLink id={r.id}>{r.name}</CompanyLink></s-table-cell>
+              <s-table-cell>{money(r.revenue || 0)}</s-table-cell>
+              <s-table-cell>{moneyN(r.gp)}</s-table-cell>
+              <s-table-cell>{pctN(r.margin)}</s-table-cell>
+              {compareEnabled && <s-table-cell>{r.growth == null ? '—' : `${r.growth > 0 ? '+' : ''}${r.growth}%`}</s-table-cell>}
+              <s-table-cell>{`${Math.round(r.repeat || 0)}%`}</s-table-cell>
+              {/* Recency only — the overdue amount and reorder ratio live on the Status tooltip
+                  so this cell answers one thing: how long since the last order. */}
+              <s-table-cell>{r.since != null ? `${r.since}d ago` : '—'}</s-table-cell>
+              {/* Baseline only ("how often do they usually buy") — the current-state ratio moves
+                  to Status, so this cell isn't mixing a stable interval with a TODAY value. */}
+              <s-table-cell>{r.typical != null ? `~${r.typical}d` : '—'}</s-table-cell>
+              <s-table-cell>
+                {r.ratio != null ? (
+                  <MetricTooltip title={r.health} help={`${r.ratio.toFixed(1)}× its usual reorder gap${r.overdue ? ` · ${r.overdue} days past its typical reorder time` : ''}`}>
+                    <span style={{ display: 'inline-flex', cursor: 'help' }}><s-badge tone={wcTone(HEALTH_TONE[r.health])}>{r.health}</s-badge></span>
+                  </MetricTooltip>
+                ) : (
+                  <s-badge tone={wcTone(HEALTH_TONE[r.health])}>{r.health}</s-badge>
+                )}
+              </s-table-cell>
+            </s-table-row>
+          ))}
+        </s-table-body>
+      </s-table>
+      <TableEmpty show={sortedCompanyRows.length === 0}>No companies match these filters.</TableEmpty>
+    </>
+  );
+
+  // Filter/sort controls shared by the inline Company performance card and its full-screen view.
+  const companyFilters = (
+    <s-stack direction="inline" gap="small-200" alignItems="center">
+      <div style={{ minWidth: 150 }}><SelectField label="Health" labelHidden options={[{ label: 'All health', value: 'all' }, ...HEALTH_SEGMENTS.map(([n]) => ({ label: `${n} (${countHealth(n)})`, value: n }))]} value={healthFilter} onChange={setHealthFilter} /></div>
+      <div style={{ minWidth: 150 }}><SelectField label="Lifecycle" labelHidden options={[{ label: 'All lifecycle', value: 'all' }, ...['No purchase', 'Recently activated', 'Established'].map((n) => ({ label: `${n} (${countLifecycle(n)})`, value: n }))]} value={lifecycleFilter} onChange={setLifecycleFilter} /></div>
+      <div style={{ minWidth: 140 }}><SelectField label="Pricing" labelHidden options={[{ label: 'Any pricing', value: 'all' }, { label: 'Has pricing', value: 'has' }, { label: 'No pricing', value: 'none' }]} value={pricingFilter} onChange={setPricingFilter} /></div>
+      {/* Only offer sorts for metrics the table actually shows — Orders/AOV columns aren't
+          on this screen, so sorting by them would reorder rows with nothing to verify against. */}
+      <div style={{ minWidth: 160 }}><SelectField label="Sort" labelHidden options={[{ label: 'Health (default)', value: 'default' }, { label: 'Sales', value: 'sales' }, ...(compareEnabled ? [{ label: 'Growth', value: 'growth' }] : []), { label: 'Repeat revenue', value: 'repeat' }, { label: 'Last order', value: 'recency' }, { label: 'Days overdue', value: 'overdue' }]} value={companySort} onChange={setCompanySort} /></div>
+    </s-stack>
+  );
+
+  const companiesTab = (
+    <s-stack gap="large">
+      <ScoreGrid items={cmpOnly(companiesScores)} />
+
+      {/* §4.4 — exposure: named as historical revenue, not "revenue at risk". */}
+      {!selected && pastCycleCompanies.length > 0 && (
+        <ReportCard
+          title="Companies past their buying cycle"
+          subtitle="Historical revenue from companies now past their normal reorder cadence — not a prediction of loss."
+          help={
+            <>
+              <s-paragraph>Companies ordering later than they usually do — marked Watch, At risk or Inactive.</s-paragraph>
+              <s-paragraph color="subdued">Sales and gross profit are from these companies’ last 90 days. They show what already happened, not a forecast of what you might lose. If some product costs are missing, gross profit notes how much of sales it covers.</s-paragraph>
+            </>
+          }
+        >
+          <s-stack gap="small-200">
+            <s-text fontWeight="medium">{compareOnly ? '—' : `${pastCycleCompanies.length} compan${pastCycleCompanies.length === 1 ? 'y' : 'ies'} past normal buying cycle`}</s-text>
+            <MiniCompare
+              items={cmpOnly([
+                { label: 'Trailing 90-day sales', value: money(pastCycleSales) },
+                { label: 'Trailing 90-day gross profit', value: moneyN(pastCycleGP), sub: pastCycleCoverageNote },
+              ])}
+            />
+          </s-stack>
+        </ReportCard>
+      )}
+
+      {selected ? (
+        <ReportCard
+          title="Location performance"
+          subtitle="Location contribution in the selected period."
+          help="Each of this company's locations, with its sales, share of the company's sales, orders and average order value in the selected period."
+        >{companyPerfTable}</ReportCard>
+      ) : (
+        <TwoColumns>
+          <ReportCard title="Relationship state" subtitle="Reorder ratio vs each company's own rhythm — separate from lifecycle. Click a segment to filter the table." help={<RelationshipStateHelp />} formula="Reorder gap = days since last order / usual days between orders">
+            <s-stack gap="small">
+              <div style={{ display: 'flex', height: 12, borderRadius: 6, overflow: 'hidden', gap: 2 }}>
+                {healthCounts.filter((s) => s.count > 0).map((s) => (
+                  <div key={s.name} title={`${s.name}: ${s.count}`} style={{ width: `${(s.count / healthTotal) * 100}%`, background: s.color }} />
+                ))}
+              </div>
+              <s-stack direction="inline" gap="small">
+                {healthCounts.map((s) => (
+                  <button key={s.name} type="button" onClick={() => setHealthFilter(healthFilter === s.name ? 'all' : s.name)} style={{ all: 'unset', cursor: 'pointer' }}>
+                    <s-stack direction="inline" gap="small-300" alignItems="center">
+                      <span style={{ width: 10, height: 10, borderRadius: 3, background: s.color, display: 'inline-block' }} />
+                      <s-text fontSize="small" fontWeight={healthFilter === s.name ? 'bold' : 'base'}>{s.name}</s-text>
+                      <s-text fontSize="small" color="subdued">{s.count}</s-text>
+                    </s-stack>
+                  </button>
+                ))}
+              </s-stack>
+            </s-stack>
+          </ReportCard>
+          <ReportCard
+            title="New vs existing revenue"
+            subtitle="Revenue by whether the company first purchased in the selected period."
+            help={
+              <>
+                <s-paragraph><s-text fontWeight="semibold">New</s-text> — Revenue from companies whose first purchase falls within the selected period.</s-paragraph>
+                <s-paragraph><s-text fontWeight="semibold">Existing</s-text> — Revenue from companies that first purchased before the selected period.</s-paragraph>
+                <s-paragraph color="subdued">Percentages show each group's share of total B2B sales in the period.</s-paragraph>
+              </>
+            }
+          >
+            <StackedBar segments={revenueMix} />
+            <s-box paddingBlockStart="small-200">
+              {/* Revenue mix — denominator is total B2B sales (existing + new = sales),
+                  so these are existingCompanyRevenue/sales and newCompanyRevenue/sales. */}
+              <s-paragraph fontSize="small" color="subdued">{`${pct(revenueMix[0].value, sales)}% existing · ${pct(revenueMix[1].value, sales)}% new.`}</s-paragraph>
+            </s-box>
+          </ReportCard>
+        </TwoColumns>
+      )}
+
+      {!selected && (
+        <>
+          <ReportCard
+            title="Company performance"
+            subtitle="Value, gross profit, growth, reorder behaviour and relationship state per company."
+            help={
+              <>
+                <s-paragraph>One row per company, combining performance for the selected period with its current relationship state.</s-paragraph>
+                <s-paragraph color="subdued">Sales, gross profit, margin, growth, and repeat revenue follow the selected period. Last order, typical reorder, and status show where each company stands today and aren't limited by the date range.</s-paragraph>
+              </>
+            }
+            controls={
+              <s-stack direction="inline" gap="small-200" alignItems="center">
+                {companyFilters}
+                <s-button icon="maximize" variant="tertiary" onClick={() => setCompanyModalOpen(true)} accessibilityLabel="Open full-screen view">Expand</s-button>
+              </s-stack>
+            }
+          >
+            {/* Only mount here when the full-screen view is closed, so the page never holds
+                two live copies of the same table. */}
+            {!companyModalOpen && companyPerfTable}
+          </ReportCard>
+          {companyModalOpen && createPortal(
+            <div style={{ position: 'fixed', inset: 0, zIndex: 519, display: 'flex', flexDirection: 'column', background: 'var(--p-color-bg, #f1f1f1)' }}>
+              <div style={{ background: 'var(--p-color-bg-surface)', borderBottom: '1px solid var(--p-color-border)', padding: 16 }}>
+                <s-stack direction="inline" justifyContent="space-between" alignItems="center" gap="base">
+                  <s-stack gap="small-500">
+                    <s-heading fontSize="large">Company performance</s-heading>
+                    <s-text fontSize="small" color="subdued">{`${sortedCompanyRows.length} compan${sortedCompanyRows.length === 1 ? 'y' : 'ies'} · in the selected period and scope`}</s-text>
+                  </s-stack>
+                  <s-stack direction="inline" gap="small-200" alignItems="center">
+                    {companyFilters}
+                    <s-button icon="x" variant="tertiary" onClick={() => setCompanyModalOpen(false)} accessibilityLabel="Close full-screen view" />
+                  </s-stack>
+                </s-stack>
+              </div>
+              <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+                <s-box background="base" border="base" borderRadius="base" padding="small-200">
+                  {companyPerfTable}
+                </s-box>
+              </div>
+            </div>,
+            document.body,
+          )}
+        </>
+      )}
+
+      {activationRows.length > 0 && (
+        <ReportCard
+          title="B2B activation"
+          subtitle="Registration cohort — companies that registered in the selected period, tracked to their approval and first purchase to date."
+          help={
+            <s-paragraph>Companies that registered in the selected period, followed through approval and first purchase up to today. Recent registrations may still convert, so their numbers can keep growing.</s-paragraph>
+          }
+        >
+          <s-stack gap="small">
+            <FunnelV2
+              stages={[
+                { name: 'Registered', count: activationRows.length, value: String(activationRows.length) },
+                { name: 'Approved to date', count: activationApproved.length, value: String(activationApproved.length), note: `· ${pct(activationApproved.length, activationRows.length)}%` },
+                { name: 'First purchase to date', count: activationPurchased.length, value: String(activationPurchased.length), note: `· ${activationApproved.length ? pct(activationPurchased.length, activationApproved.length) : 0}% of approved` },
+              ].map((st) => (compareOnly ? { name: st.name, count: 0, value: '—' } : st))}
+            />
+            <MiniCompare
+              items={cmpOnly([
+                { label: 'Approved → purchasing', value: activationRate == null ? '—' : `${activationRate}%` },
+                { label: 'Typical approval → first order', value: activationTypical == null ? '—' : `${activationTypical}d` },
+              ])}
+            />
+          </s-stack>
+        </ReportCard>
+      )}
+    </s-stack>
+  );
+
+  // ── QUOTES (spec §5) ────────────────────────────────────────────────────────
+  const previousReceived = compareEnabled
+    ? allQuotes.filter((q) => scopedIds.has(q.company) && inDateRange(q.created, previousPeriodStart, previousPeriodEnd)).length
+    : 0;
+  const quotesCreatedDelta = compareEnabled && previousReceived ? pctChange(received, previousReceived) : null;
+  const quoteValueTotal = quotes.reduce((a, q) => a + quoteVal(q), 0); // §5.2 total quoted value (period)
+  const avgQuoteValue = received ? quoteValueTotal / received : 0;
+
+  // §5.3 typical time to decision — median over finalized (Won + Lost) quotes.
+  const decisionDays = finalizedQuotes
+    .map((q) => { const c = String(q.created || '').slice(0, 10); const u = String(q.updated || '').slice(0, 10); return c && u ? Math.max(0, daysBetween(c, u)) : null; })
+    .filter((x) => x != null);
+  const decisionMedian = median(decisionDays);
+
+  // §5.5 pipeline distribution (Count | Value): quotes created in the period split by
+  // their CURRENT state — each quote counted exactly once, so segments sum to 100% of
+  // (non-trashed) RFQs. Replaces the old cumulative funnel: no "farthest stage reached" to
+  // derive, so a quote rejected after negotiating simply lands in Lost instead of being
+  // (mis)counted at Negotiating. Stages match spec §5.5: RFQ received → Negotiating → Won,
+  // plus Lost. Trashed is EXCLUDED (spec: "Trashed = loại"), not shown as a stage.
+  const stageValue = (qs) => qs.reduce((a, q) => a + quoteVal(q), 0);
+  const pricedSet = new Set(pricedQuotes); // reuse the priced/sent signal from `pricedQuotes` (§5.5)
+  const distOpen = quotes.filter((q) => !['Deal Closed', 'Deal Rejected', 'Trashed'].includes(q.status));
+  const distBuckets = [
+    { name: 'Received', qs: distOpen.filter((q) => !pricedSet.has(q)) },
+    { name: 'Negotiating', qs: distOpen.filter((q) => pricedSet.has(q)) },
+    { name: 'Won', qs: quotes.filter((q) => q.status === 'Deal Closed') },
+    { name: 'Lost', qs: quotes.filter((q) => q.status === 'Deal Rejected') },
+  ];
+  const distMetricOf = (qs) => (quoteFunnelMode === 'value' ? stageValue(qs) : qs.length);
+  const distSegments = distBuckets
+    .map((s) => ({ name: s.name, value: distMetricOf(s.qs) }))
+    .filter((s) => s.value > 0);
+
+  // §5.6 quote performance by company.
+  const quoteResponseDays = (q) => {
+    const created = String(q.created || '').slice(0, 10);
+    if (!created) return null;
+    const first = (q.timeline || []).find((e) => /quote sent|email sent|exported as pdf|priced/i.test(String(e.what || '')));
+    const d = first ? timelineDate(first.when) : null;
+    return d ? Math.max(0, (d - new Date(created + 'T00:00:00')) / DAY) : null;
+  };
+  const companyQuoteTable = scopedCompanies
+    .map((c) => {
+      const qs = quotes.filter((q) => q.company === c.id);
+      const won = qs.filter((q) => q.status === 'Deal Closed');
+      const lost = qs.filter((q) => q.status === 'Deal Rejected');
+      const fin = won.length + lost.length;
+      const wonV = stageValue(won);
+      const finV = stageValue([...won, ...lost]);
+      const open = qs.filter((q) => !['Deal Closed', 'Deal Rejected', 'Trashed'].includes(q.status));
+      return { id: c.id, name: c.name, rfqs: qs.length, quoted: stageValue(qs), openValue: stageValue(open), winCount: fin ? Math.round((won.length / fin) * 100) : null, winValue: finV ? Math.round((wonV / finV) * 100) : null, response: median(qs.map(quoteResponseDays).filter((x) => x != null)) };
+    })
+    .filter((r) => r.rfqs > 0)
+    .sort((a, b) => b.quoted - a.quoted);
+
+  const agingMaxVal = Math.max(1, ...agingBuckets.map((x) => x.value));
+  const maxDiscountRate = Math.max(1, ...discountBuckets.map((x) => x.rate || 0));
+  const varianceMaxRate = Math.max(1, ...varianceBuckets.map((x) => x.rate || 0));
+
+  // §5.7 win rate by deal size (advanced). Always carries its sample size.
+  const dealSizeBuckets = [
+    { name: '< $2k', min: 0, max: 2000 },
+    { name: '$2k–$10k', min: 2000, max: 10000 },
+    { name: '$10k–$50k', min: 10000, max: 50000 },
+    { name: '$50k+', min: 50000, max: Infinity },
+  ].map((b) => {
+    const rows = finalizedQuotes.filter((q) => { const v = quoteVal(q); return v >= b.min && v < b.max; });
+    const wins = rows.filter((q) => q.status === 'Deal Closed').length;
+    return { ...b, count: rows.length, wins, rate: rows.length ? Math.round((wins / rows.length) * 100) : null };
+  });
+  const dealSizeMaxRate = Math.max(1, ...dealSizeBuckets.map((b) => b.rate || 0));
+  const quoteDetailTable = (
+    <>
+      <s-table>
+        <s-table-header-row>
+          <s-table-header listSlot="primary"><HeadHelp label="Quote" help="The quote number." /></s-table-header>
+          <s-table-header listSlot="secondary"><HeadHelp label="Status" help="Current quote status." /></s-table-header>
+          <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Age" help="Number of days since the quote was created." formula="Age = today − created date" /></s-table-header>
+          <s-table-header listSlot="labeled" format="currency"><HeadHelp label="Quoted value" help="Total quoted value across all lines in the quote." /></s-table-header>
+        </s-table-header-row>
+        <s-table-body>
+          {blankRows(quotes).map((q) => (
+            <s-table-row key={q.id}>
+              <s-table-cell>{q.id}</s-table-cell>
+              <s-table-cell><s-badge tone={q.status === 'Deal Closed' ? 'success' : q.status === 'Deal Rejected' ? 'critical' : undefined}>{q.status}</s-badge></s-table-cell>
+              <s-table-cell>{`${quoteAge(q)}d`}</s-table-cell>
+              <s-table-cell>{money(quoteVal(q))}</s-table-cell>
+            </s-table-row>
+          ))}
+        </s-table-body>
+      </s-table>
+      <TableEmpty show={blankRows(quotes).length === 0}>No RFQs.</TableEmpty>
+    </>
+  );
+
+  const quotesTab = (
+    <s-stack gap="large">
+      {showQuoteCrossSell && (
+        <s-box border="base" borderRadius="base">
+          <QuoteAppCrossSell installed={!!state.db.rfqAppInstalled} />
+        </s-box>
+      )}
+      {/* §5.1 — hero metrics: future revenue + where it's stuck */}
+      <ScoreGrid
+        items={cmpOnly([
+          { label: 'Open quote value', value: money(openQuoteValue), foot: `${openQuotes.length} open quote${openQuotes.length === 1 ? '' : 's'}`, help: 'Total value of quotes that are still open as of today. Not limited to the selected date range.' },
+          { cmp: true, label: 'Win rate by value', value: winRateValue == null ? '—' : `${winRateValue}%`, delta: cmpDelta(winRateValueDelta, { suffix: ' pp' }), foot: `${moneyShort(wonValue)} won of ${moneyShort(finalizedValue)} finalized`, help: 'Share of won quote value among all quote value that was won or lost in the selected period.', formula: 'Win rate by value = won value / (won value + lost value)' },
+          { label: 'Stale quote value', value: money(staleValue), foot: `${staleQuotes.length} quote${staleQuotes.length === 1 ? '' : 's'} idle >10 days`, help: 'Value of open quotes with no activity for more than 10 days.' },
+          { label: 'First response time', value: formatTypicalTime(responseMedian), foot: 'median RFQ → first response', help: 'Typical time from when a quote comes in until you first price or send it.', formula: 'First response time = median(first priced or sent − created)' },
+        ])}
+      />
+
+      {/* §5.2 — baseline metric strip */}
+      <MiniCompare
+        items={cmpOnly([
+          { cmp: true, label: 'Quotes created', value: String(received), delta: cmpDelta(quotesCreatedDelta, { suffix: '' }), help: 'Number of quotes created in the selected period.' },
+          { cmp: true, label: 'Total quoted value', value: money(quoteValueTotal), delta: cmpDelta(quoteValueTotalDelta), help: 'Total quoted value of quotes created in the selected period.' },
+          { cmp: true, label: 'Won quotes', value: String(wonQuotes.length), delta: cmpDelta(wonQuotesDelta, { suffix: '' }), help: 'Number of quotes won in the selected period.' },
+          { cmp: true, label: 'Lost quotes', value: String(lostQuotes.length), delta: cmpDelta(lostQuotesDelta, { suffix: '', goodDown: true }), help: 'Number of quotes lost in the selected period.' },
+          { cmp: true, label: 'Average quote value', value: money(avgQuoteValue), delta: cmpDelta(avgQuoteValueDelta), help: 'Average quoted value of quotes created in the selected period.', formula: 'Average quote value = total quoted value / quotes created' },
+          { cmp: true, label: 'Win rate by count', value: winRateCount == null ? '—' : `${winRateCount}%`, delta: cmpDelta(winRateCountDelta, { suffix: ' pp' }), help: 'Share of won quotes among all quotes that were won or lost in the selected period.', formula: 'Win rate by count = won quotes / (won quotes + lost quotes)' },
+        ])}
+      />
+
+      {/* §5.3 aging + §5.5 cohort funnel */}
+      <TwoColumns>
+        <ReportCard title="Open quote aging" help="Value of quotes that are still open, grouped by how long ago they were created. Bars represent quoted value, not the number of quotes.">
+          <RankBars rows={blankRows(agingBuckets).map((b) => ({ key: b.name, name: b.name, sub: `${b.count} quote${b.count === 1 ? '' : 's'} still open`, value: b.value, width: (b.value / agingMaxVal) * 100, valueLabel: money(b.value) }))} empty="No quotes still open." />
+        </ReportCard>
+        <ReportCard
+          title="Quote status distribution"
+          help="Shows how quotes in the selected period are split by their current status. Each quote is counted once. Switch between Count and Value to view the number of quotes or their quoted value."
+          controls={
+            <div style={{ display: 'inline-flex', border: '1px solid var(--p-color-border)', borderRadius: 8, overflow: 'hidden' }}>
+              {[['count', 'Count'], ['value', 'Value']].map(([m, lbl]) => (
+                <button key={m} type="button" onClick={() => setQuoteFunnelMode(m)} style={{ padding: '5px 12px', border: 0, cursor: 'pointer', font: 'inherit', background: quoteFunnelMode === m ? 'var(--p-color-bg-fill-brand)' : 'transparent', color: quoteFunnelMode === m ? 'var(--p-color-text-brand-on-bg-fill)' : 'var(--p-color-text)' }}>{lbl}</button>
+              ))}
+            </div>
+          }
+        >
+          <StackedBar segments={blankRows(distSegments)} format={quoteFunnelMode === 'value' ? moneyShort : (v) => String(v)} />
+        </ReportCard>
+      </TwoColumns>
+
+      {/* §5.4 sales cycle */}
+      <ReportCard title="Median time to decision" help="Typical time from when a quote comes in until it is won or lost." formula="Time to decision = median(won or lost date − created date)">
+        <s-heading fontSize="large-200">{formatTypicalTime(compareOnly ? null : decisionMedian)}</s-heading>
+      </ReportCard>
+
+      {/* per-company quote detail (selected view) */}
+      {selected && (
+        <ReportCard title="Quote detail" subtitle="Underlying quote records for this company.">
+          {quoteDetailTable}
+        </ReportCard>
+      )}
+
+      {/* §5.7 — advanced pipeline analysis (portfolio) */}
+      {!selected && (
+        <ReportCard
+          title="Advanced quote analysis"
+          subtitle="Explore patterns associated with won and lost quotes. Small samples can be noisy, and these patterns do not prove cause and effect."
+          controls={<s-link onClick={() => setAdvancedPipeline((v) => !v)}>{advancedPipeline ? 'Hide' : 'Show'}</s-link>}
+        >
+          {advancedPipeline ? (
+            <s-stack gap="base">
+              <s-stack gap="small-300">
+                <s-heading fontSize="small">Win rate by company</s-heading>
+                <s-table>
+                  <s-table-header-row>
+                    <s-table-header listSlot="primary"><HeadHelp label="Company" help="Company associated with these quotes." /></s-table-header>
+                    <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Quotes" help="Number of quotes for this company in the selected period." /></s-table-header>
+                    <s-table-header listSlot="labeled" format="currency"><HeadHelp label="Quoted value" help="Total quoted value of this company's quotes." /></s-table-header>
+                    <s-table-header listSlot="labeled" format="currency"><HeadHelp label="Open quote value" help="Quoted value of this company's quotes that are still open." /></s-table-header>
+                    <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Win rate (count)" help="Share of won quotes among this company's quotes that were won or lost." formula="Win rate (count) = won quotes / (won quotes + lost quotes)" /></s-table-header>
+                    <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Win rate (value)" help="Share of won quote value among this company's quote value that was won or lost." formula="Win rate (value) = won value / (won value + lost value)" /></s-table-header>
+                    <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="First response time" help="Typical time from when this company's quotes come in until you first price or send them." formula="First response time = median(first priced or sent − created)" /></s-table-header>
+                  </s-table-header-row>
+                  <s-table-body>
+                    {blankRows(companyQuoteTable).map((r) => (
+                      <s-table-row key={r.id}>
+                        <s-table-cell><CompanyLink id={r.id}>{r.name}</CompanyLink></s-table-cell>
+                        <s-table-cell>{r.rfqs}</s-table-cell>
+                        <s-table-cell>{money(r.quoted)}</s-table-cell>
+                        <s-table-cell>{money(r.openValue)}</s-table-cell>
+                        <s-table-cell>{r.winCount == null ? '—' : `${r.winCount}%`}</s-table-cell>
+                        <s-table-cell>{r.winValue == null ? '—' : `${r.winValue}%`}</s-table-cell>
+                        <s-table-cell>{r.response == null ? '—' : formatTypicalTime(r.response)}</s-table-cell>
+                      </s-table-row>
+                    ))}
+                  </s-table-body>
+                </s-table>
+                <TableEmpty show={blankRows(companyQuoteTable).length === 0}>No RFQs in this scope.</TableEmpty>
+              </s-stack>
+              <s-heading fontSize="small">Win rate analysis</s-heading>
+              <TwoColumns>
+                <s-box border="base" borderRadius="base" padding="base">
+                  <s-stack gap="small-300">
+                    <HeadingHelp label="Win rate by deal size" help="Shows how win rate changes across quote value ranges." />
+                    <RankBars rows={blankRows(dealSizeBuckets).map((b) => ({ key: b.name, name: b.name, sub: `${b.count} won or lost quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / dealSizeMaxRate) * 100, valueLabel: b.rate == null ? '—' : `${b.wins} of ${b.count} won · ${b.rate}%` }))} empty="No won or lost quotes." />
+                  </s-stack>
+                </s-box>
+                <s-box border="base" borderRadius="base" padding="base">
+                  <s-stack gap="small-300">
+                    <HeadingHelp label="Win rate by discount" help="Shows how win rate changes at different discount levels from the Shopify price." />
+                    <MiniCompare plain items={cmpOnly([{ label: 'Average discount vs Shopify', value: avgListDiscount == null ? '—' : `${avgListDiscount.toFixed(1)}%`, sub: 'Weighted by the Shopify value of each quote.', help: 'How much lower your quoted prices are than your regular Shopify prices, on average. Bigger quotes count more.', formula: 'Average discount vs Shopify = (Shopify value − quoted value) / Shopify value' }])} />
+                    <RankBars rows={blankRows(discountBuckets).map((b) => ({ key: b.name, name: b.name, sub: `${b.count} won or lost quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / maxDiscountRate) * 100, valueLabel: b.rate == null ? '—' : `${b.rate}% won` }))} empty="No won or lost quotes." />
+                  </s-stack>
+                </s-box>
+                <s-box border="base" borderRadius="base" padding="base">
+                  <s-stack gap="small-300">
+                    <HeadingHelp label="Quoted price vs company pricing" help="Shows how quoted prices compare with the pricing already assigned to each company." />
+                    <MiniCompare plain items={cmpOnly([{ label: 'Average difference from company pricing', value: avgPriceVariance == null ? '—' : `${avgPriceVariance > 0 ? '+' : ''}${avgPriceVariance.toFixed(1)}%`, sub: avgPriceVariance == null ? 'No quotes with company pricing in this period.' : `Quotes were ${Math.abs(avgPriceVariance).toFixed(1)}% ${avgPriceVariance >= 0 ? 'higher' : 'lower'} than assigned company prices on average.`, help: 'How far your quoted prices are from the pricing you set for each company, on average. Bigger quotes count more. Positive means you quoted higher; negative means lower.', formula: 'Average difference from company pricing = (quoted value − company pricing value) / company pricing value' }])} />
+                    <RankBars rows={blankRows(varianceBuckets).map((b) => ({ key: b.name, name: b.name, sub: `${b.count} won or lost quote${b.count === 1 ? '' : 's'}`, width: b.rate == null ? 0 : (b.rate / varianceMaxRate) * 100, valueLabel: b.rate == null ? '—' : `${b.rate}% won` }))} empty="No won or lost quotes with company pricing." />
+                  </s-stack>
+                </s-box>
+                <s-box border="base" borderRadius="base" padding="base">
+                  <s-stack gap="small-300">
+                    <HeadingHelp label="Win rate with vs without company pricing" help="Compares how often you win quotes for companies with their own pricing versus quotes based on your regular Shopify prices." />
+                    <MiniCompare plain items={cmpOnly([
+                      { label: 'Company pricing', value: winWithPricing == null ? '—' : `${winWithPricing}%`, sub: `${withPricing.length} won or lost quote${withPricing.length === 1 ? '' : 's'}`, help: 'Win rate for quotes to companies that had their own pricing when the quote was made.', formula: 'Win rate = won quotes / (won quotes + lost quotes)' },
+                      { label: 'Shopify price only', value: winWithoutPricing == null ? '—' : `${winWithoutPricing}%`, sub: withoutPricing.length === 0 ? 'No won or lost quotes in this period.' : `${withoutPricing.length} won or lost quote${withoutPricing.length === 1 ? '' : 's'}`, help: 'Win rate for quotes to companies without their own pricing, quoted from your regular Shopify prices.', formula: 'Win rate = won quotes / (won quotes + lost quotes)' },
+                    ])} />
+                  </s-stack>
+                </s-box>
+              </TwoColumns>
+            </s-stack>
+          ) : (
+            <s-paragraph fontSize="small" color="subdued">Win rate by company, deal size, quoted discount, and how quoted prices compare to company pricing — each with its sample size.</s-paragraph>
+          )}
+        </ReportCard>
+      )}
+    </s-stack>
+  );
+
+  // ── PRICING & MARGIN (spec §6) ──────────────────────────────────────────────
+  const provenanceSegments = [
+    { name: 'B2B pricing', value: b2bPricingValue },
+    { name: 'Other pricing', value: otherPricingValue },
+  ].filter((s) => s.value > 0);
+  const pricingTab = (
+    <s-stack gap="large">
+      {/* §6.1 — core economics, ALL at the price applied when the order was created */}
+      <ScoreGrid
+        items={cmpOnly([
+          { label: 'B2B price vs Shopify', value: b2bVsShopifyPct == null ? '—' : `${Math.abs(b2bVsShopifyPct).toFixed(1)}% ${b2bVsShopifyDelta >= 0 ? 'higher' : 'lower'}`, foot: `${money(Math.abs(b2bVsShopifyDelta))} ${b2bVsShopifyDelta >= 0 ? 'above' : 'below'} Shopify on B2B-priced lines`, help: 'How your B2B prices compare with your regular Shopify prices on items sold at B2B prices. Uses the B2B price itself, before any extra discount or later change.', formula: 'B2B price vs Shopify = (B2B price − Shopify price) / Shopify price' },
+          { cmp: true, label: 'Margin at order creation', value: pct1N(appliedMargin), delta: cmpDelta(appliedMarginDelta, { suffix: ' pp' }), foot: appliedMarginCoverage != null && appliedMarginCoverage < 99.5 ? `${moneyN(appliedGP)} GP · ${Math.round(appliedMarginCoverage)}% cost coverage` : `${moneyN(appliedGP)} gross profit`, help: 'The share of order value you keep as profit, based on prices and product costs when each order was placed. Later refunds, returns or price changes aren’t included.', formula: 'Margin at order creation = (order value − product cost) / order value' },
+          { cmp: true, label: 'Orders using B2B pricing', value: orderCountAll ? `${Math.round(b2bOrderShare)}%` : '—', delta: cmpDelta(b2bOrderShareDelta, { suffix: ' pp' }), foot: `${b2bOrderIds.size} of ${orderCountAll} order${orderCountAll === 1 ? '' : 's'}`, help: 'Share of orders with at least one item sold at your B2B pricing.', formula: 'Orders using B2B pricing = orders with a B2B-priced line / orders' },
+          { cmp: true, label: 'Order value below margin threshold', value: money(marginExceptionValue), delta: cmpDelta(marginExceptionDelta, { goodDown: true }), foot: `${marginExceptionLines.length} line${marginExceptionLines.length === 1 ? '' : 's'} below ${marginFloor}% margin${marginCoverage != null && marginCoverage < 99.5 ? ` · Based on ${Math.round(marginCoverage)}% cost coverage` : ''}`, help: 'Value of items sold below the profit margin you picked. Items without a product cost aren’t included.' },
+        ])}
+      />
+      <s-stack direction="inline" justifyContent="end" alignItems="center" gap="small-200">
+        <s-text fontSize="small" color="subdued">Margin exception threshold</s-text>
+        <div style={{ width: 100 }}>
+          <SelectField label="Margin threshold" labelHidden options={[{ label: '15%', value: '15' }, { label: '20%', value: '20' }, { label: '25%', value: '25' }, { label: '30%', value: '30' }]} value={marginThreshold} onChange={setMarginThreshold} />
+        </div>
+      </s-stack>
+
+      {/* §6.2 — baseline pricing footprint */}
+      <MiniCompare
+        items={cmpOnly([
+          { label: 'Active pricing agreements', value: String(activePolicyCount), help: 'Number of B2B pricing agreements that are currently active.' },
+          { label: 'Companies with pricing', value: String(companiesWithPricing), help: 'Number of companies that currently have B2B pricing from this app.' },
+          { cmp: true, label: 'Order value using B2B pricing', value: money(b2bValue), delta: cmpDelta(b2bValueDelta), sub: `${Math.round(b2bValueShare)}% of order value`, help: 'Value of items sold at your B2B pricing.' },
+        ])}
+      />
+
+      {/* §6.3 provenance + margin by source */}
+      <TwoColumns>
+        <ReportCard title="Order value by pricing source" help="How your order value splits between items sold at B2B pricing and items sold at other prices.">
+          <StackedBar segments={blankRows(provenanceSegments)} />
+        </ReportCard>
+        <ReportCard title="Margin by pricing source" help="Compares profit margin on items sold at B2B pricing with items sold at other prices, based on prices and costs when each order was placed. Later refunds, returns and price changes aren’t included.">
+          <RankBars rows={blankRows(pricingSourceRows).map((s) => ({ key: s.name, name: s.name, sub: `${money(s.value)} order value · ${moneyN(s.gp)} gross profit${s.coverage != null && s.coverage < 99.5 ? ` · ${Math.round(s.coverage)}% cost coverage` : ''}`, value: s.margin ?? 0, width: s.margin == null ? 0 : (s.margin / pricingSourceMaxMargin) * 100, valueLabel: pctN(s.margin) }))} empty="No completed orders." />
+        </ReportCard>
+      </TwoColumns>
+
+      {/* §6.4 — pricing performance table (sorted by gross profit) */}
+      <ReportCard title="Pricing performance" subtitle="Order value, gross profit, margin and price vs Shopify, by B2B pricing profile. Hover a column heading for its definition.">
+        <s-table>
+          <s-table-header-row>
+            <s-table-header listSlot="primary"><HeadHelp label="Pricing" help="The B2B pricing that set the price for these items." /></s-table-header>
+            <s-table-header listSlot="labeled" format="currency"><HeadHelp label="Order value" help="Total value of items sold at this pricing." /></s-table-header>
+            <s-table-header listSlot="labeled" format="currency"><HeadHelp label="Gross profit" help="Order value minus product cost, for items that have a product cost." formula="Gross profit = order value − product cost" /></s-table-header>
+            <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Margin" help="The share of order value you keep as profit, for items that have a product cost." formula="Margin = gross profit / order value" /></s-table-header>
+            <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="vs Shopify" help="How this pricing compares with your regular Shopify prices on the items it priced. Bigger orders count more." formula="vs Shopify = (B2B price − Shopify price) / Shopify price" /></s-table-header>
+            <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Orders" help="Number of orders with at least one item sold at this pricing." /></s-table-header>
+            <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Companies" help="Number of companies that bought at least one item at this pricing." /></s-table-header>
+          </s-table-header-row>
+          <s-table-body>
+            {blankRows(pricingUsage).map((r) => (
+              <s-table-row key={r.name}>
+                <s-table-cell>{r.name}</s-table-cell>
+                <s-table-cell>{money(r.value)}</s-table-cell>
+                <s-table-cell>{moneyN(r.gp)}</s-table-cell>
+                <s-table-cell>{pctN(r.margin)}</s-table-cell>
+                <s-table-cell>{r.deltaPct == null ? '—' : `${Math.abs(r.deltaPct).toFixed(1)}% ${r.deltaPct >= 0 ? 'higher' : 'lower'}`}</s-table-cell>
+                <s-table-cell>{r.orders}</s-table-cell>
+                <s-table-cell>{r.companies}</s-table-cell>
+              </s-table-row>
+            ))}
+          </s-table-body>
+        </s-table>
+        <TableEmpty show={blankRows(pricingUsage).length === 0}>No pricing usage on completed orders.</TableEmpty>
+      </ReportCard>
+
+      {/* §6.6 — MOQ / quantity pricing */}
+      <ReportCard title="Quantity pricing effectiveness" subtitle="Of the purchases eligible for a quantity tier, how many reached it, the order value that went through tiers, and the discount realized.">
+        <s-stack gap="small">
+          <MiniCompare
+            items={cmpOnly([
+              { label: 'Tier reach rate', value: tierReachRate == null ? '—' : `${Math.round(tierReachRate)}%`, sub: `${tierReached} of ${tierEligible} eligible purchase${tierEligible === 1 ? '' : 's'} reached a tier`, help: 'Share of eligible purchases that reached the quantity required for a pricing tier.', formula: 'Tier reach rate = purchases that reached a tier / eligible purchases' },
+              { label: 'Order value at reached tiers', value: money(tierOrderValue), help: 'Total order value from purchases that reached a quantity pricing tier.' },
+              { label: 'Average tier discount', value: tierAvgDiscount == null ? '—' : `${tierAvgDiscount.toFixed(1)}%`, help: 'Average discount buyers got when they bought enough to reach a quantity tier. Bigger purchases count more.', formula: 'Average tier discount = discount from tiers / value before tier discount' },
+            ])}
+          />
+          <s-table>
+            <s-table-header-row>
+              <s-table-header listSlot="primary"><HeadHelp label="Quantity pricing" help="The quantity pricing shown in this row." /></s-table-header>
+              <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Eligible purchases" help="Number of purchases where this quantity pricing tier could be reached." /></s-table-header>
+              <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Reached tier" help="Number of eligible purchases that reached the quantity required for this tier." /></s-table-header>
+              <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Reach rate" help="Share of eligible purchases that reached this tier." formula="Reach rate = reached tier / eligible purchases" /></s-table-header>
+              <s-table-header listSlot="labeled" format="currency"><HeadHelp label="Order value at tier" help="Total order value from purchases that reached this tier." /></s-table-header>
+              <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Tier discount" help="Average discount buyers got when they reached this tier. Bigger purchases count more." formula="Tier discount = discount from tier / value before tier discount" /></s-table-header>
+            </s-table-header-row>
+            <s-table-body>
+              {blankRows(tierPolicies).map((r) => (
+                <s-table-row key={r.name}>
+                  <s-table-cell>{r.name}</s-table-cell>
+                  <s-table-cell>{r.eligible}</s-table-cell>
+                  <s-table-cell>{r.reached}</s-table-cell>
+                  <s-table-cell>{r.reachRate == null ? '—' : `${Math.round(r.reachRate)}%`}</s-table-cell>
+                  <s-table-cell>{money(r.orderValue)}</s-table-cell>
+                  <s-table-cell>{r.discount == null ? '—' : `${r.discount.toFixed(1)}%`}</s-table-cell>
+                </s-table-row>
+              ))}
+            </s-table-body>
+          </s-table>
+          <TableEmpty show={blankRows(tierPolicies).length === 0}>No quantity-rule observations in this scope.</TableEmpty>
+        </s-stack>
+      </ReportCard>
+
+      {/* §6.5 — advanced pricing analysis */}
+      <ReportCard
+        title="Advanced pricing analysis"
+        subtitle="Pricing-change outcomes and deeper cuts. Temporal comparison, not causal attribution."
+        controls={<s-link onClick={() => setAdvancedPricing((v) => !v)}>{advancedPricing ? 'Hide' : 'Show'}</s-link>}
+      >
+        {advancedPricing ? (
+          <s-stack gap="base">
+            <s-stack gap="small-300">
+              <s-heading fontSize="small">Pricing change outcomes</s-heading>
+              <s-paragraph fontSize="small" color="subdued">Compares business outcomes before and after a pricing change using equal time windows. This shows what changed over time, not what caused the change.</s-paragraph>
+              <s-table>
+                <s-table-header-row>
+                  <s-table-header listSlot="primary"><HeadHelp label="Date" help="When this pricing change took effect." /></s-table-header>
+                  <s-table-header listSlot="labeled"><HeadHelp label="Company / pricing" help="The company or pricing that changed." /></s-table-header>
+                  <s-table-header listSlot="labeled"><HeadHelp label="Pricing change" help="What changed in the pricing, shown as before → after." /></s-table-header>
+                  <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="Comparison period" help="Equal periods before and after the pricing change." /></s-table-header>
+                  <s-table-header listSlot="labeled" format="currency"><HeadHelp label="Sales before" help="Total sales during the period before the pricing change." /></s-table-header>
+                  <s-table-header listSlot="labeled" format="currency"><HeadHelp label="Sales after" help="Total sales during the period after the pricing change." /></s-table-header>
+                  <s-table-header listSlot="labeled" format="currency"><HeadHelp label="AOV before" help="Average order value during the period before the pricing change." formula="AOV before = sales before / orders before" /></s-table-header>
+                  <s-table-header listSlot="labeled" format="currency"><HeadHelp label="AOV after" help="Average order value during the period after the pricing change." formula="AOV after = sales after / orders after" /></s-table-header>
+                  <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="vs Shopify before" help="How B2B prices compared with Shopify prices before the change. Negative means B2B prices were lower." formula="vs Shopify before = (B2B price − Shopify price) / Shopify price" /></s-table-header>
+                  <s-table-header listSlot="labeled" format="numeric"><HeadHelp label="vs Shopify after" help="How B2B prices compared with Shopify prices after the change. Negative means B2B prices were lower." formula="vs Shopify after = (B2B price − Shopify price) / Shopify price" /></s-table-header>
+                </s-table-header-row>
+                <s-table-body>
+                  {blankRows(ruleChanges).map((r, i) => (
+                    <s-table-row key={i}>
+                      <s-table-cell>{r.date}</s-table-cell>
+                      <s-table-cell>{r.scope}</s-table-cell>
+                      <s-table-cell><s-stack gap="small-500"><s-text>{r.rule}</s-text><s-text fontSize="small" color="subdued">{r.change}</s-text></s-stack></s-table-cell>
+                      <s-table-cell>{r.windowDays ? `±${r.windowDays}d` : '—'}</s-table-cell>
+                      <s-table-cell>{money(r.before.sales)}</s-table-cell>
+                      <s-table-cell>{money(r.after.sales)}</s-table-cell>
+                      <s-table-cell>{money(r.before.aov)}</s-table-cell>
+                      <s-table-cell>{money(r.after.aov)}</s-table-cell>
+                      <s-table-cell>{`${r.before.priceDelta.toFixed(1)}%`}</s-table-cell>
+                      <s-table-cell>{`${r.after.priceDelta.toFixed(1)}%`}</s-table-cell>
+                    </s-table-row>
+                  ))}
+                </s-table-body>
+              </s-table>
+              <TableEmpty show={blankRows(ruleChanges).length === 0}>No tracked pricing changes in this scope.</TableEmpty>
+            </s-stack>
+            <s-paragraph fontSize="small" color="subdued">
+              Pocket-price waterfall, pocket margin and price leakage need pocket-price data (freight/servicing concessions) that isn't captured yet.
+            </s-paragraph>
+          </s-stack>
+        ) : (
+          <s-paragraph fontSize="small" color="subdued">Pricing-change before/after, plus pocket-margin and price-leakage once pocket-price data is captured.</s-paragraph>
+        )}
+      </ReportCard>
+    </s-stack>
+  );
+
+  const tabContent = [overviewTab, companiesTab, quotesTab, pricingTab][tab];
+
+  // Custom date fields: keep only complete YYYY-MM-DD values (or a cleared field) so a
+  // half-typed date never reaches the range maths. Idempotent, so input + change can both set it.
+  const dateHandler = (set) => (e) => {
+    const v = e.currentTarget.value || '';
+    if (!v || /^\d{4}-\d{2}-\d{2}$/.test(v)) set(v);
+  };
+
+  const content = (
+    <s-stack gap="base">
+      {SHOW_DEV_TOOLS && (
+        <DevStrip id="analytics">
+          <s-stack gap="small-200">
+            <s-stack direction="inline" gap="small-200" alignItems="center">
+              <s-badge tone="info">Dev</s-badge>
+              <s-text fontSize="small" color="subdued">
+                {genuinelyEmpty
+                  ? 'No B2B orders or quotes exist, so Analytics is showing its empty state.'
+                  : devEmpty
+                  ? 'Previewing the empty state — B2B data actually exists.'
+                  : 'Preview the Analytics empty state (how it looks for a brand-new merchant with no orders or quotes).'}
+              </s-text>
+              <s-press-button pressed={devEmpty} disabled={genuinelyEmpty} onClick={() => setDevEmpty((v) => !v)}>
+                {devEmpty ? 'Show data' : 'Preview empty state'}
+              </s-press-button>
+            </s-stack>
+            <s-stack direction="inline" gap="small-200" alignItems="center">
+              <s-badge tone="info">Dev</s-badge>
+              <s-text fontSize="small" color="subdued">
+                {devInject
+                  ? 'Event-basis test data injected: #1039 −$400 discount, #1033 SEA-30 return (−$1,250 sales / −$1,000 COGS). Net sales, GP and Top products reflect it.'
+                  : 'Inject event-basis test data (a discount + a return) to demo the production Net sales / GP / Top-products definitions.'}
+              </s-text>
+              <s-press-button pressed={devInject} onClick={() => setDevInject((v) => !v)}>
+                {devInject ? 'Reset test data' : 'Inject test data'}
+              </s-press-button>
+            </s-stack>
+            <s-stack direction="inline" gap="small-200" alignItems="center">
+              <s-badge tone="info">Dev</s-badge>
+              <s-text fontSize="small" color="subdued">
+                {devMissingCost
+                  ? `Missing cost injected: ${DEV_MISSING_COST_SKU} has no unit cost, so its lines drop from GP/Margin. Cost coverage now shows on Margin at order creation, the "Order value below margin threshold" card and Margin by pricing source.`
+                  : `Strip the unit cost from ${DEV_MISSING_COST_SKU} to demo the cost-coverage disclosures (they stay hidden while every product is costed).`}
+              </s-text>
+              <s-press-button pressed={devMissingCost} onClick={() => setDevMissingCost((v) => !v)}>
+                {devMissingCost ? 'Reset missing cost' : 'Inject missing cost'}
+              </s-press-button>
+            </s-stack>
+            <s-stack direction="inline" gap="small-200" alignItems="center">
+              <s-badge tone="info">Dev</s-badge>
+              <s-text fontSize="small" color="subdued">
+                {compareOnly
+                  ? 'Compare only: Compare to is locked to Previous period. Metrics with a previous-period comparison show data; everything else shows its empty state.'
+                  : 'Keep the layout but show data only for metrics compared with the previous period (KPIs with a delta, the trend chart, growth columns).'}
+              </s-text>
+              <s-press-button pressed={compareOnly} disabled={genuinelyEmpty} onClick={() => setCompareOnly((v) => !v)}>
+                {compareOnly ? 'Show all data' : 'Compare only'}
+              </s-press-button>
+            </s-stack>
+          </s-stack>
+        </DevStrip>
+      )}
+      {showEmpty && (
+        <s-banner tone="info">
+          You don't have any B2B orders or quotes yet. As your companies start ordering and you send quotes, performance across companies, quotes and pricing will fill in below.
+        </s-banner>
+      )}
+      <s-section>
+        <s-stack gap="small">
+          <s-stack direction="inline" gap="small" alignItems="end">
+            <div style={{ minWidth: 150 }}><SelectField label="Date range" options={periodOptions} value={period} onChange={setPeriod} disabled={showEmpty} /></div>
+            {period === 'custom' && (
+              <>
+                <div style={{ minWidth: 150 }}><s-date-field label="Start date" value={customStart} onInput={dateHandler(setCustomStart)} onChange={dateHandler(setCustomStart)} /></div>
+                <div style={{ minWidth: 150 }}><s-date-field label="End date" value={customEnd} onInput={dateHandler(setCustomEnd)} onChange={dateHandler(setCustomEnd)} /></div>
+              </>
+            )}
+            <div style={{ minWidth: 160 }}><SelectField label="Compare to" options={compareOptions} value={compareOnly ? 'previous' : compare} onChange={setCompare} disabled={showEmpty || compareOnly} /></div>
+            {!embeddedCompanyId && <div style={{ minWidth: 190 }}><SelectField label="Company" options={companyOptions} value={companyFilter} onChange={setCompanyFilter} disabled={showEmpty} /></div>}
+          </s-stack>
+          <s-stack direction="inline" justifyContent="space-between" alignItems="center" gap="small-200">
+            <s-text fontSize="small" color="subdued">{scopeText}</s-text>
+            {showClear && <s-button variant="tertiary" onClick={clearFilters}>Clear filters</s-button>}
+          </s-stack>
+        </s-stack>
+      </s-section>
+
+      <s-section padding="none">
+        <Tabs tabs={tabs} selected={tab} onSelect={setTab} />
+        <s-box padding="base">{tabContent}</s-box>
+      </s-section>
+    </s-stack>
+  );
+
+  if (embeddedCompanyId) return content;
+  return (
+    <s-page heading="Analytics" inlineSize="large">
+      <s-stack gap="base">
+        <s-paragraph color="subdued">Explore B2B performance across companies, quotes and pricing.</s-paragraph>
+        {content}
+      </s-stack>
+    </s-page>
+  );
+}

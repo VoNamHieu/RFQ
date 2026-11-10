@@ -1,0 +1,14 @@
+api_version = "2026-07"
+
+[[extensions]]
+uid = "fa5048b4-db95-1f37-9200-fea38eb703cdb68f107f"
+type = "ui_extension"
+name = "Business registration"
+handle = "qs-b2b-registration"
+
+[[extensions.targeting]]
+module = "./src/FullPageExtension.jsx"
+target = "customer-account.page.render"
+
+[extensions.capabilities]
+network_access = true

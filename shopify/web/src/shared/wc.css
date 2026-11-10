@@ -1,0 +1,1003 @@
+/*
+ * App-owned CSS for the Polaris web components apps (RFQ + B2B).
+ *
+ * Polaris web components (s-*) style themselves inside their shadow roots, so
+ * this file only covers what the components don't provide: the page base, the
+ * simulated Shopify admin chrome (top bar + left nav, which App Bridge renders
+ * inside the real admin), and a few app-owned widgets (tabs, toast, save bar).
+ * Never target a component's internals from here — shadow DOM blocks it.
+ */
+
+:root {
+  --wc-font: Inter, -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  --wc-bg: #f1f1f1;
+  --wc-surface: #ffffff;
+  --wc-surface-hover: #f7f7f7;
+  --wc-text: #303030;
+  --wc-text-subdued: #616161;
+  --wc-border: #e3e3e3;
+  --wc-nav-bg: #ebebeb;
+  --wc-nav-hover: #f1f1f1;
+  --wc-topbar-bg: #1a1a1a;
+  --wc-radius: 8px;
+  --wc-topbar-h: 56px;
+  --wc-nav-w: 240px;
+
+  /* Polaris design tokens still referenced by app-owned inline styles (charts,
+     swatches, custom rows). Values from @shopify/polaris-tokens 9.x. */
+  --p-border-radius-200: 0.5rem;
+  --p-space-300: 0.75rem;
+  --p-font-family-mono: ui-monospace, SFMono-Regular, 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
+  --p-color-bg: rgba(241, 241, 241, 1);
+  --p-color-bg-surface: rgba(255, 255, 255, 1);
+  --p-color-bg-surface-secondary: rgba(247, 247, 247, 1);
+  --p-color-bg-fill-brand: rgba(48, 48, 48, 1);
+  --p-color-bg-fill-caution: rgba(255, 230, 0, 1);
+  --p-color-bg-fill-critical: rgba(199, 10, 36, 1);
+  --p-color-bg-fill-emphasis: rgba(0, 91, 211, 1);
+  --p-color-bg-fill-info: rgba(145, 208, 255, 1);
+  --p-color-bg-fill-magic: rgba(128, 81, 255, 1);
+  --p-color-bg-fill-success: rgba(4, 123, 93, 1);
+  --p-color-bg-fill-tertiary: rgba(227, 227, 227, 1);
+  --p-color-bg-fill-warning: rgba(255, 184, 0, 1);
+  --p-color-border: rgba(227, 227, 227, 1);
+  --p-color-border-emphasis: rgba(0, 91, 211, 1);
+  --p-color-border-secondary: rgba(235, 235, 235, 1);
+  --p-color-icon: rgba(74, 74, 74, 1);
+  --p-color-input-border: rgba(138, 138, 138, 1);
+  --p-color-input-border-active: rgba(26, 26, 26, 1);
+  --p-color-text: rgba(48, 48, 48, 1);
+  --p-color-text-brand-on-bg-fill: rgba(255, 255, 255, 1);
+  --p-color-text-emphasis: rgba(0, 91, 211, 1);
+  --p-color-text-secondary: rgba(97, 97, 97, 1);
+  --p-color-text-subdued: rgba(97, 97, 97, 1);
+  --p-color-tooltip-tail-down-border: rgba(212, 212, 212, 1);
+  --p-color-tooltip-tail-up-border: rgba(227, 227, 227, 1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--wc-font);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 450;
+  color: var(--wc-text);
+  background: var(--wc-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Admin chrome ---------- */
+
+.wc-frame {
+  min-height: 100vh;
+}
+
+.wc-topbar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 400;
+  height: var(--wc-topbar-h);
+  display: grid;
+  /* The sides keep room for the version switcher and the user; the search
+     shrinks first, so nothing slides under it on narrow screens. */
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, 480px) minmax(max-content, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  background: var(--wc-topbar-bg);
+  color: #e3e3e3;
+}
+
+.wc-topbar__start,
+.wc-topbar__end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wc-topbar__end {
+  justify-content: flex-end;
+}
+
+.wc-topbar__switcher {
+  min-width: 170px;
+  max-width: 240px;
+}
+
+.wc-topbar__toggle {
+  display: none;
+}
+
+.wc-topbar-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 12px;
+  gap: 8px;
+  border-radius: var(--wc-radius);
+  border: 1px solid #616161;
+  background: #303030;
+  color: #b5b5b5;
+}
+
+.wc-topbar-search:focus-within {
+  border-color: #b5b5b5;
+}
+
+.wc-topbar-search svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.wc-topbar-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+}
+
+.wc-topbar-search input::placeholder {
+  color: #b5b5b5;
+}
+
+.wc-plain-button {
+  appearance: none;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.wc-user {
+  position: relative;
+}
+
+.wc-user__button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 4px 0 12px;
+  border-radius: var(--wc-radius);
+  background: #303030;
+  color: #fff;
+  text-align: right;
+}
+
+.wc-user__button:hover {
+  background: #404040;
+}
+
+.wc-user__name {
+  display: block;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 14px;
+}
+
+.wc-user__detail {
+  display: block;
+  font-size: 11px;
+  line-height: 13px;
+  color: #b5b5b5;
+}
+
+.wc-user__initials {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: #36d6c7;
+  color: #0c3833;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.wc-user__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 180px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--wc-surface);
+  color: var(--wc-text);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+.wc-user__menu button {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  text-align: left;
+}
+
+.wc-user__menu button:hover {
+  background: var(--wc-nav-hover);
+}
+
+.wc-nav {
+  position: fixed;
+  top: var(--wc-topbar-h);
+  bottom: 0;
+  left: 0;
+  z-index: 300;
+  width: var(--wc-nav-w);
+  overflow-y: auto;
+  padding: 12px;
+  background: var(--wc-nav-bg);
+}
+
+.wc-nav__section + .wc-nav__section {
+  margin-top: 16px;
+}
+
+.wc-nav__title {
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--wc-text-subdued);
+}
+
+.wc-nav__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 8px;
+  border-radius: var(--wc-radius);
+  font-weight: 650;
+  color: var(--wc-text);
+  text-align: left;
+}
+
+.wc-nav__item:hover {
+  background: var(--wc-nav-hover);
+}
+
+.wc-nav__item[aria-current='page'] {
+  background: var(--wc-surface);
+}
+
+.wc-nav__item:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.wc-nav__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wc-nav__badge {
+  padding: 0 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.06);
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--wc-text-subdued);
+}
+
+.wc-nav__sub {
+  margin: 2px 0 4px;
+}
+
+.wc-nav__subitem {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 8px 4px 36px;
+  border-radius: var(--wc-radius);
+  font-weight: 450;
+  color: var(--wc-text-subdued);
+  text-align: left;
+}
+
+.wc-nav__subitem:hover {
+  background: var(--wc-nav-hover);
+  color: var(--wc-text);
+}
+
+.wc-nav__subitem[aria-current='page'] {
+  font-weight: 650;
+  color: var(--wc-text);
+}
+
+.wc-main {
+  min-height: 100vh;
+  padding-top: var(--wc-topbar-h);
+  padding-left: var(--wc-nav-w);
+}
+
+/* Embedded (docked in the storefront): no top bar or nav to make room for. */
+.wc-main.wc-main--bare {
+  padding-top: 0;
+  padding-left: 0;
+}
+
+.wc-nav-backdrop {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .wc-topbar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .wc-topbar__toggle {
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--wc-radius);
+    color: #fff;
+  }
+
+  .wc-topbar__toggle svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+  }
+
+  .wc-topbar__switcher,
+  .wc-user__text {
+    display: none;
+  }
+
+  .wc-nav {
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+
+  .wc-frame[data-nav-open='true'] .wc-nav {
+    transform: none;
+  }
+
+  .wc-frame[data-nav-open='true'] .wc-nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: var(--wc-topbar-h) 0 0 0;
+    z-index: 250;
+    background: rgba(0, 0, 0, 0.4);
+  }
+
+  .wc-main {
+    padding-left: 0;
+  }
+}
+
+/* ---------- Tabs (Polaris web components have no tabs) ---------- */
+
+.wc-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px;
+}
+
+.wc-tabs--flush {
+  padding: 0;
+}
+
+.wc-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 4px 12px;
+  border-radius: var(--wc-radius);
+  font-weight: 550;
+  color: var(--wc-text-subdued);
+  white-space: nowrap;
+}
+
+.wc-tab:hover {
+  background: var(--wc-nav-hover);
+  color: var(--wc-text);
+}
+
+.wc-tab[aria-selected='true'] {
+  background: var(--wc-nav-bg);
+  color: var(--wc-text);
+  font-weight: 650;
+}
+
+/* Page-level tabs: a line under the header, the open one underlined. */
+.wc-tabs--underline {
+  gap: 20px;
+  padding: 0;
+  border-bottom: 1px solid var(--wc-border);
+}
+.wc-tabs--underline .wc-tab {
+  min-height: 36px;
+  margin-bottom: -1px;
+  padding: 8px 2px;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+}
+.wc-tabs--underline .wc-tab:hover {
+  background: none;
+  border-bottom-color: var(--wc-border);
+}
+.wc-tabs--underline .wc-tab[aria-selected='true'] {
+  background: none;
+  border-bottom-color: var(--wc-text);
+}
+.wc-tab:focus-visible {
+  outline: 2px solid #005bd3;
+  outline-offset: 1px;
+}
+
+.wc-tab__badge {
+  padding: 0 6px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.06);
+  font-size: 12px;
+  font-weight: 550;
+}
+
+/* ---------- Index filters bar (inside s-table's filters slot) ---------- */
+
+.wc-index-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Unset filter pill: label + disclosure chevron (Polaris FilterPill). */
+.wc-pill-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* ---------- Toast ---------- */
+
+.wc-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 12px 10px 16px;
+  border-radius: 10px;
+  background: #1a1a1a;
+  color: #fff;
+  font-weight: 550;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  transform: translateX(-50%);
+  animation: wc-toast-in 0.18s ease-out;
+}
+
+.wc-toast button {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  color: #b5b5b5;
+}
+
+.wc-toast button:hover {
+  color: #fff;
+}
+
+.wc-toast svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+@keyframes wc-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+}
+
+/* ---------- Contextual save bar (App Bridge owns this inside the admin) ---------- */
+
+.wc-savebar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 450;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: var(--wc-topbar-h);
+  padding: 0 16px 0 calc(var(--wc-nav-w) + 16px);
+  background: var(--wc-topbar-bg);
+  color: #fff;
+  font-weight: 650;
+}
+
+.wc-savebar__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.wc-savebar__actions button {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--wc-radius);
+  font-weight: 550;
+}
+
+.wc-savebar__discard {
+  background: #404040;
+  color: #fff;
+}
+
+.wc-savebar__discard:hover {
+  background: #4a4a4a;
+}
+
+.wc-savebar__save {
+  background: #fff;
+  color: #1a1a1a;
+}
+
+.wc-savebar__save:hover {
+  background: #e3e3e3;
+}
+
+@media (max-width: 768px) {
+  .wc-savebar {
+    padding-left: 16px;
+  }
+}
+
+/* ---------- Page header with back arrow (see PageHeader in wc.jsx) ---------- */
+/* Matches s-page's own header: 16px from the top, 18px/24px semibold title,
+   28px-tall row, same inline size and gutters as the s-page below it. */
+
+.wc-page-header {
+  box-sizing: border-box;
+  margin-inline: auto;
+  padding-block-start: 16px;
+  width: min(100% - 32px, 966px);
+}
+
+.wc-page-header--large {
+  width: calc(100% - 32px);
+}
+
+.wc-page-header--small {
+  width: min(100% - 32px, 662px);
+}
+
+.wc-page-header__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.wc-page-header__titles {
+  flex: 1;
+  min-width: 0;
+  padding-block-start: 2px;
+}
+
+.wc-page-header__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wc-page-header__title {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: -0.15px;
+  color: var(--wc-text);
+}
+
+.wc-page-header__meta {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.wc-page-header__subtitle {
+  margin-block-start: 2px;
+  color: var(--wc-text-subdued);
+}
+
+.wc-page-header__actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.wc-page-header__fill {
+  display: inline-flex;
+  border-radius: 8px;
+  background: #e3e3e3;
+}
+
+.wc-page-header__fill.is-disabled {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+@media (max-width: 490px) {
+  .wc-page-header__row {
+    flex-wrap: wrap;
+  }
+
+  .wc-page-header__actions {
+    flex-basis: 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* Full-screen editor bar (the pricing editor opened over a page): its title and
+   actions line up with the page content under it, like the page header above;
+   on a narrow screen the actions wrap under the title. */
+.wc-overlay-header {
+  box-sizing: border-box;
+  margin-inline: auto;
+  width: min(100% - 32px, 966px);
+  padding-block: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.wc-overlay-header__title {
+  display: flex;
+  flex: 1 1 240px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wc-overlay-header__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+
+/* A page's intro line under its title, outside any card: on a phone s-page drops
+   its side padding (cards go edge to edge), so the line keeps the page's 16px. */
+@media (max-width: 490px) {
+  .wc-page-intro {
+    display: block;
+    padding-inline: 16px;
+  }
+}
+
+/* A pricing's priority as a round number (PriorityNumber in ContractParts.jsx). */
+.wc-priority {
+  display: inline-grid;
+  place-items: center;
+  box-sizing: border-box;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 12px;
+  border: 1px solid var(--p-color-border);
+  background: var(--p-color-bg-surface-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--wc-text);
+}
+
+/* ---------- Floating option list (combobox) ---------- */
+/* A native popover in the top layer, positioned from JS under its field. */
+
+/* An action option (e.g. Create contract pricing) pinned at the top while the
+   options scroll under it. */
+.wc-combobox-list__action {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin-top: -4px;
+  padding-top: 4px;
+  background: var(--wc-surface);
+}
+.wc-combobox-list {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  border: 0;
+  border-radius: 12px;
+  background: var(--wc-surface);
+  color: var(--wc-text);
+  font: inherit;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+/* ---------- Small utilities for app-owned wrappers ---------- */
+
+.wc-truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wc-nowrap {
+  white-space: nowrap;
+}
+
+/* ---------- Table bulk actions (Shopify index-table style) ---------- */
+/* While rows are selected, "N selected" + actions sit in the first text heading
+   (.qs-bulk-bar): zero-width so the column keeps its size, they run over the other
+   headings, which hide meanwhile (.qs-bulk-hidden). As tall as a heading's line
+   (16px) so the row keeps its height; the buttons spill into the cell padding.
+   s-table switches to its list layout (no header row) below 490px wide
+   (window.innerWidth, see polaris.js), so there a copy above the list shows
+   instead (.qs-bulk-list). */
+.qs-bulk-bar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 0;
+  height: 16px;
+  white-space: nowrap;
+}
+.qs-bulk-list {
+  display: none;
+}
+@media (min-width: 490px) {
+  .qs-bulk-hidden {
+    visibility: hidden;
+  }
+}
+@media (max-width: 489px) {
+  .qs-bulk-list {
+    display: block;
+  }
+}
+
+/* ---------- Segmented control ---------- */
+/* Full width, equal halves (s-button-group sizes to its buttons and can't be
+   stretched: its flex row is in its shadow DOM). Looks like its secondary
+   s-press-buttons: white, the pressed one grey and inset. */
+.wc-segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+}
+.wc-segmented__item {
+  min-height: 32px;
+  padding: 6px 12px;
+  background: var(--wc-surface);
+  color: var(--wc-text);
+  font-weight: 550;
+  text-align: center;
+  box-shadow: #b5b5b5 0 -1px 0 0 inset, rgba(0, 0, 0, 0.1) 0 0 0 1px inset, #fff 0 0.5px 0 1.5px inset;
+}
+.wc-segmented__item:first-child {
+  border-radius: var(--wc-radius) 0 0 var(--wc-radius);
+}
+.wc-segmented__item:last-child {
+  border-radius: 0 var(--wc-radius) var(--wc-radius) 0;
+}
+.wc-segmented__item:hover {
+  background: var(--wc-surface-hover);
+}
+.wc-segmented__item[aria-pressed='true'] {
+  background: #ccc;
+  box-shadow: rgba(26, 26, 26, 0.12) -1px 0 1px 0 inset, rgba(26, 26, 26, 0.12) 1px 0 1px 0 inset, rgba(26, 26, 26, 0.2) 0 2px 1px 0 inset;
+}
+/* Locked (e.g. a pricing's type once saved): the picked side stays as it is, the
+   other dims and doesn't react. */
+.wc-segmented__item:disabled {
+  cursor: default;
+}
+.wc-segmented__item:disabled:not([aria-pressed='true']) {
+  color: #b5b5b5;
+  background: var(--wc-surface);
+}
+.wc-segmented__item:focus-visible {
+  position: relative;
+  outline: 2px solid #005bd3;
+  outline-offset: 1px;
+}
+
+/* Two choices as cards side by side (a pricing's or limit's type, typeUi=tiles):
+   a radio dot, a title and a line under it; the picked one has a dark border.
+   Locked, the other dims. */
+.wc-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+.wc-tile {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 12px;
+  text-align: left;
+  border-radius: var(--wc-radius);
+  background: var(--wc-surface);
+  box-shadow: 0 0 0 1px #e3e3e3 inset;
+}
+.wc-tile:hover {
+  background: var(--wc-surface-hover);
+}
+.wc-tile[aria-checked='true'] {
+  box-shadow: 0 0 0 2px #303030 inset;
+}
+.wc-tile:disabled {
+  cursor: default;
+}
+.wc-tile:disabled:hover {
+  background: var(--wc-surface);
+}
+.wc-tile:disabled:not([aria-checked='true']) {
+  opacity: 0.5;
+}
+.wc-tile:focus-visible {
+  outline: 2px solid #005bd3;
+  outline-offset: 1px;
+}
+.wc-tile__radio {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #8a8a8a inset;
+}
+.wc-tile[aria-checked='true'] .wc-tile__radio {
+  box-shadow: 0 0 0 5px #303030 inset;
+}
+.wc-tile__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wc-tile__title {
+  font-weight: 550;
+}
+.wc-tile__details {
+  font-size: 12px;
+  line-height: 16px;
+  color: #616161;
+}
+
+/* A bar pinned to the bottom of an s-modal's scrolling body (over the content
+   that scrolls under it), edge to edge across the body's 16px padding. The
+   negative bottom margin cancels that padding so the bar doesn't lift off the
+   bottom at the end of the scroll. */
+.qs-modal-pinned-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin: 0 -16px -16px;
+  padding: 16px;
+  background: var(--p-color-bg-surface, #fff);
+  border-top: 1px solid var(--p-color-border-secondary, #ebebeb);
+}
+
+/* ---------- Plain list table ---------- */
+/* A light table for a short list in a card (the location page's Quotes and Order
+   history): subdued headings with no band, roomy rows split by hairlines that start
+   at the text. s-table can't be restyled (shadow DOM), so this is a plain <table>. */
+.wc-table-scroll {
+  overflow-x: auto;
+}
+.wc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--wc-text);
+}
+/* Headings a step smaller and lighter than the rows, so the rows read first. */
+.wc-table th {
+  padding: 8px 16px 8px 0;
+  text-align: left;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 450;
+  color: #737373;
+  white-space: nowrap;
+  border-bottom: 1px solid #ebebeb;
+}
+.wc-table td {
+  padding: 14px 16px 14px 0;
+  vertical-align: middle;
+  border-bottom: 1px solid #f3f3f3;
+}
+.wc-table th:last-child,
+.wc-table td:last-child {
+  padding-right: 0;
+}
+.wc-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.wc-table .wc-table__num {
+  text-align: right;
+}
+.wc-table__muted {
+  color: var(--wc-text-subdued);
+}
+.wc-table__row--link {
+  cursor: pointer;
+}
+.wc-table__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: #005bd3;
+  cursor: pointer;
+}
+.wc-table__row--link:hover .wc-table__link,
+.wc-table__link:focus-visible {
+  text-decoration: underline;
+}
+
+/* ---------- Hover-revealed row action ---------- */
+/* A row's secondary action (e.g. a buyer's ×) shows on hover or keyboard focus;
+   always on touch screens, which have no hover. */
+.wc-hover-row .wc-hover-target {
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.wc-hover-row:hover .wc-hover-target,
+.wc-hover-row:focus-within .wc-hover-target {
+  opacity: 1;
+}
+@media (hover: none) {
+  .wc-hover-row .wc-hover-target {
+    opacity: 1;
+  }
+}
+
+/* A row under a page header's title (PageHeader `below`), e.g. tabs. */
+.wc-page-header__below {
+  margin-top: 16px;
+}

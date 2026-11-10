@@ -1,0 +1,28 @@
+{%- comment -%}
+  App embed: a B2B buyer's order limits above Check out, on the cart page and in
+  the cart drawer, from what the QuoteSnap B2B app saved for their company
+  location (app-data metafield qs_b2b.storefront). Over a maximum the seller
+  reviews, Check out opens the order request dialog. Shows nothing to anyone else.
+{%- endcomment -%}
+{%- liquid
+  assign loc = blank
+  if customer.b2b? and customer.current_location
+    assign loc_key = customer.current_location.id | append: ''
+    assign loc = app.metafields.qs_b2b.storefront.value.locations[loc_key]
+  endif
+-%}
+{%- if loc != blank -%}
+  <script type="application/json" data-qs-b2b-cart>
+    { "currency": {{ cart.currency.iso_code | json }}, "location": {{ loc_key | json }}, "requestJs": {{ 'qs-b2b-request.js' | asset_url | json }}, "loc": {{ loc | json }} }
+  </script>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "B2B cart limits",
+  "target": "body",
+  "javascript": "qs-b2b-limits.js",
+  "stylesheet": "qs-b2b-limits.css",
+  "settings": []
+}
+{% endschema %}

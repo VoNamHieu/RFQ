@@ -1,0 +1,1455 @@
+{
+  "store": "221jumpstreet.myshopify.com",
+  "pulledAt": "2026-10-05T04:25:20.405Z",
+  "products": [
+    {
+      "id": "gid://shopify/Product/15848462483742",
+      "handle": "kids-manchester-city-home-jersey-2026-27-long-sleeve-with-cherki-10-printing",
+      "title": "Kids' Manchester City Home Jersey 2026/27 Long Sleeve With CHERKI 10 Printing",
+      "vendor": "Manchester City",
+      "productType": "Long-sleeve home jersey",
+      "status": "ACTIVE",
+      "tags": [
+        "2026/27",
+        "Cherki 10",
+        "Kids",
+        "Long-sleeve home jersey",
+        "Manchester City",
+        "Rayan Cherki",
+        "sv-hide:a"
+      ],
+      "descriptionHtml": "<p>Official-style Manchester City product featuring Rayan Cherki number 10.</p><p>Season: 2026/27<br>Colour: Team Light Blue-Icy Blue</p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242812BX001_pp_02_mcfc.png?v=1785899217",
+        "altText": "Kids' Manchester City Home Jersey 2026/27 Long Sleeve With CHERKI 10 Printing",
+        "width": 800,
+        "height": 800
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242812BX001_pp_02_mcfc.png?v=1785899217",
+          "altText": "Kids' Manchester City Home Jersey 2026/27 Long Sleeve With CHERKI 10 Printing",
+          "width": 800,
+          "height": 800
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 81,
+      "priceMax": 81,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735366697246",
+          "title": "Default Title",
+          "sku": "701242812-CHERKI",
+          "price": 81,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242812BX001_pp_02_mcfc.png?v=1785899217",
+            "altText": "Kids' Manchester City Home Jersey 2026/27 Long Sleeve With CHERKI 10 Printing"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848462549278",
+      "handle": "kids-manchester-city-home-jersey-2026-27-with-cherki-10-printing",
+      "title": "Kids' Manchester City Home Jersey 2026/27 With CHERKI 10 Printing",
+      "vendor": "Manchester City",
+      "productType": "Home jersey",
+      "status": "ACTIVE",
+      "tags": [
+        "2026/27",
+        "Cherki 10",
+        "Home jersey",
+        "Kids",
+        "Manchester City",
+        "Rayan Cherki"
+      ],
+      "descriptionHtml": "<p>Official-style Manchester City product featuring Rayan Cherki number 10.</p><p>Season: 2026/27<br>Colour: Team Light Blue-Icy Blue</p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242809BX001_pp_02_mcfc.png?v=1785899219",
+        "altText": "Kids' Manchester City Home Jersey 2026/27 With CHERKI 10 Printing",
+        "width": 800,
+        "height": 800
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242809BX001_pp_02_mcfc.png?v=1785899219",
+          "altText": "Kids' Manchester City Home Jersey 2026/27 With CHERKI 10 Printing",
+          "width": 800,
+          "height": 800
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 76,
+      "priceMax": 76,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735366762782",
+          "title": "Default Title",
+          "sku": "701242809",
+          "price": 76,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242809BX001_pp_02_mcfc.png?v=1785899219",
+            "altText": "Kids' Manchester City Home Jersey 2026/27 With CHERKI 10 Printing"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848462647582",
+      "handle": "kids-manchester-city-home-jersey-2026-27-with-foden-47-printing",
+      "title": "Kids' Manchester City Home Jersey 2026/27 With FODEN 47 Printing",
+      "vendor": "Manchester City FC",
+      "productType": "Kids Home Jersey",
+      "status": "ACTIVE",
+      "tags": [
+        "2026/27",
+        "Foden 47",
+        "Kids",
+        "Manchester City",
+        "Phil Foden"
+      ],
+      "descriptionHtml": "<p>Manchester City Kids Home Jersey featuring Phil Foden number 47.</p><p>Season: 2026/27</p><p>Source: https://shop.mancity.com/en/kids-manchester-city-home-jersey-2026-27-with-foden-47-printing/701242809FI001810.html</p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242809FJ001_pp_02_mcfc.png?v=1785899220",
+        "altText": "Kids' Manchester City Home Jersey 2026/27 With FODEN 47 Printing",
+        "width": 800,
+        "height": 800
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242809FJ001_pp_02_mcfc.png?v=1785899220",
+          "altText": "Kids' Manchester City Home Jersey 2026/27 With FODEN 47 Printing",
+          "width": 800,
+          "height": 800
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 76,
+      "priceMax": 76,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735366861086",
+          "title": "Default Title",
+          "sku": "701242809-FODEN",
+          "price": 76,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242809FJ001_pp_02_mcfc.png?v=1785899220",
+            "altText": "Kids' Manchester City Home Jersey 2026/27 With FODEN 47 Printing"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848462713118",
+      "handle": "kids-manchester-city-home-jersey-2026-27-with-gvardiol-24-printing",
+      "title": "Kids' Manchester City Home Jersey 2026/27 With GVARDIOL 24 Printing",
+      "vendor": "Manchester City FC",
+      "productType": "Kids Home Jersey",
+      "status": "ACTIVE",
+      "tags": [
+        "2026/27",
+        "Gvardiol 24",
+        "Joško Gvardiol",
+        "Kids",
+        "Manchester City",
+        "sv-hide:b"
+      ],
+      "descriptionHtml": "<p>Manchester City Kids Home Jersey featuring Joško Gvardiol number 24.</p><p>Season: 2026/27</p><p>Source: https://shop.mancity.com/en/kids-manchester-city-home-jersey-2026-27-with-gvardiol-24-printing/701242809DO001813.html</p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242809DL001_pp_02_mcfc.png?v=1785899221",
+        "altText": "Kids' Manchester City Home Jersey 2026/27 With GVARDIOL 24 Printing",
+        "width": 800,
+        "height": 800
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242809DL001_pp_02_mcfc.png?v=1785899221",
+          "altText": "Kids' Manchester City Home Jersey 2026/27 With GVARDIOL 24 Printing",
+          "width": 800,
+          "height": 800
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 76,
+      "priceMax": 76,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735366926622",
+          "title": "Default Title",
+          "sku": "701242809-GVARDIOL",
+          "price": 76,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242809DL001_pp_02_mcfc.png?v=1785899221",
+            "altText": "Kids' Manchester City Home Jersey 2026/27 With GVARDIOL 24 Printing"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848462745886",
+      "handle": "kids-manchester-city-home-jersey-2026-27-with-haaland-9-printing",
+      "title": "Kids' Manchester City Home Jersey 2026/27 With HAALAND 9 Printing",
+      "vendor": "Manchester City FC",
+      "productType": "Kids Home Jersey",
+      "status": "ACTIVE",
+      "tags": [
+        "2026/27",
+        "Erling Haaland",
+        "Haaland 9",
+        "Kids",
+        "Manchester City",
+        "sv-hide:b"
+      ],
+      "descriptionHtml": "<p>Manchester City Kids Home Jersey featuring Erling Haaland number 9.</p><p>Season: 2026/27</p><p>Source: https://shop.mancity.com/en/kids-manchester-city-home-jersey-2026-27-with-haaland-9-printing/701242809-HAALAND-TeamLightBlue-IcyBlue-ManCity.html</p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242809BS001_pp_02_mcfc.png?v=1785899222",
+        "altText": "Kids' Manchester City Home Jersey 2026/27 With HAALAND 9 Printing",
+        "width": 800,
+        "height": 800
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242809BS001_pp_02_mcfc.png?v=1785899222",
+          "altText": "Kids' Manchester City Home Jersey 2026/27 With HAALAND 9 Printing",
+          "width": 800,
+          "height": 800
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 76,
+      "priceMax": 76,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735366959390",
+          "title": "Default Title",
+          "sku": "701242809-HAALAND",
+          "price": 76,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242809BS001_pp_02_mcfc.png?v=1785899222",
+            "altText": "Kids' Manchester City Home Jersey 2026/27 With HAALAND 9 Printing"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848462811422",
+      "handle": "kids-manchester-city-home-mini-kit-2026-27-with-cherki-10-printing",
+      "title": "Kids' Manchester City Home MINI KIT 2026/27 With CHERKI 10 Printing",
+      "vendor": "Manchester City",
+      "productType": "Mini kit",
+      "status": "ACTIVE",
+      "tags": [
+        "2026/27",
+        "Cherki 10",
+        "Kids",
+        "Manchester City",
+        "Mini kit",
+        "Rayan Cherki",
+        "sv-hide:a"
+      ],
+      "descriptionHtml": "<p>Official-style Manchester City product featuring Rayan Cherki number 10.</p><p>Season: 2026/27<br>Colour: Team Light Blue-Icy Blue</p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242813BX001_pp_02_mcfc.png?v=1785899223",
+        "altText": "Kids' Manchester City Home MINI KIT 2026/27 With CHERKI 10 Printing",
+        "width": 800,
+        "height": 800
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242813BX001_pp_02_mcfc.png?v=1785899223",
+          "altText": "Kids' Manchester City Home MINI KIT 2026/27 With CHERKI 10 Printing",
+          "width": 800,
+          "height": 800
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 79,
+      "priceMax": 79,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735367024926",
+          "title": "Default Title",
+          "sku": "701242813",
+          "price": 79,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242813BX001_pp_02_mcfc.png?v=1785899223",
+            "altText": "Kids' Manchester City Home MINI KIT 2026/27 With CHERKI 10 Printing"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848462876958",
+      "handle": "kids-manchester-city-home-mini-kit-2026-27-with-foden-47-printing",
+      "title": "Kids' Manchester City Home MINI KIT 2026/27 With FODEN 47 Printing",
+      "vendor": "Manchester City FC",
+      "productType": "Kids Mini Kit",
+      "status": "ACTIVE",
+      "tags": [
+        "2026/27",
+        "Foden 47",
+        "Kids",
+        "Manchester City",
+        "Phil Foden",
+        "sv-hide:b"
+      ],
+      "descriptionHtml": "<p>Manchester City Kids Mini Kit featuring Phil Foden number 47.</p><p>Season: 2026/27</p><p>Source: https://shop.mancity.com/en/kids-manchester-city-home-mini-kit-2026-27-with-foden-47-printing/701242813FJ001808.html</p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242813FJ001_pp_02_mcfc.png?v=1785899225",
+        "altText": "Kids' Manchester City Home MINI KIT 2026/27 With FODEN 47 Printing",
+        "width": 800,
+        "height": 800
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242813FJ001_pp_02_mcfc.png?v=1785899225",
+          "altText": "Kids' Manchester City Home MINI KIT 2026/27 With FODEN 47 Printing",
+          "width": 800,
+          "height": 800
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 79,
+      "priceMax": 79,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735367090462",
+          "title": "Default Title",
+          "sku": "701242813-FODEN",
+          "price": 79,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242813FJ001_pp_02_mcfc.png?v=1785899225",
+            "altText": "Kids' Manchester City Home MINI KIT 2026/27 With FODEN 47 Printing"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848462942494",
+      "handle": "kids-manchester-city-third-jersey-2025-26-with-foden-47-printing",
+      "title": "Kids' Manchester City Third Jersey 2025/26 With FODEN 47 Printing",
+      "vendor": "Manchester City FC",
+      "productType": "Kids Third Jersey",
+      "status": "ACTIVE",
+      "tags": [
+        "2025/26",
+        "Foden 47",
+        "Kids",
+        "Manchester City",
+        "Phil Foden",
+        "sv-hide:a",
+        "sv-hide:b"
+      ],
+      "descriptionHtml": "<p>Manchester City Kids Third Jersey featuring Phil Foden number 47.</p><p>Season: 2025/26</p><p>Source: https://shop.mancity.com/en/kids-manchester-city-third-jersey-2025-26-with-foden-47-printing/701237145-FODEN-blue-ManCity.html</p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701237145EV001_pp_01_mcfc.png?v=1785899226",
+        "altText": "Kids' Manchester City Third Jersey 2025/26 With FODEN 47 Printing",
+        "width": 800,
+        "height": 800
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701237145EV001_pp_01_mcfc.png?v=1785899226",
+          "altText": "Kids' Manchester City Third Jersey 2025/26 With FODEN 47 Printing",
+          "width": 800,
+          "height": 800
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 30.4,
+      "priceMax": 30.4,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735367155998",
+          "title": "Default Title",
+          "sku": "701237145-FODEN",
+          "price": 30.4,
+          "compareAtPrice": 76,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701237145EV001_pp_01_mcfc.png?v=1785899226",
+            "altText": "Kids' Manchester City Third Jersey 2025/26 With FODEN 47 Printing"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848463008030",
+      "handle": "manchester-city-4-piece-gift-set",
+      "title": "Manchester City 4 Piece Gift Set",
+      "vendor": "221baker",
+      "productType": "",
+      "status": "ACTIVE",
+      "tags": [
+        "sv-hide:a"
+      ],
+      "descriptionHtml": "<p></p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701227555001_pp_01_mcfc.png?v=1785899227",
+        "altText": "",
+        "width": 1600,
+        "height": 1600
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701227555001_pp_01_mcfc.png?v=1785899227",
+          "altText": "",
+          "width": 1600,
+          "height": 1600
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 500000,
+      "priceMax": 500000,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735367221534",
+          "title": "Default Title",
+          "sku": null,
+          "price": 500000,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": null
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848463106334",
+      "handle": "manchester-city-crest-notepad",
+      "title": "Manchester City Crest Notepad",
+      "vendor": "221baker",
+      "productType": "",
+      "status": "ACTIVE",
+      "tags": [
+        "sv-hide:a"
+      ],
+      "descriptionHtml": "<p></p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701227531001_pp_01_mcfc.png?v=1785899228",
+        "altText": "",
+        "width": 1548,
+        "height": 1600
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701227531001_pp_01_mcfc.png?v=1785899228",
+          "altText": "",
+          "width": 1548,
+          "height": 1600
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 80000,
+      "priceMax": 80000,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735367319838",
+          "title": "Default Title",
+          "sku": null,
+          "price": 80000,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": null
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848463171870",
+      "handle": "manchester-city-home-authentic-jersey-2026-27-with-cherki-10-printing-in-gift-box",
+      "title": "Manchester City Home Authentic Jersey 2026/27 With CHERKI 10 Printing in Gift Box",
+      "vendor": "Manchester City",
+      "productType": "Authentic home jersey gift box",
+      "status": "ACTIVE",
+      "tags": [
+        "2026/27",
+        "Authentic home jersey gift box",
+        "Cherki 10",
+        "Manchester City",
+        "Men",
+        "Rayan Cherki",
+        "sv-hide:a"
+      ],
+      "descriptionHtml": "<p>Official-style Manchester City product featuring Rayan Cherki number 10.</p><p>Season: 2026/27<br>Colour: Team Light Blue-Icy Blue</p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242690BX001_pp_02_mcfc.png?v=1785899230",
+        "altText": "Manchester City Home Authentic Jersey 2026/27 With CHERKI 10 Printing in Gift Box",
+        "width": 800,
+        "height": 800
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242690BX001_pp_02_mcfc.png?v=1785899230",
+          "altText": "Manchester City Home Authentic Jersey 2026/27 With CHERKI 10 Printing in Gift Box",
+          "width": 800,
+          "height": 800
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 146,
+      "priceMax": 146,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735367385374",
+          "title": "Default Title",
+          "sku": "701242690",
+          "price": 146,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242690BX001_pp_02_mcfc.png?v=1785899230",
+            "altText": "Manchester City Home Authentic Jersey 2026/27 With CHERKI 10 Printing in Gift Box"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848463237406",
+      "handle": "manchester-city-home-authentic-jersey-2026-27-with-foden-47-printing-in-gift-box",
+      "title": "Manchester City Home Authentic Jersey 2026/27 With FODEN 47 Printing in Gift Box",
+      "vendor": "Manchester City FC",
+      "productType": "Authentic Home Jersey Gift Box",
+      "status": "ACTIVE",
+      "tags": [
+        "2026/27",
+        "Foden 47",
+        "Manchester City",
+        "Men",
+        "Phil Foden",
+        "sv-hide:b"
+      ],
+      "descriptionHtml": "<p>Manchester City Authentic Home Jersey Gift Box featuring Phil Foden number 47.</p><p>Season: 2026/27</p><p>Source: https://shop.mancity.com/en/manchester-city-home-authentic-jersey-2026-27-with-foden-47-printing-in-gift-box/701242690FJ001804.html</p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242690FJ001_pp_02_mcfc.png?v=1785899231",
+        "altText": "Manchester City Home Authentic Jersey 2026/27 With FODEN 47 Printing in Gift Box",
+        "width": 800,
+        "height": 800
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242690FJ001_pp_02_mcfc.png?v=1785899231",
+          "altText": "Manchester City Home Authentic Jersey 2026/27 With FODEN 47 Printing in Gift Box",
+          "width": 800,
+          "height": 800
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 146,
+      "priceMax": 146,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735367418142",
+          "title": "Default Title",
+          "sku": "701242690-FODEN",
+          "price": 146,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242690FJ001_pp_02_mcfc.png?v=1785899231",
+            "altText": "Manchester City Home Authentic Jersey 2026/27 With FODEN 47 Printing in Gift Box"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848463302942",
+      "handle": "manchester-city-home-authentic-jersey-2026-27-with-haaland-9-printing-in-gift-box",
+      "title": "Manchester City Home Authentic Jersey 2026/27 With HAALAND 9 Printing in Gift Box",
+      "vendor": "Manchester City FC",
+      "productType": "Authentic Home Jersey Gift Box",
+      "status": "ACTIVE",
+      "tags": [
+        "2026/27",
+        "Erling Haaland",
+        "Haaland 9",
+        "Manchester City",
+        "Men",
+        "sv-hide:a"
+      ],
+      "descriptionHtml": "<p>Manchester City Authentic Home Jersey Gift Box featuring Erling Haaland number 9.</p><p>Season: 2026/27</p><p>Source: https://shop.mancity.com/en/manchester-city-home-authentic-jersey-2026-27-with-haaland-9-printing-in-gift-box/701242690BU001808.html</p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242690BS001_pp_02_mcfc.png?v=1785899232",
+        "altText": "Manchester City Home Authentic Jersey 2026/27 With HAALAND 9 Printing in Gift Box",
+        "width": 800,
+        "height": 800
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242690BS001_pp_02_mcfc.png?v=1785899232",
+          "altText": "Manchester City Home Authentic Jersey 2026/27 With HAALAND 9 Printing in Gift Box",
+          "width": 800,
+          "height": 800
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 154,
+      "priceMax": 154,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735367516446",
+          "title": "Default Title",
+          "sku": "701242690-HAALAND",
+          "price": 154,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242690BS001_pp_02_mcfc.png?v=1785899232",
+            "altText": "Manchester City Home Authentic Jersey 2026/27 With HAALAND 9 Printing in Gift Box"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848463401246",
+      "handle": "manchester-city-home-jersey-2026-27-long-sleeve-with-foden-47-printing",
+      "title": "Manchester City Home Jersey 2026/27 Long Sleeve With FODEN 47 Printing",
+      "vendor": "Manchester City FC",
+      "productType": "Long Sleeve Home Jersey",
+      "status": "ACTIVE",
+      "tags": [
+        "2026/27",
+        "Foden 47",
+        "Manchester City",
+        "Men",
+        "Phil Foden",
+        "sv-hide:b"
+      ],
+      "descriptionHtml": "<p>Manchester City Long Sleeve Home Jersey featuring Phil Foden number 47.</p><p>Season: 2026/27</p><p>Source: https://shop.mancity.com/en/manchester-city-home-jersey-2026-27-long-sleeve-with-foden-47-printing/701242785FM001806.html</p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242785FJ001_pp_02_mcfc.png?v=1785899233",
+        "altText": "Manchester City Home Jersey 2026/27 Long Sleeve With FODEN 47 Printing",
+        "width": 800,
+        "height": 800
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242785FJ001_pp_02_mcfc.png?v=1785899233",
+          "altText": "Manchester City Home Jersey 2026/27 Long Sleeve With FODEN 47 Printing",
+          "width": 800,
+          "height": 800
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 109,
+      "priceMax": 109,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735367614750",
+          "title": "Default Title",
+          "sku": "701242785-FODEN",
+          "price": 109,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242785FJ001_pp_02_mcfc.png?v=1785899233",
+            "altText": "Manchester City Home Jersey 2026/27 Long Sleeve With FODEN 47 Printing"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848463466782",
+      "handle": "manchester-city-home-jersey-2026-27-with-cherki-10-printing",
+      "title": "Manchester City Home Jersey 2026/27 With CHERKI 10 Printing",
+      "vendor": "Manchester City",
+      "productType": "Home jersey",
+      "status": "ACTIVE",
+      "tags": [
+        "2026/27",
+        "Cherki 10",
+        "Home jersey",
+        "Manchester City",
+        "Men",
+        "Rayan Cherki",
+        "sv-hide:a",
+        "sv-hide:b"
+      ],
+      "descriptionHtml": "<p>Official-style Manchester City product featuring Rayan Cherki number 10.</p><p>Season: 2026/27<br>Colour: Team Light Blue-Icy Blue</p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242784BX001_pp_02_mcfc.png?v=1785899234",
+        "altText": "Manchester City Home Jersey 2026/27 With CHERKI 10 Printing",
+        "width": 800,
+        "height": 800
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242784BX001_pp_02_mcfc.png?v=1785899234",
+          "altText": "Manchester City Home Jersey 2026/27 With CHERKI 10 Printing",
+          "width": 800,
+          "height": 800
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 101,
+      "priceMax": 101,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735367680286",
+          "title": "Default Title",
+          "sku": "701242784-CHERKI",
+          "price": 101,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242784BX001_pp_02_mcfc.png?v=1785899234",
+            "altText": "Manchester City Home Jersey 2026/27 With CHERKI 10 Printing"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848463499550",
+      "handle": "manchester-city-home-jersey-2026-27-with-foden-47-printing",
+      "title": "Manchester City Home Jersey 2026/27 With FODEN 47 Printing",
+      "vendor": "Manchester City FC",
+      "productType": "Home Jersey",
+      "status": "ACTIVE",
+      "tags": [
+        "2026/27",
+        "Foden 47",
+        "Manchester City",
+        "Men",
+        "Phil Foden"
+      ],
+      "descriptionHtml": "<p>Manchester City Home Jersey featuring Phil Foden number 47.</p><p>Season: 2026/27</p><p>Source: https://shop.mancity.com/en/manchester-city-home-jersey-2026-27-with-foden-47-printing/701242784FI001804.html</p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242784FJ001_pp_02_mcfc.png?v=1785899236",
+        "altText": "Manchester City Home Jersey 2026/27 With FODEN 47 Printing",
+        "width": 800,
+        "height": 800
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242784FJ001_pp_02_mcfc.png?v=1785899236",
+          "altText": "Manchester City Home Jersey 2026/27 With FODEN 47 Printing",
+          "width": 800,
+          "height": 800
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 109,
+      "priceMax": 109,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735367745822",
+          "title": "Default Title",
+          "sku": "701242784-FODEN",
+          "price": 109,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242784FJ001_pp_02_mcfc.png?v=1785899236",
+            "altText": "Manchester City Home Jersey 2026/27 With FODEN 47 Printing"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848463565086",
+      "handle": "manchester-city-home-jersey-2026-27-with-gvardiol-24-printing",
+      "title": "Manchester City Home Jersey 2026/27 With GVARDIOL 24 Printing",
+      "vendor": "Manchester City FC",
+      "productType": "Home Jersey",
+      "status": "ACTIVE",
+      "tags": [
+        "2026/27",
+        "Gvardiol 24",
+        "Joško Gvardiol",
+        "Manchester City",
+        "Men"
+      ],
+      "descriptionHtml": "<p>Manchester City Home Jersey featuring Joško Gvardiol number 24.</p><p>Season: 2026/27</p><p>Source: https://shop.mancity.com/en/manchester-city-home-jersey-2026-27-with-gvardiol-24-printing/701242784DL001803.html</p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242784DL001_pp_02_mcfc.png?v=1785899237",
+        "altText": "Manchester City Home Jersey 2026/27 With GVARDIOL 24 Printing",
+        "width": 800,
+        "height": 800
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242784DL001_pp_02_mcfc.png?v=1785899237",
+          "altText": "Manchester City Home Jersey 2026/27 With GVARDIOL 24 Printing",
+          "width": 800,
+          "height": 800
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 101,
+      "priceMax": 101,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735368433950",
+          "title": "Default Title",
+          "sku": "701242784-GVARDIOL",
+          "price": 101,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242784DL001_pp_02_mcfc.png?v=1785899237",
+            "altText": "Manchester City Home Jersey 2026/27 With GVARDIOL 24 Printing"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848463630622",
+      "handle": "manchester-city-home-jersey-2026-27-with-haaland-9-printing",
+      "title": "Manchester City Home Jersey 2026/27 With HAALAND 9 Printing",
+      "vendor": "Manchester City FC",
+      "productType": "Home Jersey",
+      "status": "ACTIVE",
+      "tags": [
+        "2026/27",
+        "Erling Haaland",
+        "Haaland 9",
+        "Manchester City",
+        "Men",
+        "sv-hide:a",
+        "sv-hide:b"
+      ],
+      "descriptionHtml": "<p>Manchester City Home Jersey featuring Erling Haaland number 9.</p><p>Season: 2026/27</p><p>Source: https://shop.mancity.com/en/manchester-city-home-jersey-2026-27-with-haaland-9-printing/701242784BR001804.html</p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242784BS001_pp_02_mcfc.png?v=1785899238",
+        "altText": "Manchester City Home Jersey 2026/27 With HAALAND 9 Printing",
+        "width": 800,
+        "height": 800
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242784BS001_pp_02_mcfc.png?v=1785899238",
+          "altText": "Manchester City Home Jersey 2026/27 With HAALAND 9 Printing",
+          "width": 800,
+          "height": 800
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 101,
+      "priceMax": 101,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735368499486",
+          "title": "Default Title",
+          "sku": "701242784-HAALAND",
+          "price": 101,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242784BS001_pp_02_mcfc.png?v=1785899238",
+            "altText": "Manchester City Home Jersey 2026/27 With HAALAND 9 Printing"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848463761694",
+      "handle": "manchester-city-pencil-case-set",
+      "title": "Manchester City Pencil Case Set",
+      "vendor": "221baker",
+      "productType": "",
+      "status": "ACTIVE",
+      "tags": [
+        "sv-hide:b"
+      ],
+      "descriptionHtml": "<p></p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701227532001_pp_01_mcfc.png?v=1785899240",
+        "altText": "",
+        "width": 1600,
+        "height": 1600
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701227532001_pp_01_mcfc.png?v=1785899240",
+          "altText": "",
+          "width": 1600,
+          "height": 1600
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 40000,
+      "priceMax": 40000,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735368696094",
+          "title": "Default Title",
+          "sku": null,
+          "price": 40000,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": null
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15935115362590",
+      "handle": "pillow",
+      "title": "Pillow",
+      "vendor": "221JumpStreet",
+      "productType": "",
+      "status": "ACTIVE",
+      "tags": [],
+      "descriptionHtml": "",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/images_1.jpg?v=1791017242",
+        "altText": "",
+        "width": 490,
+        "height": 626
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/images_1.jpg?v=1791017242",
+          "altText": "",
+          "width": 490,
+          "height": 626
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 10,
+      "priceMax": 10,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/60107901600030",
+          "title": "Default Title",
+          "sku": null,
+          "price": 10,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": null
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848463827230",
+      "handle": "women-s-manchester-city-home-jersey-2026-27-with-cherki-10-printing",
+      "title": "Women's Manchester City Home Jersey 2026/27 With CHERKI 10 Printing",
+      "vendor": "Manchester City",
+      "productType": "Home jersey",
+      "status": "ACTIVE",
+      "tags": [
+        "2026/27",
+        "Cherki 10",
+        "Home jersey",
+        "Manchester City",
+        "Rayan Cherki",
+        "sv-hide:b",
+        "Women"
+      ],
+      "descriptionHtml": "<p>Official-style Manchester City product featuring Rayan Cherki number 10.</p><p>Season: 2026/27<br>Colour: Team Light Blue-Icy Blue</p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242808BX001_pp_02_mcfc.png?v=1785899241",
+        "altText": "Women's Manchester City Home Jersey 2026/27 With CHERKI 10 Printing",
+        "width": 800,
+        "height": 800
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242808BX001_pp_02_mcfc.png?v=1785899241",
+          "altText": "Women's Manchester City Home Jersey 2026/27 With CHERKI 10 Printing",
+          "width": 800,
+          "height": 800
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 109,
+      "priceMax": 109,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735368761630",
+          "title": "Default Title",
+          "sku": "701242808",
+          "price": 109,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242808BX001_pp_02_mcfc.png?v=1785899241",
+            "altText": "Women's Manchester City Home Jersey 2026/27 With CHERKI 10 Printing"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848463892766",
+      "handle": "women-s-manchester-city-home-jersey-2026-27-with-foden-47-printing",
+      "title": "Women's Manchester City Home Jersey 2026/27 With FODEN 47 Printing",
+      "vendor": "Manchester City FC",
+      "productType": "Women's Home Jersey",
+      "status": "ACTIVE",
+      "tags": [
+        "2026/27",
+        "Foden 47",
+        "Manchester City",
+        "Phil Foden",
+        "sv-hide:a",
+        "Women"
+      ],
+      "descriptionHtml": "<p>Manchester City Women's Home Jersey featuring Phil Foden number 47.</p><p>Season: 2026/27</p><p>Source: https://shop.mancity.com/en/womens-manchester-city-home-jersey-2026-27-with-foden-47-printing/701242808FM001804.html</p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242808FJ001_pp_02_mcfc.png?v=1785899242",
+        "altText": "Women's Manchester City Home Jersey 2026/27 With FODEN 47 Printing",
+        "width": 800,
+        "height": 800
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242808FJ001_pp_02_mcfc.png?v=1785899242",
+          "altText": "Women's Manchester City Home Jersey 2026/27 With FODEN 47 Printing",
+          "width": 800,
+          "height": 800
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 101,
+      "priceMax": 101,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735368827166",
+          "title": "Default Title",
+          "sku": "701242808-FODEN",
+          "price": 101,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242808FJ001_pp_02_mcfc.png?v=1785899242",
+            "altText": "Women's Manchester City Home Jersey 2026/27 With FODEN 47 Printing"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848463958302",
+      "handle": "women-s-manchester-city-home-jersey-2026-27-with-gvardiol-24-printing",
+      "title": "Women's Manchester City Home Jersey 2026/27 With GVARDIOL 24 Printing",
+      "vendor": "Manchester City FC",
+      "productType": "Women's Home Jersey",
+      "status": "ACTIVE",
+      "tags": [
+        "2026/27",
+        "Gvardiol 24",
+        "Joško Gvardiol",
+        "Manchester City",
+        "sv-hide:b",
+        "Women"
+      ],
+      "descriptionHtml": "<p>Manchester City Women's Home Jersey featuring Joško Gvardiol number 24.</p><p>Season: 2026/27</p><p>Source: https://shop.mancity.com/en/womens-manchester-city-home-jersey-2026-27-with-gvardiol-24-printing/701242808DN001807.html</p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242808DL001_pp_02_mcfc.png?v=1785899243",
+        "altText": "Women's Manchester City Home Jersey 2026/27 With GVARDIOL 24 Printing",
+        "width": 800,
+        "height": 800
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242808DL001_pp_02_mcfc.png?v=1785899243",
+          "altText": "Women's Manchester City Home Jersey 2026/27 With GVARDIOL 24 Printing",
+          "width": 800,
+          "height": 800
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 109,
+      "priceMax": 109,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735368892702",
+          "title": "Default Title",
+          "sku": "701242808-GVARDIOL",
+          "price": 109,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242808DL001_pp_02_mcfc.png?v=1785899243",
+            "altText": "Women's Manchester City Home Jersey 2026/27 With GVARDIOL 24 Printing"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15848464023838",
+      "handle": "women-s-manchester-city-home-jersey-2026-27-with-haaland-9-printing",
+      "title": "Women's Manchester City Home Jersey 2026/27 With HAALAND 9 Printing",
+      "vendor": "Manchester City FC",
+      "productType": "Women's Home Jersey",
+      "status": "ACTIVE",
+      "tags": [
+        "2026/27",
+        "Erling Haaland",
+        "Haaland 9",
+        "Manchester City",
+        "sv-hide:a",
+        "Women"
+      ],
+      "descriptionHtml": "<p>Manchester City Women's Home Jersey featuring Erling Haaland number 9.</p><p>Season: 2026/27</p><p>Source: https://shop.mancity.com/en/womens-manchester-city-home-jersey-2026-27-with-haaland-9-printing/701242808BS001804.html</p>",
+      "url": null,
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242808BS001_pp_02_mcfc.png?v=1785899244",
+        "altText": "Women's Manchester City Home Jersey 2026/27 With HAALAND 9 Printing",
+        "width": 800,
+        "height": 800
+      },
+      "images": [
+        {
+          "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242808BS001_pp_02_mcfc.png?v=1785899244",
+          "altText": "Women's Manchester City Home Jersey 2026/27 With HAALAND 9 Printing",
+          "width": 800,
+          "height": 800
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 101,
+      "priceMax": 101,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/59735368925470",
+          "title": "Default Title",
+          "sku": "701242808-HAALAND",
+          "price": 101,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/1085/4855/5038/files/701242808BS001_pp_02_mcfc.png?v=1785899244",
+            "altText": "Women's Manchester City Home Jersey 2026/27 With HAALAND 9 Printing"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gid://shopify/Product/15908147298590",
+      "handle": "yellow-snowboard",
+      "title": "Yellow Snowboard",
+      "vendor": "221JumpStreet",
+      "productType": "",
+      "status": "ACTIVE",
+      "tags": [],
+      "descriptionHtml": "",
+      "url": null,
+      "image": null,
+      "images": [],
+      "options": [
+        {
+          "name": "Title",
+          "values": [
+            "Default Title"
+          ]
+        }
+      ],
+      "currency": "USD",
+      "priceMin": 100,
+      "priceMax": 100,
+      "variants": [
+        {
+          "id": "gid://shopify/ProductVariant/60010592764190",
+          "title": "Default Title",
+          "sku": null,
+          "price": 100,
+          "compareAtPrice": null,
+          "available": true,
+          "options": {
+            "Title": "Default Title"
+          },
+          "image": null
+        }
+      ]
+    }
+  ]
+}

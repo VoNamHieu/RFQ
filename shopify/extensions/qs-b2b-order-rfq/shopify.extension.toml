@@ -1,0 +1,18 @@
+api_version = "2026-07"
+
+[[extensions]]
+uid = "5b6d790f-b955-da13-1828-18d3eae0ecd049b39b87"
+type = "ui_extension"
+name = "Request quote from order"
+handle = "qs-b2b-order-rfq"
+
+[[extensions.targeting]]
+module = "./src/MenuActionExtension.jsx"
+target = "customer-account.order.action.menu-item.render"
+
+[[extensions.targeting]]
+module = "./src/MenuActionModalExtension.jsx"
+target = "customer-account.order.action.render"
+
+[extensions.capabilities]
+network_access = true
