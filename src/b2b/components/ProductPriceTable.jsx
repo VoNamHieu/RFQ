@@ -1,30 +1,16 @@
 import React from 'react';
+import './companyLayout.css';
 
-// Read-only product price table styled like the Shopify resource picker (see
-// ProductPickerModal / VariantPicker): a search + sort row, a grey column-header
-// bar, thumbnail rows (image + title + subtitle), and a scrollable body. Shared by
-// the price-preview modals so they match the pickers. Filtering/sorting stay with
-// the caller (the price semantics differ per modal); this renders the controls and
-// the rows it is handed.
+// Read-only product price table, in the company and location pages' look: a search +
+// sort row, then a bordered card with a plain table — light headings (they stay on top
+// while the rows scroll), rows split by hairlines, two-line cells (the product's title
+// over its SKU). Shared by the price-preview modals. Filtering/sorting stay with the
+// caller (the price semantics differ per modal); this renders the controls and the rows
+// it is handed.
 //
-//   columns: [{ title, width, align }]           — the columns AFTER the Product one
-//   rows:    [{ key, title, subtitle, cells: [node,…], action? }]  cells align to columns
-const THUMB = {
-  width: 32,
-  height: 32,
-  borderRadius: 6,
-  background: 'var(--p-color-bg-surface-secondary)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  flex: '0 0 auto',
-};
-const cellStyle = (align) => ({
-  minWidth: 0,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: align === 'end' ? 'flex-end' : 'flex-start',
-});
+//   columns: [{ title, align }]                       — the columns AFTER the Product one
+//   rows:    [{ key, title, subtitle, cells: [node,…], onOpen? }]  cells align to columns;
+//            `onOpen` makes the row open something (its title is the keyboard target)
 
 export function ProductPriceTable({
   search,
@@ -39,14 +25,6 @@ export function ProductPriceTable({
   maxHeight = 420,
   toolbar = null, // extra control(s) between search and sort, e.g. a location picker
 }) {
-  const hasAction = rows.some((r) => r.action);
-  const grid = {
-    display: 'grid',
-    gridTemplateColumns: `minmax(160px, 1fr) ${columns.map((c) => c.width).join(' ')}${hasAction ? ' 44px' : ''}`,
-    gap: 12,
-    alignItems: 'center',
-  };
-
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -74,69 +52,47 @@ export function ProductPriceTable({
         ) : null}
       </div>
 
-      <s-box border="base" borderRadius="base" overflow="hidden">
-        {/* Column header */}
-        <s-box background="subdued" paddingBlock="small-300" paddingInline="small">
-          <div style={grid}>
-            <div style={cellStyle('start')}>
-              <s-text fontSize="small" color="subdued" fontWeight="medium">
-                Product
-              </s-text>
-            </div>
-            {columns.map((c, i) => (
-              <div key={i} style={cellStyle(c.align)}>
-                <s-text fontSize="small" color="subdued" fontWeight="medium">
-                  {c.title}
-                </s-text>
-              </div>
-            ))}
-            {hasAction ? <span /> : null}
-          </div>
-        </s-box>
-        <s-divider />
-
-        {/* Scrollable body */}
-        <div style={{ maxHeight, overflowY: 'auto', overflowX: 'hidden' }}>
-          {rows.length === 0 ? (
-            <s-box padding="base">
-              <div style={{ textAlign: 'center' }}>
-                <s-text color="subdued">{emptyLabel}</s-text>
-              </div>
-            </s-box>
-          ) : (
-            rows.map((r, i) => (
-              <React.Fragment key={r.key}>
-                {i > 0 ? <s-divider /> : null}
-                <s-box paddingBlock="small-200" paddingInline="small">
-                  <div style={grid}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                      <span style={THUMB}>
-                        <s-icon type="image" color="subdued" />
-                      </span>
-                      <div style={{ minWidth: 0 }}>
-                        <s-paragraph fontWeight="medium" lineClamp={1}>
+      <div className="cd-card">
+        {rows.length === 0 ? (
+          <div className="cd-card__empty">{emptyLabel}</div>
+        ) : (
+          <div className="cd-table-scroll cd-table-scroll--tall" style={{ maxHeight }}>
+            <table className="cd-table cd-table--sticky">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  {columns.map((c, i) => (
+                    <th key={i} className={c.align === 'end' ? 'cd-num' : undefined}>
+                      {c.title}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.key} className={r.onOpen ? 'cd-row-link' : undefined} onClick={r.onOpen}>
+                    <td>
+                      {r.onOpen ? (
+                        <button type="button" className="cd-link-button">
                           {r.title}
-                        </s-paragraph>
-                        {r.subtitle ? (
-                          <s-paragraph color="subdued" fontSize="small" lineClamp={1}>
-                            {r.subtitle}
-                          </s-paragraph>
-                        ) : null}
-                      </div>
-                    </div>
+                        </button>
+                      ) : (
+                        <span className="cd-primary">{r.title}</span>
+                      )}
+                      {r.subtitle ? <span className="cd-sub">{r.subtitle}</span> : null}
+                    </td>
                     {columns.map((c, ci) => (
-                      <div key={ci} style={cellStyle(c.align)}>
+                      <td key={ci} className={c.align === 'end' ? 'cd-num cd-nowrap' : undefined}>
                         {r.cells[ci]}
-                      </div>
+                      </td>
                     ))}
-                    {hasAction ? <div style={cellStyle('end')}>{r.action}</div> : null}
-                  </div>
-                </s-box>
-              </React.Fragment>
-            ))
-          )}
-        </div>
-      </s-box>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </>
   );
 }

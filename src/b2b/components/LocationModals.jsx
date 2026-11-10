@@ -11,6 +11,13 @@ export const TAX_SETTINGS = [
   { value: 'exempt', label: 'Do not collect tax' },
 ];
 export const COUNTRY_NAMES = { VN: 'Vietnam', US: 'United States', GB: 'United Kingdom', SG: 'Singapore', AU: 'Australia' };
+// An address as lines (name, company, street, city, postal code, country); [] when it has none.
+export function addressLines(a) {
+  const s = a || {};
+  const name = [s.firstName, s.lastName].map((x) => String(x || '').trim()).filter(Boolean).join(' ');
+  const parts = [name, s.company, s.address1, s.address2, s.city, s.postal].map((x) => String(x || '').trim()).filter(Boolean);
+  return parts.length ? [...parts, COUNTRY_NAMES[s.country] || s.country || ''].filter(Boolean) : [];
+}
 export const ROLE_OPTIONS = ['Ordering only', 'Location admin'];
 
 export function AssignBuyerModal({ company, location, onClose }) {
@@ -85,6 +92,136 @@ export function GeneralModal({ location, onClose, onSave }) {
         disabled={!name.trim()}
         onClick={() => onSave({ name: name.trim(), externalId: externalId.trim() })}
       >
+        Save
+      </s-button>
+      <s-button slot="secondary-actions" onClick={onClose}>
+        Cancel
+      </s-button>
+    </Modal>
+  );
+}
+
+// How the location's orders are submitted (Commerce settings).
+export const ORDER_SUBMISSION = [
+  { value: 'DIRECT', label: 'Automatically submit orders' },
+  { value: 'REQUIRE_APPROVAL', label: 'Submit all orders as drafts for review' },
+];
+
+// A location's commerce settings as its page lists them (and the company page sums up):
+// [label, value] rows.
+export function commerceRows(location) {
+  const submission = ORDER_SUBMISSION.find((o) => o.value === (location.purchasingMode || 'DIRECT')) || ORDER_SUBMISSION[0];
+  const tax = TAX_SETTINGS.find((t) => t.value === (location.taxSettings || 'collect')) || TAX_SETTINGS[0];
+  return [
+    ['Payment terms', location.paymentTerms || 'No payment terms'],
+    ['Order submission', submission.label],
+    ['One-time addresses', location.editableShipping ? 'Allowed' : 'Not allowed'],
+    ['Tax', `${tax.label} · ${location.taxId ? `Tax ID ${location.taxId}` : 'Tax ID not set'}`],
+  ];
+}
+
+// Commerce settings, edited together and saved with Save (the location page lists them).
+export function CommerceModal({ location, onClose, onSave }) {
+  const [f, setF] = useState({
+    paymentTerms: location.paymentTerms || 'No payment terms',
+    purchasingMode: location.purchasingMode || 'DIRECT',
+    editableShipping: !!location.editableShipping,
+    taxId: location.taxId || '',
+    taxSettings: location.taxSettings || 'collect',
+  });
+  const set = (patch) => setF((x) => ({ ...x, ...patch }));
+  return (
+    <Modal onClose={onClose} heading="Edit commerce settings">
+      <s-stack gap="small">
+        <s-select label="Payment terms" value={f.paymentTerms} onChange={(e) => set({ paymentTerms: e.currentTarget.value })}>
+          {PAYMENT_TERM_OPTIONS.map((t) => (
+            <s-option key={t} value={t}>
+              {t}
+            </s-option>
+          ))}
+        </s-select>
+        <s-select label="Order submission" value={f.purchasingMode} onChange={(e) => set({ purchasingMode: e.currentTarget.value })}>
+          {ORDER_SUBMISSION.map((o) => (
+            <s-option key={o.value} value={o.value}>
+              {o.label}
+            </s-option>
+          ))}
+        </s-select>
+        <s-checkbox
+          label="Allow any one-time address"
+          checked={f.editableShipping}
+          onChange={(e) => set({ editableShipping: e.currentTarget.checked })}
+        />
+        <s-text-field
+          label="Tax ID"
+          value={f.taxId}
+          onInput={(e) => set({ taxId: e.currentTarget.value })}
+          placeholder="Tax / VAT ID"
+          autocomplete="off"
+        />
+        <s-select label="Tax settings" value={f.taxSettings} onChange={(e) => set({ taxSettings: e.currentTarget.value })}>
+          {TAX_SETTINGS.map((t) => (
+            <s-option key={t.value} value={t.value}>
+              {t.label}
+            </s-option>
+          ))}
+        </s-select>
+      </s-stack>
+      <s-button slot="primary-action" variant="primary" onClick={() => onSave({ ...f, taxId: f.taxId.trim() })}>
+        Save
+      </s-button>
+      <s-button slot="secondary-actions" onClick={onClose}>
+        Cancel
+      </s-button>
+    </Modal>
+  );
+}
+
+// Billing address (Shopify's "Edit billing address"): its own address — editing it
+// sets it apart from shipping. The shipping address's fields, starting from the billing
+// address set before (else the shipping address). Back to the shipping address: the
+// Shipping address modal's "Billing address same as shipping".
+export function BillingModal({ location, onClose, onSave }) {
+  const b = location.billing || location.shipping || {};
+  const [f, setF] = useState({
+    firstName: b.firstName || '',
+    lastName: b.lastName || '',
+    company: b.company || '',
+    address1: b.address1 || '',
+    address2: b.address2 || '',
+    city: b.city || '',
+    postal: b.postal || '',
+    country: b.country || 'VN',
+    phone: b.phone || '',
+  });
+  const set = (k) => (v) => setF((p) => ({ ...p, [k]: v }));
+  const field = (k, label) => (
+    <s-text-field label={label} value={f[k]} onInput={(e) => set(k)(e.currentTarget.value)} autocomplete="off" />
+  );
+  return (
+    <Modal onClose={onClose} heading="Billing address">
+      <s-stack gap="small">
+        <s-select label="Country/region" value={f.country} onChange={(e) => set('country')(e.currentTarget.value)}>
+          {Object.entries(COUNTRY_NAMES).map(([value, label]) => (
+            <s-option key={value} value={value}>
+              {label}
+            </s-option>
+          ))}
+        </s-select>
+        <s-grid gridTemplateColumns="1fr 1fr" gap="small">
+          {field('firstName', 'First name')}
+          {field('lastName', 'Last name')}
+        </s-grid>
+        {field('company', 'Company / attention')}
+        {field('address1', 'Address')}
+        {field('address2', 'Apartment, suite, etc.')}
+        <s-grid gridTemplateColumns="1fr 1fr" gap="small">
+          {field('city', 'City')}
+          {field('postal', 'Postal code')}
+        </s-grid>
+        {field('phone', 'Phone')}
+      </s-stack>
+      <s-button slot="primary-action" variant="primary" onClick={() => onSave({ billingSameAsShipping: false, billing: f })}>
         Save
       </s-button>
       <s-button slot="secondary-actions" onClick={onClose}>

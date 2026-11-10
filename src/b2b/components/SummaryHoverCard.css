@@ -1,0 +1,15 @@
+/* A location chip's hover card (SummaryHoverCard.jsx). */
+
+.qs-summary-hover {
+  display: inline-flex;
+}
+
+.qs-summary-hovercard {
+  position: fixed;
+  z-index: 510;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--wc-surface);
+  color: var(--wc-text);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.08);
+}

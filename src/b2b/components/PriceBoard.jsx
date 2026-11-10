@@ -8,11 +8,18 @@ import { PricePreviewDialog } from './PricePreviewDialog.jsx';
 // product and which pricing layer decided it, in the shared preview modal (same one
 // as the pricing editor's "Preview all prices"). Prices are per location: with 2+
 // locations a Location picker sits next to sort; each row drills into "Why this price".
+// Opened from a location's page, it starts on that location.
 export function PriceBoard() {
-  const { state, dispatch } = useStore();
-  const [locationId, setLocationId] = useState(null);
+  const { state } = useStore();
   const pb = state.priceBoard;
   if (!pb) return null;
+  return <Board pb={pb} />;
+}
+
+// Mounted while open, so the location picked starts over each time.
+function Board({ pb }) {
+  const { state, dispatch } = useStore();
+  const [locationId, setLocationId] = useState(pb.locationId || null);
   const company = state.db.companies.find((c) => c.id === pb.companyId);
   const policies = state.db.policies;
 

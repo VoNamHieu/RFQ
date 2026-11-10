@@ -6,6 +6,7 @@ import { LimitOverlapMessage } from '../components/LimitOverlapList.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import { Modal, IndexFiltersBar, useWcId, PageHeader } from '../../shared/wc.jsx';
 import { fmtDay, isContractTerm } from '../agreements.js';
+import { backActionFor } from '../components/companyLayout.jsx';
 
 // Tabs by who a limit is for, like the Pricing list; the kind is a filter.
 const AUDIENCE = [
@@ -92,21 +93,34 @@ export function OrderLimits() {
   // A contract's own limit is only in its contract (edited in the contract editor).
   const all = (state.db.limits || []).filter((l) => !isContractTerm(l));
   const create = { content: 'Create limit', onAction: () => setChooserOpen(true) };
+  // The order-limit test console (#/b2b/order-limit-tests).
+  const runTests = { content: 'Run tests', onAction: () => dispatch({ type: 'NAVIGATE', view: 'limitTests' }) };
+  const headerButtons = (
+    <>
+      <s-button slot="primary-action" variant="primary" onClick={create.onAction}>
+        {create.content}
+      </s-button>
+      <s-button slot="secondary-actions" onClick={runTests.onAction}>
+        {runTests.content}
+      </s-button>
+    </>
+  );
+  // Opened from a company or location page: a back arrow there before the title.
+  const back = backActionFor(state, dispatch, 'limits');
+  const backHeader = back ? <PageHeader heading="Order limits" backAction={back} primaryAction={create} secondaryActions={[runTests]} /> : null;
   if (!all.length) {
     return (
-      <s-page heading="Order limits">
-        <s-button slot="primary-action" variant="primary" onClick={create.onAction}>
-          {create.content}
-        </s-button>
-        <s-button slot="secondary-actions" onClick={() => dispatch({ type: 'NAVIGATE', view: 'limitTests' })}>
-          Run tests
-        </s-button>
+      <>
+      {backHeader}
+      <s-page heading={back ? undefined : 'Order limits'}>
+        {back ? null : headerButtons}
         <s-section>
           <EmptyBlock heading="Set rules for what buyers can order" action={create}>
             Require a minimum order, sell products in case packs, or review large orders before they go through. Apply a limit to B2B companies and locations, or to D2C wholesale customers.
           </EmptyBlock>
         </s-section>
       </s-page>
+      </>
     );
   }
 
@@ -126,14 +140,10 @@ export function OrderLimits() {
   };
 
   return (
-    <s-page heading="Order limits">
-      <s-button slot="primary-action" variant="primary" onClick={create.onAction}>
-        {create.content}
-      </s-button>
-      {/* The order-limit test console (#/b2b/order-limit-tests). */}
-      <s-button slot="secondary-actions" onClick={() => dispatch({ type: 'NAVIGATE', view: 'limitTests' })}>
-        Run tests
-      </s-button>
+    <>
+    {backHeader}
+    <s-page heading={back ? undefined : 'Order limits'}>
+      {back ? null : headerButtons}
       <s-stack gap="base">
         <s-paragraph className="wc-page-intro" color="subdued">Rules on what B2B buyers and D2C wholesale customers can check out, checked in the cart and at checkout.</s-paragraph>
 
@@ -276,5 +286,6 @@ export function OrderLimits() {
         </Modal>
       )}
     </s-page>
+    </>
   );
 }

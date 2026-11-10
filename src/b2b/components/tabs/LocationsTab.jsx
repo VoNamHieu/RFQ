@@ -1,145 +1,106 @@
 import React, { useState } from 'react';
 import { useStore } from '../../store.jsx';
-import { locationPricingEntries } from '../../pricing.js';
 import { shopifyCompanies } from '../../data/directory.js';
-import { Modal, Tip, useWcId } from '../../../shared/wc.jsx';
+import { money } from '../../format.js';
+import { Modal } from '../../../shared/wc.jsx';
+import { CdSection, cdDate } from '../companyLayout.jsx';
+import locationsArt from '../../assets/locations-empty.webp';
+import { DevStrip } from '../../../shared/DevStrip.jsx';
 
+// Prototype: the section's dev strip (preview its empty state) shows in production too.
+const SHOW_DEV_TOOLS = true;
+
+// Each location with its buyers, orders, all-time revenue and last purchase (its
+// orders, as the overview's Sales counts them); the row opens the location.
 export function LocationsTab({ company }) {
-  const { state, dispatch } = useStore();
+  const { dispatch } = useStore();
   const [addOpen, setAddOpen] = useState(false);
-  // Row selection (the leading checkbox column) and the ids awaiting delete confirmation.
-  const [selectedIds, setSelectedIds] = useState([]);
-  const [confirmIds, setConfirmIds] = useState(null);
-  const rowId = useWcId('location-row');
-  const locations = company.locations || [];
-  const selected = locations.filter((l) => selectedIds.includes(l.id));
-  const allSelected = locations.length > 0 && selected.length === locations.length;
-  // Checkbox handlers always SET from the checkbox's state (change can fire twice).
-  const selectAll = (on) => setSelectedIds(on ? locations.map((l) => l.id) : []);
-  const selectRow = (id, on) =>
-    setSelectedIds((ids) => (on ? (ids.includes(id) ? ids : [...ids, id]) : ids.filter((x) => x !== id)));
-  // Bulk actions, as in Shopify's index tables: while rows are selected the column
-  // headings give way to "N selected" and the actions, so the table doesn't move.
-  // s-table drops its header row in its list layout (narrow windows); there they
-  // sit above the list instead. See .qs-bulk-bar in wc.css.
-  const bulk = selected.length > 0;
-  const askDelete = () => setConfirmIds(selected.map((l) => l.id));
-  const heading = (label) => (bulk ? <span className="qs-bulk-hidden">{label}</span> : label);
+  // Dev: the section as it is with no locations yet (the company's stay as they are).
+  const [devEmpty, setDevEmpty] = useState(false);
+  const realLocations = company.locations || [];
+  const locations = devEmpty ? [] : realLocations;
 
   const rows = locations.map((l, index) => {
     const buyers = typeof l.buyers === 'number' ? l.buyers : (company.contacts || []).filter((c) => c.locations === l.name).length;
-    const { bases, quantities } = locationPricingEntries(company, l, state.db.policies);
-    const names = [...bases, ...quantities].map((e) => e.policy.name);
-    const linkId = `${rowId}-${l.id || index}`;
+    const orders = (company.orders || []).filter((o) => o.location === l.name);
+    const revenue = orders.reduce((sum, o) => sum + (o.amount || 0), 0);
+    const lastDate = orders.reduce((latest, o) => (o.date && String(o.date) > latest ? String(o.date) : latest), '');
+    // The row opens the location; its name is the keyboard target (the click bubbles up).
     return (
-      <s-table-row key={l.id || index} clickDelegate={linkId}>
-        <s-table-cell>
-          <s-checkbox
-            accessibilityLabel={`Select ${l.name}`}
-            checked={selectedIds.includes(l.id)}
-            onChange={(e) => selectRow(l.id, e.currentTarget.checked)}
-          />
-        </s-table-cell>
-        <s-table-cell>
-          <s-stack gap="small-500">
-            <s-stack direction="inline" gap="small-300" alignItems="center">
-              <s-link id={linkId} onClick={() => dispatch({ type: 'OPEN_LOCATION', companyId: company.id, locationId: l.id })}>
-                {l.name}
-              </s-link>
-              {l.status === 'Deleted' ? <s-badge tone="critical">Deleted</s-badge> : null}
-            </s-stack>
-            {l.address ? (
-              <s-text color="subdued" fontSize="small">
-                {l.address}
-              </s-text>
-            ) : null}
-          </s-stack>
-        </s-table-cell>
-        <s-table-cell>{l.terms || l.paymentTerms || '—'}</s-table-cell>
-        <s-table-cell>{l.ordering || (l.purchasingMode === 'REQUIRE_APPROVAL' ? 'You approve first' : 'Buys directly')}</s-table-cell>
-        <s-table-cell>
-          {names.length ? (
-            <s-stack direction="inline" gap="small-400" alignItems="center">
-              <s-text fontSize="small">{names.slice(0, 3).join(', ')}</s-text>
-              {names.length > 3 ? (
-                <Tip content={names.slice(3).join(', ')}>
-                  <s-badge>{`+${names.length - 3}`}</s-badge>
-                </Tip>
-              ) : null}
-            </s-stack>
-          ) : (
-            <s-text fontSize="small">Not set</s-text>
-          )}
-        </s-table-cell>
-        <s-table-cell>{buyers}</s-table-cell>
-      </s-table-row>
+      <tr key={l.id || index} className="cd-row-link" onClick={() => dispatch({ type: 'OPEN_LOCATION', companyId: company.id, locationId: l.id })}>
+        <td>
+          <span className="cd-inline">
+            <button type="button" className="cd-link-button">{l.name}</button>
+            {l.status === 'Deleted' ? <s-badge tone="critical">Deleted</s-badge> : null}
+          </span>
+        </td>
+        <td className="cd-num">{buyers}</td>
+        <td className="cd-num">{orders.length}</td>
+        <td className="cd-num">{money(revenue)}</td>
+        <td>{lastDate ? cdDate(lastDate) : '—'}</td>
+      </tr>
     );
   });
 
   return (
-    <s-section padding="none">
-      <s-box padding="small" paddingBlockEnd="none">
-        <s-grid gridTemplateColumns="1fr auto" alignItems="center" gap="small">
-          <s-heading>Locations</s-heading>
-          <s-button icon="plus" variant="tertiary" onClick={() => setAddOpen(true)}>
-            Add location
-          </s-button>
-        </s-grid>
-        {bulk ? (
-          <div className="qs-bulk-list">
-            <s-box paddingBlockStart="small-200">
-              <s-stack direction="inline" gap="small-200" alignItems="center">
-                <s-text fontWeight="semibold">{`${selected.length} selected`}</s-text>
-                <s-button tone="critical" onClick={askDelete}>
-                  Delete locations
-                </s-button>
-              </s-stack>
-            </s-box>
+    // Add location on the title row; with none yet, in the card under its grey line instead.
+    <CdSection
+      title={`Locations (${locations.length})`}
+      controls={locations.length ? <s-button onClick={() => setAddOpen(true)}>Add location</s-button> : null}
+    >
+      {/* While the company has locations: Preview empty / Show data; a note only while
+          previewing. */}
+      {SHOW_DEV_TOOLS && realLocations.length > 0 ? (
+        <DevStrip id="company-locations-empty" spaced>
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            <s-badge tone="info">Dev</s-badge>
+            {devEmpty ? (
+              <s-text fontSize="small" color="subdued">
+                Previewing the empty state — this company’s locations still exist.
+              </s-text>
+            ) : null}
+            <s-press-button pressed={devEmpty} onClick={() => setDevEmpty(!devEmpty)}>
+              {devEmpty ? 'Show data' : 'Preview empty'}
+            </s-press-button>
+          </s-stack>
+        </DevStrip>
+      ) : null}
+      {/* None yet: a grey line in the card, as the Orders section's, then Add location. */}
+      <div className="cd-card">
+        {locations.length ? (
+          <div className="cd-table-scroll">
+            <table className="cd-table">
+              <thead>
+                <tr>
+                  <th>Location</th>
+                  <th className="cd-num">Buyers</th>
+                  <th className="cd-num">Orders</th>
+                  <th className="cd-num">All-time revenue</th>
+                  <th>Last purchase</th>
+                </tr>
+              </thead>
+              <tbody>{rows}</tbody>
+            </table>
           </div>
-        ) : null}
-      </s-box>
-      <s-table>
-        <s-table-header-row>
-          <s-table-header listSlot="inline">
-            <s-checkbox
-              accessibilityLabel={allSelected ? 'Deselect all locations' : 'Select all locations'}
-              checked={allSelected}
-              indeterminate={selected.length > 0 && !allSelected}
-              disabled={locations.length === 0}
-              onChange={(e) => selectAll(e.currentTarget.checked)}
-            />
-          </s-table-header>
-          <s-table-header listSlot="primary">
-            {bulk ? (
-              <span className="qs-bulk-bar">
-                <s-text fontWeight="semibold">{`${selected.length} selected`}</s-text>
-                <s-button tone="critical" onClick={askDelete}>
-                  Delete locations
-                </s-button>
-              </span>
-            ) : (
-              'Location'
-            )}
-          </s-table-header>
-          <s-table-header listSlot="labeled">{heading('Payment terms')}</s-table-header>
-          <s-table-header listSlot="labeled">{heading('Purchasing')}</s-table-header>
-          <s-table-header listSlot="labeled">{heading('Pricing')}</s-table-header>
-          <s-table-header listSlot="labeled" format="numeric">
-            {heading('Buyers')}
-          </s-table-header>
-        </s-table-header-row>
-        <s-table-body>{rows}</s-table-body>
-      </s-table>
+        ) : (
+          <div className="cd-card__empty">
+            <s-stack gap="small-200" alignItems="center">
+              {/* The art at the empty states' size (EmptyBlock's). */}
+              <img
+                src={locationsArt}
+                alt="A shop with a location pin"
+                style={{ display: 'block', height: 140, width: 'auto', maxWidth: '100%', objectFit: 'contain', margin: '0 auto' }}
+              />
+              <span>No locations in this company yet.</span>
+              <s-button variant="primary" onClick={() => setAddOpen(true)}>
+                Add location
+              </s-button>
+            </s-stack>
+          </div>
+        )}
+      </div>
       {addOpen && <AddFromShopifyModal company={company} onClose={() => setAddOpen(false)} />}
-      {confirmIds && (
-        <DeleteLocationsModal
-          company={company}
-          locationIds={confirmIds}
-          onClose={() => setConfirmIds(null)}
-          onDeleted={() => setSelectedIds([])}
-        />
-      )}
-    </s-section>
+    </CdSection>
   );
 }
 

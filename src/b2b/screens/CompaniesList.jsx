@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useStore } from '../store.jsx';
 import { companyBaseEntries, companyQuantityEntries, companyPricingStatus, companyNeedsPrice } from '../pricing.js';
-import { Modal, IndexFiltersBar, useWcId, wcTone } from '../../shared/wc.jsx';
+import { Modal, IndexFiltersBar, useWcId } from '../../shared/wc.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
+import { StatusDot, CardFoot, rangeLabel } from '../components/companyLayout.jsx';
 
 const FILTER_TABS = [
   { id: 'all', label: 'All' },
@@ -86,12 +87,11 @@ export function CompaniesList() {
   const selectRow = (id, on) =>
     setSelectedIds((ids) => (on ? (ids.includes(id) ? ids : [...ids, id]) : ids.filter((x) => x !== id)));
   // Bulk actions, as in Shopify's index tables: while rows are selected the column
-  // headings give way to "N selected" and Delete, so the table doesn't move. In
-  // s-table's list layout (narrow windows) they sit under the filters instead.
-  // See .qs-bulk-bar in wc.css.
+  // headings give way to "N selected" and Delete, so the table doesn't move.
+  // See .cd-bulk-bar in companyLayout.css.
   const bulk = selected.length > 0;
   const askBulkDelete = () => setConfirmBulk(selected);
-  const heading = (label) => (bulk ? <span className="qs-bulk-hidden">{label}</span> : label);
+  const heading = (label) => (bulk ? <span className="cd-bulk-hidden">{label}</span> : label);
   const bulkActions = (
     <>
       <s-text fontWeight="semibold">{`${selected.length} selected`}</s-text>
@@ -100,43 +100,52 @@ export function CompaniesList() {
       </s-button>
     </>
   );
+  // The page's title row: the title, Add company on the right.
+  const pageHead = (
+    <div className="cd-list-head">
+      <h1 className="cd-title">B2B Company</h1>
+      {state.db.companies.length ? (
+        <s-button variant="primary" onClick={() => dispatch({ type: 'OPEN_ADD_COMPANY' })}>
+          Add company
+        </s-button>
+      ) : null}
+    </div>
+  );
 
   // First-run empty state (no companies at all) — the B2B boundary explainer.
   if (state.db.companies.length === 0) {
     return (
-      <s-page heading="B2B Company">
-        <s-section>
-          <EmptyBlock
-            heading="No companies linked yet"
-            action={{ content: 'Link your first company', onAction: () => dispatch({ type: 'OPEN_ADD_COMPANY' }) }}
-            image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-          >
-            Link a Shopify B2B Company to decide what its buyers pay. Shopify keeps the Company record and takes the
-            orders; this app only decides the price.
-          </EmptyBlock>
-        </s-section>
-      </s-page>
+      <div className="cd-page">
+        {pageHead}
+        <div className="cd-card">
+          <div className="cd-card__body">
+            <EmptyBlock
+              heading="No companies linked yet"
+              action={{ content: 'Link your first company', onAction: () => dispatch({ type: 'OPEN_ADD_COMPANY' }) }}
+              image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+            >
+              Link a Shopify B2B Company to decide what its buyers pay. Shopify keeps the Company record and takes the
+              orders; this app only decides the price.
+            </EmptyBlock>
+          </div>
+        </div>
+      </div>
     );
   }
 
   const filterIndex = Math.max(0, FILTER_TABS.findIndex((t) => t.id === state.listFilter));
+  // A row's own controls (its checkbox, Edit, Delete) don't open the company.
+  const own = (e) => e.stopPropagation();
 
+  // The company page's look: a white page, the list in a bordered card — tabs, search
+  // and sort on top, a plain table, then the pages.
   return (
-    <s-page heading="B2B Company">
-      <s-button slot="primary-action" variant="primary" onClick={() => dispatch({ type: 'OPEN_ADD_COMPANY' })}>
-        Add company
-      </s-button>
+    <div className="cd-page">
+      {pageHead}
 
-      <s-section padding="none">
-        <s-table
-          paginate={pageCount > 1}
-          hasPreviousPage={current > 0}
-          hasNextPage={current < pageCount - 1}
-          onPreviousPage={() => setPage(Math.max(current - 1, 0))}
-          onNextPage={() => setPage(Math.min(current + 1, pageCount - 1))}
-        >
+      <div className="cd-card">
+        <div className="cd-card__filters">
           <IndexFiltersBar
-            slot="filters"
             query={state.companySearch}
             queryPlaceholder="Searching in all companies"
             onQueryChange={(v) => dispatch({ type: 'SET_COMPANY_SEARCH', value: v })}
@@ -152,107 +161,90 @@ export function CompaniesList() {
               const [field, dir] = (val || 'name asc').split(' ');
               dispatch({ type: 'SET_COMPANY_SORT', field, dir });
             }}
-          >
-            {bulk ? (
-              <div className="qs-bulk-list">
-                <s-stack direction="inline" gap="small-200" alignItems="center">
-                  {bulkActions}
-                </s-stack>
-              </div>
-            ) : null}
-          </IndexFiltersBar>
-          <s-table-header-row>
-            <s-table-header listSlot="inline">
-              <s-checkbox
-                accessibilityLabel={allSelected ? 'Deselect all companies' : 'Select all companies'}
-                checked={allSelected}
-                indeterminate={bulk && !allSelected}
-                disabled={list.length === 0}
-                onChange={(e) => selectAll(e.currentTarget.checked)}
-              />
-            </s-table-header>
-            <s-table-header listSlot="primary">
-              {bulk ? <span className="qs-bulk-bar">{bulkActions}</span> : 'Company'}
-            </s-table-header>
-            <s-table-header listSlot="secondary">{heading('Pricing status')}</s-table-header>
-            <s-table-header listSlot="labeled" format="numeric">{heading('Locations')}</s-table-header>
-            <s-table-header listSlot="labeled">{heading('Pricing assigned')}</s-table-header>
-            <s-table-header listSlot="labeled">{heading('Main contact')}</s-table-header>
-            <s-table-header listSlot="inline">{heading('Actions')}</s-table-header>
-          </s-table-header-row>
-          <s-table-body>
-            {pageRows.map((c) => {
-              const status = companyPricingStatus(c, policies, defaults);
-              const assigned = assignedPolicies(c);
-              const linkId = `${tipId}-open-${c.id}`;
-              return (
-                <s-table-row key={c.id} clickDelegate={linkId}>
-                  <s-table-cell>
+          />
+        </div>
+        {pageRows.length ? (
+          <div className="cd-table-scroll">
+            <table className="cd-table">
+              <thead>
+                <tr>
+                  <th className="cd-check">
                     <s-checkbox
-                      accessibilityLabel={`Select ${c.name}`}
-                      checked={selectedIds.includes(c.id)}
-                      onChange={(e) => selectRow(c.id, e.currentTarget.checked)}
+                      accessibilityLabel={allSelected ? 'Deselect all companies' : 'Select all companies'}
+                      checked={allSelected}
+                      indeterminate={bulk && !allSelected}
+                      onChange={(e) => selectAll(e.currentTarget.checked)}
                     />
-                  </s-table-cell>
-                  <s-table-cell>
-                    <s-link id={linkId} onClick={() => dispatch({ type: 'OPEN_COMPANY', id: c.id })}>
-                      {c.name}
-                    </s-link>
-                  </s-table-cell>
-                  <s-table-cell>
-                    <s-badge tone={wcTone(status.tone)}>{status.label}</s-badge>
-                  </s-table-cell>
-                  <s-table-cell>{(c.locations || []).length}</s-table-cell>
-                  <s-table-cell>
-                    <s-text fontSize="small">
-                      {assigned.length
-                        ? assigned.slice(0, 2).map((p) => p.name).join(', ') + (assigned.length > 2 ? ` +${assigned.length - 2} more` : '')
-                        : '—'}
-                    </s-text>
-                  </s-table-cell>
-                  <s-table-cell>
-                    <s-text fontSize="small">{c.mainContact || '—'}</s-text>
-                  </s-table-cell>
-                  <s-table-cell>
-                    <s-stack direction="inline" gap="small-400" justifyContent="end">
-                      <s-button
-                        icon="edit"
-                        variant="tertiary"
-                        accessibilityLabel="Edit company"
-                        interestFor={`${tipId}-edit-${c.id}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          dispatch({ type: 'OPEN_COMPANY', id: c.id });
-                        }}
-                      />
-                      <s-tooltip id={`${tipId}-edit-${c.id}`}>Edit</s-tooltip>
-                      <s-button
-                        icon="delete"
-                        variant="tertiary"
-                        tone="critical"
-                        accessibilityLabel="Delete company"
-                        interestFor={`${tipId}-delete-${c.id}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setConfirmDelete(c);
-                        }}
-                      />
-                      <s-tooltip id={`${tipId}-delete-${c.id}`}>Delete</s-tooltip>
-                    </s-stack>
-                  </s-table-cell>
-                </s-table-row>
-              );
-            })}
-          </s-table-body>
-        </s-table>
-        {pageRows.length === 0 ? (
-          <s-box padding="base">
-            <div style={{ textAlign: 'center' }}>
-              <s-text color="subdued">No companies match — try a different search or clear the filter.</s-text>
-            </div>
-          </s-box>
-        ) : null}
-      </s-section>
+                  </th>
+                  <th>{bulk ? <span className="cd-bulk-bar">{bulkActions}</span> : 'Company'}</th>
+                  <th>{heading('Pricing status')}</th>
+                  <th className="cd-num">{heading('Locations')}</th>
+                  <th>{heading('Pricing assigned')}</th>
+                  <th>{heading('Main contact')}</th>
+                  <th className="cd-actions cd-num">{heading('Actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* The row opens the company; its name is the keyboard target (the click bubbles up). */}
+                {pageRows.map((c) => {
+                  const status = companyPricingStatus(c, policies, defaults);
+                  const assigned = assignedPolicies(c);
+                  return (
+                    <tr key={c.id} className="cd-row-link" onClick={() => dispatch({ type: 'OPEN_COMPANY', id: c.id })}>
+                      <td className="cd-check" onClick={own}>
+                        <s-checkbox
+                          accessibilityLabel={`Select ${c.name}`}
+                          checked={selectedIds.includes(c.id)}
+                          onChange={(e) => selectRow(c.id, e.currentTarget.checked)}
+                        />
+                      </td>
+                      <td>
+                        <button type="button" className="cd-link-button">
+                          {c.name}
+                        </button>
+                      </td>
+                      <td>
+                        <StatusDot tone={status.tone}>{status.label}</StatusDot>
+                      </td>
+                      <td className="cd-num">{(c.locations || []).length}</td>
+                      <td>
+                        {assigned.length
+                          ? assigned.slice(0, 2).map((p) => p.name).join(', ') + (assigned.length > 2 ? ` +${assigned.length - 2} more` : '')
+                          : '—'}
+                      </td>
+                      <td>{c.mainContact || '—'}</td>
+                      <td className="cd-actions cd-num" onClick={own}>
+                        <span className="cd-row-actions">
+                          <s-button
+                            icon="edit"
+                            variant="tertiary"
+                            accessibilityLabel="Edit company"
+                            interestFor={`${tipId}-edit-${c.id}`}
+                            onClick={() => dispatch({ type: 'OPEN_COMPANY', id: c.id })}
+                          />
+                          <s-tooltip id={`${tipId}-edit-${c.id}`}>Edit</s-tooltip>
+                          <s-button
+                            icon="delete"
+                            variant="tertiary"
+                            tone="critical"
+                            accessibilityLabel="Delete company"
+                            interestFor={`${tipId}-delete-${c.id}`}
+                            onClick={() => setConfirmDelete(c)}
+                          />
+                          <s-tooltip id={`${tipId}-delete-${c.id}`}>Delete</s-tooltip>
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="cd-card__empty">No companies match — try a different search or clear the filter.</div>
+        )}
+        <CardFoot current={current} count={pageCount} label={rangeLabel(current * PAGE_SIZE, pageRows.length, total)} onPage={setPage} />
+      </div>
 
       {confirmDelete && (
         <Modal onClose={() => setConfirmDelete(null)} heading={`Delete ${confirmDelete.name}?`}>
@@ -311,7 +303,6 @@ export function CompaniesList() {
           </s-button>
         </Modal>
       )}
-    </s-page>
+    </div>
   );
 }
-

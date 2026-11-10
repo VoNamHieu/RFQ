@@ -25,6 +25,7 @@ import {
   stampContractLimits,
   storefrontContracts,
   joinLaterLocations,
+  dropContractLocations,
   isContractTerm,
   contractOf,
   noStagedTerms,
@@ -307,12 +308,39 @@ function openContractEditor(state, ag, returnTo = { view: state.view, selectedCo
 
 function reducer(state, action) {
   switch (action.type) {
-    case 'NAVIGATE':
-      return { ...state, view: action.view, ...(action.patch || {}) };
+    case 'NAVIGATE': {
+      // A "View …" link's way back (`backTo`, companyLayout.jsx) lasts while its list is
+      // open; going anywhere else drops it.
+      const backTo = action.patch && 'backTo' in action.patch ? action.patch.backTo : action.view === state.view ? state.backTo || null : null;
+      return { ...state, view: action.view, ...(action.patch || {}), backTo };
+    }
     case 'OPEN_COMPANY':
-      return { ...state, view: 'company', selectedCompany: action.id, companyTab: action.tab || 'pricing' };
+      // `location` opens the Orders filtered to that location (`quotesLocation` the Quotes
+      // page), `filter` a full page on a
+      // subset, `backTo` gives that page a way back (a location's held-orders banner).
+      return {
+        ...state,
+        view: 'company',
+        selectedCompany: action.id,
+        companyTab: action.tab || 'pricing',
+        ordersLocation: action.location || 'all',
+        quotesLocation: action.quotesLocation || 'all',
+        companyListFilter: action.filter || null,
+        backTo: action.backTo || null,
+      };
+    // An order's page in the app (screens/OrderDetail.jsx); `backTo` returns to where it
+    // was opened from (a company's Orders, its full page, a location's order history).
+    case 'OPEN_ORDER':
+      return {
+        ...state,
+        view: 'order',
+        selectedCompany: action.companyId,
+        selectedOrder: { companyId: action.companyId, orderId: action.orderId },
+        backTo: action.backTo || null,
+      };
     case 'SET_COMPANY_TAB':
-      return { ...state, companyTab: action.tab };
+      // `filter` opens a full page (View all) on a subset: 'waiting' quotes, orders for 'review'.
+      return { ...state, companyTab: action.tab, companyListFilter: action.filter || null, quotesLocation: 'all', backTo: null };
     // ----- Registrations (storefront form submissions) -----
     // Picking a template in the form builder creates the registration form.
     case 'CREATE_REGISTRATION_FORM':
@@ -482,7 +510,8 @@ function reducer(state, action) {
       const c = db.companies.find((x) => x.id === action.companyId);
       if (!c) return state;
       const ids = action.locationIds || [];
-      const names = (c.locations || []).filter((l) => ids.includes(l.id)).map((l) => l.name);
+      const gone = (c.locations || []).filter((l) => ids.includes(l.id));
+      const names = gone.map((l) => l.name);
       c.locations = (c.locations || []).filter((l) => !ids.includes(l.id));
       (c.contacts || []).forEach((ct) => {
         if (names.includes(ct.locations)) ct.locations = '';
@@ -491,13 +520,9 @@ function reducer(state, action) {
         ...l,
         locationKeys: (l.locationKeys || []).filter((k) => !ids.some((id) => k === `${c.id}::${id}`)),
       }));
-      db.agreements = (db.agreements || []).map((a) =>
-        a.companyId === c.id && a.locationIds ? { ...a, locationIds: a.locationIds.filter((id) => !ids.includes(id)) } : a
-      );
-      // A live contract for some locations that has none left ends.
-      db.agreements.forEach((a) => {
-        if (a.companyId === c.id && isLive(a) && Array.isArray(a.locationIds) && !a.locationIds.length) closeAgreement(db, a, 'Ended', 'Ended');
-      });
+      // Its contracts stop naming them; one on all its locations names the ones left.
+      // A live one that had them gets a new version ("Removed …"); one with none left ends.
+      dropContractLocations(db, c, gone);
       const leaveDetail = state.view === 'location' && ids.includes(state.selectedLocation);
       return {
         ...state,
@@ -515,7 +540,8 @@ function reducer(state, action) {
       return { ...state, db, ...(action.silent ? {} : { toast: 'Location updated' }) };
     }
     case 'OPEN_PRICE_BOARD':
-      return { ...state, priceBoard: { companyId: action.companyId } };
+      // `locationId`: opened from a location's page, it starts on that location.
+      return { ...state, priceBoard: { companyId: action.companyId, locationId: action.locationId || null } };
     case 'CLOSE_PRICE_BOARD':
       return { ...state, priceBoard: null };
     // ----- Assign / swap base pricing -----
@@ -558,9 +584,11 @@ function reducer(state, action) {
       const kind = a.kind === 'quantity' ? 'quantity' : 'base';
       if (c && ids.length && !a.locationId && a.mode !== 'swap') {
         const locIds = a.applyTo === 'some' ? a.locationIds || [] : null;
+        // All locations (picked from 2+) always includes locations added later.
+        const later = (locIds === null && (c.locations || []).length > 1) || a.applyLater === true;
         ids.forEach((id) => {
           const pol = db.policies.find((p) => p.id === id);
-          addPricingToLocations(c, kind, id, pol?.priority, locIds, a.applyLater === true);
+          addPricingToLocations(c, kind, id, pol?.priority, locIds, later);
         });
       } else if (c && ids.length && (!a.locationId || loc)) {
         const list = loc ? locationSlotArray(c, loc, kind) : companySlotArray(c, kind);
@@ -654,10 +682,11 @@ function reducer(state, action) {
     }
     // ----- Add-company wizard -----
     // Add Shopify companies: pick one or more, add them — pricing is set afterwards.
-    // selected: shopifyCompanyIds — each comes with all its locations not in the app yet.
+    // selected: shopifyCompanyIds — each comes with its locations not in the app yet that
+    // are ticked (all of them, unless unticked: { [shopifyCompanyId]: locationIds }).
     // "Automatically add new locations" starts ticked.
     case 'OPEN_ADD_COMPANY':
-      return { ...state, addCompany: { selected: [], search: '', autoAddLocations: true } };
+      return { ...state, addCompany: { selected: [], unticked: {}, search: '', autoAddLocations: true } };
     case 'ADD_COMPANY_PATCH':
       return { ...state, addCompany: { ...state.addCompany, ...action.patch } };
     case 'CLOSE_ADD_COMPANY':
@@ -666,7 +695,7 @@ function reducer(state, action) {
       const ac = state.addCompany;
       const directory = shopifyCompanies(state.shopifyNewLocations);
       const db = clone(state.db);
-      // Every location not in the app yet comes in, each with the contacts at it (a
+      // The ticked locations not in the app yet come in, each with the contacts at it (a
       // contact with no location comes with the company). New locations follow the
       // company's pricing until given their own. With auto-add ticked, locations
       // created on the company in Shopify later join it too (SHOPIFY_LOCATION_CREATED);
@@ -681,7 +710,8 @@ function reducer(state, action) {
         // Already in the app (added before with some locations): add the rest to it.
         const existing = db.companies.find((c) => c.shopifyCompanyId === shp.id || c.name === shp.name);
         const has = (l) => (existing?.locations || []).some((x) => x.id === l.id || x.name === l.name);
-        const picked = (shp.locations || []).filter((l) => !has(l));
+        const off = (ac.unticked || {})[shp.id] || [];
+        const picked = (shp.locations || []).filter((l) => !has(l) && !off.includes(l.id));
         if (!picked.length) return;
         const contactsAt = (names, withUnplaced) =>
           (shp.contacts || [])
@@ -809,7 +839,9 @@ function reducer(state, action) {
       if (action.policy && isContractTerm(action.policy) && !action.context?.contractTerm) {
         const ag = contractOf(state.db, action.policy.id);
         if (!ag) return state;
-        return reducer(openContractEditor(state, ag), { type: 'OPEN_EDITOR', policy: action.policy, context: { mode: 'edit', contractTerm: true } });
+        const next = reducer(openContractEditor(state, ag), { type: 'OPEN_EDITOR', policy: action.policy, context: { mode: 'edit', contractTerm: true } });
+        // From a location page, closing the pricing goes back there (see CLOSE_EDITOR).
+        return state.view === 'location' ? { ...next, editorContext: { ...next.editorContext, fromLocation: true } } : next;
       }
       // `context.contractTerm`: one of the contract editor's own pricing (a new one is
       // Contract: its dates, status and who it serves don't apply — the contract decides).
@@ -837,7 +869,10 @@ function reducer(state, action) {
         const held = locs.filter((l) => locationHolds(c, l, kind, action.policy.id));
         const all = held.length === locs.length;
         // Held at the company: locations added later get it (on all locations or some).
-        editorContext = { ...editorContext, locationIds: all ? null : held.map((l) => l.id), applyLater: slotIds(c, kind).includes(action.policy.id) };
+        // All locations means later ones too, so every location without later ones
+        // shows as Specific locations, all ticked.
+        const later = slotIds(c, kind).includes(action.policy.id);
+        editorContext = { ...editorContext, locationIds: all && later ? null : held.map((l) => l.id), applyLater: later };
       }
       return {
         ...state,
@@ -850,8 +885,12 @@ function reducer(state, action) {
     }
     case 'SET_BUILDER_TAB':
       return { ...state, pricingBuilderTab: action.tab };
-    case 'CLOSE_EDITOR':
-      return { ...state, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null };
+    case 'CLOSE_EDITOR': {
+      // A contract's pricing opened from a location page: the contract editor it opened in
+      // closes too, back to that location.
+      const back = state.editorContext?.fromLocation ? { ...(state.agreementEditor?.returnTo || {}), agreementEditor: null } : {};
+      return { ...state, ...back, builder: null, ruleEdit: null, addRuleMenu: false, editorContext: null };
+    }
     case 'BUILDER_PATCH':
       return { ...state, builder: { ...state.builder, ...action.patch } };
     case 'SET_RULE_EDIT':
@@ -901,7 +940,10 @@ function reducer(state, action) {
         const all = withStagedTerms(state.db, ed.staged);
         const before = b.id ? all.policies.find((p) => p.id === b.id) : null;
         const start = before && builderDraft({ appearanceTitle: 'Wholesale pricing', appearanceLabel: 'Special price', ...clone(before) });
-        if (before && sameTerm(start, draft)) return { ...state, ...closed };
+        // Opened from a location page (see OPEN_EDITOR) and Done with nothing changed: back to
+        // that location, as Cancel does. A change stays in the contract editor, to be saved there.
+        const back = state.editorContext.fromLocation ? { ...(ed.returnTo || {}), agreementEditor: null } : {};
+        if (before && sameTerm(start, draft)) return { ...state, ...back, ...closed };
         const term = { ...asContractPricing({ ...newBaseBuilder(), ...(before || {}), ...draft }), id: before ? before.id : demoPolicyId(all) };
         const key = term.priceKind === 'quantity' ? 'quantity' : 'base';
         const staged = { ...ed.staged, policies: { ...ed.staged.policies, [term.id]: term } };
@@ -924,7 +966,11 @@ function reducer(state, action) {
           if (loc) {
             const list = locationSlotArray(c, loc, kind);
             if (!list.some((e) => e.id === id)) list.push({ id, priority: draft.priority || list.length + 1 });
-          } else if (c) addPricingToLocations(c, kind, id, draft.priority, state.editorContext.locationIds, state.editorContext.applyLater === true);
+          } else if (c) {
+            // All locations always includes locations added later.
+            const allLocs = state.editorContext.locationIds == null && (c.locations || []).length > 0;
+            addPricingToLocations(c, kind, id, draft.priority, state.editorContext.locationIds, allLocs || state.editorContext.applyLater === true);
+          }
         } else {
           applyAssignment(db, id, draft);
         }
@@ -955,7 +1001,8 @@ function reducer(state, action) {
       const pickLocations = scopeLocs.length > 0;
       const picked = state.editorContext?.locationIds ?? null;
       const wanted = (l) => !picked || picked.includes(l.id);
-      const later = state.editorContext?.applyLater === true;
+      // All locations always includes locations added later.
+      const later = (pickLocations && picked === null) || state.editorContext?.applyLater === true;
       if (scopeCompany && sharedElsewhere && !action.applyToAll) {
         const fork = JSON.parse(JSON.stringify(existing));
         Object.assign(fork, draft, { id: demoPolicyId(db), type: 'Account-specific' });

@@ -1,93 +1,198 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useStore, currentCompany } from '../store.jsx';
 import { companyBaseEntries, companyQuantityEntries } from '../pricing.js';
-import { BasePricingCard } from '../components/BasePricingCard.jsx';
-import { QuantityPricingCard } from '../components/QuantityPricingCard.jsx';
+import { money } from '../format.js';
+import { CompanyPricingCard } from '../components/CompanyPricingCard.jsx';
+import { PricingTypeChooser } from './PricingLibrary.jsx';
+import { CompanyContractCard } from '../components/CompanyContractCard.jsx';
+import { CompanyLimitsCard } from '../components/CompanyLimitsCard.jsx';
 import { QuotesTab } from '../components/tabs/QuotesTab.jsx';
 import { OrdersTab } from '../components/tabs/OrdersTab.jsx';
 import { LocationsTab } from '../components/tabs/LocationsTab.jsx';
 import { ContactsTab } from '../components/tabs/ContactsTab.jsx';
-import { AgreementTab } from '../components/tabs/AgreementTab.jsx';
 import { CompanyAnalytics } from '../components/CompanyAnalytics.jsx';
+import { SideBlock, SideRow, backActionFor } from '../components/companyLayout.jsx';
 import { versionFlags } from '../../shared/versions.js';
-import { Tabs, Modal, PageHeader } from '../../shared/wc.jsx';
+import { MenuButton, Modal, PageHeader } from '../../shared/wc.jsx';
 
-const TABS = [
-  { id: 'pricing', label: 'Pricing' },
-  ...(versionFlags().agreements ? [{ id: 'agreement', label: 'Contract' }] : []),
-  ...(versionFlags().analytics ? [{ id: 'analytics', label: 'Analytics' }] : []),
-  { id: 'quotes', label: 'Quotes' },
-  { id: 'orders', label: 'Orders' },
-  { id: 'locations', label: 'Locations' },
-  { id: 'contacts', label: 'Contacts' },
-];
+// Links that used to open one of the company's tabs (`companyTab`, e.g. "View all
+// company orders" on a location) now scroll to that card on the one page.
+const SECTION_OF = { agreement: 'contract', limits: 'limits', quotes: 'quotes', orders: 'orders', locations: 'locations', contacts: 'contacts' };
+// Below the fixed top bar.
+const scrollMargin = { scrollMarginTop: 72 };
+// The Quotes and Orders cards' View all: the same card on a page of its own (full
+// width, more rows a page); back returns to the card.
+const FULL_PAGES = {
+  'quotes-all': { heading: 'Quotes', card: 'quotes', Card: QuotesTab },
+  'orders-all': { heading: 'Orders', card: 'orders', Card: OrdersTab },
+};
 
+// The company page, after the merchant's mockup: Companies and More actions on top,
+// then two columns (stacked below 768px). The main column: the name, its overview's
+// numbers flat on the page, then locations, orders and quotes, each titled above a
+// bordered card. The side, flat and split by hairlines: the company's details,
+// contacts, then pricing, contract and order limits as chips. Its Analytics opens as a
+// page of its own (View analytics, by the overview's title).
 export function CompanyDetail() {
   const { state, dispatch } = useStore();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // The Pricing block's ⊕: "Select pricing type" as a page, then the pricing of that type to add.
+  const [pickPricingType, setPickPricingType] = useState(false);
   const company = currentCompany(state);
+
+  useEffect(() => {
+    if (FULL_PAGES[state.companyTab]) {
+      window.scrollTo(0, 0);
+      return;
+    }
+    const id = SECTION_OF[state.companyTab];
+    if (id) document.getElementById(`company-${id}`)?.scrollIntoView({ block: 'start' });
+  }, [state.selectedCompany, state.companyTab]);
+
   if (!company) return null;
 
   const assignedCount =
     companyBaseEntries(company, state.db.policies).length + companyQuantityEntries(company, state.db.policies).length;
-
-  const tabIndex = Math.max(0, TABS.findIndex((t) => t.id === state.companyTab));
-  const tabs = TABS.map((t) => {
-    let content = t.label;
-    if (t.id === 'quotes') {
-      const n = (state.db.quotes || []).filter((q) => q.company === company.id).length;
-      content = `Quotes${n ? ` (${n})` : ''}`;
-    }
-    if (t.id === 'orders') {
-      const n = (company.orders || []).length;
-      content = `Orders${n ? ` (${n})` : ''}`;
-    }
-    return { id: t.id, content };
-  });
-
   const locationCount = (company.locations || []).length;
+  const backToCompany = () => dispatch({ type: 'SET_COMPANY_TAB', tab: 'overview' });
 
-  return (
-    <>
-    <PageHeader
-      heading={company.name}
-      backAction={{ content: 'Companies', onAction: () => dispatch({ type: 'NAVIGATE', view: 'customers' }) }}
-      subtitle={`${company.source ? `From ${company.source}` : 'Active'} · ${locationCount} location${locationCount === 1 ? '' : 's'}`}
-      secondaryActions={[
-        // Whether locations created on this company in Shopify join it here automatically.
-        {
-          content: `Auto-add locations: ${company.autoAddLocations ? 'On' : 'Off'}`,
-          onAction: () => dispatch({ type: 'SET_AUTO_ADD_LOCATIONS', companyId: company.id, on: !company.autoAddLocations }),
-        },
-        { content: 'Delete', destructive: true, onAction: () => setConfirmDelete(true) },
-      ]}
-    />
-    <s-page>
-      <s-stack gap="base">
-        <s-section padding="none">
-          <Tabs tabs={tabs} selected={tabIndex} onSelect={(i) => dispatch({ type: 'SET_COMPANY_TAB', tab: TABS[i].id })} />
-        </s-section>
-
-        {state.companyTab === 'pricing' && (
-          <>
-            <BasePricingCard company={company} />
-            <QuantityPricingCard company={company} />
-          </>
-        )}
-        {state.companyTab === 'agreement' && <AgreementTab company={company} />}
-        {state.companyTab === 'quotes' && <QuotesTab company={company} />}
-        {state.companyTab === 'orders' && <OrdersTab company={company} />}
-        {state.companyTab === 'locations' && <LocationsTab company={company} />}
-        {state.companyTab === 'contacts' && <ContactsTab company={company} />}
-        {state.companyTab === 'analytics' && (
+  // Analytics: a page of its own, back to the company.
+  if (state.companyTab === 'analytics' && versionFlags().analytics) {
+    return (
+      <>
+        <PageHeader heading="Analytics" subtitle={company.name} backAction={{ content: company.name, onAction: backToCompany }} />
+        <s-page>
           <s-stack gap="small">
             <s-stack direction="inline" justifyContent="end">
               <s-button onClick={() => dispatch({ type: 'NAVIGATE', view: 'analytics' })}>Compare with all companies</s-button>
             </s-stack>
             <CompanyAnalytics company={company} />
           </s-stack>
-        )}
-      </s-stack>
+        </s-page>
+      </>
+    );
+  }
+
+  // Add pricing: pick a type, then the pricing of that type to add (the assign modal).
+  if (pickPricingType) {
+    return (
+      <PricingTypeChooser
+        backLabel={company.name}
+        actionLabel="Select"
+        onBack={() => setPickPricingType(false)}
+        onPick={(kind) => {
+          setPickPricingType(false);
+          dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, kind, mode: 'add' });
+        }}
+      />
+    );
+  }
+
+  // Quotes / Orders full page (View all), back to its card.
+  const fullPage = FULL_PAGES[state.companyTab];
+  if (fullPage) {
+    const { heading, card, Card } = fullPage;
+    return (
+      <>
+        <PageHeader
+          heading={heading}
+          subtitle={company.name}
+          inlineSize="large"
+          // Opened from a location's held-orders banner: back to that location.
+          backAction={backActionFor(state, dispatch, state.companyTab) || { content: company.name, onAction: () => dispatch({ type: 'SET_COMPANY_TAB', tab: card }) }}
+        />
+        <s-page inlineSize="large">
+          <Card company={company} full />
+        </s-page>
+      </>
+    );
+  }
+
+  const orders = company.orders || [];
+  const quoteCount = (state.db.quotes || []).filter((q) => q.company === company.id).length;
+  const totalSales = orders.reduce((s, o) => s + (o.amount || 0), 0);
+
+  return (
+    <div className="cd-page">
+      <div className="cd-topbar">
+        <button type="button" className="cd-back" onClick={() => dispatch({ type: 'NAVIGATE', view: 'customers' })}>
+          <span className="cd-back__circle">
+            <s-icon type="chevron-left" />
+          </span>
+          Companies
+        </button>
+        <MenuButton
+          items={[
+            // Whether locations created on this company in Shopify join it here automatically.
+            {
+              content: `Auto-add locations: ${company.autoAddLocations ? 'On' : 'Off'}`,
+              onAction: () => dispatch({ type: 'SET_AUTO_ADD_LOCATIONS', companyId: company.id, on: !company.autoAddLocations }),
+            },
+            { content: 'Delete', destructive: true, onAction: () => setConfirmDelete(true) },
+          ]}
+        >
+          More actions
+        </MenuButton>
+      </div>
+
+      <div className="cd-layout">
+        <div className="cd-main">
+          {/* Name and subtitle, then the overview's numbers; View analytics, by its title,
+              opens its own page. */}
+          <div className="cd-intro">
+            <div>
+              <h1 className="cd-title">{company.name}</h1>
+              <p className="cd-subtitle">
+                {`${company.source ? `From ${company.source}` : 'Active'} · ${locationCount} location${locationCount === 1 ? '' : 's'}`}
+              </p>
+            </div>
+            <section>
+              <div className="cd-section__head">
+                <h2 className="cd-section__title">Company overview</h2>
+                {versionFlags().analytics && (
+                  <s-link onClick={() => dispatch({ type: 'SET_COMPANY_TAB', tab: 'analytics' })}>View analytics</s-link>
+                )}
+              </div>
+              <div className="cd-stats">
+                <Stat label="Sales" value={money(totalSales)} note="All-time from this company" />
+                <Stat label="Orders" value={String(orders.length)} note="Placed by its buyers" />
+                <Stat label="Quotes" value={String(quoteCount)} note="RFQ requests from here" />
+              </div>
+            </section>
+          </div>
+          <div id="company-locations" style={scrollMargin}>
+            <LocationsTab company={company} />
+          </div>
+          <div id="company-orders" style={scrollMargin}>
+            <OrdersTab company={company} />
+          </div>
+          <div id="company-quotes" style={scrollMargin}>
+            <QuotesTab company={company} />
+          </div>
+        </div>
+
+        <div className="cd-side">
+          <SideBlock title="General">
+            <SideRow label="Name">{company.name}</SideRow>
+            <SideRow label="Main contact">{company.mainContact || '—'}</SideRow>
+            <SideRow label="Source">{company.source || '—'}</SideRow>
+          </SideBlock>
+          <div id="company-contacts" style={scrollMargin}>
+            <ContactsTab company={company} />
+          </div>
+          <CompanyPricingCard company={company} onAddPricing={() => setPickPricingType(true)} />
+          {versionFlags().agreements && (
+            <div id="company-contract" style={scrollMargin}>
+              <CompanyContractCard company={company} />
+            </div>
+          )}
+          {versionFlags().orderLimits && (
+            <div id="company-limits" style={scrollMargin}>
+              <CompanyLimitsCard company={company} />
+            </div>
+          )}
+        </div>
+      </div>
 
       {confirmDelete && (
         <Modal onClose={() => setConfirmDelete(false)} heading={`Delete ${company.name}?`}>
@@ -114,7 +219,17 @@ export function CompanyDetail() {
           </s-button>
         </Modal>
       )}
-    </s-page>
-    </>
+    </div>
+  );
+}
+
+// One of the overview's numbers, in a tile of equal width: label, value, then a note.
+function Stat({ label, value, note }) {
+  return (
+    <div className="cd-stat">
+      <div className="cd-stat__label">{label}</div>
+      <div className="cd-stat__value">{value}</div>
+      <div className="cd-stat__note">{note}</div>
+    </div>
   );
 }

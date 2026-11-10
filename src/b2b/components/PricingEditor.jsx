@@ -9,9 +9,10 @@ import { versionFlags } from '../../shared/versions.js';
 import { COLLECTIONS } from '../data/constants.js';
 import { money } from '../format.js';
 import { ActiveDatesCard, ProductScopeCard, QuantityProductsCard, VolumeBasisCard, ProductOverridesCard } from './pricingEditorCards.jsx';
+import { storeTimezone } from '../timezones.js';
 import { PricePreviewDialog } from './PricePreviewDialog.jsx';
 import { AssignmentCard } from './AssignmentCard.jsx';
-import { policyUsageCount, policyUsageDetail, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, locationCatalog } from '../pricing.js';
+import { policyUsageCount, policyUsageDetail, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, locationCatalog, basePricingProductsLabel, basePricingCalculationLabel } from '../pricing.js';
 import { isContractTerm } from '../agreements.js';
 import { builderDraft } from '../builders.js';
 
@@ -325,7 +326,7 @@ export function PricingEditor({ asPage = false }) {
 
                   {/* Scheduling last, matching the god-file editor order. A contract
                       pricing has no dates: it applies on its contracts'. */}
-                  {!forContracts && <ActiveDatesCard builder={builder} patch={patch} />}
+                  {!forContracts && <ActiveDatesCard builder={builder} patch={patch} storeTz={storeTimezone(state.db)} />}
                 </>
               ) : (
                 <AppearanceTab builder={builder} patch={patch} kindWord={kindWord} product={state.db.products[0]} />
@@ -586,6 +587,7 @@ function CompanyLocationsCard({ company, locationIds, onChange, applyLater, onAp
           separate
           applyLater={applyLater}
           onApplyLaterChange={onApplyLaterChange}
+          allIncludesLater
         />
         {footer}
       </s-stack>
@@ -600,17 +602,17 @@ function CompanyLocationsCard({ company, locationIds, onChange, applyLater, onAp
 function SummaryCard({ builder, isQuantity, assignedTo, forContracts = false, products, locations }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const count = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
-  const rules = (builder.conditionalRules || []).length;
-  const overrides = Object.keys(builder.variantAdjustments || {}).length;
   const ranges = (builder.volumeRanges || []).length;
-  const calculation = isQuantity
-    ? count(ranges, 'quantity range')
-    : [rules ? count(rules, 'rule') : null, overrides ? count(overrides, 'override') : null].filter(Boolean).join(' · ') || 'No rules';
+  // Products: what's priced; Calculation: how (see basePricingProductsLabel /
+  // basePricingCalculationLabel). A quantity pricing: its products, and its ranges.
+  const calculation = isQuantity ? count(ranges, 'quantity range') : basePricingCalculationLabel(builder, products || []);
   const hasEnd = (builder.hasEndDate ?? !!builder.endDate) && !!builder.endDate;
   const items = [
     ['receipt-dollar', 'Type', isQuantity ? 'Quantity pricing' : 'Base pricing'],
-    ['product', 'Products', isQuantity || rules || overrides ? scopeLabel(builder) : 'Shopify prices'],
+    ['product', 'Products', isQuantity ? scopeLabel(builder) : basePricingProductsLabel(builder, products || [])],
     ['discount', 'Calculation', calculation],
+    // Markets: a line like the others (it was a badge by the title).
+    ['markets', 'Markets', 'All markets'],
     forContracts ? null : ['team', 'Serves', builder.audienceType === 'd2c' ? 'D2C Wholesale' : 'Company-based B2B'],
     ['person', 'Assigned to', assignedTo],
     ['star', 'Priority', String(builder.priority ?? 0)],
@@ -622,7 +624,6 @@ function SummaryCard({ builder, isQuantity, assignedTo, forContracts = false, pr
       <s-stack gap="small">
         <s-stack direction="inline" gap="small-200" alignItems="center">
           <s-heading>Settings summary</s-heading>
-          <s-badge tone="info">All markets</s-badge>
         </s-stack>
         <s-stack gap="small-300">
           {items.map(([icon, label, value]) => (

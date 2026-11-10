@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useStore } from '../store.jsx';
 import { kindOf, scopeLabel, baseInScope, policyPriceBreakdown, resolveDetail, withContractPricing } from '../pricing.js';
-import { limitSummary, contractLimitConflicts, isD2CLimit } from '../limits.js';
+import { limitSummary, isD2CLimit } from '../limits.js';
 import {
   agreementChanges,
   companyAfterAgreement,
@@ -30,7 +30,9 @@ import { PricePreviewDialog } from './PricePreviewDialog.jsx';
 import { SelectCompaniesModal, companyPicks } from './AssignmentCard.jsx';
 import { TermGroup, VersionTimeline, EndContractModal, DeleteContractModal } from './ContractParts.jsx';
 import { ContractVersionModal } from './ContractVersionModal.jsx';
-import { MenuButton, Modal, PageHeader, useWcId } from '../../shared/wc.jsx';
+import { LocationNames } from './LocationNames.jsx';
+import { MenuButton, Modal, PageHeader, Tip, useWcId } from '../../shared/wc.jsx';
+import { TIMEZONES, storeTimezone } from '../timezones.js';
 
 // Create / edit a company's agreement — an in-frame page in the Agreements view
 // (OPEN_AGREEMENT_EDITOR). Its pricing and limits are its own: created here, or copied
@@ -89,10 +91,8 @@ export function AgreementEditor() {
   // "Automatically apply this contract to locations added later": ticked by default
   // for all locations, unticked for some; the merchant can change either.
   const laterFor = (locationIds) => ({ applyLater: locationIds === null });
-  // Shown only for a company with Auto-add locations on — in the company modal, the one
-  // ticked there (ticking one picks it), so none before a company is ticked. Hidden, it
-  // keeps its value, so turning Auto-add back on shows it as it was.
-  const laterShown = !!company?.autoAddLocations;
+  // Always shown, here and in the company modal, whether or not the company has
+  // Auto-add locations on.
   const setCompany = (id, locationIds) => patch({ companyId: id, locationIds, ...laterFor(locationIds), ...followStart(id, locationIds) });
   // The contract's company and locations as the picker's picks: the whole company,
   // or `companyId::locationId` keys for some of its locations.
@@ -130,13 +130,6 @@ export function AgreementEditor() {
     limits: (db.limits || []).filter((l) => copyable(l) && !isD2CLimit(l)).sort(regularFirst),
   };
   const contractBadge = (x) => (ownerOf(x) ? 'In other contract' : null);
-  // The limits picked for it that contradict each other (a warning: it still saves).
-  // Worked out again only when the limits change.
-  const limitConflicts = useMemo(
-    () => contractLimitConflicts(db, pickedOf(draft.terms.limits, db.limits)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [db.limits, db.products, draft.terms.limits],
-  );
 
   const errors = {};
   if (!draft.companyId) errors.company = 'Choose a company';
@@ -190,7 +183,7 @@ export function AgreementEditor() {
   const covered = contractProducts(db, draft);
   const overview = [
     ['organization', 'Company', company?.name || 'Not picked'],
-    ['location', 'Applies to', company ? (agreementScopeLabel(company, draft) ? agreementAppliesToLabel(company, draft) : 'No locations') : '—'],
+    ['location', 'Applies to', company ? (agreementScopeLabel(company, draft) ? <LocationNames label={agreementAppliesToLabel(company, draft)} /> : 'No locations') : '—'],
     ['calendar', 'Dates', agreementDatesLabel(draft)],
     ['receipt-dollar', 'Pricing', `${draft.terms.base.length} base · ${draft.terms.quantity.length} quantity`],
     ['order', 'Order limits', count(draft.terms.limits.length, 'limit')],
@@ -227,6 +220,14 @@ export function AgreementEditor() {
 
         <s-section heading="Dates">
           <s-stack gap="small">
+            {/* Timezone: the store's until one is picked. */}
+            <s-select label="Timezone" value={draft.timezone || storeTimezone(state.db)} onChange={(e) => patch({ timezone: e.currentTarget.value })}>
+              {TIMEZONES.map((tz) => (
+                <s-option key={tz} value={tz}>
+                  {tz}
+                </s-option>
+              ))}
+            </s-select>
             <s-query-container>
               <s-grid gridTemplateColumns="@container (inline-size > 400px) 1fr 1fr, 1fr" gap="small">
                 {/* Date fields commit on change (typing emits partial dates on input). */}
@@ -254,11 +255,15 @@ export function AgreementEditor() {
         </s-section>
 
         {/* Laid out like the company's Contract tab, with Add, Edit and Remove. */}
-        <s-section heading="Terms">
+        <s-section>
           <s-stack gap="small">
-            <s-paragraph color="subdued">
-              Pricing and order limits here are used only in this contract. They don’t show in Pricing or Order limits with your regular pricing and limits.
-            </s-paragraph>
+            {/* That they're the contract's own, on hover of the info icon. */}
+            <s-stack direction="inline" gap="small-300" alignItems="center">
+              <s-heading>Terms</s-heading>
+              <Tip content="Pricing and order limits here are used only in this contract. They don’t show in Pricing or Order limits with your regular pricing and limits.">
+                <s-icon type="info" color="subdued" />
+              </Tip>
+            </s-stack>
             <TermGroup
               icon="receipt-dollar"
               title="Base pricing"
@@ -296,15 +301,11 @@ export function AgreementEditor() {
                 actions: <TermActions name={l.name} onEdit={() => editLimit(l)} onRemove={() => remove('limits', l.id)} />,
               }))}
             />
-            {limitConflicts.length ? (
-              <s-banner tone="warning" heading="Some of these limits contradict each other">
-                <s-unordered-list>
-                  {limitConflicts.map((c, i) => (
-                    <s-list-item key={i}>{c}</s-list-item>
-                  ))}
-                </s-unordered-list>
-              </s-banner>
-            ) : null}
+            {/* The limits aren't checked against each other here: a note, on every contract,
+                and saving isn't blocked. */}
+            <s-paragraph color="subdued" fontSize="small">
+              Check that order limits and product limits don’t contradict each other. If they do, buyers can’t check out those products.
+            </s-paragraph>
             {shown('terms') && (
               <s-paragraph tone="critical" id="agreement-terms">
                 {errors.terms}
@@ -356,14 +357,12 @@ export function AgreementEditor() {
                 ))}
               </s-stack>
             ) : null}
-            {/* Here and in the company modal, while the company auto-adds locations. */}
-            {laterShown && (
-              <s-checkbox
-                label="Automatically apply this contract to locations added later"
-                checked={addsLaterLocations(draft)}
-                onChange={(e) => patch({ applyLater: e.currentTarget.checked })}
-              />
-            )}
+            {/* Here and in the company modal. */}
+            <s-checkbox
+              label="Automatically apply this contract to locations added later"
+              checked={addsLaterLocations(draft)}
+              onChange={(e) => patch({ applyLater: e.currentTarget.checked })}
+            />
             {(shown('company') || shown('scope')) && (
               <s-paragraph tone="critical" id="agreement-scope">
                 {shown('company') || shown('scope')}
@@ -441,7 +440,7 @@ export function AgreementEditor() {
         single
         // The same checkbox as under Applies to.
         applyLater={addsLaterLocations(draft)}
-        onApplyLaterChange={laterShown ? (on) => patch({ applyLater: on }) : undefined}
+        onApplyLaterChange={(on) => patch({ applyLater: on })}
         laterLabel="Automatically apply this contract to locations added later"
         laterDetails=""
       />

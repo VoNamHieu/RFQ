@@ -53,6 +53,32 @@ export function heldReason(order, db) {
   return `Held over ${money(held.value)}${per} · now ${now}`;
 }
 
+// heldReason in parts, for an order's page: `held` — what held it, with its limit (null
+// when it has since been deleted; `name` is the one it had) — and `now`, where the order
+// stands today when the limits have changed since (else null). A weekly or monthly
+// maximum also gives what was ordered before it in the period (`others`, `period`).
+export function heldParts(order, db) {
+  const company = (db.companies || []).find((c) => (c.orders || []).some((o) => o.id === order.id));
+  const location = company && (company.locations || []).find((l) => (order.locationId ? l.id === order.locationId : l.name === order.location));
+  const limitOf = (id) => (db.limits || []).find((l) => l.id === id) || null;
+  const held = order.heldAt;
+  const part = (text, id, name) => ({ text, limit: id ? limitOf(id) : null, name: name || null });
+  if (!location) return { held: part(order.reason || 'Held for your review'), now: null, others: 0, period: 'order' };
+  if (held?.sku) return { held: part(`${held.item} over the maximum of ${held.value}`, held.limitId, held.limitName), now: null, others: 0, period: 'order' };
+  if (held?.basis === 'qty') return { held: part(`Over the ${held.value}-unit maximum`, held.limitId, held.limitName), now: null, others: 0, period: 'order' };
+  const period = held?.period || 'order';
+  const per = period === 'order' ? '' : ` ${period}ly`;
+  const max = reviewMaximumFor(db, company.id, location.id, period);
+  const atLocation = (o) => (o.locationId ? o.locationId === location.id : o.location === location.name);
+  const others = period === 'order' ? 0 : spentSoFar((company.orders || []).filter((o) => o.id !== order.id && atLocation(o)), order.date)[period];
+  const now = max
+    ? part(`${others + order.amount > max.value ? 'Over' : 'Within'} the ${money(max.value)}${per} maximum`, max.limit.id, max.limit.name)
+    : part('No longer over a limit');
+  if (!held) return { held: now, now: null, others, period };
+  const same = max && max.value === held.value && max.limit.id === held.limitId;
+  return { held: part(`Over the ${money(held.value)}${per} maximum`, held.limitId, held.limitName), now: same ? null : now, others, period };
+}
+
 // What the buyer wrote with the order request (Note for the seller), shown where the merchant decides.
 export const buyerMessageText = (order) => (order.buyerMessage ? `Buyer’s note: “${order.buyerMessage}”` : null);
 

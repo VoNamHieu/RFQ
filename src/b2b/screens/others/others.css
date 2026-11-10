@@ -1,10 +1,47 @@
 /* Others page (src/b2b/screens/others). Class names are prefixed `oth-`. */
 
-/* OthersSidebar: <Box position="sticky" insetBlockStart="400">. The admin top
-   bar is fixed over the scrolling document, so stick below it. */
-.oth-sidebar {
-  position: sticky;
-  top: calc(var(--wc-topbar-h, 56px) + 16px);
+/* Settings menu, as on the RFQ app's Configuration page (.qcfg-menu). */
+.oth-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+}
+
+.oth-menu__item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--p-color-text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.oth-menu__item:hover {
+  background: rgba(247, 247, 247, 1);
+}
+
+.oth-menu__item[aria-current='true'] {
+  background: rgba(235, 235, 235, 1);
+}
+
+.oth-menu__item:focus-visible {
+  outline: 2px solid #005bd3;
+  outline-offset: 1px;
+}
+
+.oth-menu__icon {
+  display: inline-flex;
+  flex: none;
+  margin-inline-end: 4px;
 }
 
 /* ── Email template editor (features/Email/components/AutoResponseEmailEditor) ── */

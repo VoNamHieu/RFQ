@@ -84,7 +84,7 @@ export function SelectCompaniesModal({
   applyLater = true,
   onApplyLaterChange,
   laterLabel = 'Automatically apply this pricing to locations added later',
-  laterDetails = 'This only applies to companies with “Automatically add new locations” turned on.',
+  laterDetails = '',
   single = false,
   needsLocation = false,
 }) {

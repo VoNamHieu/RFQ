@@ -374,7 +374,8 @@ export const scopeLabel = (p) => {
     const ts = p.selectedTags || [];
     return ts.length === 1 ? `Tag: ${ts[0]}` : `${ts.length} product tags`;
   }
-  return `${(p.selectedProducts || []).length} selected products`;
+  const n = (p.selectedProducts || []).length;
+  return `${n} selected product${n === 1 ? '' : 's'}`;
 };
 
 // A company "needs a price" if any of its locations fails to resolve a profile —
@@ -521,6 +522,101 @@ export function ruleAdjustmentLabel(rule) {
   }
   const unit = rule.valueType === 'percentage' ? `${rule.value}%` : `$${rule.value}`;
   return rule.rule === 'increase' ? `+${unit}` : `${unit} off`;
+}
+
+// ── Settings summary: a base pricing's Products and Calculation lines ─────────
+// Products: what it prices. With a default adjustment (pricingRule / value, set
+// before rules existed) every product in its scope gets it: its scope ("All
+// products", a collection…). Else from its rules and overrides: a rule on All
+// products → "All products"; else the rules' collections / vendors / tags / types ("Collection:
+// Summer" for one, "2 collections · 1 vendor" for more), plus the products with an
+// override outside them ("+ 3 products"; an override is per variant, counted by
+// product). Overrides only: "3 products". Nothing yet: "None".
+const RULE_FIELD_NOUN = {
+  collection: ['collection', 'collections'],
+  vendor: ['vendor', 'vendors'],
+  tag: ['product tag', 'product tags'],
+  productType: ['product type', 'product types'],
+};
+// The default adjustment every product in a base pricing's scope gets (rules and
+// overrides win over it), or null.
+const defaultAdjustment = (p) =>
+  p?.pricingRule && p.pricingRule !== 'keep' && Number(p.value) ? { rule: p.pricingRule, valueType: p.valueType, value: p.value } : null;
+export function basePricingProductsLabel(policy, products = []) {
+  const rules = policy?.conditionalRules || [];
+  if (defaultAdjustment(policy)) return scopeLabel(policy);
+  if (rules.some((r) => ruleField(r) === 'all')) return 'All products';
+  const values = {};
+  rules.forEach((r) =>
+    (r.conditions || []).forEach((c) => {
+      if (c.field === 'all') return;
+      condValues(c).forEach((v) => {
+        values[c.field] = values[c.field] || new Set();
+        values[c.field].add(v);
+      });
+    }),
+  );
+  const fields = RULE_FIELDS.map((f) => f.field).filter((f) => values[f]);
+  const total = fields.reduce((n, f) => n + values[f].size, 0);
+  let ruleText = '';
+  if (total === 1) ruleText = `${RULE_FIELD_LABEL[fields[0]]}: ${[...values[fields[0]]][0]}`;
+  else if (total > 1) {
+    ruleText = fields
+      .map((f) => {
+        const n = values[f].size;
+        const [one, many] = RULE_FIELD_NOUN[f] || ['value', 'values'];
+        return `${n} ${n === 1 ? one : many}`;
+      })
+      .join(' · ');
+  }
+  const overridden = overriddenProducts(policy, products);
+  const extra = overridden.filter((p) => !rules.some((r) => ruleMatches(r, p))).length;
+  const nProducts = (n) => `${n} product${n === 1 ? '' : 's'}`;
+  if (ruleText && extra) return `${ruleText} + ${nProducts(extra)}`;
+  if (ruleText) return ruleText;
+  if (extra) return nProducts(extra);
+  return 'None';
+}
+
+// Calculation: how the price changes, in the order things win last: the default
+// adjustment ("12% off Shopify price"), the rules — one: "10% off Shopify price"
+// (or "1 rule · 10% off" after a default); more: "3 rules · 10–20% off" (the range
+// when every rule takes the same kind of amount off) — then overrides, which win
+// over both: "… · 3 overrides", counted by product as Products counts them (a
+// product's variants count once). Nothing yet: "Shopify price (no change)".
+const adjustmentText = (r) => {
+  if (!r || r.rule === 'keep' || !r.value) return 'Shopify price (no change)';
+  const amount = r.valueType === 'amount';
+  const unit = amount ? `$${r.value}` : `${r.value}%`;
+  if (r.rule === 'set') return `Set to ${unit}`;
+  return r.rule === 'increase' ? `${unit} over Shopify price` : `${unit} off Shopify price`;
+};
+// The products with an override (a product with several overridden variants once).
+const overriddenProducts = (policy, products) => {
+  const adj = policy?.variantAdjustments || {};
+  return Object.keys(adj).length ? products.filter((p) => productVariants(p).some((v) => adj[v.id])) : [];
+};
+export function basePricingCalculationLabel(policy, products = []) {
+  const rules = policy?.conditionalRules || [];
+  const n = overriddenProducts(policy, products).length;
+  const d = defaultAdjustment(policy);
+  let ruleText = '';
+  if (rules.length === 1) ruleText = d ? `1 rule · ${ruleAdjustmentLabel(rules[0])}` : adjustmentText(rules[0]);
+  else if (rules.length > 1) {
+    const off = (r) => r.value && !['set', 'increase', 'keep'].includes(r.rule);
+    const amount = rules[0]?.valueType === 'amount';
+    let range = '';
+    if (rules.every((r) => off(r) && (r.valueType === 'amount') === amount)) {
+      const vals = rules.map((r) => Number(r.value));
+      const lo = Math.min(...vals);
+      const hi = Math.max(...vals);
+      const fmt = (v) => (amount ? `$${v}` : `${v}%`);
+      range = lo === hi ? `${fmt(lo)} off` : amount ? `$${lo}–$${hi} off` : `${lo}–${hi}% off`;
+    }
+    ruleText = [`${rules.length} rules`, range].filter(Boolean).join(' · ');
+  }
+  const parts = [d ? adjustmentText(d) : '', ruleText, n ? `${n} override${n === 1 ? '' : 's'}` : ''].filter(Boolean);
+  return parts.length ? parts.join(' · ') : 'Shopify price (no change)';
 }
 
 // What a base pricing is made of, as the editor's Settings summary says it:

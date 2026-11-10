@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { versionSnapshot, agreementDatesLabel, fmtDay, termSettings, termSummary, PAST_STATUSES } from '../agreements.js';
+import { versionSnapshot, versionScopeLabel, agreementDatesLabel, fmtDay, termSettings, termSummary, PAST_STATUSES } from '../agreements.js';
 import { TermGroup, VersionTimeline, PriorityNumber } from './ContractParts.jsx';
+import { LocationNames } from './LocationNames.jsx';
 import { Modal, wcTone } from '../../shared/wc.jsx';
 
 const STATUS_TONE = { Active: 'success', Scheduled: 'info', Expired: undefined, Ended: undefined };
@@ -28,7 +29,8 @@ export function ContractVersionModal({ ag, version, onClose, onDuplicate }) {
   // applied — of which company.
   const versions = [...new Set((ag.history || []).filter((h) => h.snapshot).map((h) => h.version))].sort((a, b) => b - a);
   const company = (state.db.companies || []).find((c) => c.id === ag.companyId);
-  const where = snap?.scope && company ? `${snap.scope} of ${company.name}` : snap?.scope;
+  // A location removed from the company since drops out (versionScopeLabel).
+  const where = snap?.scope && company ? <LocationNames label={versionScopeLabel(company, snap)} after={` of ${company.name}`} /> : snap?.scope;
   // Kept with the version; a version kept before that reads it as it is now.
   const configOf = (t, isLimit) => t.config || (isLimit ? state.db.limits || [] : state.db.policies).find((x) => x.id === t.id);
   // A term as a row: its priority (pricing, lowest first), name, what it does, and a

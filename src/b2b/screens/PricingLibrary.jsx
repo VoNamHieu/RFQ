@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store.jsx';
-import { policyStatus, policyUsage, policyUsageCount } from '../pricing.js';
+import { policyStatus, policyUsage, policyUsageCount, companyBaseEntries, companyQuantityEntries, locationOnlyEntries, locationPricingEntries } from '../pricing.js';
 import { Modal, IndexFiltersBar, useWcId, wcTone, PageHeader } from '../../shared/wc.jsx';
 import { isContractTerm } from '../agreements.js';
+import { backActionFor } from '../components/companyLayout.jsx';
 import basePricingArt from '../assets/base-pricing-empty.webp';
 import quantityPricingArt from '../assets/quantity-pricing-empty.webp';
 
@@ -47,13 +48,13 @@ const PRICING_TYPES = [
   },
 ];
 
-// Full-page "Select pricing type" step shown before the editor: pick a type
-// card, then set it up. Opened from the list's "Create pricing" action; the
-// back action returns to the list.
-function PricingTypeChooser({ onBack, onPick }) {
+// Full-page "Select pricing type" step: pick a type card. Opened from the list's
+// "Create pricing" action (then the editor), and from a company or location page's
+// Add pricing ⊕ (then the pricing of that type to add); the back action returns.
+export function PricingTypeChooser({ onBack, onPick, backLabel = 'Pricing settings', actionLabel = 'Create pricing' }) {
   return (
     <>
-    <PageHeader heading="Select pricing type" backAction={{ content: 'Pricing settings', onAction: onBack }} />
+    <PageHeader heading="Select pricing type" backAction={{ content: backLabel, onAction: onBack }} />
     <s-page>
       <s-query-container>
         <s-grid gridTemplateColumns="@container (inline-size > 490px) 1fr 1fr, 1fr" gap="base">
@@ -66,7 +67,7 @@ function PricingTypeChooser({ onBack, onPick }) {
                   <s-paragraph color="subdued">{t.description}</s-paragraph>
                 </s-stack>
                 <s-stack direction="inline">
-                  <s-button onClick={() => onPick(t.kind, t.mode)}>Create pricing</s-button>
+                  <s-button onClick={() => onPick(t.kind, t.mode)}>{actionLabel}</s-button>
                 </s-stack>
               </s-stack>
             </s-section>
@@ -85,6 +86,10 @@ export function PricingLibrary() {
   const [kind, setKind] = useState('all');
   // App home's unassigned-pricing warning lands here filtered to Inactive.
   const [statusFilter, setStatusFilter] = useState(state.pricingStatus || 'all');
+  // A company page's "View pricing library" lands here filtered to that company.
+  const [companyFilter, setCompanyFilter] = useState(state.pricingCompany || 'all');
+  // …and a location page's, to that location (`companyId::locationId`).
+  const [locationFilter, setLocationFilter] = useState(state.pricingLocation || 'all');
   const [sort, setSort] = useState('name');
   const [page, setPage] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -92,11 +97,13 @@ export function PricingLibrary() {
   const [chooserOpen, setChooserOpen] = useState(!!state.pricingChooser);
   const tipId = useWcId('pricing-row');
   useEffect(() => {
-    if (state.pricingChooser || state.pricingStatus) dispatch({ type: 'NAVIGATE', view: 'pricing', patch: { pricingChooser: false, pricingStatus: null } });
+    if (state.pricingChooser || state.pricingStatus || state.pricingCompany || state.pricingLocation) {
+      dispatch({ type: 'NAVIGATE', view: 'pricing', patch: { pricingChooser: false, pricingStatus: null, pricingCompany: null, pricingLocation: null } });
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Jump back to the first page whenever the result set changes.
-  useEffect(() => { setPage(0); }, [audience, search, kind, statusFilter, sort]);
+  useEffect(() => { setPage(0); }, [audience, search, kind, statusFilter, companyFilter, locationFilter, sort]);
 
   // "Create pricing" opens the type chooser first; picking a card opens the editor.
   if (chooserOpen) {
@@ -113,12 +120,45 @@ export function PricingLibrary() {
 
   const q = search.trim().toLowerCase();
   const statusOf = (p) => policyStatus(p, state.db);
+  // The company filter: the pricing the company gets, on its own or on some of its
+  // locations only (as its page's Pricing block lists it).
+  const companies = state.db.companies || [];
+  const filterCompany = companyFilter === 'all' ? null : companies.find((c) => c.id === companyFilter);
+  const companyPolicyIds = filterCompany
+    ? new Set(
+        [
+          ...companyBaseEntries(filterCompany, state.db.policies),
+          ...companyQuantityEntries(filterCompany, state.db.policies),
+          ...locationOnlyEntries(filterCompany, state.db.policies, 'base'),
+          ...locationOnlyEntries(filterCompany, state.db.policies, 'quantity'),
+        ].map((e) => e.policy.id),
+      )
+    : null;
+  // The location filter: the pricing the location gets (its own list, or the company's
+  // it follows), as its page's Pricing block lists it. With a company picked, only
+  // that company's locations are offered.
+  const locationChoices = companies
+    .filter((c) => !filterCompany || c.id === filterCompany.id)
+    .flatMap((c) =>
+      (c.locations || [])
+        .filter((l) => l.status !== 'Deleted')
+        .map((l) => ({ label: filterCompany ? l.name : `${l.name} · ${c.name}`, value: `${c.id}::${l.id}`, company: c, location: l })),
+    );
+  const filterLocation = locationChoices.find((x) => x.value === locationFilter) || null;
+  const locationPolicyIds = filterLocation
+    ? (() => {
+        const { bases, quantities } = locationPricingEntries(filterLocation.company, filterLocation.location, state.db.policies, { includeInactive: true });
+        return new Set([...bases, ...quantities].map((e) => e.policy.id));
+      })()
+    : null;
   // A contract's own pricing is only in its contract (edited in the contract editor).
   let policies = state.db.policies.filter((p) => {
     if (isContractTerm(p)) return false;
     if (audience !== 'all' && p.audienceType !== audience) return false;
     if (kind !== 'all' && (p.priceKind === 'quantity' ? 'quantity' : 'base') !== kind) return false;
     if (statusFilter !== 'all' && statusOf(p).label.toLowerCase() !== statusFilter) return false;
+    if (companyPolicyIds && !companyPolicyIds.has(p.id)) return false;
+    if (locationPolicyIds && !locationPolicyIds.has(p.id)) return false;
     if (q && !p.name.toLowerCase().includes(q)) return false;
     return true;
   });
@@ -204,11 +244,17 @@ export function PricingLibrary() {
   const tabs = AUDIENCE.map((a) => ({ id: `aud-${a.id}`, content: a.label }));
   const selectedTab = Math.max(0, AUDIENCE.findIndex((a) => a.id === audience));
 
+  // Opened from a company or location page: a back arrow there before the title.
+  const back = backActionFor(state, dispatch, 'pricing');
   return (
-    <s-page heading="Pricing settings">
-      <s-button slot="primary-action" variant="primary" onClick={() => setChooserOpen(true)}>
-        Create pricing
-      </s-button>
+    <>
+    {back ? <PageHeader heading="Pricing settings" backAction={back} primaryAction={{ content: 'Create pricing', onAction: () => setChooserOpen(true) }} /> : null}
+    <s-page heading={back ? undefined : 'Pricing settings'}>
+      {back ? null : (
+        <s-button slot="primary-action" variant="primary" onClick={() => setChooserOpen(true)}>
+          Create pricing
+        </s-button>
+      )}
 
       <s-section padding="none">
         <s-table
@@ -232,11 +278,36 @@ export function PricingLibrary() {
             filters={[
               { key: 'kind', label: 'Pricing type', choices: TYPE_CHOICES, value: kind, defaultValue: 'all' },
               { key: 'status', label: 'Status', choices: STATUS_CHOICES, value: statusFilter, defaultValue: 'all' },
+              {
+                key: 'company',
+                label: 'Company',
+                choices: [{ label: 'Any company', value: 'all' }, ...companies.map((c) => ({ label: c.name, value: c.id }))],
+                value: companyFilter,
+                defaultValue: 'all',
+              },
+              {
+                key: 'location',
+                label: 'Location',
+                choices: [{ label: 'Any location', value: 'all' }, ...locationChoices.map(({ label, value }) => ({ label, value }))],
+                value: filterLocation ? locationFilter : 'all',
+                defaultValue: 'all',
+              },
             ]}
-            onFilterChange={(key, v) => (key === 'kind' ? setKind(v) : setStatusFilter(v))}
+            onFilterChange={(key, v) => {
+              if (key === 'kind') setKind(v);
+              else if (key === 'status') setStatusFilter(v);
+              else if (key === 'location') setLocationFilter(v);
+              else {
+                setCompanyFilter(v);
+                // A location of another company no longer fits.
+                if (v !== 'all' && !locationFilter.startsWith(`${v}::`)) setLocationFilter('all');
+              }
+            }}
             onClearAll={() => {
               setKind('all');
               setStatusFilter('all');
+              setCompanyFilter('all');
+              setLocationFilter('all');
             }}
           />
           <s-table-header-row>
@@ -288,5 +359,6 @@ export function PricingLibrary() {
         </Modal>
       )}
     </s-page>
+    </>
   );
 }

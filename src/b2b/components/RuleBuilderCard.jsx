@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useStore } from '../store.jsx';
-import { MenuButton } from '../../shared/wc.jsx';
+import { MenuButton, Tip } from '../../shared/wc.jsx';
 import {
   RULE_FIELDS,
   ruleField,
@@ -291,11 +291,12 @@ export function RuleBuilderCard() {
       <s-stack gap="small">
         <s-stack direction="inline" gap="small-300" alignItems="center">
           <s-heading>Pricing rules</s-heading>
+          {/* How rules work, on hover of the info icon. */}
+          <Tip content="Price all products or a set by collection, vendor, tag or type. When several rules match one product, the higher rule wins — drag the handle to reorder.">
+            <s-icon type="info" color="subdued" />
+          </Tip>
           {rules.length > 0 && <s-badge>{String(rules.length)}</s-badge>}
         </s-stack>
-        <s-paragraph color="subdued" fontSize="small">
-          Price all products or a set by collection, vendor, tag or type. When several rules match one product, the higher rule wins — drag the handle to reorder.
-        </s-paragraph>
 
         {rules.length === 0 ? (
           <s-box padding="base" background="subdued" borderRadius="base">

@@ -33,7 +33,7 @@ export function newBaseBuilder() {
     variantAdjustments: {},
     explicitEnabled: false,
     conditionalRules: [],
-    timezone: '(GMT+07:00) Indochina Time - Bangkok',
+    timezone: null, // the store's (storeTimezone) until one is picked
     startDate: TODAY,
     startTime: '12:00 AM',
     hasEndDate: false,

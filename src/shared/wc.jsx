@@ -51,6 +51,9 @@ export function useWcId(prefix = 'wc') {
 // Put actions in the slots: <s-button slot="primary-action"> and
 // <s-button slot="secondary-actions">.
 export function Modal({ open = true, onClose, heading, size, padding, children }) {
+  // Inside Shopify admin (App Bridge), s-modal opens and closes through the admin by its
+  // id: without one, its ✕ / Escape never close it. Each modal gets its own.
+  const id = useWcId('modal');
   const ref = useRef(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -87,7 +90,7 @@ export function Modal({ open = true, onClose, heading, size, padding, children }
   };
 
   return (
-    <s-modal ref={ref} heading={heading} size={size} padding={padding} onHide={handleHide}>
+    <s-modal ref={ref} id={id} heading={heading} size={size} padding={padding} onHide={handleHide}>
       {children}
     </s-modal>
   );

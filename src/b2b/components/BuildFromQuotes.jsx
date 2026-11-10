@@ -5,8 +5,10 @@ import { companyBaseEntries, resolvedPriceFor, hasOwnSlot, slotIds } from '../pr
 import { money } from '../format.js';
 import { withVersion } from '../../shared/versions.js';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
-import { Modal, MenuButton, Tip } from '../../shared/wc.jsx';
+import { Modal, Tip } from '../../shared/wc.jsx';
 import emptyStateArt from '../assets/empty-state.png';
+import './companyLayout.css';
+import { CardBanner } from './companyLayout.jsx';
 
 // The RFQ app lives at the site root; its default view is the quotes submission
 // list. Keep the ?v= version param so the switch stays on the same prototype.
@@ -47,11 +49,12 @@ function rowsFromQuotes(company, db, locationName) {
 }
 
 // Open from the company page: every location's closed quotes to start with; the
-// merchant can narrow to one location ("Quotes from"). Adds to the company's first
-// base pricing by default.
-export function openBuildFromQuotes(dispatch, company, db) {
-  const rows = rowsFromQuotes(company, db, null);
-  dispatch({ type: 'OPEN_BUILD_QUOTES', payload: { companyId: company.id, rows, source: null, dest: companyBaseEntries(company, db.policies)[0]?.policy.id || '__new__' } });
+// merchant can narrow to one location ("Quotes from"). From a location's page
+// (`locationName`): that location's closed quotes. Adds to the company's first base
+// pricing by default.
+export function openBuildFromQuotes(dispatch, company, db, locationName = null) {
+  const rows = rowsFromQuotes(company, db, locationName);
+  dispatch({ type: 'OPEN_BUILD_QUOTES', payload: { companyId: company.id, rows, source: locationName, dest: companyBaseEntries(company, db.policies)[0]?.policy.id || '__new__' } });
 }
 
 // "Turn into pricing" from a single quote: just its priced lines; its location is
@@ -74,6 +77,8 @@ export function BuildFromQuotes() {
   const [selected, setSelected] = React.useState(() => new Set());
   const [query, setQuery] = React.useState('');
   const [sort, setSort] = React.useState('title-asc');
+  // The dev strip's ✕ hides it (to see the modal as a merchant does) until the page reloads.
+  const [devHidden, setDevHidden] = React.useState(false);
   React.useEffect(() => {
     setSelected(new Set((state.buildQuotes?.rows || []).map((r) => r.sku)));
     setQuery('');
@@ -234,27 +239,26 @@ export function BuildFromQuotes() {
     const proposed = Number(r.proposed) || 0;
     const margin = proposed ? Math.round(((proposed - cost) / proposed) * 100) : 0;
     const belowCost = proposed > 0 && proposed < cost;
+    // The company page's table look: two-line product cell, prices on the right.
     return (
-      <s-table-row key={r.sku}>
-        <s-table-cell>
+      <tr key={r.sku}>
+        <td className="cd-check">
           <s-checkbox
             accessibilityLabel={`Select ${skuTitle(r.sku)}`}
             checked={selected.has(r.sku)}
             onChange={(e) => setRowSelected(r.sku, e.currentTarget.checked)}
           />
-        </s-table-cell>
-        <s-table-cell>
-          <s-stack gap="small-500">
-            <s-text fontWeight="medium">{skuTitle(r.sku)}</s-text>
-            <s-text color="subdued" fontSize="small">{r.sku}</s-text>
-          </s-stack>
-        </s-table-cell>
-        <s-table-cell>{shopify != null ? money(shopify) : '—'}</s-table-cell>
-        <s-table-cell><s-text fontWeight="semibold">{money(r.quoted)}</s-text></s-table-cell>
-        <s-table-cell>
-          <s-text color={current == null ? 'subdued' : undefined}>{current != null ? money(current) : '—'}</s-text>
-        </s-table-cell>
-        <s-table-cell>
+        </td>
+        <td>
+          <span className="cd-primary">{skuTitle(r.sku)}</span>
+          <span className="cd-sub">{r.sku}</span>
+        </td>
+        <td className="cd-num cd-nowrap cd-muted">{shopify != null ? money(shopify) : '—'}</td>
+        <td className="cd-num cd-nowrap">
+          <span className="cd-primary">{money(r.quoted)}</span>
+        </td>
+        <td className={`cd-num cd-nowrap${current == null ? ' cd-muted' : ''}`}>{current != null ? money(current) : '—'}</td>
+        <td>
           <div style={{ width: 110 }}>
             <s-number-field
               label="Price to save"
@@ -266,82 +270,100 @@ export function BuildFromQuotes() {
               autocomplete="off"
             />
           </div>
-        </s-table-cell>
-        <s-table-cell>
-          <s-text tone={belowCost ? 'critical' : undefined}>{`${margin}%${belowCost ? ' · below cost' : ''}`}</s-text>
-        </s-table-cell>
-        <s-table-cell>
-          <s-link
+        </td>
+        <td className={`cd-num cd-nowrap${belowCost ? ' cd-critical' : ''}`}>{`${margin}%${belowCost ? ' · below cost' : ''}`}</td>
+        <td className="cd-nowrap">
+          <button
+            type="button"
+            className="cd-text-link cd-text-link--body"
             onClick={() => {
               // Close this modal and open the source quote in the B2B app.
               dispatch({ type: 'CLOSE_BUILD_QUOTES' });
               dispatch({ type: 'OPEN_QUOTE', id: r.from });
             }}
-          >{`from #${r.from}${!bq.source && locations.length > 1 && r.location ? ` · ${r.location}` : ''}`}</s-link>
-        </s-table-cell>
-      </s-table-row>
+          >{`from #${r.from}${!bq.source && locations.length > 1 && r.location ? ` · ${r.location}` : ''}`}</button>
+        </td>
+      </tr>
     );
   });
 
-  // "Quotes from" menu: every location with its closed-quote count (the button
-  // shows the current one).
-  const sourceItems = [
-    { content: `All locations (${closedQuotesOf(company, state.db, null).length})`, onAction: () => setSource('') },
-    ...locations.map((l) => ({
-      content: `${l.name} (${closedQuotesOf(company, state.db, l.name).length})`,
-      onAction: () => setSource(l.name),
-    })),
+  // "Quotes from" choices: every location with its closed-quote count.
+  const sourceOptions = [
+    { value: '', label: `All locations (${closedQuotesOf(company, state.db, null).length})` },
+    ...locations.map((l) => ({ value: l.name, label: `${l.name} (${closedQuotesOf(company, state.db, l.name).length})` })),
   ];
 
   return (
     <Modal onClose={() => dispatch({ type: 'CLOSE_BUILD_QUOTES' })} heading="Build pricing from closed quotes" size="large">
       <s-stack gap="small">
         {/* The dev toggle sat next to the title; s-modal's heading is text only. */}
-        {SHOW_DEV_TOOLS ? (
-          <DevToggle on={!rfqInstalled} onToggle={() => dispatch({ type: 'SET_RFQ_INSTALLED', installed: !rfqInstalled })} />
-        ) : null}
-
-        {/* "Quotes from" — a small filter pill (secondary button, icon + chevron,
-            like the Analytics date pickers); the menu lists every location with its
-            closed-quote count. */}
-        {pickSource && rfqInstalled ? (
-          <s-stack gap="small-400">
-            <s-text>Quotes from</s-text>
-            <s-stack direction="inline">
-              <MenuButton icon="location" items={sourceItems}>
-                {`${bq.source || 'All locations'} (${closedQuotesOf(company, state.db, bq.source).length})`}
-              </MenuButton>
-            </s-stack>
-          </s-stack>
+        {SHOW_DEV_TOOLS && !devHidden ? (
+          <DevToggle
+            on={!rfqInstalled}
+            onToggle={() => dispatch({ type: 'SET_RFQ_INSTALLED', installed: !rfqInstalled })}
+            onHide={() => setDevHidden(true)}
+          />
         ) : null}
 
         {!isEmpty && (
-          <s-paragraph color="subdued" fontSize="small">
+          <p className="cd-note">
             {bq.quoteId
               ? `Prices from quote #${bq.quoteId}${bq.source ? ` (${bq.source})` : ''}. Tick the ones to include, edit the price, then add them to a base pricing.`
               : `Prices come from each product’s most recently closed quote${bq.source ? ` at ${bq.source}` : ''}. Tick the ones to include, edit the price, then add them to a base pricing.`}
-          </s-paragraph>
+          </p>
         )}
 
-        {!isEmpty && (
-          <s-grid gridTemplateColumns="minmax(0, 1fr) 200px" gap="small-200" alignItems="center">
-            <s-search-field
-              label="Search products"
-              labelAccessibilityVisibility="exclusive"
-              value={query}
-              onInput={(e) => setQuery(e.currentTarget.value)}
-              placeholder="Search by product or SKU"
-              autocomplete="off"
-            />
-            <s-select label="Sort by" labelAccessibilityVisibility="exclusive" value={sort} onChange={(e) => setSort(e.currentTarget.value)}>
-              {SORT_OPTIONS.map((o) => (
-                <s-option key={o.value} value={o.value}>{o.label}</s-option>
-              ))}
-            </s-select>
-          </s-grid>
-        )}
+        {/* One row, as the Preview prices modal's: search, then two selects alike — "Quotes
+            from" (every location with its closed-quote count, its icon a pin; also when a
+            location has none, to switch) and sort. */}
+        {!isEmpty || (pickSource && rfqInstalled) ? (
+          <div className="bq-toolbar">
+            {!isEmpty ? (
+              <div className="bq-toolbar__search">
+                <s-search-field
+                  label="Search products"
+                  labelAccessibilityVisibility="exclusive"
+                  value={query}
+                  onInput={(e) => setQuery(e.currentTarget.value)}
+                  placeholder="Search by product or SKU"
+                  autocomplete="off"
+                />
+              </div>
+            ) : null}
+            {pickSource && rfqInstalled ? (
+              <div style={{ width: 220, flex: '0 0 auto' }}>
+                <s-select
+                  label="Quotes from"
+                  labelAccessibilityVisibility="exclusive"
+                  icon="location"
+                  value={bq.source || ''}
+                  onChange={(e) => setSource(e.currentTarget.value)}
+                >
+                  {sourceOptions.map((o) => (
+                    <s-option key={o.value || 'all'} value={o.value}>
+                      {o.label}
+                    </s-option>
+                  ))}
+                </s-select>
+              </div>
+            ) : null}
+            {!isEmpty ? (
+              <div style={{ width: 210, flex: '0 0 auto' }}>
+                <s-select label="Sort by" labelAccessibilityVisibility="exclusive" value={sort} onChange={(e) => setSort(e.currentTarget.value)}>
+                  {SORT_OPTIONS.map((o) => (
+                    <s-option key={o.value} value={o.value}>
+                      {o.label}
+                    </s-option>
+                  ))}
+                </s-select>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
-        <s-box border="base" borderRadius="base" overflow="hidden">
+        {/* A bordered card with a plain table, as on the company and location pages: light
+            headings that stay on top while the rows scroll. */}
+        <div className="cd-card">
           {/* No rows to show (none from closed quotes, the RFQ app missing, or a search
               that matches nothing): the table's empty state. */}
           {shown.length === 0 ? (
@@ -365,68 +387,70 @@ export function BuildFromQuotes() {
               </EmptyBlock>
             )
           ) : (
-            <div style={{ maxHeight: 320, overflowY: 'auto' }}>
-              <s-table>
-                <s-table-header-row>
-                  <s-table-header listSlot="inline">
-                    <s-checkbox
-                      accessibilityLabel="Select all shown products"
-                      checked={allShownSelected}
-                      indeterminate={selectedShown > 0 && !allShownSelected}
-                      onChange={(e) => setShownSelected(e.currentTarget.checked)}
-                    />
-                  </s-table-header>
-                  <s-table-header listSlot="primary">
-                    {selectedShown ? `${selectedShown} selected` : 'Product'}
-                  </s-table-header>
-                  <s-table-header listSlot="labeled" format="currency">Shopify</s-table-header>
-                  <s-table-header listSlot="labeled" format="currency">Quoted</s-table-header>
-                  <s-table-header listSlot="labeled" format="currency">
-                    <Tip detached content={`The price ${sourceLoc ? sourceLoc.name : 'this company'} pays now, from its current B2B pricing. “—” means no B2B price is set yet.`}>
-                      Current
-                    </Tip>
-                  </s-table-header>
-                  <s-table-header listSlot="labeled">
-                    <Tip detached content="Saved as this product’s base price in the selected pricing. Defaults to the quoted price — edit if needed.">
-                      Price to save
-                    </Tip>
-                  </s-table-header>
-                  <s-table-header listSlot="labeled" format="numeric">Margin</s-table-header>
-                  <s-table-header listSlot="labeled">Source</s-table-header>
-                </s-table-header-row>
-                <s-table-body>{rowMarkup}</s-table-body>
-              </s-table>
+            // ≈356px: the table takes 0.618 of the modal's body (the golden ratio) next to the
+            // description, the search row and Add to.
+            <div className="cd-table-scroll cd-table-scroll--tall" style={{ maxHeight: 356 }}>
+              <table className="cd-table cd-table--sticky cd-table--compact">
+                <thead>
+                  <tr>
+                    <th className="cd-check">
+                      <s-checkbox
+                        accessibilityLabel="Select all shown products"
+                        checked={allShownSelected}
+                        indeterminate={selectedShown > 0 && !allShownSelected}
+                        onChange={(e) => setShownSelected(e.currentTarget.checked)}
+                      />
+                    </th>
+                    <th>{selectedShown ? `${selectedShown} selected` : 'Product'}</th>
+                    <th className="cd-num">Shopify</th>
+                    <th className="cd-num">Quoted</th>
+                    {/* The heading stays plain (as the others); its ⓘ holds the tooltip. */}
+                    <th className="cd-num">
+                      <span className="cd-th-tip">
+                        Current
+                        <Tip detached content={`The price ${sourceLoc ? sourceLoc.name : 'this company'} pays now, from its current B2B pricing. “—” means no B2B price is set yet.`}>
+                          <s-icon type="info" size="small" color="subdued" />
+                        </Tip>
+                      </span>
+                    </th>
+                    <th>
+                      <span className="cd-th-tip">
+                        Price to save
+                        <Tip detached content="Saved as this product’s base price in the selected pricing. Defaults to the quoted price — edit if needed.">
+                          <s-icon type="info" size="small" color="subdued" />
+                        </Tip>
+                      </span>
+                    </th>
+                    <th className="cd-num">Margin</th>
+                    <th>Source</th>
+                  </tr>
+                </thead>
+                <tbody>{rowMarkup}</tbody>
+              </table>
             </div>
           )}
-        </s-box>
+        </div>
 
-        {!isEmpty && selectedCount === 0 && (
-          <s-paragraph tone="critical" fontSize="small">
-            Select at least one product to build pricing.
-          </s-paragraph>
-        )}
+        {!isEmpty && selectedCount === 0 && <p className="cd-note cd-critical">Select at least one product to build pricing.</p>}
 
         {/* Where the prices go: an existing pricing (updated wherever it's assigned)
-            or a new one — its locations are picked in the pricing editor. */}
+            or a new one — its locations are picked in the pricing editor. Set off by a
+            hairline, titled as the company page's sections, the hint under it. */}
         {!isEmpty && (
-          <>
-            <s-divider />
-            <s-select
-              label="Add to"
-              value={bq.dest}
-              onChange={(e) => patchBq({ dest: e.currentTarget.value })}
-              details={!otherCompanies.length ? destHint : undefined}
-            >
+          <div className="cd-addto">
+            <h3 className="cd-section__title">Add to</h3>
+            <s-select label="Add to" labelAccessibilityVisibility="exclusive" value={bq.dest} onChange={(e) => patchBq({ dest: e.currentTarget.value })}>
               {destOptions.map((o) => (
                 <s-option key={o.value} value={o.value}>{o.label}</s-option>
               ))}
             </s-select>
+            {!otherCompanies.length && destHint ? <p className="cd-note">{destHint}</p> : null}
             {otherCompanies.length ? (
-              <s-banner tone="warning">
+              <CardBanner tone="warning">
                 {`“${destPolicy.name}” is also assigned to ${otherCompanies.length} other compan${otherCompanies.length === 1 ? 'y' : 'ies'}, so they’ll get these quote prices too. To use them only for ${company.name} or its location, pick a pricing assigned only to it, or create a new one.`}
-              </s-banner>
+              </CardBanner>
             ) : null}
-          </>
+          </div>
         )}
       </s-stack>
       <s-button slot="primary-action" variant="primary" disabled={!canSave} onClick={onSave}>
@@ -441,14 +465,15 @@ export function BuildFromQuotes() {
 
 // Dev-only toggle in the modal header: preview the modal as a merchant who hasn't
 // installed the RFQ app. The "no closed quotes" case needs no toggle — open it on a
-// company without any.
-function DevToggle({ on, onToggle }) {
+// company without any. ✕ hides the strip.
+function DevToggle({ on, onToggle, onHide }) {
   return (
-    <s-stack direction="inline" gap="small-300" alignItems="center">
-      <s-badge tone="info">Dev</s-badge>
-      <s-press-button pressed={on} onClick={onToggle}>
+    <div className="cd-dev">
+      <span className="cd-chip cd-chip--neutral">Dev</span>
+      <button type="button" className="cd-text-link cd-text-link--body" onClick={onToggle}>
         {on ? 'Show installed' : 'Preview not installed'}
-      </s-press-button>
-    </s-stack>
+      </button>
+      <s-button icon="x" variant="tertiary" accessibilityLabel="Hide dev preview" onClick={onHide} />
+    </div>
   );
 }

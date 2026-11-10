@@ -25,7 +25,6 @@ export function QuantityPricingCard({ company }) {
   );
   const policies = entries.map((e) => e.policy);
   const openAdd = () => dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, kind: 'quantity', mode: 'add' });
-  const autoApply = !!company.autoAddLocations;
 
   // No quantity pricing yet — a proper empty state so the Add action is obvious
   // (mirrors the Base pricing card) instead of a "Not set" row with a bare +.
@@ -58,7 +57,7 @@ export function QuantityPricingCard({ company }) {
         <s-table-header-row>
           <s-table-header listSlot="primary">Pricing</s-table-header>
           <s-table-header listSlot="labeled">Location</s-table-header>
-          {autoApply && <s-table-header listSlot="labeled">Auto-apply to new locations</s-table-header>}
+          <s-table-header listSlot="labeled">Auto-apply to new locations</s-table-header>
           <s-table-header listSlot="labeled">Products</s-table-header>
           <s-table-header listSlot="secondary">Status</s-table-header>
           <s-table-header listSlot="inline">
@@ -76,11 +75,10 @@ export function QuantityPricingCard({ company }) {
                   <PricingName policy={policy} contract={ag} />
                 </s-table-cell>
                 <s-table-cell>{pricingLocationsLabel(company, 'quantity', policy.id)}</s-table-cell>
-                {autoApply && (
-                  <s-table-cell>
-                    <ApplyLaterSwitch company={company} kind="quantity" policy={policy} />
-                  </s-table-cell>
-                )}
+                {/* Always shown: independent of the company's auto-add locations. */}
+                <s-table-cell>
+                  <ApplyLaterSwitch company={company} kind="quantity" policy={policy} />
+                </s-table-cell>
                 <s-table-cell>
                   <s-text color="subdued">{scopeTypeLabel(policy)}</s-text>
                 </s-table-cell>

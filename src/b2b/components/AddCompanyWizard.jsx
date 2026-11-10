@@ -6,8 +6,8 @@ import { shopifyCompanies } from '../data/directory.js';
 // Add Shopify companies to B2B — one screen: tick one or more companies, then Add.
 // The very first time (no company in the app yet) it picks just one, which lands
 // on its Pricing tab to set up; after that several can be added at once and it
-// ends on the company list, the added ones first. Each comes with all its
-// locations, and contacts come with their
+// ends on the company list, the added ones first. A ticked company opens its
+// locations under it, all ticked: the ticked ones come in, and contacts come with their
 // location. A company added before with only some locations stays listed
 // ("Added") so the rest can be added. "Automatically add new locations" (ticked
 // by default) makes locations created on the ticked companies in Shopify later
@@ -43,9 +43,26 @@ export function AddCompanyWizard() {
   const isSel = (r) => selected.includes(r.shp.id);
   const withAll = (list) => [...new Set([...selected, ...list.map((r) => r.shp.id)])];
   const withoutAll = (list) => selected.filter((id) => !list.some((r) => r.shp.id === id));
-  const toggleCompany = (r) => patch({ selected: single ? [r.shp.id] : isSel(r) ? withoutAll([r]) : withAll([r]) });
+  // A company ticked (again) starts with all its locations ticked.
+  const unticked = ac.unticked || {};
+  const allTicked = (list) => Object.fromEntries(Object.entries(unticked).filter(([id]) => !list.some((r) => r.shp.id === id)));
+  const toggleCompany = (r) =>
+    patch(
+      single
+        ? { selected: [r.shp.id], unticked: allTicked([r]) }
+        : isSel(r)
+          ? { selected: withoutAll([r]) }
+          : { selected: withAll([r]), unticked: allTicked([r]) },
+    );
+  // Its locations to add: those not in the app yet, minus the unticked ones.
+  const offOf = (r) => unticked[r.shp.id] || [];
+  const tickedOf = (r) => r.remaining.filter((l) => !offOf(r).includes(l.id));
+  const toggleLocation = (r, id, on) =>
+    patch({ unticked: { ...unticked, [r.shp.id]: on ? offOf(r).filter((x) => x !== id) : [...new Set([...offOf(r), id])] } });
   const chosen = available.filter(isSel);
   const nSel = chosen.length;
+  // A ticked company needs at least one of its locations ticked.
+  const noLocation = chosen.some((r) => tickedOf(r).length === 0);
 
   const q = (ac.search || '').trim().toLowerCase();
   const filtered = q
@@ -60,7 +77,7 @@ export function AddCompanyWizard() {
   const someFilteredSel = filtered.some(isSel);
 
   // Only adding locations to companies already in the app → count locations.
-  const nLocs = chosen.reduce((n, r) => n + r.remaining.length, 0);
+  const nLocs = chosen.reduce((n, r) => n + tickedOf(r).length, 0);
   const primaryLabel =
     nSel > 0 && chosen.every((r) => r.linked)
       ? `Add ${nLocs} location${nLocs === 1 ? '' : 's'}`
@@ -97,7 +114,9 @@ export function AddCompanyWizard() {
                     label={nSel > 0 ? `${nSel} selected` : 'Select all'}
                     checked={allFilteredSel}
                     indeterminate={someFilteredSel && !allFilteredSel}
-                    onChange={(e) => patch({ selected: e.currentTarget.checked ? withAll(filtered) : withoutAll(filtered) })}
+                    onChange={(e) =>
+                      patch(e.currentTarget.checked ? { selected: withAll(filtered), unticked: allTicked(filtered) } : { selected: withoutAll(filtered) })
+                    }
                   />
                 )}
                 <s-text color="subdued" fontSize="small">
@@ -153,6 +172,27 @@ export function AddCompanyWizard() {
                           </s-grid>
                         </s-box>
                       </button>
+                      {/* Ticked: its locations to add (all ticked at first), lined up with
+                          the company's name. */}
+                      {sel ? (
+                        <div style={{ paddingInlineStart: 74, paddingBlockEnd: 8 }}>
+                          <s-stack gap="small-200">
+                            {remaining.map((l) => (
+                              <s-checkbox
+                                key={l.id}
+                                label={l.name}
+                                checked={!offOf(r).includes(l.id)}
+                                onChange={(e) => toggleLocation(r, l.id, e.currentTarget.checked)}
+                              />
+                            ))}
+                            {tickedOf(r).length === 0 ? (
+                              <s-text tone="critical" fontSize="small">
+                                Select at least one location.
+                              </s-text>
+                            ) : null}
+                          </s-stack>
+                        </div>
+                      ) : null}
                     </React.Fragment>
                   );
                 })
@@ -168,17 +208,17 @@ export function AddCompanyWizard() {
           />
           <s-paragraph color="subdued" fontSize="small">
             {nSel > 1
-              ? 'Each company comes with all its locations and their contacts. Set pricing from each company’s page.'
+              ? 'Each company comes with its ticked locations and their contacts. Set pricing from each company’s page.'
               : chosen[0]?.linked
-                ? `Adds the remaining locations, and their contacts, to ${chosen[0].shp.name}.`
-                : 'The company comes with all its locations and their contacts.'}
+                ? `Adds the ticked locations, and their contacts, to ${chosen[0].shp.name}.`
+                : 'The company comes with the ticked locations and their contacts.'}
           </s-paragraph>
         </s-stack>
       )}
       <s-button
         slot="primary-action"
         variant="primary"
-        disabled={nSel === 0}
+        disabled={nSel === 0 || noLocation}
         onClick={() => dispatch({ type: 'ADD_COMPANY_CONFIRM' })}
       >
         {primaryLabel}

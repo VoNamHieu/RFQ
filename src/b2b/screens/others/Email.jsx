@@ -3,7 +3,7 @@ import { useStore } from '../../store.jsx';
 import { SaveBar } from '../../../shared/wc.jsx';
 import { EmailConnectionCard } from './EmailConnectionCard.jsx';
 import { EmailTemplateEditor } from './EmailTemplateEditor.jsx';
-import { RegistrationNotificationCard } from './RegistrationNotificationCard.jsx';
+import { NotificationTemplatesCard } from './NotificationTemplatesCard.jsx';
 import { versionFlags } from '../../../shared/versions.js';
 import {
   ADMIN_EMAIL_KEYS,
@@ -16,12 +16,19 @@ import {
   REGISTRATION_NOTIFICATION_ITEMS,
 } from './data.js';
 
-// Email section of the Others page (production: features/Email/components/Email):
-// the sender connection card + the registration notification toggles (and, in the
-// version with order limits and contracts, the order request and contract ones), with a
-// contextual save bar for unsaved toggle changes. A notification's edit icon
+// Email section of the Email notifications page (production: features/Email/components/Email):
+// the sender email card + the Notification templates card (registration emails, and in
+// the version with order limits and contracts, the order request and contract ones),
+// with a contextual save bar for unsaved toggle changes. A notification's edit icon
 // opens its template editor in place of the cards (the app keeps it in the
 // ?template=<key> query param of the same page); the page owns that key.
+
+// The Notification templates card's tabs.
+const NOTIFICATION_GROUPS = [
+  { id: 'registrations', label: 'Registrations', items: REGISTRATION_NOTIFICATION_ITEMS },
+  ...(versionFlags().orderLimits ? [{ id: 'orderRequests', label: 'Order requests', items: ORDER_REQUEST_NOTIFICATION_ITEMS }] : []),
+  ...(versionFlags().agreements ? [{ id: 'contracts', label: 'Contracts', items: CONTRACT_NOTIFICATION_ITEMS }] : []),
+];
 
 const mapSettingsToNotifications = (settings) =>
   Object.fromEntries(Object.keys(DEFAULT_NOTIFICATION_STATE).map((key) => [key, Boolean(settings[key])]));
@@ -72,9 +79,6 @@ export function Email({ activeNotificationEditor = null, onOpenEditor, onCloseEd
   const [connectError, setConnectError] = useState(null);
   const [notifications, setNotifications] = useState(initialNotifications);
   const [savedNotifications, setSavedNotifications] = useState(initialNotifications);
-  const [notificationCollapsed, setNotificationCollapsed] = useState(false);
-  const [orderRequestCollapsed, setOrderRequestCollapsed] = useState(false);
-  const [contractCollapsed, setContractCollapsed] = useState(false);
 
   // Template editor state: the editable copy and what the "server" holds.
   const [notificationTemplateState, setNotificationTemplateState] = useState(cloneTemplates);
@@ -196,6 +200,9 @@ export function Email({ activeNotificationEditor = null, onOpenEditor, onCloseEd
 
   const activeTemplate = activeNotificationEditor ? NOTIFICATION_EMAIL_TEMPLATES[activeNotificationEditor] : null;
 
+  // Who gets it: Customer or Admin.
+  const recipientOf = (item) => ({ badges: [item.recipient.type === 'admin' ? 'Admin' : 'Customer'] });
+
   return (
     <>
       {shouldOpenSaveBar ? (
@@ -234,39 +241,14 @@ export function Email({ activeNotificationEditor = null, onOpenEditor, onCloseEd
             onDisconnect={handleDisconnect}
             onDismissConnectError={() => setConnectError(null)}
           />
-          <RegistrationNotificationCard
+          <NotificationTemplatesCard
+            groups={NOTIFICATION_GROUPS}
             notifications={notifications}
             isConnected={isConnected}
-            collapsed={notificationCollapsed}
-            items={REGISTRATION_NOTIFICATION_ITEMS}
-            onToggleCollapse={() => setNotificationCollapsed((prev) => !prev)}
+            recipientOf={recipientOf}
             onToggleNotification={handleToggleNotification}
             onEditNotification={handleEditNotification}
           />
-          {versionFlags().orderLimits && (
-            <RegistrationNotificationCard
-              heading="Order limit notification"
-              notifications={notifications}
-              isConnected={isConnected}
-              collapsed={orderRequestCollapsed}
-              items={ORDER_REQUEST_NOTIFICATION_ITEMS}
-              onToggleCollapse={() => setOrderRequestCollapsed((prev) => !prev)}
-              onToggleNotification={handleToggleNotification}
-              onEditNotification={handleEditNotification}
-            />
-          )}
-          {versionFlags().agreements && (
-            <RegistrationNotificationCard
-              heading="Contract notification"
-              notifications={notifications}
-              isConnected={isConnected}
-              collapsed={contractCollapsed}
-              items={CONTRACT_NOTIFICATION_ITEMS}
-              onToggleCollapse={() => setContractCollapsed((prev) => !prev)}
-              onToggleNotification={handleToggleNotification}
-              onEditNotification={handleEditNotification}
-            />
-          )}
         </s-stack>
       )}
     </>

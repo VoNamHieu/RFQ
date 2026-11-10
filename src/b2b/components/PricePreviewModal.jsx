@@ -10,6 +10,7 @@ import {
   ruleTypeLabel,
   ruleValuesSummary,
 } from '../pricing.js';
+import { CdSection, StatusDot } from './companyLayout.jsx';
 
 // The profile-level default adjustment as a short label ("12% off", "Set $75").
 const defaultAdjLabel = (p) =>
@@ -95,15 +96,15 @@ export function PriceWhyContent({ company, location, policies, product }) {
       wouldBe: policyPriceBreakdown(s.entry.policy, product, variant).final,
     }));
 
+  // The company and location pages' look: the product as a title, then sections titled
+  // above bordered cards.
   return (
-    <s-stack gap="base">
-      <s-stack direction="inline" justifyContent="space-between" alignItems="center" gap="small">
-        <s-stack gap="small-500">
-          <s-heading fontSize="large-200">{product.title}</s-heading>
-          <s-text color="subdued" fontSize="small">
-            {product.sku}
-          </s-text>
-        </s-stack>
+    <div className="cd-why">
+      <div className="cd-why__head">
+        <div>
+          <h3 className="cd-why__title">{product.title}</h3>
+          <span className="cd-sub">{product.sku}</span>
+        </div>
         {variants.length > 1 ? (
           <div style={{ minWidth: 200 }}>
             <s-select label="Variant" labelAccessibilityVisibility="exclusive" value={variantId} onChange={(e) => setVariantId(e.currentTarget.value)}>
@@ -115,62 +116,65 @@ export function PriceWhyContent({ company, location, policies, product }) {
             </s-select>
           </div>
         ) : null}
-      </s-stack>
+      </div>
 
       {/* The discount attached to this product at this location */}
-      <s-stack gap="small-200">
-        <s-heading>Applied pricing</s-heading>
+      <CdSection title="Applied pricing">
         {applied ? (
           <Step entry={applied.entry} order={applied.order} status="applied" breakdown={applied.breakdown} variant={variant} />
         ) : (
-          <s-box padding="small" border="base" borderRadius="base">
-            <s-text color="subdued" fontSize="small">
-              No B2B pricing covers this product — buyers pay the Shopify list price.
-            </s-text>
-          </s-box>
+          <div className="cd-card">
+            <div className="cd-card__empty">No B2B pricing covers this product — buyers pay the Shopify list price.</div>
+          </div>
         )}
-      </s-stack>
+      </CdSection>
 
       {/* Other pricings that also cover this product but lost out — the
           "why isn't my pricing applied?" answer, with each would-be price. */}
       {covering.length ? (
-        <s-stack gap="small-200">
-          <s-stack gap="small-500">
-            <s-heading>Also covers this product</s-heading>
-            <s-text color="subdued" fontSize="small">
-              {covering.length === 1 ? 'This pricing also covers' : 'These pricings also cover'} this product but{' '}
-              {covering.length === 1 ? "isn't" : "aren't"} applied
-              {winnerName ? ` — ${winnerName} has higher priority.` : '.'}
-            </s-text>
-          </s-stack>
+        <CdSection
+          title="Also covers this product"
+          subtitle={`${covering.length === 1 ? 'This pricing also covers' : 'These pricings also cover'} this product but ${
+            covering.length === 1 ? "isn't" : "aren't"
+          } applied${winnerName ? ` — ${winnerName} has higher priority.` : '.'}`}
+          controls={
+            <button type="button" className="cd-text-link cd-text-link--body" onClick={() => setShowAll((v) => !v)}>
+              {showAll ? 'Hide' : `Show all ${covering.length}`}
+            </button>
+          }
+        >
           {showAll ? (
-            // Native scroller: s-scroll-box's maxBlockSize caps its outer box, not its scroll container.
-            <div style={{ maxHeight: 300, overflowY: 'auto' }}>
-              <s-box paddingInlineEnd="small-400" paddingBlockEnd="small-400">
-                <s-stack gap="small-200">
-                  {covering.map((t, i) => (
-                    <s-box key={i} padding="small" border="base" borderRadius="base">
-                      <s-grid gridTemplateColumns="1fr auto" gap="small-200" alignItems="center">
-                        <s-stack gap="small-500">
-                          <s-text fontWeight="medium">{t.entry.policy.name}</s-text>
-                          <s-text color="subdued" fontSize="small">
-                            {coverReason(t.entry.policy)} · would price at {money(t.wouldBe)}
-                          </s-text>
-                        </s-stack>
-                        <s-badge>Not applied</s-badge>
-                      </s-grid>
-                    </s-box>
-                  ))}
-                </s-stack>
-              </s-box>
+            <div className="cd-card">
+              <div className="cd-table-scroll cd-table-scroll--tall" style={{ maxHeight: 300 }}>
+                <table className="cd-table cd-table--sticky">
+                  <thead>
+                    <tr>
+                      <th>Pricing</th>
+                      <th className="cd-num">Would price at</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {covering.map((t, i) => (
+                      <tr key={i}>
+                        <td>
+                          <span className="cd-primary">{t.entry.policy.name}</span>
+                          <span className="cd-sub">{coverReason(t.entry.policy)}</span>
+                        </td>
+                        <td className="cd-num cd-nowrap">{money(t.wouldBe)}</td>
+                        <td>
+                          <StatusDot>Not applied</StatusDot>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ) : null}
-          <s-stack direction="inline">
-            <s-link onClick={() => setShowAll((v) => !v)}>{showAll ? 'Hide' : `Show all ${covering.length}`}</s-link>
-          </s-stack>
-        </s-stack>
+        </CdSection>
       ) : null}
-    </s-stack>
+    </div>
   );
 }
 
@@ -195,61 +199,46 @@ function Step({ entry, order, status, breakdown, variant }) {
         ? `${ruleTypeLabel(rule)} “${ruleValuesSummary(rule)}” rule · ${ruleAdjustmentLabel(rule)}`
         : `${defaultAdjLabel(p)} discount`;
 
+  // A bordered card: the pricing (its priority, scope) and its status; for the one that
+  // set the price, the list price, what decided it and what the buyer pays.
   return (
-    <s-box padding="small" border="base" borderRadius="base" background={applied ? 'subdued' : undefined}>
-      <s-stack gap="small-200">
-        <s-grid gridTemplateColumns="1fr auto" gap="small-200" alignItems="start">
-          <s-stack direction="inline" gap="small-300" alignItems="center">
-            {order != null ? <s-badge>{`Priority ${order}`}</s-badge> : <s-badge tone="info">Quantity</s-badge>}
-            <s-stack gap="none">
-              <s-text fontWeight="medium">{p.name}</s-text>
-              <s-text color="subdued" fontSize="small">
-                {scopeLabel(p)}
-                {entry.source === 'LOCATION' ? ' · Location override' : ''}
-              </s-text>
-            </s-stack>
-          </s-stack>
-          <s-badge tone={STATUS.tone}>{STATUS.label}</s-badge>
-        </s-grid>
+    <div className="cd-card">
+      <div className="cd-why__step">
+        <div>
+          <span className="cd-primary">{p.name}</span>
+          <span className="cd-sub">
+            {[order != null ? `Priority ${order}` : 'Quantity pricing', scopeLabel(p), entry.source === 'LOCATION' ? 'Location override' : null]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
+        </div>
+        <StatusDot tone={applied ? 'success' : undefined}>{STATUS.label}</StatusDot>
+      </div>
 
-        {applied && breakdown ? (
-          <s-box paddingInlineStart="small">
-            <s-stack gap="small-400">
-              <Line label="Shopify list price" value={money(breakdown.shopify)} />
-              <Line label={deciderLabel} value={money(breakdown.final)} decider />
-              <s-divider />
-              <s-stack direction="inline" justifyContent="space-between">
-                <s-text fontWeight="semibold">Buyer pays</s-text>
-                <s-text fontWeight="semibold">{money(breakdown.final)}</s-text>
-              </s-stack>
-            </s-stack>
-          </s-box>
-        ) : status === 'unreached' ? (
-          <s-box paddingInlineStart="small">
-            <s-text color="subdued" fontSize="small">
-              A higher-priority pricing already set the price.
-            </s-text>
-          </s-box>
-        ) : null}
-      </s-stack>
-    </s-box>
+      {applied && breakdown ? (
+        <div className="cd-why__lines">
+          <Line label="Shopify list price" value={money(breakdown.shopify)} dim />
+          <Line label={deciderLabel} value={money(breakdown.final)} />
+          <div className="cd-why__total">
+            <span>Buyer pays</span>
+            <span>{money(breakdown.final)}</span>
+          </div>
+        </div>
+      ) : status === 'unreached' ? (
+        <div className="cd-why__lines">
+          <p className="cd-note">A higher-priority pricing already set the price.</p>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
-function Line({ label, value, dim, strike, decider }) {
-  const color = dim ? 'subdued' : undefined;
+function Line({ label, value, dim, strike }) {
   const deco = (text) => (strike ? <s>{text}</s> : text);
   return (
-    <s-stack direction="inline" justifyContent="space-between" alignItems="center" gap="small-200">
-      <s-stack direction="inline" gap="small-300" alignItems="center">
-        <s-text fontSize="small" color={color}>
-          {deco(label)}
-        </s-text>
-        {decider ? <s-badge>Applied</s-badge> : null}
-      </s-stack>
-      <s-text fontSize="small" color={color}>
-        {deco(value)}
-      </s-text>
-    </s-stack>
+    <div className={`cd-why__line${dim ? ' cd-muted' : ''}`}>
+      <span>{deco(label)}</span>
+      <span className="cd-nowrap">{deco(value)}</span>
+    </div>
   );
 }

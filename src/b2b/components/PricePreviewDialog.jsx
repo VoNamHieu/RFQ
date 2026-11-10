@@ -2,11 +2,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { money } from '../format.js';
 import { Modal } from '../../shared/wc.jsx';
 import { ProductPriceTable } from './ProductPriceTable.jsx';
+import { StatusDot } from './companyLayout.jsx';
 
 // The one price-preview modal: the company page's "Preview prices" and the pricing
 // editor's "Preview all prices". Each entry is a product with its Shopify price,
 // what the buyer pays and the layer that decided it; search + sort run here. With
-// `renderWhy`, each row drills into "Why this price" (same modal — Back returns);
+// `renderWhy`, a row (click it) drills into "Why this price" (same modal — Back returns,
+// ✕ / Esc close the modal as on the list);
 // `toolbar` adds controls next to sort (e.g. the Location picker). Entries that
 // carry a `priority` (the deciding pricing's) get a Priority column. A `final` of
 // null means the buyer can't get the product there (e.g. it's outside their
@@ -25,9 +27,6 @@ export function PricePreviewDialog({ title, description, entries, emptyLabel, to
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('title-asc');
   const [whySku, setWhySku] = useState(null);
-  // Dismissing (X / Esc) while on "Why this price" goes back to the list: the
-  // modal has already hidden itself, so remount it to show the list again.
-  const [mountKey, setMountKey] = useState(0);
   // Opening "Why this price" removes the row button that had focus; move focus to
   // Back so the modal keeps it (and Escape still reaches the modal).
   const backRef = useRef(null);
@@ -54,38 +53,36 @@ export function PricePreviewDialog({ title, description, entries, emptyLabel, to
   });
 
   const showPriority = entries.some((e) => e.priority !== undefined);
+  // Decided by, on two lines as the company page's cells: the pricing, then the part of it
+  // ("Distributor Tier 2" over "Rule 2"). A product's own price (highlight) has a blue dot.
+  const decidedBy = (e) => {
+    const [name, ...rest] = String(e.decidedBy || '—').split(' · ');
+    return (
+      <>
+        {e.highlight ? <StatusDot tone="info">{name}</StatusDot> : <span>{name}</span>}
+        {rest.length ? <span className="cd-sub">{rest.join(' · ')}</span> : null}
+      </>
+    );
+  };
+  const muted = (v) => <span className="cd-muted">{v}</span>;
   const rows = sorted.map((e) => ({
     key: e.product.sku,
     title: e.product.title,
     subtitle: e.product.sku,
     cells: [
-      <s-text color="subdued">{money(e.shopify)}</s-text>,
-      <s-badge tone={e.highlight ? 'info' : undefined}>{e.decidedBy}</s-badge>,
-      ...(showPriority ? [<s-text color={e.priority == null ? 'subdued' : undefined}>{e.priority == null ? '—' : e.priority}</s-text>] : []),
-      e.final == null ? <s-text color="subdued">—</s-text> : <s-text fontWeight="semibold">{money(e.final)}</s-text>,
-      <s-text>{e.off > 0 ? `${e.off}% off` : e.off < 0 ? `${-e.off}% over` : '—'}</s-text>,
+      muted(money(e.shopify)),
+      decidedBy(e),
+      ...(showPriority ? [e.priority == null ? muted('—') : String(e.priority)] : []),
+      e.final == null ? muted('—') : <span className="cd-primary">{money(e.final)}</span>,
+      e.off > 0 ? `${e.off}% off` : e.off < 0 ? `${-e.off}% over` : muted('—'),
     ],
-    action: renderWhy ? (
-      <s-button icon="view" variant="tertiary" accessibilityLabel="Why this price" onClick={() => setWhySku(e.product.sku)} />
-    ) : undefined,
+    onOpen: renderWhy ? () => setWhySku(e.product.sku) : undefined,
   }));
 
   const back = () => setWhySku(null);
 
   return (
-    <Modal
-      key={mountKey}
-      onClose={
-        whyProduct
-          ? () => {
-              back();
-              setMountKey((k) => k + 1);
-            }
-          : onClose
-      }
-      heading={whyProduct ? 'Why this price' : title}
-      size={whyProduct ? undefined : 'large'}
-    >
+    <Modal onClose={onClose} heading={whyProduct ? 'Why this price' : title} size={whyProduct ? undefined : 'large'}>
       {whyProduct ? (
         renderWhy(whyProduct)
       ) : (
@@ -103,11 +100,11 @@ export function PricePreviewDialog({ title, description, entries, emptyLabel, to
             sortOptions={PREVIEW_SORTS}
             toolbar={toolbar}
             columns={[
-              { title: 'Shopify price', width: '96px', align: 'end' },
-              { title: 'Decided by', width: '160px', align: 'start' },
-              ...(showPriority ? [{ title: 'Priority', width: '64px', align: 'end' }] : []),
-              { title: 'Buyer pays', width: '96px', align: 'end' },
-              { title: 'Off', width: '72px', align: 'end' },
+              { title: 'Shopify price', align: 'end' },
+              { title: 'Decided by' },
+              ...(showPriority ? [{ title: 'Priority', align: 'end' }] : []),
+              { title: 'Buyer pays', align: 'end' },
+              { title: 'Off', align: 'end' },
             ]}
             rows={rows}
             emptyLabel={entries.length === 0 ? emptyLabel : `No products match “${query.trim()}”.`}

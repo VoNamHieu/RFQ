@@ -3,9 +3,12 @@ import { useStore } from '../store.jsx';
 import { canCreateAgreement, agreementAppliesToLabel, agreementTermCount, agreementDatesLabel, expiringSoon, daysUntil, PAST_STATUSES } from '../agreements.js';
 import { AgreementEditor } from '../components/AgreementEditor.jsx';
 import { ContractVersionModal } from '../components/ContractVersionModal.jsx';
+import { LocationNames } from '../components/LocationNames.jsx';
 import { EndContractModal, DeleteContractModal } from '../components/ContractParts.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
-import { IndexFiltersBar, useWcId, wcTone } from '../../shared/wc.jsx';
+import { IndexFiltersBar, useWcId, wcTone, PageHeader } from '../../shared/wc.jsx';
+import contractArt from '../assets/contract-empty.webp';
+import { backActionFor } from '../components/companyLayout.jsx';
 
 const STATUS_TABS = [
   { id: 'all', label: 'All' },
@@ -15,6 +18,8 @@ const STATUS_TABS = [
   { id: 'Ended', label: 'Ended' },
 ];
 const STATUS_TONE = { Active: 'success', Scheduled: 'info', Expired: undefined, Ended: undefined };
+// Prototype: show the dev toggles in production too (flip to import.meta.env.DEV to hide in prod).
+const SHOW_DEV_TOOLS = true;
 
 // Every company's agreement in one list. A row opens it in the editor, as a page here
 // (OPEN_AGREEMENT_EDITOR) — a past one opens as it was, read-only. An Active one can
@@ -26,11 +31,13 @@ export function Agreements() {
   const [viewing, setViewing] = useState(null);
   const [ending, setEnding] = useState(null);
   const [deleting, setDeleting] = useState(null);
+  const [devEmpty, setDevEmpty] = useState(false); // dev-only: preview the empty state while contracts exist
   const rowId = useWcId('agreement');
 
   if (state.agreementEditor) return <AgreementEditor />;
 
-  const all = state.db.agreements || [];
+  const realAll = state.db.agreements || [];
+  const all = devEmpty ? [] : realAll;
   const companyOf = (id) => state.db.companies.find((c) => c.id === id);
   // Any company can get a new one (picked in the editor), overlapping its other
   // contracts or not.
@@ -40,6 +47,12 @@ export function Agreements() {
     <s-button slot="primary-action" variant="primary" disabled={create.disabled} onClick={create.onAction}>
       {create.content}
     </s-button>
+  );
+  // Opened from a company or location page: a back arrow there before the title.
+  const back = backActionFor(state, dispatch, 'agreements');
+  const backHeader = back ? <PageHeader heading="Contracts" backAction={back} primaryAction={create} /> : null;
+  const devTools = SHOW_DEV_TOOLS && (
+    <DevTools disabled={!realAll.length} on={devEmpty} onToggle={() => setDevEmpty((v) => !v)} />
   );
 
   const q = search.trim().toLowerCase();
@@ -64,7 +77,7 @@ export function Agreements() {
             </s-stack>
           </s-table-cell>
           <s-table-cell>{company?.name || '—'}</s-table-cell>
-          <s-table-cell>{company ? agreementAppliesToLabel(company, a) : '—'}</s-table-cell>
+          <s-table-cell>{company ? <LocationNames label={agreementAppliesToLabel(company, a)} /> : '—'}</s-table-cell>
           <s-table-cell>
             <s-stack gap="small-500">
               <s-text>{agreementDatesLabel(a)}</s-text>
@@ -122,20 +135,27 @@ export function Agreements() {
 
   if (!all.length) {
     return (
-      <s-page heading="Contracts">
-        {createButton}
+      <>
+      {backHeader}
+      <s-page heading={back ? undefined : 'Contracts'}>
+        {back ? null : createButton}
+        {devTools}
         <s-section>
-          <EmptyBlock heading="Put each company’s terms in one contract" action={create.disabled ? undefined : create}>
-            A contract holds a company’s pricing and order limits. Activating it applies them together, and every change is kept as a version.
+          <EmptyBlock heading="Create your first contract" action={create.disabled ? undefined : create} image={contractArt}>
+            A contract defines the pricing and order limits that apply to a company. Once activated, these terms take effect together, and any changes are saved as new versions.
           </EmptyBlock>
         </s-section>
       </s-page>
+      </>
     );
   }
 
   return (
-    <s-page heading="Contracts">
-      {createButton}
+    <>
+    {backHeader}
+    <s-page heading={back ? undefined : 'Contracts'}>
+      {back ? null : createButton}
+      {devTools}
       <s-stack gap="base">
         <s-paragraph className="wc-page-intro" color="subdued">Each company’s pricing and order limits, applied together.</s-paragraph>
         <s-section padding="none">
@@ -185,5 +205,30 @@ export function Agreements() {
         />
       )}
     </s-page>
+    </>
+  );
+}
+
+// Dev-only strip (same pattern as Registrations): preview the Contracts empty state
+// while contracts exist.
+function DevTools({ disabled, on, onToggle }) {
+  return (
+    <s-box paddingBlockEnd="base">
+      <s-box background="subdued" border="base" borderRadius="base" padding="small-200">
+        <s-stack direction="inline" gap="small-200" alignItems="center">
+          <s-badge tone="info">Dev</s-badge>
+          <s-text fontSize="small" color="subdued">
+            {disabled
+              ? 'No contracts exist, so Contracts is showing its empty state.'
+              : on
+              ? 'Previewing the empty state — contracts actually exist.'
+              : 'Preview the Contracts empty state.'}
+          </s-text>
+          <s-press-button pressed={on} disabled={disabled} onClick={onToggle}>
+            {on ? 'Show data' : 'Preview empty state'}
+          </s-press-button>
+        </s-stack>
+      </s-box>
+    </s-box>
   );
 }

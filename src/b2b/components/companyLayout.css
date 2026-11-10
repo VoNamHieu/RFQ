@@ -1,0 +1,760 @@
+/* ---------- Company page (after the merchant's mockup) ---------- */
+/* A white page; sections titled above bordered cards; plain tables with two-line
+   cells; a flat side column split by hairlines. s-* components can't be restyled
+   (shadow DOM), so the cards and tables here are plain HTML. */
+
+body:has(.cd-page) {
+  background: var(--wc-surface);
+}
+
+.cd-page {
+  container-type: inline-size;
+  box-sizing: border-box;
+  width: min(100% - 32px, 966px);
+  margin-inline: auto;
+  padding-block: 16px 48px;
+}
+
+/* Back to Companies on the left, More actions on the right. */
+.cd-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-block-end: 24px;
+}
+.cd-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--wc-text);
+  cursor: pointer;
+}
+.cd-back__circle {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--wc-border);
+  border-radius: 50%;
+  background: var(--wc-surface);
+}
+.cd-back:hover .cd-back__circle {
+  background: var(--wc-surface-hover);
+}
+.cd-back:focus-visible {
+  outline: none;
+}
+.cd-back:focus-visible .cd-back__circle {
+  outline: 2px solid #005bd3;
+  outline-offset: 1px;
+}
+
+/* Main column + side column; one column below 768px. */
+.cd-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 40px;
+  align-items: start;
+}
+@container (max-width: 768px) {
+  .cd-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
+}
+.cd-main,
+.cd-side {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.cd-main {
+  gap: 36px;
+}
+.cd-side {
+  gap: 28px;
+}
+
+/* Title, subtitle, then the overview's numbers, flat on the page. */
+.cd-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.cd-title {
+  margin: 0;
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 650;
+  letter-spacing: -0.4px;
+  color: var(--wc-text);
+}
+.cd-subtitle {
+  margin: 4px 0 0;
+  color: var(--wc-text-subdued);
+}
+/* Three tiles of equal width (one column on a narrow page). */
+.cd-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+@container (max-width: 520px) {
+  .cd-stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.cd-stat {
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--p-color-bg-surface-secondary);
+}
+.cd-stat__label {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--wc-text-subdued);
+}
+.cd-stat__value {
+  margin-block-start: 4px;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 650;
+  letter-spacing: -0.2px;
+  color: var(--wc-text);
+}
+.cd-stat__note {
+  font-size: 12px;
+  line-height: 16px;
+  color: #8a8a8a;
+}
+
+/* Section title row. */
+.cd-section__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-block-end: 12px;
+}
+.cd-section__title {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 650;
+  color: var(--wc-text);
+}
+.cd-section__subtitle {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--wc-text-subdued);
+}
+.cd-section__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The bordered card. */
+.cd-card {
+  overflow: hidden;
+  border: 1px solid var(--wc-border);
+  border-radius: 12px;
+  background: var(--wc-surface);
+}
+/* A note between a section's title and its card: Shopify admin's info banner. */
+.cd-banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-block-end: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #cdf4fd;
+  color: #114e62;
+  font-size: 13px;
+  line-height: 20px;
+}
+.cd-banner__icon {
+  flex: none;
+  color: #24a4d6;
+}
+.cd-banner--warning {
+  background: #ffe4c6;
+  color: #5e4200;
+}
+.cd-banner--warning .cd-banner__icon {
+  color: #e08b00;
+}
+.cd-banner__text {
+  flex: 1;
+  min-width: 0;
+}
+.cd-banner__action {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: #e8e8e8;
+  color: #303030;
+  cursor: pointer;
+}
+.cd-banner__action:hover {
+  background: #dedede;
+}
+.cd-banner__action:focus-visible {
+  outline: 2px solid #005bd3;
+  outline-offset: 1px;
+}
+/* The ✕ that closes it: a plain icon at the end of its row (as Shopify's banner), 12px
+   from the action button. */
+.cd-banner__dismiss {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-inline-start: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: currentColor;
+  cursor: pointer;
+}
+.cd-banner__dismiss:hover {
+  background: rgb(0 0 0 / 0.06);
+}
+.cd-banner__dismiss:focus-visible {
+  outline: 2px solid #005bd3;
+  outline-offset: 1px;
+}
+/* A list page's title row (the company list): the title, its action on the right. */
+.cd-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-block-end: 16px;
+}
+/* Its title: a list page's size (as the page headers'), smaller than a company's name. */
+.cd-list-head .cd-title {
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: normal;
+}
+/* A row's icon buttons (the company list), side by side. */
+.cd-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+/* Tabs, search and sort on top of a list's card (the company list). */
+.cd-card__filters {
+  padding: 8px;
+  border-bottom: 1px solid #ebebeb;
+}
+.cd-card__empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--wc-text-subdued);
+}
+.cd-card__body {
+  padding: 16px;
+}
+.cd-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+  padding: 4px 16px;
+  border-top: 1px solid #ebebeb;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--wc-text-subdued);
+}
+.cd-pager {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+/* Plain table: light headings, rows split by hairlines, two-line cells. */
+.cd-table-scroll {
+  overflow-x: auto;
+}
+.cd-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--wc-text);
+}
+.cd-table th {
+  padding: 10px 16px;
+  text-align: left;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 450;
+  color: #737373;
+  white-space: nowrap;
+  border-bottom: 1px solid #ebebeb;
+}
+.cd-table td {
+  padding: 12px 16px;
+  vertical-align: middle;
+  border-bottom: 1px solid #ebebeb;
+}
+.cd-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.cd-table .cd-num {
+  text-align: right;
+}
+.cd-table .cd-nowrap {
+  white-space: nowrap;
+}
+/* A table that scrolls inside its card (the price preview): its headings stay on top. */
+.cd-table-scroll--tall {
+  overflow-y: auto;
+}
+.cd-table--sticky th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--wc-surface);
+  border-bottom: 0;
+  box-shadow: inset 0 -1px 0 #ebebeb;
+}
+/* A column of buttons: only as wide as they are. */
+.cd-table .cd-actions {
+  width: 1%;
+  white-space: nowrap;
+}
+/* A row's checkbox (the company list): as narrow as the box. */
+.cd-table .cd-check {
+  width: 1%;
+  padding-inline-end: 0;
+}
+/* Rows selected (the company list): "N selected" and Delete run over the headings,
+   which hide meanwhile, so the table doesn't move. */
+.cd-bulk-bar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 0;
+  height: 16px;
+  white-space: nowrap;
+}
+.cd-bulk-hidden {
+  visibility: hidden;
+}
+.cd-row-link {
+  cursor: pointer;
+}
+.cd-row-link:hover td {
+  background: #fafafa;
+}
+.cd-primary {
+  display: block;
+  font-weight: 550;
+}
+.cd-sub {
+  display: block;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--wc-text-subdued);
+}
+.cd-sub--indent {
+  padding-left: 12px;
+  white-space: normal;
+}
+.cd-sub--caution {
+  color: #8a6116;
+}
+/* A free-text cell (a buyer's note): wraps, at a readable width. */
+.cd-note-cell {
+  min-width: 200px;
+  max-width: 320px;
+  white-space: normal;
+}
+/* A small text link inside a cell (Buyer message, Read more). */
+.cd-text-link {
+  display: block;
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  color: #005bd3;
+  cursor: pointer;
+}
+/* A link in a value's own size (a side row's company or location). */
+.cd-text-link--body {
+  margin-top: 0;
+  font-size: inherit;
+  line-height: inherit;
+}
+/* An order's Review card: what held it, a labelled line each; the decision in its footer. */
+.cd-review {
+  display: grid;
+  gap: 12px;
+}
+.cd-review .cd-row__label {
+  display: block;
+}
+.cd-review__line {
+  margin: 2px 0 0;
+  color: var(--wc-text);
+}
+.cd-review__foot {
+  justify-content: flex-end;
+  padding-block: 8px;
+}
+.cd-text-link--inline {
+  display: inline;
+}
+.cd-muted {
+  color: var(--wc-text-subdued);
+}
+/* A short grey note (Build pricing from closed quotes: its description, the hint under
+   Add to). */
+.cd-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--wc-text-subdued);
+}
+/* Build pricing from closed quotes: the dev strip (a grey "Dev" chip, its toggle as a
+   link, ✕), and Add to set off by a hairline. */
+.cd-dev {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cd-addto {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #ebebeb;
+}
+.cd-addto .cd-banner {
+  margin: 0;
+}
+/* Why this price (the price preview's drill-in): the product as a title, then sections
+   titled above bordered cards; the applied pricing's card lists the price's steps. */
+.cd-why {
+  display: grid;
+  gap: 20px;
+}
+.cd-why__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.cd-why__title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 650;
+  color: var(--wc-text);
+}
+.cd-why__step {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+}
+.cd-why__lines {
+  display: grid;
+  gap: 6px;
+  padding: 12px 16px;
+  border-top: 1px solid #ebebeb;
+  font-size: 13px;
+  line-height: 20px;
+}
+.cd-why__line,
+.cd-why__total {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.cd-why__total {
+  padding-top: 8px;
+  border-top: 1px solid #ebebeb;
+  font-weight: 650;
+}
+/* A heading with an ⓘ that holds its tooltip (Build pricing from closed quotes). */
+.cd-th-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+/* Rows a little lower (Build pricing from closed quotes: its cells hold a field). */
+.cd-table--compact td {
+  padding-block: 6px;
+}
+/* Build pricing from closed quotes: search, Quotes from and sort on one row. */
+.bq-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.bq-toolbar__search {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+/* A warning in a cell (Build pricing from closed quotes: a margin below cost). */
+.cd-critical {
+  color: #8e1f0b;
+}
+/* An order's total, in its items card's footer. */
+.cd-order-total {
+  font-size: 14px;
+}
+.cd-text-link--indent {
+  padding-left: 12px;
+}
+.cd-text-link:hover,
+.cd-text-link:focus-visible {
+  text-decoration: underline;
+}
+/* A quiet action under a block's chips (Pricing's Preview prices): dark text in the
+   body size with an icon, underlined on hover — set apart from the title's blue link. */
+.cd-action-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 550;
+  color: var(--wc-text);
+  cursor: pointer;
+}
+.cd-action-link:hover,
+.cd-action-link:focus-visible {
+  text-decoration: underline;
+}
+.cd-sub--body {
+  color: var(--wc-text);
+}
+.cd-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.cd-link-button {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 550;
+  color: var(--wc-text);
+  text-align: left;
+  cursor: pointer;
+}
+.cd-row-link:hover .cd-link-button,
+.cd-link-button:focus-visible {
+  text-decoration: underline;
+}
+
+/* Status: dot + word. */
+.cd-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.cd-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #8a8a8a;
+}
+.cd-dot--attention {
+  background: #b28400;
+}
+.cd-dot--warning {
+  background: #e08b00;
+}
+.cd-dot--info {
+  background: #2c6ecb;
+}
+.cd-dot--success {
+  background: #29845a;
+}
+.cd-dot--critical {
+  background: #e22c38;
+}
+
+/* A pricing chip: green when Active, grey otherwise. */
+.cd-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  cursor: pointer;
+}
+.cd-chip--success {
+  background: #cdfee1;
+  color: #0c5132;
+}
+.cd-chip--success:hover {
+  background: #b4fed2;
+}
+.cd-chip--neutral {
+  background: #e3e3e3;
+  color: #616161;
+}
+.cd-chip--neutral:hover {
+  background: #d4d4d4;
+}
+/* A plain chip (a person: a location's buyer, a company's contact): no status colour.
+   A removable one (a buyer) ends with its ×. */
+.cd-chip--plain {
+  gap: 2px;
+  background: #f1f1f1;
+  color: #303030;
+  cursor: default;
+}
+.cd-chip--removable {
+  padding-inline-end: 4px;
+}
+.cd-chip__label {
+  border-radius: 4px;
+}
+.cd-chip__label:focus-visible {
+  outline: 2px solid #005bd3;
+  outline-offset: 2px;
+}
+.cd-chip__remove {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #616161;
+  cursor: pointer;
+}
+.cd-chip__remove:hover {
+  background: rgb(0 0 0 / 0.08);
+  color: #303030;
+}
+.cd-chip__remove:focus-visible {
+  outline: 2px solid #005bd3;
+  outline-offset: 1px;
+}
+.cd-chip:focus-visible {
+  outline: 2px solid #005bd3;
+  outline-offset: 1px;
+}
+
+/* Side column blocks. */
+.cd-side-block__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+}
+.cd-side-block__title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.cd-side-block__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cd-side-block__note {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--wc-text-subdued);
+}
+.cd-row {
+  padding: 12px 0;
+  border-bottom: 1px solid #ebebeb;
+}
+.cd-row__label {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--wc-text-subdued);
+}
+.cd-row__label + .cd-row__value {
+  margin-top: 2px;
+}
+.cd-row__value {
+  color: var(--wc-text);
+}
+/* A row whose label opens it out (General's shipping address). */
+.cd-row__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--wc-text-subdued);
+  text-align: left;
+  cursor: pointer;
+}
+.cd-row__toggle:hover {
+  color: var(--wc-text);
+}
+.cd-row__toggle:focus-visible {
+  outline: 2px solid #005bd3;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.cd-row__toggle + .cd-row__value {
+  margin-top: 2px;
+}
+.cd-truncate {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

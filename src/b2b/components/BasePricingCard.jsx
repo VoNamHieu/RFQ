@@ -103,7 +103,6 @@ export function BasePricingCard({ company }) {
   // v1: single base pricing per company (no priority list / pagination).
   if (!versionFlags().multiBase) return <SingleBaseCard company={company} />;
 
-  const autoApply = !!company.autoAddLocations;
   const showTools = entries.length > 5;
   const q = showTools ? (state.basePricingSearch || '').trim().toLowerCase() : '';
   const filtered = q ? entries.filter((e) => e.policy.name.toLowerCase().includes(q)) : entries;
@@ -135,11 +134,10 @@ export function BasePricingCard({ company }) {
           <PricingName policy={p} contract={ag} />
         </s-table-cell>
         <s-table-cell>{pricingLocationsLabel(company, 'base', p.id)}</s-table-cell>
-        {autoApply && (
-          <s-table-cell>
-            <ApplyLaterSwitch company={company} kind="base" policy={p} />
-          </s-table-cell>
-        )}
+        {/* Always shown: independent of the company's auto-add locations. */}
+        <s-table-cell>
+          <ApplyLaterSwitch company={company} kind="base" policy={p} />
+        </s-table-cell>
         <s-table-cell>{entry.priority}</s-table-cell>
         <s-table-cell>
           <s-badge tone={wcTone(st.tone)}>{st.label}</s-badge>
@@ -248,7 +246,7 @@ export function BasePricingCard({ company }) {
         <s-table-header-row>
           <s-table-header listSlot="primary">Pricing</s-table-header>
           <s-table-header listSlot="labeled">Location</s-table-header>
-          {autoApply && <s-table-header listSlot="labeled">Auto-apply to new locations</s-table-header>}
+          <s-table-header listSlot="labeled">Auto-apply to new locations</s-table-header>
           <s-table-header listSlot="labeled">{priorityHeader}</s-table-header>
           <s-table-header listSlot="secondary">Status</s-table-header>
           <s-table-header listSlot="inline">

@@ -7,6 +7,7 @@ import { money } from '../format.js';
 import { moneyShort, LineChart, RankBars } from './charts.jsx';
 import { buildAttributedLines, pricingProfileRows, appliedEconomics } from '../pricingAttribution.js';
 import { analyticsPricingChanges, analyticsQuantityEvents, analyticsOrderItems } from '../data/analytics.js';
+import { DevStrip } from '../../shared/DevStrip.jsx';
 
 // Date range + comparison, shown as filter buttons above the analytics.
 const PERIOD_OPTIONS = [
@@ -747,7 +748,7 @@ export function CompanyAnalytics({ company }) {
   return (
     <s-stack gap="base">
       {SHOW_DEV_TOOLS && (
-        <s-box background="subdued" border="base" borderRadius="base" padding="small-200">
+        <DevStrip id="company-analytics">
           <s-stack gap="small-200">
             <s-stack direction="inline" gap="small-200" alignItems="center">
               <s-badge tone="info">Dev</s-badge>
@@ -774,7 +775,7 @@ export function CompanyAnalytics({ company }) {
               </s-press-button>
             </s-stack>
           </s-stack>
-        </s-box>
+        </DevStrip>
       )}
       {showEmpty && (
         <s-banner tone="info">

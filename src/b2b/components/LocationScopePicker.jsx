@@ -5,27 +5,35 @@ import { useWcId } from '../../shared/wc.jsx';
 // locations added later get it too) or only some. `locationIds` null = all; an
 // array = the picked ones. Ticking every location switches back to All locations.
 // With `onApplyLaterChange`, a checkbox under both choices says whether locations
-// added later get it too (`applyLater`) — only for a company with "Automatically
-// add new locations" on, since only then are locations added later. `separate`
+// added later get it too (`applyLater`). Always shown: it doesn't depend on the
+// company's "Automatically add new locations" — a location added by hand (Add
+// location) gets it as well as one added from Shopify automatically.
+// `allIncludesLater` (pricing): All locations always includes locations added later
+// — the checkbox is ticked and can't be unticked there — and ticking every location
+// under Specific locations stays Specific, where it can be unticked. `separate`
 // puts the location list right under Specific locations. Shared by the Assign
 // modal, the pricing editor and the agreement editor.
-export function LocationScopePicker({ company, locationIds, onChange, title = 'Apply to', titleHidden = false, applyLater = false, onApplyLaterChange, separate = false }) {
+export function LocationScopePicker({ company, locationIds, onChange, title = 'Apply to', titleHidden = false, applyLater = false, onApplyLaterChange, separate = false, allIncludesLater = false }) {
   const name = useWcId('loc-scope');
   const locations = company?.locations || [];
   const some = Array.isArray(locationIds);
   const picked = some ? locationIds : [];
   // Idempotent: sets the location on/off from the checkbox's checked state.
-  // Specific locations; every location → all (null).
+  // Specific locations; every location → all (null), unless `allIncludesLater`.
   const pick = (ids) => {
     const next = [...new Set(ids)];
+    if (allIncludesLater) return next;
     return locations.length > 0 && locations.every((l) => next.includes(l.id)) ? null : next;
   };
+  // All locations (with `allIncludesLater`): locations added later always get it.
+  const laterLocked = allIncludesLater && !some;
   const setPicked = (id, on) => onChange(pick(on ? [...picked, id] : picked.filter((x) => x !== id)));
 
-  const laterBox = onApplyLaterChange && company?.autoAddLocations && (
+  const laterBox = onApplyLaterChange && (
     <s-checkbox
       label="Automatically apply this pricing to locations added later"
-      checked={applyLater}
+      checked={laterLocked || applyLater}
+      disabled={laterLocked}
       onChange={(e) => onApplyLaterChange(e.currentTarget.checked)}
     />
   );

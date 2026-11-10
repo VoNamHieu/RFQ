@@ -3,8 +3,6 @@
 export const OTHERS_HELP_URL = 'https://help.omegatheme.com/en/article/others-settings-1iqta3i/';
 export const EMAIL_CONNECT_READ_MORE_URL = 'https://help.omegatheme.com/en/article/connect-email-b2b-1iqta3i/?bust=1772677259201';
 
-export const OTHERS_SIDEBAR_ITEMS = [{ id: 'email-notification', icon: 'email', label: 'Email notification' }];
-
 export const DEFAULT_SMTP_FORM = {
   emailUser: '',
   emailPass: '',
@@ -23,7 +21,7 @@ export const DEFAULT_NOTIFICATION_STATE = {
   allow_admin_notification_email: false,
   allow_approval_notification_email: false,
   allow_rejection_notification_email: false,
-  allow_order_request_approved_email: false,
+  allow_order_request_received_email: false,
   allow_order_request_declined_email: false,
   allow_contract_started_email: false,
   allow_contract_ending_email: false,
@@ -75,16 +73,17 @@ const ADMIN_PREHEADER_FIELDS = [
   { key: 'replyTo', label: 'Reply to', autoComplete: 'off', placeholder: 'Enter value', helpText: RECIPIENTS_HELP_TEXT },
 ];
 // Templates with an admin recipient (validated as email addresses on save).
-export const ADMIN_EMAIL_KEYS = ['allow_admin_notification_email', 'allow_contract_reminder_email'];
+export const ADMIN_EMAIL_KEYS = ['allow_admin_notification_email', 'allow_order_request_received_email', 'allow_contract_reminder_email'];
 
 const P = (html) => `<p style="margin:0;padding:0">${html}</p>`;
 const body = (...paragraphs) => paragraphs.map(P).join('');
 
 const REGISTRATION_EMAIL_TEMPLATES = {
   allow_auto_response_email: {
-    title: 'Auto-response email',
-    description: 'Email sent automatically to customers after submission',
-    detail: 'Auto-response email is sent automatically to your customers after they submitted requests',
+    title: 'Registration received',
+    description: 'Sent immediately after a customer submits the form',
+    recipient: { type: 'buyer' },
+    detail: 'Registration received email is sent automatically to your customers after they submitted requests',
     dynamicValues: COMMON_DYNAMIC_VALUES,
     preheaderFields: [
       { key: 'senderName', label: 'Sender name', autoComplete: 'off' },
@@ -92,9 +91,10 @@ const REGISTRATION_EMAIL_TEMPLATES = {
     ],
   },
   allow_admin_notification_email: {
-    title: 'Admin email',
-    description: 'Email sent automatically to admin after submission',
-    detail: 'Admin email is sent automatically to admin after customers submitted requests',
+    title: 'New registration submitted',
+    description: 'Alerts your review team when a new company applies',
+    recipient: { type: 'admin' },
+    detail: 'New registration submitted email is sent automatically to admin after customers submitted requests',
     dynamicValues: COMMON_DYNAMIC_VALUES,
     preheaderFields: [
       { key: 'adminRecipient', label: 'Admin recipient', autoComplete: 'off', required: true, helpText: RECIPIENTS_HELP_TEXT },
@@ -104,9 +104,10 @@ const REGISTRATION_EMAIL_TEMPLATES = {
     ],
   },
   allow_approval_notification_email: {
-    title: 'Approval email',
-    description: 'Email sent to customers when you approve their registrations',
-    detail: 'Approval email is sent automatically to your customers after you approve their registrations',
+    title: 'Registration approved',
+    description: 'Sent when you approve the company registration',
+    recipient: { type: 'buyer' },
+    detail: 'Registration approved email is sent automatically to your customers after you approve their registrations',
     dynamicValues: COMMON_DYNAMIC_VALUES,
     preheaderFields: [
       { key: 'senderName', label: 'Sender name', autoComplete: 'off' },
@@ -114,9 +115,10 @@ const REGISTRATION_EMAIL_TEMPLATES = {
     ],
   },
   allow_rejection_notification_email: {
-    title: 'Rejection email',
-    description: 'Email sent to customers when you reject their registrations',
-    detail: 'Rejection email is sent automatically to your customers after you reject their registrations',
+    title: 'Registration declined',
+    description: 'Sent when you decline the company registration',
+    recipient: { type: 'buyer' },
+    detail: 'Registration declined email is sent automatically to your customers after you reject their registrations',
     dynamicValues: COMMON_DYNAMIC_VALUES,
     preheaderFields: [
       { key: 'senderName', label: 'Sender name', autoComplete: 'off' },
@@ -125,20 +127,25 @@ const REGISTRATION_EMAIL_TEMPLATES = {
   },
 };
 
-// Order request emails (Upcoming version): to the buyer who sent an order request
-// over an order limit's maximum, when you approve it (with the invoice they check
-// out from) or decline it.
+// Order request emails (Upcoming version): to you when a buyer sends an order request
+// over an order limit's maximum; to that buyer when you decline it.
 const ORDER_REQUEST_EMAIL_TEMPLATES = {
-  allow_order_request_approved_email: {
-    title: 'Order request approved',
-    description: 'Email sent to the buyer with an invoice when you approve their order request',
-    detail: 'Order request approved email is sent automatically to the buyer who sent an order request over an order limit, when you approve it. It holds the invoice they check out from to place the order',
-    dynamicValues: [...ORDER_REQUEST_DYNAMIC_VALUES, { description: 'Invoice link', value: '{invoice_url}' }],
-    preheaderFields: BUYER_PREHEADER_FIELDS,
+  allow_order_request_received_email: {
+    title: 'New order request',
+    description: 'Alerts your team when a buyer sends an order request for review',
+    recipient: { type: 'admin' },
+    detail: 'New order request email is sent automatically to admin when a buyer sends an order request over an order limit, for you to approve or decline it in the app',
+    dynamicValues: [
+      ...ORDER_REQUEST_DYNAMIC_VALUES,
+      { description: 'Why it needs review', value: '{review_reason}' },
+      { description: 'Buyer’s note, when they write one', value: '{buyer_message}' },
+    ],
+    preheaderFields: ADMIN_PREHEADER_FIELDS,
   },
   allow_order_request_declined_email: {
     title: 'Order request declined',
-    description: 'Email sent to the buyer when you decline their order request',
+    description: 'Sent when you decline the customer’s order request',
+    recipient: { type: 'buyer' },
     detail: 'Order request declined email is sent automatically to the buyer who sent an order request over an order limit, when you decline it, with your message if you add one',
     dynamicValues: [...ORDER_REQUEST_DYNAMIC_VALUES, { description: 'Your message to the buyer', value: '{decline_message}' }],
     preheaderFields: BUYER_PREHEADER_FIELDS,
@@ -152,36 +159,41 @@ const ORDER_REQUEST_EMAIL_TEMPLATES = {
 const CONTRACT_EMAIL_TEMPLATES = {
   allow_contract_started_email: {
     title: 'Contract started',
-    description: 'Email sent to the company’s buyers when a contract starts',
+    description: 'Sent when a contract becomes active',
+    recipient: { type: 'buyer' },
     detail: 'Contract started email is sent automatically to the buyers at the locations a contract applies to, when its pricing and order limits start applying',
     dynamicValues: CONTRACT_DYNAMIC_VALUES,
     preheaderFields: BUYER_PREHEADER_FIELDS,
   },
   allow_contract_ending_email: {
     title: 'Contract ending soon',
-    description: 'Email sent to the company’s buyers before a contract ends',
+    description: 'Sent before a contract reaches its end date',
+    recipient: { type: 'buyer' },
     detail: 'Contract ending soon email is sent automatically to the buyers at the locations a contract applies to, 30 days before its end date, or halfway through a contract shorter than 60 days. A contract shorter than 7 days gets none',
     dynamicValues: CONTRACT_DYNAMIC_VALUES,
     preheaderFields: BUYER_PREHEADER_FIELDS,
   },
   allow_contract_ended_email: {
     title: 'Contract ended',
-    description: 'Email sent to the company’s buyers when a contract expires or you end it',
+    description: 'Sent when a contract expires or is ended manually',
+    recipient: { type: 'buyer' },
     detail: 'Contract ended email is sent automatically to the buyers at the locations a contract applied to, when it expires or you end it',
     dynamicValues: CONTRACT_DYNAMIC_VALUES,
     preheaderFields: BUYER_PREHEADER_FIELDS,
   },
   allow_contract_renewed_email: {
     title: 'Contract extended',
-    description: 'Email sent to the company’s buyers when you extend a contract',
+    description: 'Sent when the end date is extended',
+    recipient: { type: 'buyer' },
     detail: 'Contract extended email is sent automatically to the buyers at the locations a contract applies to, when you extend it',
     dynamicValues: CONTRACT_DYNAMIC_VALUES,
     preheaderFields: BUYER_PREHEADER_FIELDS,
   },
   allow_contract_reminder_email: {
-    title: 'Extension reminder',
-    description: 'Email sent to admin before a contract ends',
-    detail: 'Extension reminder email is sent automatically to admin 30 days before a contract’s end date, or halfway through a contract shorter than 60 days, unless a next contract is set to take over. A contract shorter than 7 days gets none',
+    title: 'Contract extension reminder',
+    description: 'Reminds the account team to review an expiring contract',
+    recipient: { type: 'admin' },
+    detail: 'Contract extension reminder email is sent automatically to admin 30 days before a contract’s end date, or halfway through a contract shorter than 60 days, unless a next contract is set to take over. A contract shorter than 7 days gets none',
     dynamicValues: CONTRACT_DYNAMIC_VALUES,
     preheaderFields: ADMIN_PREHEADER_FIELDS,
   },
@@ -192,7 +204,7 @@ export const NOTIFICATION_EMAIL_TEMPLATES = { ...REGISTRATION_EMAIL_TEMPLATES, .
 const itemsOf = (templates) =>
   Object.keys(templates).map((key) => {
     const template = templates[key];
-    return { key, title: template.title, description: template.description, detail: template.detail };
+    return { key, title: template.title, description: template.description, detail: template.detail, recipient: template.recipient };
   });
 export const REGISTRATION_NOTIFICATION_ITEMS = itemsOf(REGISTRATION_EMAIL_TEMPLATES);
 export const ORDER_REQUEST_NOTIFICATION_ITEMS = itemsOf(ORDER_REQUEST_EMAIL_TEMPLATES);
@@ -228,7 +240,7 @@ export const DEMO_EMAIL_TEMPLATES = {
       '<br>',
       'First name: {first_name}<br>Last name: {last_name}<br>Email: {email}',
     ),
-    adminRecipient: 'wholesale@221baker.com',
+    adminRecipient: 'admin@221baker.com',
     cc: '',
     bcc: '',
     replyTo: '',
@@ -265,21 +277,22 @@ export const DEMO_EMAIL_TEMPLATES = {
     senderName: '221 Baker',
     recipientName: '{customer_name}',
   },
-  allow_order_request_approved_email: {
-    subject: 'Your order request {order_number} is approved',
+  allow_order_request_received_email: {
+    subject: 'Order request {order_number} from {company_name} needs your review',
     emailBody: body(
-      'Dear {first_name},',
+      'New order request to review',
       '<br>',
-      '{store_name} approved your order request {order_number} for {order_total} for {company_name} · {location_name}.',
+      '{customer_name} ({email}) sent an order request for {company_name} · {location_name}. It’s over an order limit, so it isn’t placed until you approve it.',
       '<br>',
-      'To place the order, <a href="{invoice_url}">complete checkout from your invoice</a>. The order isn’t placed until you check out.',
+      'Order request: {order_number}<br>Order total: {order_total}<br>Why it needs review: {review_reason}',
+      '{buyer_message}',
       '<br>',
-      'If you have any questions, contact us at {store_email}.',
-      '<br>',
-      'Best regards,<br>{store_name}',
+      'Go to B2B Quote Snap to approve or decline it. If you approve it, the buyer gets an invoice to complete the order. If you decline it, the buyer gets an email that it was declined, with your message if you add one.',
     ),
-    senderName: '221 Baker',
-    recipientName: '{customer_name}',
+    adminRecipient: 'admin@221baker.com',
+    cc: '',
+    bcc: '',
+    replyTo: '',
   },
   allow_order_request_declined_email: {
     subject: 'Your order request {order_number} was declined',
@@ -370,7 +383,7 @@ export const DEMO_EMAIL_TEMPLATES = {
       '<br>',
       'Go to B2B Quote Snap to extend it or set up the next contract. After the end date, {company_name} goes back to the pricing and limits outside the contract.',
     ),
-    adminRecipient: 'wholesale@221baker.com',
+    adminRecipient: 'contracts@221baker.com',
     cc: '',
     bcc: '',
     replyTo: '',
@@ -387,7 +400,7 @@ export const DEMO_EMAIL_SETTINGS = {
   allow_admin_notification_email: true,
   allow_approval_notification_email: true,
   allow_rejection_notification_email: false,
-  allow_order_request_approved_email: true,
+  allow_order_request_received_email: true,
   allow_order_request_declined_email: true,
   allow_contract_started_email: true,
   allow_contract_ending_email: true,

@@ -1,37 +1,40 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { locationPricingEntries, calculationLabel, scopeTypeLabel, policyStatus } from '../pricing.js';
+import { locationPricingEntries, policyStatus } from '../pricing.js';
 import { money } from '../format.js';
 
-import { AssignBuyerModal, GeneralModal, ShippingModal, PAYMENT_TERM_OPTIONS, TAX_SETTINGS, COUNTRY_NAMES } from '../components/LocationModals.jsx';
+import { AssignBuyerModal, GeneralModal, ShippingModal, BillingModal, CommerceModal, commerceRows, COUNTRY_NAMES } from '../components/LocationModals.jsx';
 import { LocationLimitsCard } from '../components/LocationLimitsCard.jsx';
 import { LocationContractCard } from '../components/LocationContractCard.jsx';
+import { SummaryHoverCard, pricingSummaryItems } from '../components/SummaryHoverCard.jsx';
+import { CdSection, StatusDot, CardBanner, ExpandButton, SideBlock, SideRow, BLOCK_HELP, cdDate, backTo } from '../components/companyLayout.jsx';
 import { DeleteLocationsModal } from '../components/tabs/LocationsTab.jsx';
-import { isHeld, heldReason, heldFirst, HeldOrderActions, buyerMessageText } from '../components/HeldOrders.jsx';
-import { PricingName } from '../components/BasePricingCard.jsx';
-import { contractGiving } from '../agreements.js';
-import { useContractLock } from '../components/ContractLock.jsx';
+import { PricingTypeChooser } from './PricingLibrary.jsx';
+import { QuotesTab } from '../components/tabs/QuotesTab.jsx';
+import { ORDER_STATUS_TONE } from '../components/tabs/OrdersTab.jsx';
+import { isHeld, heldFirst } from '../components/HeldOrders.jsx';
+import { contractGiving, contractOf, isContractTerm } from '../agreements.js';
 import { versionFlags } from '../../shared/versions.js';
-import { MenuButton, Tip, useWcId, wcTone, PageHeader, Tabs } from '../../shared/wc.jsx';
-
-const ORDER_TONE = {
-  Fulfilled: 'success',
-  Paid: 'success',
-  'Needs review': 'warning',
-  'Invoice sent': 'info',
-  Cancelled: 'critical',
-  'Draft order': 'info',
-  Unfulfilled: 'attention',
-  Declined: 'critical',
-};
-const orderTone = (s) => ORDER_TONE[s];
-const QUOTE_TONE = { 'New Received': 'attention', Read: undefined, Updated: 'info', 'Deal Closed': 'success', 'Deal Rejected': 'critical' };
-const PRICING_PAGE_SIZE = 5;
-const PRICING_KINDS = [
+import { MenuButton, Modal } from '../../shared/wc.jsx';
+import { openBuildFromQuotes } from '../components/BuildFromQuotes.jsx';
+const PRICING_TYPES = [
   { id: 'base', content: 'Base pricing' },
   { id: 'quantity', content: 'Quantity pricing' },
+  { id: 'contract', content: 'Contract pricing' },
 ];
 const HISTORY_PAGE_SIZE = 5;
+// Buyer chips shown before "+N more" (as the pricing's).
+const BUYERS_SHOWN = 4;
+// A buyer chip's hover card: email and how they order (its badge is the role).
+const buyerSummaryItems = (b) => [
+  ['email', 'Email', b.email || '—'],
+  ['cart', 'Ordering', b.access || 'Buys directly'],
+];
+// Review banners closed with ✕ (by location: the orders to review then) stay closed
+// until the page reloads — unless another order needs review there.
+const closedReviews = new Map();
+// Pricing chips shown before "+N more".
+const PRICING_SHOWN = 4;
 
 export function LocationDetail() {
   const { state, dispatch } = useStore();
@@ -40,47 +43,31 @@ export function LocationDetail() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [editGeneral, setEditGeneral] = useState(false);
   const [editShipping, setEditShipping] = useState(false);
+  const [editCommerce, setEditCommerce] = useState(false);
+  const [buyersAll, setBuyersAll] = useState(false);
+  // General's shipping address row: two lines until opened out.
+  const [shipOpen, setShipOpen] = useState(false);
+  // Its billing address row (when set apart from shipping): the same.
+  const [billOpen, setBillOpen] = useState(false);
+  const [editBilling, setEditBilling] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [pricingPage, setPricingPage] = useState(0);
-  // The Pricing card shows one kind at a time (its tabs).
-  const [pricingKind, setPricingKind] = useState('base');
-  const [quotesPage, setQuotesPage] = useState(0);
-  const [ordersPage, setOrdersPage] = useState(0);
-  const ids = useWcId('loc');
-  const [showLock, lockModal] = useContractLock();
+  // The Pricing card shows one type at a time (its dropdown).
+  const [pricingType, setPricingType] = useState('base');
+  // All of its chips shown ("+N more").
+  const [pricingAll, setPricingAll] = useState(false);
+  // The Pricing block's ⊕: "Select pricing type" as a page, then the pricing of that type to add.
+  const [pickPricingType, setPickPricingType] = useState(false);
+  const [, setReviewClosed] = useState(0);
+  // The order whose buyer message is open (its Buyer message link).
+  const [noteOf, setNoteOf] = useState(null);
   if (!company || !location) return null;
-  // Add / edit / remove pricing on this location (its own list of that kind — see
-  // locationSlotArray), with the same row actions as the company page. Edit opens it
-  // for the company: "Who this pricing serves" ticks the locations that get it.
+  // Add / remove pricing on this location (its own list of that kind — see locationSlotArray).
   const addPricing = (kind) => {
     dispatch({ type: 'OPEN_ASSIGN', companyId: company.id, locationId: location.id, kind, mode: 'add' });
   };
-  // A pricing a live contract gives this location comes off through the contract only:
-  // Remove says where it comes from.
-  const pricingActions = (policy, kind, ag) => (
-    <s-stack direction="inline" gap="small-400" justifyContent="end" alignItems="center">
-      <s-button
-        icon="edit"
-        variant="tertiary"
-        accessibilityLabel={`Edit ${policy.name}`}
-        onClick={() => dispatch({ type: 'OPEN_EDITOR', policy, context: { mode: 'edit', companyId: company.id } })}
-      />
-      <s-button
-        icon="x-circle"
-        variant="tertiary"
-        tone="critical"
-        accessibilityLabel={`Remove ${policy.name}`}
-        onClick={() =>
-          ag
-            ? showLock({ name: policy.name, verb: 'remove', message: `It comes from ${ag.number}. To take it off ${location.name}, edit the contract.` })
-            : dispatch({ type: 'REMOVE_LOCATION_PRICING', companyId: company.id, locationId: location.id, kind, policyId: policy.id })
-        }
-      />
-    </s-stack>
-  );
 
   const policies = state.db.policies;
-  // Scheduled / Inactive ones listed too (with their status), so each can be edited or removed.
+  // Scheduled / Inactive ones listed too, so each can be opened.
   const { bases, quantities } = locationPricingEntries(company, location, policies, { includeInactive: true });
   const buyers = (company.contacts || []).filter((c) => c.locations === location.name);
   // Orders held by an order maximum sent for review sit on top, with Approve / Decline (order limits).
@@ -89,6 +76,14 @@ export function LocationDetail() {
     .filter((o) => o.location === location.name)
     .slice()
     .sort(reviewOrders ? heldFirst : (a, b) => String(b.date).localeCompare(String(a.date)));
+  const heldCount = locOrders.filter(isHeld).length;
+  const reviewKey = `${company.id}::${location.id}`;
+  const heldIds = locOrders.filter(isHeld).map((o) => o.id).join(',');
+  const reviewClosed = closedReviews.get(reviewKey) === heldIds;
+  const closeReview = () => {
+    closedReviews.set(reviewKey, heldIds);
+    setReviewClosed((n) => n + 1);
+  };
   const totalSales = locOrders.reduce((s, o) => s + (o.amount || 0), 0);
   const locQuotes = (state.db.quotes || [])
     .filter((q) => q.company === company.id && q.location === location.name)
@@ -98,408 +93,435 @@ export function LocationDetail() {
   const setField = (patch, silent) =>
     dispatch({ type: 'SET_LOCATION_FIELD', companyId: company.id, locationId: location.id, patch, silent });
 
-  const ship = location.shipping || {};
-  const shipName = [ship.firstName, ship.lastName].map((x) => String(x || '').trim()).filter(Boolean).join(' ');
-  const shipParts = [shipName, ship.company, ship.address1, ship.address2, ship.city, ship.postal]
-    .map((x) => String(x || '').trim())
-    .filter(Boolean);
-  const shipPreview = shipParts.length ? [...shipParts, COUNTRY_NAMES[ship.country] || ''].filter(Boolean) : [];
+  // An address's lines: name, company, street, city, postal code, then its country.
+  const addressLines = (a = {}) => {
+    const name = [a.firstName, a.lastName].map((x) => String(x || '').trim()).filter(Boolean).join(' ');
+    const parts = [name, a.company, a.address1, a.address2, a.city, a.postal].map((x) => String(x || '').trim()).filter(Boolean);
+    return parts.length ? [...parts, COUNTRY_NAMES[a.country] || ''].filter(Boolean) : [];
+  };
+  const shipPreview = addressLines(location.shipping);
+  // Billing: the shipping address (billingSameAsShipping, the default) or its own.
+  const billingSame = location.billingSameAsShipping !== false;
+  const billPreview = billingSame ? [] : addressLines(location.billing);
 
-  // Pricing rows of the picked kind: the location's own, else inherited from the company.
-  const pricingRow = (e, kind) => {
-    const status = policyStatus(e.policy, state.db);
-    const ag = contractGiving(state.db, company, e.policy.id, location.id);
+  // Pricing as chips: the location's own, else inherited from the company. A name opens it
+  // in the editor for the company ("Who this pricing serves" ticks the locations that get
+  // it). One that isn't Active here is
+  // greyed, with its status after the name.
+  const chipStatus = (policy) => {
+    // A contract's own pricing goes by its contract at this location; any other by its own
+    // status, as in the Pricing library.
+    if (isContractTerm(policy)) {
+      if (policy.status === 'Inactive') return 'Inactive';
+      if (contractGiving(state.db, company, policy.id, location.id)) return 'Active';
+      return contractOf(state.db, policy.id)?.status === 'Scheduled' ? 'Scheduled' : 'Inactive';
+    }
+    return policyStatus(policy, state.db).label;
+  };
+  const pricingChip = (e, kind) => {
+    const status = chipStatus(e.policy);
+    const off = status !== 'Active';
+    const open = () => dispatch({ type: 'OPEN_EDITOR', policy: e.policy, context: { mode: 'edit', companyId: company.id } });
+    // Hover shows its status and a summary of its settings.
     return (
-      <s-table-row key={`${kind}-${e.policy.id}`}>
-        <s-table-cell>
-          <s-stack gap="small-500">
-            <PricingName policy={e.policy} contract={ag} />
-            {e.source === 'COMPANY' ? (
-              <s-text color="subdued" fontSize="small">Inherited from {company.name}</s-text>
-            ) : null}
-          </s-stack>
-        </s-table-cell>
-        {/* Base: what it's made of; quantity: the products it covers. */}
-        <s-table-cell>{kind === 'quantity' ? scopeTypeLabel(e.policy) : calculationLabel(e.policy)}</s-table-cell>
-        <s-table-cell>
-          <s-badge tone={wcTone(status.tone)}>{status.label}</s-badge>
-        </s-table-cell>
-        <s-table-cell>{pricingActions(e.policy, kind, ag)}</s-table-cell>
-      </s-table-row>
+      <SummaryHoverCard key={`${kind}-${e.policy.id}`} title={e.policy.name} status={status} items={() => pricingSummaryItems(e.policy, state.db)}>
+        {/* Active: green; otherwise grey, with its status (as the company page's chips). */}
+        <button type="button" className={`cd-chip cd-chip--${off ? 'neutral' : 'success'}`} onClick={open}>
+          {off ? `${e.policy.name} · ${status}` : e.policy.name}
+        </button>
+      </SummaryHoverCard>
     );
   };
-  const notSetRow = (kind) => (
-    <s-table-row key={`${kind}-none`}>
-      <s-table-cell><s-badge tone="warning">Not set</s-badge></s-table-cell>
-      <s-table-cell>—</s-table-cell>
-      <s-table-cell>—</s-table-cell>
-      <s-table-cell />
-    </s-table-row>
-  );
-  const kindEntries = pricingKind === 'base' ? bases : quantities;
-  const pricingRows = kindEntries.length ? kindEntries.map((e) => pricingRow(e, pricingKind)) : [notSetRow(pricingKind)];
-
-  // Pricing table pagination.
-  const pricingPageCount = Math.max(1, Math.ceil(pricingRows.length / PRICING_PAGE_SIZE));
-  const pricingCurrent = Math.min(pricingPage, pricingPageCount - 1);
-  const pricingStart = pricingCurrent * PRICING_PAGE_SIZE;
-  const pagePricingRows = pricingRows.slice(pricingStart, pricingStart + PRICING_PAGE_SIZE);
-  const pricingPageLabel = pricingRows.length
-    ? `${pricingStart + 1}–${pricingStart + pagePricingRows.length} of ${pricingRows.length}`
-    : '0 of 0';
-
-  // Quotes table pagination.
-  const quotesPageCount = Math.max(1, Math.ceil(locQuotes.length / HISTORY_PAGE_SIZE));
-  const quotesCurrent = Math.min(quotesPage, quotesPageCount - 1);
-  const quotesStart = quotesCurrent * HISTORY_PAGE_SIZE;
-  const pageQuotes = locQuotes.slice(quotesStart, quotesStart + HISTORY_PAGE_SIZE);
-  const quotesPageLabel = locQuotes.length
-    ? `${quotesStart + 1}–${quotesStart + pageQuotes.length} of ${locQuotes.length}`
-    : '0 of 0';
+  // One type per kind; a contract's own pricing (base or quantity) sits in Contract pricing,
+  // a type only versions with Contracts have.
+  const pricingTypes = versionFlags().agreements ? PRICING_TYPES : PRICING_TYPES.filter((t) => t.id !== 'contract');
+  const shownPricingType = pricingTypes.some((t) => t.id === pricingType) ? pricingType : 'base';
+  const fromContract = (e) => isContractTerm(e.policy);
+  const pricingChips = {
+    base: bases.filter((e) => !fromContract(e)).map((e) => pricingChip(e, 'base')),
+    quantity: quantities.filter((e) => !fromContract(e)).map((e) => pricingChip(e, 'quantity')),
+    contract: [
+      ...bases.filter(fromContract).map((e) => pricingChip(e, 'base')),
+      ...quantities.filter(fromContract).map((e) => pricingChip(e, 'quantity')),
+    ],
+  };
+  // The first few, then "+N more"; all of them once opened up.
+  const typeChips = pricingChips[shownPricingType];
+  const shownChips = pricingAll ? typeChips : typeChips.slice(0, PRICING_SHOWN);
+  const moreChips = typeChips.length - shownChips.length;
 
   // Order history pagination.
-  const ordersPageCount = Math.max(1, Math.ceil(locOrders.length / HISTORY_PAGE_SIZE));
-  const ordersCurrent = Math.min(ordersPage, ordersPageCount - 1);
-  const ordersStart = ordersCurrent * HISTORY_PAGE_SIZE;
-  const pageOrders = locOrders.slice(ordersStart, ordersStart + HISTORY_PAGE_SIZE);
-  const ordersPageLabel = locOrders.length
-    ? `${ordersStart + 1}–${ordersStart + pageOrders.length} of ${locOrders.length}`
-    : '0 of 0';
+  // Order history shows the first few; the rest are on the company's Orders page (⤢).
+  const pageOrders = locOrders.slice(0, HISTORY_PAGE_SIZE);
 
-  // A card's title row: heading on the left, its action on the right.
-  const cardHeader = (title, action) => (
-    <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
-      <s-heading>{title}</s-heading>
-      {action}
-    </s-grid>
-  );
-  // Polaris React's IndexTable pagination showed "1–5 of 15" between its arrows;
-  // s-table's own pagination has no label, so it sits just under it, on the same band.
-  const pageLabel = (label) => (
-    <s-box background="subdued" paddingBlockEnd="small">
-      <div style={{ textAlign: 'center' }}>
-        <s-text color="subdued" fontSize="small">{label}</s-text>
-      </div>
-    </s-box>
-  );
-  const emptyRows = (text) => (
-    <s-box padding="base">
-      <div style={{ textAlign: 'center' }}>
-        <s-text color="subdued">{text}</s-text>
-      </div>
-    </s-box>
-  );
+  const viewCompany = (tab, extra) => dispatch({ type: 'OPEN_COMPANY', id: company.id, tab, ...extra });
 
+  // Add pricing: pick a type, then the pricing of that type to add (the assign modal).
+  if (pickPricingType) {
+    return (
+      <PricingTypeChooser
+        backLabel={location.name}
+        actionLabel="Select"
+        onBack={() => setPickPricingType(false)}
+        onPick={(kind) => {
+          setPickPricingType(false);
+          addPricing(kind);
+        }}
+      />
+    );
+  }
+
+  // The company page's layout: Locations and More actions on top, then two columns
+  // (stacked below 768px). The main column: the name, its overview's numbers in tiles,
+  // then order history and quotes, each titled above a bordered card. The side, flat and
+  // split by hairlines: general and shipping, buyers, pricing, contract, order limits and
+  // commerce settings.
   return (
-    <>
-    <PageHeader
-      backAction={{ content: 'Locations', onAction: () => dispatch({ type: 'OPEN_COMPANY', id: company.id, tab: 'locations' }) }}
-      heading={location.name}
-      subtitle={`${company.name} · Location`}
-      secondaryActions={[{ content: 'Delete', destructive: true, onAction: () => setConfirmDelete(true) }]}
-    />
-    <s-page>
-      <s-stack gap="base">
-        {/* Two columns (Polaris React Layout + a oneThird section), as a grid so they
-            stack below 768px like Layout did. */}
-        <s-query-container>
-          <s-grid
-            gridTemplateColumns='@container (inline-size > 768px) "minmax(0, 2fr) minmax(0, 1fr)", "minmax(0, 1fr)"'
-            gap="base"
-            alignItems="start"
-          >
-            <s-stack gap="base">
-              {/* Overview */}
-              <s-section heading="Location overview">
-                <s-stack direction="inline" gap="base">
-                  <Stat label="Sales" value={money(totalSales)} note="All-time from this location" />
-                  <Stat label="Orders" value={String(locOrders.length)} note="Placed by its buyers" />
-                  <Stat label="Quotes" value={String(locQuotes.length)} note="RFQ requests from here" />
-                </s-stack>
-              </s-section>
+    <div className="cd-page">
+      <div className="cd-topbar">
+        <button type="button" className="cd-back" onClick={() => viewCompany('locations')}>
+          <span className="cd-back__circle">
+            <s-icon type="chevron-left" />
+          </span>
+          Locations
+        </button>
+        <MenuButton items={[{ content: 'Delete', destructive: true, onAction: () => setConfirmDelete(true) }]}>More actions</MenuButton>
+      </div>
 
-              {/* Pricing */}
-              <s-section padding="none">
-                <s-box padding="small" paddingBlockEnd="small-200">
-                  {cardHeader(
-                    'Pricing',
-                    <MenuButton
-                      icon="plus"
-                      items={[
-                        { content: 'Base pricing', onAction: () => addPricing('base') },
-                        { content: 'Quantity pricing', onAction: () => addPricing('quantity') },
-                      ]}
-                    >
-                      Add pricing
-                    </MenuButton>,
-                  )}
-                </s-box>
-                <Tabs
-                  tabs={PRICING_KINDS}
-                  selected={PRICING_KINDS.findIndex((k) => k.id === pricingKind)}
-                  onSelect={(i) => {
-                    setPricingKind(PRICING_KINDS[i].id);
-                    setPricingPage(0);
-                  }}
+      <div className="cd-layout">
+        <div className="cd-main">
+          {/* Name and subtitle, then the overview's numbers. */}
+          <div className="cd-intro">
+            <div>
+              <h1 className="cd-title">{location.name}</h1>
+              <p className="cd-subtitle">{`${company.name} · Location`}</p>
+            </div>
+            <section>
+              <div className="cd-section__head">
+                <h2 className="cd-section__title">Location overview</h2>
+              </div>
+              <div className="cd-stats">
+                <Stat label="Sales" value={money(totalSales)} note="All-time from this location" />
+                <Stat label="Orders" value={String(locOrders.length)} note="Placed by its buyers" />
+                <Stat label="Quotes" value={String(locQuotes.length)} note="RFQ requests from here" />
+              </div>
+            </section>
+          </div>
+
+          {/* Order history */}
+          <div>
+            {/* Its first orders; ⤢ opens the company's Orders on this location's, back here. */}
+            <CdSection
+              title="Order history"
+              controls={
+                <ExpandButton
+                  id="location-orders-view-all"
+                  onAction={() => viewCompany('orders-all', { location: location.name, backTo: backTo(state, 'orders-all', company, location) })}
                 />
-                <s-table>
-                  <s-table-header-row>
-                    <s-table-header listSlot="primary">Pricing</s-table-header>
-                    <s-table-header listSlot="labeled">{pricingKind === 'quantity' ? 'Products' : 'Assignments'}</s-table-header>
-                    <s-table-header listSlot="secondary">Status</s-table-header>
-                    <s-table-header listSlot="inline"><s-text accessibilityVisibility="exclusive">Actions</s-text></s-table-header>
-                  </s-table-header-row>
-                  <s-table-body>{pagePricingRows}</s-table-body>
-                </s-table>
-                {/* One-row footer, as on the company page's Base pricing card. */}
-                {pricingPageCount > 1 ? (
-                  <>
-                    <s-divider />
-                    <s-box padding="small">
-                      <s-stack direction="inline" justifyContent="space-between" alignItems="center">
-                        <s-text color="subdued" fontSize="small">{pricingPageLabel}</s-text>
-                        <s-stack direction="inline" gap="small-200" alignItems="center">
-                          <s-text color="subdued" fontSize="small">{`Page ${pricingCurrent + 1} of ${pricingPageCount}`}</s-text>
-                          <s-button-group gap="none" accessibilityLabel="Pagination">
-                            <s-button
-                              slot="secondary-actions"
-                              icon="chevron-left"
-                              accessibilityLabel="Previous"
-                              disabled={pricingCurrent <= 0}
-                              onClick={() => setPricingPage(Math.max(pricingCurrent - 1, 0))}
-                            />
-                            <s-button
-                              slot="secondary-actions"
-                              icon="chevron-right"
-                              accessibilityLabel="Next"
-                              disabled={pricingCurrent >= pricingPageCount - 1}
-                              onClick={() => setPricingPage(Math.min(pricingCurrent + 1, pricingPageCount - 1))}
-                            />
-                          </s-button-group>
-                        </s-stack>
-                      </s-stack>
-                    </s-box>
-                  </>
-                ) : null}
-              </s-section>
-
-              {/* Quotes from this location */}
-              <s-section padding="none">
-                <s-box padding="small" paddingBlockEnd="small-200">
-                  {cardHeader(
-                    `Quotes${locQuotes.length ? ` (${locQuotes.length})` : ''}`,
-                    <s-button onClick={() => dispatch({ type: 'OPEN_COMPANY', id: company.id, tab: 'quotes' })}>View all company quotes</s-button>,
-                  )}
-                </s-box>
-                {pageQuotes.length ? (
-                  <>
-                    <s-table
-                      paginate={quotesPageCount > 1}
-                      hasPreviousPage={quotesCurrent > 0}
-                      hasNextPage={quotesCurrent < quotesPageCount - 1}
-                      onPreviousPage={() => setQuotesPage(Math.max(quotesCurrent - 1, 0))}
-                      onNextPage={() => setQuotesPage(Math.min(quotesCurrent + 1, quotesPageCount - 1))}
-                    >
-                      <s-table-header-row>
-                        <s-table-header listSlot="primary">Quote</s-table-header>
-                        <s-table-header listSlot="labeled">Buyer</s-table-header>
-                        <s-table-header listSlot="labeled">Created</s-table-header>
-                        <s-table-header listSlot="secondary">Status</s-table-header>
-                      </s-table-header-row>
-                      <s-table-body>
-                        {pageQuotes.map((q) => {
-                          const linkId = `${ids}-quote-${q.id}`;
+              }
+            >
+              {/* Held for review: the decision is made in the company's Orders, opened on this
+                  location (held orders sit on top there). */}
+              {reviewOrders && heldCount && !reviewClosed ? (
+                // The company's Orders page on the orders to review here (Approve / Decline),
+                // with a back arrow to this location.
+                <CardBanner
+                  action={{
+                    label: 'Review orders',
+                    onAction: () => viewCompany('orders-all', { location: location.name, filter: 'review', backTo: backTo(state, 'orders-all', company, location) }),
+                  }}
+                  onDismiss={closeReview}
+                  textAction
+                >
+                  {`${heldCount} ${heldCount === 1 ? 'order needs' : 'orders need'} your review`}
+                </CardBanner>
+              ) : null}
+              <div className="cd-card">
+                {pageOrders.length ? (
+                  <div className="cd-table-scroll">
+                    <table className="cd-table">
+                      <thead>
+                        <tr>
+                          <th>Order</th>
+                          <th>Buyer</th>
+                          <th className="cd-num">Total</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pageOrders.map((o) => {
+                          const openOrder = () =>
+                            dispatch({ type: 'OPEN_ORDER', companyId: company.id, orderId: o.id, backTo: backTo(state, 'order', company, location) });
+                          // As the company's Orders card: an order to review shows its buyer's
+                          // message (a link that opens it) and Review (opens the order's page).
+                          const toReview = reviewOrders && isHeld(o);
                           return (
-                            <s-table-row key={q.id} clickDelegate={linkId}>
-                              <s-table-cell>
-                                <s-link id={linkId} onClick={() => dispatch({ type: 'OPEN_QUOTE', id: q.id })}>{q.id}</s-link>
-                              </s-table-cell>
-                              <s-table-cell>{q.buyer}</s-table-cell>
-                              <s-table-cell>{q.created}</s-table-cell>
-                              <s-table-cell><s-badge tone={wcTone(QUOTE_TONE[q.status])}>{q.status}</s-badge></s-table-cell>
-                            </s-table-row>
+                            <tr key={o.id} className="cd-row-link" onClick={openOrder}>
+                              <td>
+                                <button type="button" className="cd-link-button">
+                                  {o.id}
+                                </button>
+                                <span className="cd-sub">{[cdDate(o.date), o.po && o.po !== 'None' ? o.po : null].filter(Boolean).join(' · ') || '—'}</span>
+                                {toReview && o.buyerMessage ? (
+                                  <button
+                                    type="button"
+                                    className="cd-text-link"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setNoteOf(o);
+                                    }}
+                                  >
+                                    Buyer message
+                                  </button>
+                                ) : null}
+                              </td>
+                              <td>{o.buyer || '—'}</td>
+                              <td className="cd-num">{money(o.amount)}</td>
+                              <td>
+                                <StatusDot tone={ORDER_STATUS_TONE[o.status]}>{o.status}</StatusDot>
+                                {toReview ? (
+                                  <button
+                                    type="button"
+                                    className="cd-text-link cd-text-link--indent"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openOrder();
+                                    }}
+                                  >
+                                    Review
+                                  </button>
+                                ) : null}
+                              </td>
+                            </tr>
                           );
                         })}
-                      </s-table-body>
-                    </s-table>
-                    {quotesPageCount > 1 ? pageLabel(quotesPageLabel) : null}
-                  </>
+                      </tbody>
+                    </table>
+                  </div>
                 ) : (
-                  emptyRows('No quotes from this location yet.')
+                  <div className="cd-card__empty">No orders from this location yet.</div>
                 )}
-              </s-section>
+              </div>
+            </CdSection>
+          </div>
 
-              {/* Order history */}
-              <s-section padding="none">
-                <s-box padding="small" paddingBlockEnd="small-200">
-                  {cardHeader(
-                    `Order history${locOrders.length ? ` (${locOrders.length})` : ''}`,
-                    <s-button onClick={() => dispatch({ type: 'OPEN_COMPANY', id: company.id, tab: 'orders' })}>View all company orders</s-button>,
-                  )}
-                </s-box>
-                {/* Held for review: the decision sits above the list (this column is too narrow for a row of buttons). */}
-                {reviewOrders && locOrders.filter(isHeld).map((o) => (
-                  <s-box key={o.id} paddingInline="small" paddingBlockEnd="small">
-                    <s-banner tone="warning" heading={`Order ${o.id} for ${money(o.amount)} is waiting for your review`}>
-                      <s-stack gap="small-200">
-                        <s-paragraph>{`${heldReason(o, state.db)}. ${o.buyer} couldn’t check out, so it stays a draft order until you decide.`}</s-paragraph>
-                        {buyerMessageText(o) ? <s-paragraph>{buyerMessageText(o)}</s-paragraph> : null}
-                        <s-stack direction="inline" justifyContent="start"><HeldOrderActions companyId={company.id} order={o} /></s-stack>
-                      </s-stack>
-                    </s-banner>
-                  </s-box>
-                ))}
-                {pageOrders.length ? (
-                  <>
-                    <s-table
-                      paginate={ordersPageCount > 1}
-                      hasPreviousPage={ordersCurrent > 0}
-                      hasNextPage={ordersCurrent < ordersPageCount - 1}
-                      onPreviousPage={() => setOrdersPage(Math.max(ordersCurrent - 1, 0))}
-                      onNextPage={() => setOrdersPage(Math.min(ordersCurrent + 1, ordersPageCount - 1))}
-                    >
-                      <s-table-header-row>
-                        <s-table-header listSlot="primary">Order</s-table-header>
-                        <s-table-header listSlot="labeled">Buyer</s-table-header>
-                        <s-table-header listSlot="labeled">Date</s-table-header>
-                        <s-table-header listSlot="labeled" format="currency">Total</s-table-header>
-                        <s-table-header listSlot="secondary">Status</s-table-header>
-                      </s-table-header-row>
-                      <s-table-body>
-                        {pageOrders.map((o) => (
-                          <s-table-row key={o.id}>
-                            <s-table-cell>
-                              <s-stack gap="small-500">
-                                <s-text fontWeight="medium">{o.id}</s-text>
-                                {o.po && o.po !== 'None' ? <s-text color="subdued" fontSize="small">{o.po}</s-text> : null}
-                                {reviewOrders && isHeld(o) ? <s-text tone="caution" fontSize="small">{heldReason(o, state.db)}</s-text> : null}
-                                {reviewOrders && isHeld(o) && buyerMessageText(o) ? <s-text fontSize="small">{buyerMessageText(o)}</s-text> : null}
-                              </s-stack>
-                            </s-table-cell>
-                            <s-table-cell>{o.buyer}</s-table-cell>
-                            <s-table-cell>{o.date}</s-table-cell>
-                            <s-table-cell>{money(o.amount)}</s-table-cell>
-                            <s-table-cell><s-badge tone={wcTone(orderTone(o.status))}>{o.status}</s-badge></s-table-cell>
-                          </s-table-row>
+          {/* Quotes from this location: the company page's Quotes card, on its quotes. */}
+          <div>
+            <QuotesTab key={location.id} company={company} location={location} />
+          </div>
+        </div>
+
+        <div className="cd-side">
+          {/* General: name and ID (the pencil edits them), then the shipping address's first
+              two lines — opened out, all its lines and Edit address — then the billing
+              address the same way (or "Same as shipping address"). */}
+          <SideBlock title="General" actions={<s-button icon="edit" variant="tertiary" onClick={() => setEditGeneral(true)} accessibilityLabel="Edit general" />}>
+            <SideRow label="Name">{location.name}</SideRow>
+            <SideRow label="Location ID">{location.externalId || 'Not set'}</SideRow>
+            {location.status === 'Deleted' && (
+              <SideRow label="Status">
+                <s-badge tone="critical">Deleted</s-badge>
+              </SideRow>
+            )}
+            <div className="cd-row">
+              {shipPreview.length ? (
+                <>
+                  <button type="button" className="cd-row__toggle" aria-expanded={shipOpen} onClick={() => setShipOpen((v) => !v)}>
+                    <span>Shipping address</span>
+                    <s-icon type={shipOpen ? 'chevron-up' : 'chevron-down'} size="small" />
+                  </button>
+                  <div className="cd-row__value">
+                    {shipOpen ? (
+                      <>
+                        {shipPreview.map((line, i) => (
+                          <div key={i}>{line}</div>
                         ))}
-                      </s-table-body>
-                    </s-table>
-                    {ordersPageCount > 1 ? pageLabel(ordersPageLabel) : null}
-                  </>
-                ) : (
-                  emptyRows('No orders from this location yet.')
-                )}
-              </s-section>
-            </s-stack>
+                        <button type="button" className="cd-text-link" onClick={() => setEditShipping(true)}>
+                          Edit address
+                        </button>
+                      </>
+                    ) : (
+                      // Closed: its first two lines, one piece of the address each.
+                      shipPreview.slice(0, 2).map((line, i) => (
+                        <span key={i} className="cd-truncate">
+                          {line}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="cd-row__label">Shipping address</div>
+                  {/* Like Location ID's: the value in body text, not grey like the label. */}
+                  <div className="cd-row__value">
+                    Not set
+                    <button type="button" className="cd-text-link" onClick={() => setEditShipping(true)}>
+                      Add address
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+            {/* Billing address (Shopify's location page has both, each with its own Edit):
+                "Same as shipping address", or its own address shown as the shipping one is. */}
+            <div className="cd-row">
+              {billPreview.length ? (
+                <>
+                  <button type="button" className="cd-row__toggle" aria-expanded={billOpen} onClick={() => setBillOpen((v) => !v)}>
+                    <span>Billing address</span>
+                    <s-icon type={billOpen ? 'chevron-up' : 'chevron-down'} size="small" />
+                  </button>
+                  <div className="cd-row__value">
+                    {billOpen ? (
+                      <>
+                        {billPreview.map((line, i) => (
+                          <div key={i}>{line}</div>
+                        ))}
+                        <button type="button" className="cd-text-link" onClick={() => setEditBilling(true)}>
+                          Edit address
+                        </button>
+                      </>
+                    ) : (
+                      billPreview.slice(0, 2).map((line, i) => (
+                        <span key={i} className="cd-truncate">
+                          {line}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="cd-row__label">Billing address</div>
+                  <div className="cd-row__value">
+                    {billingSame ? 'Same as shipping address' : 'Not set'}
+                    <button type="button" className="cd-text-link" onClick={() => setEditBilling(true)}>
+                      {billingSame ? 'Edit address' : 'Add address'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </SideBlock>
 
-            <s-stack gap="base">
-              {/* Location details: general + shipping */}
-              <s-section>
-                <s-stack gap="small">
-                  {cardHeader('General', <s-button icon="edit" onClick={() => setEditGeneral(true)} accessibilityLabel="Edit general" />)}
-                  <Kv label="Name" value={location.name} />
-                  <Kv label="Location ID" value={location.externalId || 'Not set'} />
-                  {location.status === 'Deleted' && <Kv label="Status" value={<s-badge tone="critical">Deleted</s-badge>} />}
-                  <s-divider />
-                  {cardHeader('Shipping address', <s-button onClick={() => setEditShipping(true)}>{shipPreview.length ? 'Edit' : 'Add'}</s-button>)}
-                  {shipPreview.length ? (
-                    <s-stack gap="none">
-                      {shipPreview.map((line, i) => (
-                        <s-paragraph key={i} fontSize="small">{line}</s-paragraph>
-                      ))}
-                    </s-stack>
+          {/* Buyers as chips, together like the pricing's: hover shows the role, email and how
+              they order; × removes one from the location. The first few, then "+N more". */}
+          <SideBlock title={`Buyers${buyers.length ? ` (${buyers.length})` : ''}`} actions={<s-button onClick={() => setAssignOpen(true)}>Assign buyer</s-button>}>
+            <SideRow>
+              {buyers.length ? (
+                <s-stack direction="inline" gap="small-300" alignItems="center">
+                  {(buyersAll ? buyers : buyers.slice(0, BUYERS_SHOWN)).map((b, i) => (
+                    <span key={b.email || i} className="cd-chip cd-chip--plain cd-chip--removable">
+                      <SummaryHoverCard title={b.name} status={b.role || 'Ordering only'} items={() => buyerSummaryItems(b)}>
+                        <span className="cd-chip__label" tabIndex={0}>
+                          {b.name}
+                        </span>
+                      </SummaryHoverCard>
+                      <button
+                        type="button"
+                        className="cd-chip__remove"
+                        aria-label={`Remove ${b.name}`}
+                        onClick={() => dispatch({ type: 'UNASSIGN_BUYER', companyId: company.id, locationId: location.id, email: b.email })}
+                      >
+                        <s-icon type="x" size="small" />
+                      </button>
+                    </span>
+                  ))}
+                  {!buyersAll && buyers.length > BUYERS_SHOWN ? (
+                    <s-clickable-chip accessibilityLabel={`Show ${buyers.length - BUYERS_SHOWN} more`} onClick={() => setBuyersAll(true)}>
+                      {`+${buyers.length - BUYERS_SHOWN} more`}
+                    </s-clickable-chip>
+                  ) : null}
+                  {buyersAll && buyers.length > BUYERS_SHOWN ? <s-link onClick={() => setBuyersAll(false)}>Show less</s-link> : null}
+                </s-stack>
+              ) : (
+                <span className="cd-sub">No buyers assigned. Assign a buyer so someone can purchase under this location.</span>
+              )}
+            </SideRow>
+          </SideBlock>
+
+          {/* Pricing: a type dropdown over names as chips (a few, then "+N more"); ⊕ offers
+              Regular pricing (Select pricing type) or Convert from quotes (this location's
+              closed quotes); Preview prices under them shows what its buyers pay. */}
+          <SideBlock
+            title="Pricing"
+            info={BLOCK_HELP.pricing}
+            // The library filtered to this location (and its company).
+            actions={
+              <s-link onClick={() => dispatch({ type: 'NAVIGATE', view: 'pricing', patch: { pricingCompany: company.id, pricingLocation: `${company.id}::${location.id}`, backTo: backTo(state, 'pricing', company, location) } })}>
+                View pricing library
+              </s-link>
+            }
+          >
+            <SideRow>
+              <s-stack gap="small">
+                <s-select
+                  label="Pricing type"
+                  labelAccessibilityVisibility="exclusive"
+                  value={shownPricingType}
+                  onChange={(e) => {
+                    setPricingType(e.currentTarget.value);
+                    setPricingAll(false);
+                  }}
+                >
+                  {pricingTypes.map((t) => (
+                    <s-option key={t.id} value={t.id}>{t.content}</s-option>
+                  ))}
+                </s-select>
+                <s-stack direction="inline" gap="small-300" alignItems="center">
+                  {shownChips}
+                  {moreChips > 0 ? (
+                    <s-clickable-chip accessibilityLabel={`Show ${moreChips} more`} onClick={() => setPricingAll(true)}>
+                      {`+${moreChips} more`}
+                    </s-clickable-chip>
+                  ) : null}
+                  {pricingAll && typeChips.length > PRICING_SHOWN ? <s-link onClick={() => setPricingAll(false)}>Show less</s-link> : null}
+                  {versionFlags().priceCrossSync ? (
+                    <MenuButton
+                      icon="plus-circle"
+                      variant="tertiary"
+                      accessibilityLabel="Add pricing"
+                      items={[
+                        { content: 'Regular pricing', onAction: () => setPickPricingType(true) },
+                        { content: 'Convert from quotes', onAction: () => openBuildFromQuotes(dispatch, company, state.db, location.name) },
+                      ]}
+                    />
                   ) : (
-                    <s-paragraph color="subdued" fontSize="small">No shipping address provided.</s-paragraph>
-                  )}
-                  <s-paragraph color="subdued" fontSize="small">
-                    {location.billingSameAsShipping ? 'Billing address is same as shipping.' : 'Billing address is set separately.'}
-                  </s-paragraph>
-                </s-stack>
-              </s-section>
-
-              {/* Buyers — names only; the role shows on hover */}
-              <s-section>
-                <s-stack gap="small">
-                  {cardHeader(`Buyers${buyers.length ? ` (${buyers.length})` : ''}`, <s-button onClick={() => setAssignOpen(true)}>Assign buyer</s-button>)}
-                  {buyers.length ? (
-                    <s-stack gap="small-400">
-                      {buyers.map((b, i) => (
-                        <s-grid key={b.email || i} gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
-                          <div>
-                            <Tip content={b.role || 'Ordering only'}>{b.name}</Tip>
-                          </div>
-                          <s-button
-                            icon="x"
-                            variant="tertiary"
-                            accessibilityLabel={`Remove ${b.name}`}
-                            onClick={() => dispatch({ type: 'UNASSIGN_BUYER', companyId: company.id, locationId: location.id, email: b.email })}
-                          />
-                        </s-grid>
-                      ))}
-                    </s-stack>
-                  ) : (
-                    <s-paragraph color="subdued" fontSize="small">No buyers assigned. Assign a buyer so someone can purchase under this location.</s-paragraph>
+                    <s-button icon="plus-circle" variant="tertiary" accessibilityLabel="Add pricing" onClick={() => setPickPricingType(true)} />
                   )}
                 </s-stack>
-              </s-section>
+                <div>
+                  <button type="button" className="cd-action-link" onClick={() => dispatch({ type: 'OPEN_PRICE_BOARD', companyId: company.id, locationId: location.id })}>
+                    <s-icon type="view" color="subdued" />
+                    Preview prices
+                  </button>
+                </div>
+              </s-stack>
+            </SideRow>
+          </SideBlock>
 
-              {/* Commerce settings — live */}
-              <s-section heading="Commerce settings">
-                <s-stack gap="small">
-                  <s-select
-                    label="Payment terms"
-                    value={location.paymentTerms || 'No payment terms'}
-                    onChange={(e) => setField({ paymentTerms: e.currentTarget.value }, true)}
-                  >
-                    {PAYMENT_TERM_OPTIONS.map((t) => (
-                      <s-option key={t} value={t}>{t}</s-option>
-                    ))}
-                  </s-select>
-                  <s-select
-                    label="Order submission"
-                    value={location.purchasingMode || 'DIRECT'}
-                    onChange={(e) => setField({ purchasingMode: e.currentTarget.value }, true)}
-                  >
-                    <s-option value="DIRECT">Automatically submit orders</s-option>
-                    <s-option value="REQUIRE_APPROVAL">Submit all orders as drafts for review</s-option>
-                  </s-select>
-                  <s-checkbox
-                    label="Allow any one-time address"
-                    checked={!!location.editableShipping}
-                    onChange={(e) => setField({ editableShipping: e.currentTarget.checked }, true)}
-                  />
-                  <s-divider />
-                  <s-text-field
-                    label="Tax ID"
-                    value={location.taxId || ''}
-                    onInput={(e) => setField({ taxId: e.currentTarget.value }, true)}
-                    placeholder="Tax / VAT ID"
-                    autocomplete="off"
-                  />
-                  <s-select
-                    label="Tax settings"
-                    value={location.taxSettings || 'collect'}
-                    onChange={(e) => setField({ taxSettings: e.currentTarget.value }, true)}
-                  >
-                    {TAX_SETTINGS.map((t) => (
-                      <s-option key={t.value} value={t.value}>{t.label}</s-option>
-                    ))}
-                  </s-select>
-                </s-stack>
-              </s-section>
+          {/* Contract, then order limits: chips under the pricing, laid out as it is */}
+          {versionFlags().agreements && <LocationContractCard company={company} location={location} />}
+          {versionFlags().orderLimits && <LocationLimitsCard company={company} location={location} />}
 
-              {/* The contract that applies here (Contracts) */}
-              {versionFlags().agreements && <LocationContractCard company={company} location={location} />}
+          {/* Commerce settings: rows like the other blocks; the pencil edits them together. */}
+          <SideBlock
+            title="Commerce settings"
+            actions={<s-button icon="edit" variant="tertiary" onClick={() => setEditCommerce(true)} accessibilityLabel="Edit commerce settings" />}
+          >
+            {commerceRows(location).map(([label, value]) => (
+              <SideRow key={label} label={label}>
+                {value}
+              </SideRow>
+            ))}
+          </SideBlock>
+        </div>
+      </div>
 
-              {/* Order limits that reach this location, next to Shopify's own checkout settings */}
-              {versionFlags().orderLimits && <LocationLimitsCard company={company} location={location} />}
-            </s-stack>
-          </s-grid>
-        </s-query-container>
-      </s-stack>
-
-      {assignOpen && (
-        <AssignBuyerModal company={company} location={location} onClose={() => setAssignOpen(false)} />
+      {assignOpen && <AssignBuyerModal company={company} location={location} onClose={() => setAssignOpen(false)} />}
+      {editCommerce && (
+        <CommerceModal location={location} onClose={() => setEditCommerce(false)} onSave={(patch) => { setField(patch); setEditCommerce(false); }} />
       )}
       {editGeneral && (
         <GeneralModal location={location} onClose={() => setEditGeneral(false)} onSave={(patch) => { setField(patch); setEditGeneral(false); }} />
@@ -507,36 +529,33 @@ export function LocationDetail() {
       {editShipping && (
         <ShippingModal location={location} onClose={() => setEditShipping(false)} onSave={(patch) => { setField(patch); setEditShipping(false); }} />
       )}
-      {confirmDelete && (
-        <DeleteLocationsModal company={company} locationIds={[location.id]} onClose={() => setConfirmDelete(false)} />
+      {editBilling && (
+        <BillingModal location={location} onClose={() => setEditBilling(false)} onSave={(patch) => { setField(patch); setEditBilling(false); }} />
       )}
-      {lockModal}
-    </s-page>
-    </>
+      {confirmDelete && <DeleteLocationsModal company={company} locationIds={[location.id]} onClose={() => setConfirmDelete(false)} />}
+      {noteOf ? (
+        <Modal onClose={() => setNoteOf(null)} heading={`Buyer message · ${noteOf.id}`}>
+          <s-stack gap="small">
+            <s-text color="subdued">{[noteOf.buyer, noteOf.location, cdDate(noteOf.date)].filter(Boolean).join(' · ')}</s-text>
+            <s-paragraph>{noteOf.buyerMessage}</s-paragraph>
+          </s-stack>
+          <s-button slot="secondary-actions" onClick={() => setNoteOf(null)}>
+            Close
+          </s-button>
+        </Modal>
+      ) : null}
+    </div>
   );
 }
 
+// One of the overview's numbers, in a tile of equal width: label, value, then a note
+// (as the company page's).
 function Stat({ label, value, note }) {
   return (
-    <s-box minInlineSize="140px">
-      <s-stack gap="small-500">
-        <s-paragraph color="subdued" fontSize="small">{label}</s-paragraph>
-        <s-heading fontSize="large-200" accessibilityRole="presentation">{value}</s-heading>
-        <s-paragraph color="subdued" fontSize="small-200">{note}</s-paragraph>
-      </s-stack>
-    </s-box>
-  );
-}
-
-function Kv({ label, value }) {
-  return (
-    <s-stack direction="inline" justifyContent="space-between" alignItems="center" gap="small-200">
-      <s-text color="subdued" fontSize="small">{label}</s-text>
-      {typeof value === 'string' || typeof value === 'number' ? (
-        <s-text fontSize="small">{value || '—'}</s-text>
-      ) : (
-        value
-      )}
-    </s-stack>
+    <div className="cd-stat">
+      <div className="cd-stat__label">{label}</div>
+      <div className="cd-stat__value">{value}</div>
+      <div className="cd-stat__note">{note}</div>
+    </div>
   );
 }

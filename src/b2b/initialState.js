@@ -58,7 +58,7 @@ export function makeBaseState() {
     limitEditor: null, // { draft, returnTo, contractTerm } — the order-limit editor (see limits.js)
     limitChooser: null, // { returnTo } — Select limit type for a contract limit, from the contract editor
     agreementEditor: null, // { draft, staged, returnTo } — the agreement editor (see agreements.js)
-    addCompany: null, // { selected: shopifyCompanyIds, search, autoAddLocations } — add-company picker
+    addCompany: null, // { selected: shopifyCompanyIds, unticked: { [shopifyCompanyId]: locationIds }, search, autoAddLocations } — add-company picker
     shopifyNewLocations: {}, // { [shopifyCompanyId]: [location] } — created in Shopify this session (Settings → Prototype)
     emptyMode: false, // "show the app with no data" (fresh-install simulation)
     emptyBackup: null,

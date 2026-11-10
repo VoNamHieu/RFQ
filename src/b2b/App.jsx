@@ -7,6 +7,7 @@ import { CompaniesList } from './screens/CompaniesList.jsx';
 import { CompanyDetail } from './screens/CompanyDetail.jsx';
 import { QuoteDetail } from './screens/QuoteDetail.jsx';
 import { LocationDetail } from './screens/LocationDetail.jsx';
+import { OrderDetail } from './screens/OrderDetail.jsx';
 import { PricingLibrary } from './screens/PricingLibrary.jsx';
 import { Analytics } from './screens/Analytics.jsx';
 import { Settings } from './screens/Settings.jsx';
@@ -43,6 +44,8 @@ function CurrentView() {
       return <QuoteDetail />;
     case 'location':
       return <LocationDetail />;
+    case 'order':
+      return <OrderDetail />;
     case 'pricing':
       return <PricingLibrary />;
     case 'limits':
@@ -76,7 +79,7 @@ function CurrentView() {
 
 export function App() {
   const { state, dispatch } = useStore();
-  const companyActive = ['customers', 'company', 'quote', 'location'].includes(state.view);
+  const companyActive = ['customers', 'company', 'quote', 'location', 'order'].includes(state.view);
   // Registrations holds the submissions list, one registration's review, and the form builder.
   const registrationsActive = ['registrations', 'registration', 'form'].includes(state.view);
   const pending = pendingCount(state.db);
@@ -135,7 +138,7 @@ export function App() {
               : []),
             { label: 'Manual Order', url: '#/b2b/manual-order', matches: state.view === 'manualOrders', onClick: () => dispatch({ type: 'NAVIGATE', view: 'manualOrders' }) },
             { label: 'Discount', url: '#/b2b/discount', matches: state.view === 'discounts', onClick: () => dispatch({ type: 'NAVIGATE', view: 'discounts' }) },
-            { label: 'Others', url: '#/b2b/others', matches: state.view === 'others', onClick: () => dispatch({ type: 'NAVIGATE', view: 'others' }) },
+            { label: 'Settings', url: '#/b2b/others', matches: state.view === 'others', onClick: () => dispatch({ type: 'NAVIGATE', view: 'others' }) },
           ],
         },
       ],

@@ -9,6 +9,7 @@ import { Modal, useWcId, PageHeader } from '../../shared/wc.jsx';
 import { limitCatalog, withCatalog } from '../limitCatalog.js';
 import { isContractTerm } from '../agreements.js';
 import { versionFlags } from '../../shared/versions.js';
+import { TIMEZONES, storeTimezone } from '../timezones.js';
 
 const str = (v) => (v == null ? '' : String(v));
 
@@ -363,24 +364,34 @@ export function LimitEditor() {
 
         {!forContracts && (
         <s-section heading="Dates">
-          <s-query-container>
-            <s-grid gridTemplateColumns="@container (inline-size > 400px) 1fr 1fr, 1fr" gap="small">
-              {/* Date fields commit on change (typing emits partial dates on input). */}
-              <s-date-field
-                label="Start date"
-                value={draft.startDate || ''}
-                onChange={(e) => patch({ startDate: e.currentTarget.value })}
-                details="Leave empty to start right away."
-              />
-              <s-date-field
-                label="End date"
-                value={draft.endDate || ''}
-                onChange={(e) => patch({ endDate: e.currentTarget.value })}
-                error={errors.endDate}
-                details="Leave empty for no end date."
-              />
-            </s-grid>
-          </s-query-container>
+          <s-stack gap="small">
+            {/* Timezone: the store's until one is picked. */}
+            <s-select label="Timezone" value={draft.timezone || storeTimezone(state.db)} onChange={(e) => patch({ timezone: e.currentTarget.value })}>
+              {TIMEZONES.map((tz) => (
+                <s-option key={tz} value={tz}>
+                  {tz}
+                </s-option>
+              ))}
+            </s-select>
+            <s-query-container>
+              <s-grid gridTemplateColumns="@container (inline-size > 400px) 1fr 1fr, 1fr" gap="small">
+                {/* Date fields commit on change (typing emits partial dates on input). */}
+                <s-date-field
+                  label="Start date"
+                  value={draft.startDate || ''}
+                  onChange={(e) => patch({ startDate: e.currentTarget.value })}
+                  details="Leave empty to start right away."
+                />
+                <s-date-field
+                  label="End date"
+                  value={draft.endDate || ''}
+                  onChange={(e) => patch({ endDate: e.currentTarget.value })}
+                  error={errors.endDate}
+                  details="Leave empty for no end date."
+                />
+              </s-grid>
+            </s-query-container>
+          </s-stack>
         </s-section>
         )}
 

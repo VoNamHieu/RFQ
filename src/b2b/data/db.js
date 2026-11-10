@@ -42,13 +42,13 @@ const companies = [
     locations: [
       // Demo: Hanoi has its own base list — the company's, plus a pricing assigned to
       // Hanoi only (p31), so pickers show it as "Hanoi · ABC Construction".
-      { id: 'l1', name: 'Hanoi', ordering: 'Buys directly', terms: 'Net 30', lastOrder: '2026-07-15', buyers: 2,
+      { id: 'l1', name: 'Hanoi', shipping: { company: 'ABC Construction', address1: '12 Tran Hung Dao', address2: 'Hoan Kiem', city: 'Hanoi', postal: '100000', country: 'VN', phone: '' }, ordering: 'Buys directly', terms: 'Net 30', lastOrder: '2026-07-15', buyers: 2,
         pricing: { base: [{ id: abcTier2, priority: 1 }, { id: 'p30', priority: 5 }, { id: 'p8', priority: 2 }, { id: 'p20', priority: 3 }, { id: 'p21', priority: 4 }, { id: 'p22', priority: 5 }, { id: 'p23', priority: 6 }, { id: 'p24', priority: 7 }, { id: 'p25', priority: 8 }, { id: 'p26', priority: 9 }, { id: 'p27', priority: 10 }, { id: 'p28', priority: 11 }, { id: 'p29', priority: 12 }, { id: 'p31', priority: 1 }], quantity: null } },
       // `catalog`: the collection its buyers can buy from (none = every product).
-      { id: 'l2', name: 'Bac Ninh site', ordering: 'You approve first', terms: 'Due on receipt', lastOrder: '2026-06-28', buyers: 1, catalog: 'Contractor assortment' },
+      { id: 'l2', name: 'Bac Ninh site', shipping: { company: 'ABC Construction', address1: 'Lot 5, Que Vo Industrial Park', address2: '', city: 'Bac Ninh', postal: '220000', country: 'VN', phone: '' }, ordering: 'You approve first', terms: 'Due on receipt', lastOrder: '2026-06-28', buyers: 1, catalog: 'Contractor assortment' },
       // Demo: deleted in Shopify (so not in the Shopify directory) — the app keeps the
       // record, marked Deleted, until the merchant deletes it here too.
-      { id: 'l7', name: 'Hai Duong depot', status: 'Deleted', ordering: 'Buys directly', terms: 'Net 30', lastOrder: '2026-03-04', buyers: 0 }
+      { id: 'l7', name: 'Hai Duong depot', shipping: { company: 'ABC Construction', address1: '34 Nguyen Luong Bang', address2: '', city: 'Hai Duong', postal: '170000', country: 'VN', phone: '' }, status: 'Deleted', ordering: 'Buys directly', terms: 'Net 30', lastOrder: '2026-03-04', buyers: 0 }
     ],
     contacts: [
       { name: 'John Nguyen', email: 'john@abcconstruction.com', role: 'Location admin', access: 'Buys directly', locations: 'Hanoi' },
@@ -70,7 +70,7 @@ const companies = [
   {
     id: 'c2', name: 'Vinh Phat Trading', mainContact: 'Bui Quang', source: 'Merchant created',
     pricing: { base: 'p1', quantity: null }, revenue: 86400,
-    locations: [{ id: 'l3', name: 'Da Nang', ordering: 'Buys directly', terms: 'Net 15', lastOrder: '2026-07-11', buyers: 1, catalog: 'Distributor assortment' }],
+    locations: [{ id: 'l3', name: 'Da Nang', shipping: { company: 'Vinh Phat Trading', address1: '88 Bach Dang', address2: 'Hai Chau', city: 'Da Nang', postal: '550000', country: 'VN', phone: '' }, ordering: 'Buys directly', terms: 'Net 15', lastOrder: '2026-07-11', buyers: 1, catalog: 'Distributor assortment' }],
     contacts: [{ name: 'Bui Quang', email: 'quang@vinhphat.vn', role: 'Location admin', access: 'Buys directly', locations: 'Da Nang' }],
     quotes: [], exceptions: [],
     activity: [
@@ -81,7 +81,7 @@ const companies = [
   {
     id: 'c3', name: 'Delta Mechanical', mainContact: 'Nguyen Hoa', source: 'ERP import',
     pricing: { base: null, quantity: null }, revenue: 0,
-    locations: [{ id: 'l4', name: 'Ho Chi Minh City', ordering: 'Quote only', terms: 'Not set', lastOrder: null, buyers: 1 }],
+    locations: [{ id: 'l4', name: 'Ho Chi Minh City', shipping: { company: 'Delta Mechanical', address1: '210 Nguyen Van Linh', address2: 'District 7', city: 'Ho Chi Minh City', postal: '700000', country: 'VN', phone: '' }, ordering: 'Quote only', terms: 'Not set', lastOrder: null, buyers: 1 }],
     contacts: [{ name: 'Nguyen Hoa', email: 'hoa@deltamechanical.vn', role: 'Ordering only', access: 'Quote only', locations: 'Ho Chi Minh City' }],
     quotes: [], exceptions: [],
     activity: [
@@ -92,7 +92,7 @@ const companies = [
   {
     id: 'c4', name: 'Song Hong Interiors', mainContact: 'Do Lan', source: 'Company application',
     pricing: { base: 'p1', quantity: null }, revenue: 41200,
-    locations: [{ id: 'l5', name: 'Hanoi', ordering: 'Quote only', terms: 'Due on receipt', lastOrder: '2026-06-22', buyers: 1 }],
+    locations: [{ id: 'l5', name: 'Hanoi', shipping: { company: 'Song Hong Interiors', address1: '45 Hang Bai', address2: 'Hoan Kiem', city: 'Hanoi', postal: '100000', country: 'VN', phone: '' }, ordering: 'Quote only', terms: 'Due on receipt', lastOrder: '2026-06-22', buyers: 1 }],
     contacts: [{ name: 'Do Lan', email: 'lan@songhong.vn', role: 'Location admin', access: 'Quote only', locations: 'Hanoi' }],
     quotes: [],
     exceptions: [{ id: '#1046', reason: 'The negotiated price expired and no other price applies', location: 'Hanoi', amount: 3184, status: 'Blocked' }],
@@ -107,7 +107,7 @@ const companies = [
   {
     id: 'c5', name: 'Delta Mechanical', mainContact: 'Le Van Tam', source: 'Merchant created',
     pricing: { base: 'p1', quantity: null }, revenue: 0,
-    locations: [{ id: 'l6', name: 'Da Nang workshop', ordering: 'Buys directly', terms: 'Net 15', lastOrder: null, buyers: 1 }],
+    locations: [{ id: 'l6', name: 'Da Nang workshop', shipping: { company: 'Delta Mechanical', address1: '17 Ngo Quyen', address2: 'Son Tra', city: 'Da Nang', postal: '550000', country: 'VN', phone: '' }, ordering: 'Buys directly', terms: 'Net 15', lastOrder: null, buyers: 1 }],
     contacts: [{ name: 'Le Van Tam', email: 'tam@deltamech-dn.vn', role: 'Location admin', access: 'Buys directly', locations: 'Da Nang workshop' }],
     quotes: [], exceptions: [],
     activity: [{ when: 'Aug 04', what: 'Created by the merchant for the Da Nang workshop' }]
@@ -118,9 +118,9 @@ const companies = [
     id: 'c7', name: 'Phu Thanh Hardware', mainContact: 'Tran Minh Khoa', source: 'Merchant created',
     pricing: { base: [{ id: 'p20', priority: 3 }], quantity: null }, revenue: 158300,
     locations: [
-      { id: 'l11', name: 'Ho Chi Minh City', ordering: 'Buys directly', terms: 'Net 30', lastOrder: '2026-07-21', buyers: 2 },
-      { id: 'l12', name: 'Can Tho', ordering: 'Buys directly', terms: 'Net 15', lastOrder: '2026-07-09', buyers: 1 },
-      { id: 'l13', name: 'Vung Tau', ordering: 'You approve first', terms: 'Net 15', lastOrder: '2026-06-30', buyers: 1 }
+      { id: 'l11', name: 'Ho Chi Minh City', shipping: { company: 'Phu Thanh Hardware', address1: '150 Cong Hoa', address2: 'Tan Binh', city: 'Ho Chi Minh City', postal: '700000', country: 'VN', phone: '' }, ordering: 'Buys directly', terms: 'Net 30', lastOrder: '2026-07-21', buyers: 2 },
+      { id: 'l12', name: 'Can Tho', shipping: { company: 'Phu Thanh Hardware', address1: '22 Hoa Binh', address2: 'Ninh Kieu', city: 'Can Tho', postal: '900000', country: 'VN', phone: '' }, ordering: 'Buys directly', terms: 'Net 15', lastOrder: '2026-07-09', buyers: 1 },
+      { id: 'l13', name: 'Vung Tau', shipping: { company: 'Phu Thanh Hardware', address1: '9 Tran Phu', address2: '', city: 'Vung Tau', postal: '790000', country: 'VN', phone: '' }, ordering: 'You approve first', terms: 'Net 15', lastOrder: '2026-06-30', buyers: 1 }
     ],
     contacts: [
       { name: 'Tran Minh Khoa', email: 'khoa@phuthanh.vn', role: 'Location admin', access: 'Buys directly', locations: 'Ho Chi Minh City' },
@@ -134,7 +134,28 @@ const companies = [
       { when: 'May 01', what: 'CT-303 started for Vung Tau' },
       { when: 'Feb 01', what: 'CT-302 started for Ho Chi Minh City and Can Tho' }
     ]
-  }
+  },
+  // Demo (Upcoming only): five locations under one contract on all of them (CT-306).
+  // Delete one in the app and the contract's view lists the ones left (three, then
+  // "…") instead of "All locations".
+  ...(CONTRACTS
+    ? [
+        {
+          id: 'c8', name: 'Mekong Home Supply', mainContact: 'Nguyen Van Binh', source: 'Merchant created',
+          pricing: { base: 'p1', quantity: null }, revenue: 0,
+          locations: [
+            { id: 'l14', name: 'Long Xuyen', shipping: { company: 'Mekong Home Supply', address1: '61 Tran Hung Dao', address2: '', city: 'Long Xuyen', postal: '880000', country: 'VN', phone: '' }, ordering: 'Buys directly', terms: 'Net 30', lastOrder: null, buyers: 1 },
+            { id: 'l15', name: 'Rach Gia', shipping: { company: 'Mekong Home Supply', address1: '18 Nguyen Trung Truc', address2: '', city: 'Rach Gia', postal: '920000', country: 'VN', phone: '' }, ordering: 'Buys directly', terms: 'Net 30', lastOrder: null, buyers: 0 },
+            { id: 'l16', name: 'Soc Trang', shipping: { company: 'Mekong Home Supply', address1: '7 Phu Loi', address2: '', city: 'Soc Trang', postal: '950000', country: 'VN', phone: '' }, ordering: 'Buys directly', terms: 'Net 30', lastOrder: null, buyers: 0 },
+            { id: 'l17', name: 'Bac Lieu', shipping: { company: 'Mekong Home Supply', address1: '30 Tran Phu', address2: '', city: 'Bac Lieu', postal: '960000', country: 'VN', phone: '' }, ordering: 'Buys directly', terms: 'Net 30', lastOrder: null, buyers: 0 },
+            { id: 'l18', name: 'Ca Mau', shipping: { company: 'Mekong Home Supply', address1: '12 Ly Thuong Kiet', address2: '', city: 'Ca Mau', postal: '970000', country: 'VN', phone: '' }, ordering: 'Buys directly', terms: 'Net 30', lastOrder: null, buyers: 0 }
+          ],
+          contacts: [{ name: 'Nguyen Van Binh', email: 'binh@mekonghome.vn', role: 'Location admin', access: 'Buys directly', locations: 'Long Xuyen' }],
+          quotes: [], exceptions: [],
+          activity: [{ when: 'Mar 01', what: 'CT-306 started for all locations' }]
+        }
+      ]
+    : [])
 ];
 
 const tagPricing = [
@@ -158,7 +179,7 @@ const customers = [
 
 const policies = [
   { id: 'p20', name: 'Volume Tier A', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 3, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 12, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
-  { id: 'p21', name: 'Volume Tier B', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 4, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 15, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
+  { id: 'p21', name: 'Volume Tier B', type: 'Reusable', status: 'Inactive', audienceType: 'b2b', priority: 4, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 15, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
   { id: 'p22', name: 'Volume Tier C', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 5, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 18, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
   { id: 'p23', name: 'Contractor Bulk', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 6, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 20, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
   { id: 'p24', name: 'Government Rate', type: 'Reusable', status: 'Active', audienceType: 'b2b', priority: 7, priceKind: 'base', scopeType: 'all', collection: 'All B2B products', selectedProducts: [], pricingRule: 'decrease', valueType: 'percentage', value: 10, variantAdjustments: {}, explicitEnabled: false, conditionalRules: [], validityType: 'evergreen', startDate: '', endDate: '' },
@@ -523,6 +544,15 @@ const agreements = [
   { id: 'ag6', number: 'CT-304', name: 'Can Tho 2027–28 terms', companyId: 'c7', locationIds: ['l12'], status: 'Scheduled', version: 1, startDate: '2027-02-01', endDate: '2028-01-31',
     terms: { base: ['p22'], quantity: [], limits: [] },
     history: [{ version: 1, date: '2026-07-20', note: 'Activated, starts Feb 1, 2027', terms: { base: ['p22'], quantity: [], limits: [] } }] },
+  // Demo (Upcoming only): Mekong Home Supply's contract on all five of its locations,
+  // seeded Scheduled with a past start date so it starts on load.
+  ...(CONTRACTS
+    ? [
+        { id: 'ag7', number: 'CT-306', name: 'Mekong 2026 terms', companyId: 'c8', locationIds: null, status: 'Scheduled', version: 1, startDate: '2026-03-01', endDate: '',
+          terms: { base: ['p8'], quantity: [], limits: [] },
+          history: [{ version: 1, date: '2026-02-20', note: 'Activated, starts Mar 1, 2026', terms: { base: ['p8'], quantity: [], limits: [] } }] },
+      ]
+    : []),
 ];
 
 // The contracts use the contract copies (SPLIT), in their versions too.
@@ -542,9 +572,11 @@ export const orderSeed = {
   c1: [
     {
       id: '#1045', location: 'Hanoi', buyer: 'John Nguyen', date: '2026-07-15', amount: 12400, lines: 3, po: 'PO-9821',
+      // Demo: what the buyer wrote with the order request (Note for the seller).
+      buyerMessage: 'We need these before our Aug 1 store opening in Hanoi — the jerseys are for the launch event and the first week of sales. It is above our usual limit because it covers two months of stock. Happy to pay half upfront if that helps, or split it into two deliveries.',
       // Its products, at the negotiated prices, for the buyer's order page on the storefront.
       items: [
-        { sku: '701242690-HAALAND', title: 'Manchester City Home Authentic Jersey 2026/27 With HAALAND 9 Printing in Gift Box', qty: 40, price: 130 },
+        { sku: '701242690-HAALAND', title: "Manchester City Home Authentic Jersey 2026/27 With HAALAND 9 Printing in Gift Box", qty: 40, price: 130 },
         { sku: '701242808', title: "Women's Manchester City Home Jersey 2026/27 With CHERKI 10 Printing", qty: 50, price: 90 },
         { sku: '701242812-CHERKI', title: "Kids' Manchester City Home Jersey 2026/27 Long Sleeve With CHERKI 10 Printing", qty: 40, price: 67.5 },
       ],
@@ -555,7 +587,7 @@ export const orderSeed = {
       // Approved after review: the invoice is sent, waiting for the buyer to check out.
       id: '#1047', location: 'Hanoi', buyer: 'John Nguyen', date: '2026-08-03', amount: 12200, lines: 2, po: 'PO-9840',
       items: [
-        { sku: '701242784-CHERKI', title: 'Manchester City Home Jersey 2026/27 With CHERKI 10 Printing', qty: 80, price: 85 },
+        { sku: '701242784-CHERKI', title: "Manchester City Home Jersey 2026/27 With CHERKI 10 Printing", qty: 80, price: 85 },
         { sku: '701242808-GVARDIOL', title: "Women's Manchester City Home Jersey 2026/27 With GVARDIOL 24 Printing", qty: 60, price: 90 },
       ],
       pricing: 'ABC Hanoi Negotiated', pricingSource: 'Location price', source: 'Direct checkout',
@@ -563,21 +595,45 @@ export const orderSeed = {
     },
     {
       id: '#1044', location: 'Hanoi', buyer: 'Le Thu Ha', date: '2026-07-14', amount: 5860, lines: 2, po: 'PO-9814',
+      // Demo: its products, at the prices it was placed at (as Analytics has them).
+      items: [
+        { sku: 'FIL-XL', title: "Industrial filter, XL", qty: 40, price: 77.5 },
+        { sku: 'VLV-40', title: "Ball valve 40mm", qty: 60, price: 46.0 },
+      ],
       pricing: 'ABC Hanoi Negotiated', pricingSource: 'Location price', source: 'Sales-assisted',
       status: 'Fulfilled', shopifyStatus: 'Fulfilled', reason: null
     },
     {
       id: '#1039', location: 'Hanoi', buyer: 'John Nguyen', date: '2026-06-28', amount: 6120, lines: 3, po: 'PO-9770',
+      // Demo: its products, at the prices it was placed at (as Analytics has them).
+      items: [
+        { sku: 'FIL-XL', title: "Industrial filter, XL", qty: 40, price: 72.5 },
+        { sku: 'FIL-STD', title: "Industrial filter, standard", qty: 40, price: 47.5 },
+        { sku: 'SEA-30', title: "Sealant cartridge 300ml", qty: 200, price: 6.6 },
+      ],
       pricing: 'ABC Hanoi Negotiated', pricingSource: 'Location price', source: 'Reorder',
       status: 'Paid', shopifyStatus: 'Paid', reason: null
     },
     {
       id: '#1028', location: 'Bac Ninh site', buyer: 'Pham Duc', date: '2026-06-12', amount: 4380, lines: 4, po: 'PO-9651',
+      // Demo: its products, at the prices it was placed at (as Analytics has them).
+      items: [
+        { sku: 'HOS-12', title: "Reinforced hose, 12m", qty: 20, price: 119.0 },
+        { sku: 'VLV-40', title: "Ball valve 40mm", qty: 30, price: 40.0 },
+        { sku: 'SEA-30', title: "Sealant cartridge 300ml", qty: 100, price: 8.0 },
+      ],
       pricing: 'Contractor Standard', pricingSource: 'Company price', source: 'Direct checkout',
       status: 'Fulfilled', shopifyStatus: 'Fulfilled', reason: null
     },
     {
       id: '#1017', location: 'Hanoi', buyer: 'John Nguyen', date: '2026-05-19', amount: 7275, lines: 5, po: 'PO-9518',
+      // Demo: its products, at the prices it was placed at (as Analytics has them).
+      items: [
+        { sku: 'FIL-XL', title: "Industrial filter, XL", qty: 40, price: 75.0 },
+        { sku: 'FIL-STD', title: "Industrial filter, standard", qty: 40, price: 45.0 },
+        { sku: 'HOS-12', title: "Reinforced hose, 12m", qty: 11, price: 1475 / 11 },
+        { sku: 'SEA-30', title: "Sealant cartridge 300ml", qty: 150, price: 1000 / 150 },
+      ],
       pricing: 'ABC Hanoi Negotiated', pricingSource: 'Location price', source: 'Direct checkout',
       status: 'Fulfilled', shopifyStatus: 'Fulfilled', reason: null
     }
@@ -585,21 +641,46 @@ export const orderSeed = {
   c2: [
     {
       id: '#1048', location: 'Da Nang', buyer: 'Bui Quang', date: '2026-08-07', amount: 21500, lines: 8, po: 'PO-4470',
+      // Demo: its products, at the prices it was placed at.
+      items: [
+        { sku: '701242784-HAALAND', title: "Manchester City Home Jersey 2026/27 With HAALAND 9 Printing", qty: 19, price: 85.55 },
+        { sku: '701242690-FODEN', title: "Manchester City Home Authentic Jersey 2026/27 With FODEN 47 Printing in Gift Box", qty: 28, price: 119.84 },
+        { sku: '701242785-FODEN', title: "Manchester City Home Jersey 2026/27 Long Sleeve With FODEN 47 Printing", qty: 16, price: 97.82 },
+        { sku: '701237145-FODEN', title: "Kids' Manchester City Third Jersey 2025/26 With FODEN 47 Printing", qty: 75, price: 26.23 },
+        { sku: '701242808-GVARDIOL', title: "Women's Manchester City Home Jersey 2026/27 With GVARDIOL 24 Printing", qty: 36, price: 88.35 },
+        { sku: '701242784-GVARDIOL', title: "Manchester City Home Jersey 2026/27 With GVARDIOL 24 Printing", qty: 39, price: 81.92 },
+        { sku: '701242813-FODEN', title: "Kids' Manchester City Home MINI KIT 2026/27 With FODEN 47 Printing", qty: 39, price: 66.62 },
+        { sku: '701242784-CHERKI', title: "Manchester City Home Jersey 2026/27 With CHERKI 10 Printing", qty: 50, price: 80.26 },
+      ],
       pricing: 'Distributor Tier 2', pricingSource: 'Company price', source: 'Direct checkout',
       status: 'Needs review', shopifyStatus: 'Draft order', reason: 'Above the $20,000 maximum', heldBy: 'ol2', heldAt: { value: 20000, limitId: 'ol2', limitName: 'Vinh Phat low minimum' }
     },
     {
       id: '#1041', location: 'Da Nang', buyer: 'Bui Quang', date: '2026-07-11', amount: 1560, lines: 1, po: 'None',
+      // Demo: its products, at the prices it was placed at (as Analytics has them).
+      items: [
+        { sku: 'VLV-40', title: "Ball valve 40mm", qty: 40, price: 39.0 },
+      ],
       pricing: 'Distributor Tier 2', pricingSource: 'Company price', source: 'Direct checkout',
       status: 'Fulfilled', shopifyStatus: 'Fulfilled', reason: null
     },
     {
       id: '#1033', location: 'Da Nang', buyer: 'Bui Quang', date: '2026-06-18', amount: 8920, lines: 6, po: 'PO-4432',
+      // Demo: its products, at the prices it was placed at (as Analytics has them).
+      items: [
+        { sku: 'HOS-12', title: "Reinforced hose, 12m", qty: 30, price: 120.0 },
+        { sku: 'FIL-STD', title: "Industrial filter, standard", qty: 60, price: 47.0 },
+        { sku: 'SEA-30', title: "Sealant cartridge 300ml", qty: 400, price: 6.25 },
+      ],
       pricing: 'Distributor Tier 2', pricingSource: 'Company price', source: 'Reorder',
       status: 'Paid', shopifyStatus: 'Paid', reason: null
     },
     {
       id: '#1055', location: 'Da Nang', buyer: 'Bui Quang', date: '2026-08-05', amount: 2600, lines: 1, po: 'None',
+      // Demo: its products, at the prices it was placed at (as Analytics has them).
+      items: [
+        { sku: 'HOS-12', title: "Reinforced hose, 12m", qty: 20, price: 130.0 },
+      ],
       pricing: 'None', pricingSource: 'Manual price', source: 'Sales-assisted',
       status: 'Fulfilled', shopifyStatus: 'Fulfilled', reason: 'Custom price keyed on the draft order'
     }
@@ -608,11 +689,22 @@ export const orderSeed = {
   c4: [
     {
       id: '#1046', location: 'Hanoi', buyer: 'Do Lan', date: '2026-07-14', amount: 3184, lines: 2, po: 'None',
+      // Demo: its products, at the prices it was placed at.
+      items: [
+        { sku: '701242690', title: "Manchester City Home Authentic Jersey 2026/27 With CHERKI 10 Printing in Gift Box", qty: 8, price: 117.28 },
+        { sku: 'yellow-snowboard', title: "Yellow Snowboard", qty: 29, price: 77.44 },
+      ],
       pricing: 'None', pricingSource: 'None', source: 'Direct checkout',
       status: 'Blocked', shopifyStatus: 'Draft order', reason: 'The negotiated price expired and no other price applies'
     },
     {
       id: '#1021', location: 'Hanoi', buyer: 'Do Lan', date: '2026-06-22', amount: 2940, lines: 3, po: 'None',
+      // Demo: its products, at the prices it was placed at (as Analytics has them).
+      items: [
+        { sku: 'FIL-STD', title: "Industrial filter, standard", qty: 25, price: 48.0 },
+        { sku: 'SEA-30', title: "Sealant cartridge 300ml", qty: 150, price: 940 / 150 },
+        { sku: 'VLV-40', title: "Ball valve 40mm", qty: 20, price: 40.0 },
+      ],
       pricing: 'Standard Wholesale', pricingSource: 'Previous agreement', source: 'Direct checkout',
       status: 'Fulfilled', shopifyStatus: 'Fulfilled', reason: null
     }

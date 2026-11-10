@@ -375,11 +375,17 @@ export const expiringSoon = (ag, db) =>
   ag?.status === 'Active' && !!ag.endDate && reminderDays(ag) > 0 && daysUntil(ag.endDate) <= reminderDays(ag) && !takeoverOf(db, ag);
 
 // ── Scope ─────────────────────────────────────────────────────────────────────
-// Picking every location counts as all.
+// The locations a contract names, or null for all of its company's (`locationIds`
+// null; the editor's picker gives null when every location is ticked). Naming every
+// location there is now still isn't all: once a location is removed from the company,
+// one on all of them names the ones left (dropContractLocations).
 function scopeLocationIds(company, ag) {
-  const locs = company.locations || [];
-  return ag.locationIds && ag.locationIds.length < locs.length ? ag.locationIds : null;
+  return Array.isArray(ag.locationIds) ? ag.locationIds : null;
 }
+// Location names in a label: the first three (`names`), the rest (`more`) listed on
+// hovering "+N", then `after` — shown by LocationNames.
+const NAMES_SHOWN = 3;
+const listNames = (names, after = '') => ({ names: names.slice(0, NAMES_SHOWN), more: names.slice(NAMES_SHOWN), after });
 const scopeLocations = (company, ag) => {
   const ids = scopeLocationIds(company, ag);
   return (company.locations || []).filter((l) => !ids || ids.includes(l.id));
@@ -405,14 +411,15 @@ export function agreementScopeLabel(company, ag) {
 // for the contract list, the editor's Overview and the Contract tab: "All locations"
 // (every location today, and new ones), "Hanoi, Bac Ninh site + new locations" (some,
 // and new ones), or only the names when new ones don't join — every location today
-// included — as "3 locations" past two.
+// included. Names: the first three, then "+N" (listNames; LocationNames shows it).
 export function agreementAppliesToLabel(company, ag) {
-  if (!(company.locations || []).length) return agreementScopeLabel(company, ag);
+  const ids = scopeLocationIds(company, ag);
+  if (!(company.locations || []).length) return ids ? 'No locations' : 'All locations';
   const later = addsLaterLocations(ag);
-  if (later && !scopeLocationIds(company, ag)) return 'All locations';
+  if (later && !ids) return 'All locations';
   const names = scopeLocations(company, ag).map((l) => l.name);
-  if (later) return `${names.join(', ')} + new locations`;
-  return names.length > 2 ? `${names.length} locations` : names.join(', ');
+  if (!names.length) return 'No locations';
+  return listNames(names, later ? ' + new locations' : '');
 }
 
 // ── Applying ──────────────────────────────────────────────────────────────────
@@ -495,8 +502,8 @@ export function unapplyAgreement(db, ag) {
 
 // Locations added to a company later (auto-added from Shopify, or added in the
 // app): they join the company's contracts that apply to locations added later; the
-// others keep the locations they had (one on all locations now lists them). With
-// Auto-add locations off they join none, whatever the contracts say. An
+// others keep the locations they had (one on all locations now lists them), whether
+// or not the company has Auto-add locations on. An
 // Active contract they join gives them its terms right away, as a new version
 // ("Added <location>"); a Scheduled one adds a version too and gives them its terms
 // when it starts. They join the Active and Scheduled ones in that order, leaving out
@@ -519,7 +526,7 @@ export function joinLaterLocations(db, c, locations) {
   [...open]
     .sort((a, b) => rank[a.status] - rank[b.status] || String(a.startDate).localeCompare(String(b.startDate)))
     .forEach((a) => {
-      const joins = !!c.autoAddLocations && addsLaterLocations(a) && !joined.some((x) => meet(a, x));
+      const joins = addsLaterLocations(a) && !joined.some((x) => meet(a, x));
       if (joins) {
         if (a.locationIds) a.locationIds = [...a.locationIds, ...locations.map((l) => l.id)];
         joined.push(a);
@@ -527,6 +534,40 @@ export function joinLaterLocations(db, c, locations) {
     });
   active.forEach((a) => applyAgreement(db, a));
   joined.filter(isLive).forEach((a) => addVersion(db, a, `Added ${joinAnd(locations.map((l) => l.name))}`));
+}
+
+// Locations removed from a company (`removed`, already gone from `c.locations`): its
+// contracts stop naming them, and one on all its locations names the ones left — it
+// no longer counts as all of them; whether locations added later join it stays as it
+// was. One in force comes off and goes back on the ones left. A live contract that
+// had them and keeps others gets a new version ("Removed <location>"); one left with
+// no locations ends (mutates `db`).
+export function dropContractLocations(db, c, removed) {
+  const ids = removed.map((l) => l.id);
+  if (!ids.length) return;
+  const left = (c.locations || []).map((l) => l.id);
+  (db.agreements || [])
+    .filter((a) => a.companyId === c.id)
+    .forEach((a) => {
+      // The ones it had, before it stops naming them.
+      const had = removed.filter((l) => !a.locationIds || a.locationIds.includes(l.id));
+      if (a.locationIds) {
+        a.locationIds = a.locationIds.filter((id) => !ids.includes(id));
+      } else {
+        // A version without Contracts keeps them as they were.
+        if (!versionFlags().agreements) return;
+        const active = a.status === 'Active';
+        if (active) unapplyAgreement(db, a);
+        a.applyLater = addsLaterLocations(a);
+        a.locationIds = left;
+        if (active) applyAgreement(db, a);
+      }
+      if (!had.length || !a.locationIds.length || !isLive(a) || !versionFlags().agreements) return;
+      addVersion(db, a, `Removed ${joinAnd(had.map((l) => l.name))}`);
+    });
+  (db.agreements || []).forEach((a) => {
+    if (a.companyId === c.id && isLive(a) && Array.isArray(a.locationIds) && !a.locationIds.length) closeAgreement(db, a, 'Ended', 'Ended');
+  });
 }
 
 // The companies and order limits as they'd be after taking `off` off its company
@@ -630,7 +671,9 @@ export const limitTermSummary = (l, db) => [limitSummary(l, db), l.status !== 'A
 
 // The contract's terms as they are now, for a version's snapshot: names, what each
 // sets in a line, and the whole pricing or limit (`config`, see termSettings), so a
-// version — and a contract that's over — can be read again in full.
+// version — and a contract that's over — can be read again in full. `locations`: the
+// ones it applies to then, so its view can leave out one removed since
+// (versionScopeLabel).
 export function snapshotTerms(db, ag) {
   const c = db.companies.find((x) => x.id === ag.companyId);
   const pol = (id) => db.policies.find((p) => p.id === id);
@@ -640,11 +683,24 @@ export function snapshotTerms(db, ag) {
     startDate: ag.startDate,
     endDate: ag.endDate,
     scope: c ? agreementScopeLabel(c, ag) : '',
+    locations: c ? scopeLocations(c, ag).map((l) => ({ id: l.id, name: l.name })) : [],
     base: ag.terms.base.map(pol).filter(Boolean).map((p) => ({ id: p.id, name: p.name, summary: pricingTermSummary(p), config: copyOf(p) })),
     quantity: ag.terms.quantity.map(pol).filter(Boolean).map((p) => ({ id: p.id, name: p.name, summary: pricingTermSummary(p), config: copyOf(p) })),
     limits: ag.terms.limits.map(lim).filter(Boolean).map((l) => ({ id: l.id, name: l.name, summary: limitTermSummary(l, db), config: copyOf(l) })),
   };
 }
+// Where a version applied, for its view (ContractVersionModal): "All locations"
+// while every location it had is still the company's; once one is removed from the
+// company, the ones left by name — the first three, then "+N" (also for a version on
+// some locations; listNames).
+export function versionScopeLabel(company, snap) {
+  if (!snap.locations) return snap.scope;
+  const left = snap.locations.filter((l) => (company.locations || []).some((x) => x.id === l.id));
+  if (snap.scope === 'All locations' && left.length === snap.locations.length) return 'All locations';
+  if (!left.length) return 'No locations';
+  return listNames(left.map((l) => l.name));
+}
+
 // ── Reading a version's terms (ContractVersionModal) ─────────────────────────
 // An adjustment as plain text, amounts with cents: "10% off", "$6.90 off", "+5%",
 // "Set to $50.00" — or for a fixed price (`fixed`) the price alone, "$6.90".

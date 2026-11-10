@@ -6,14 +6,7 @@ import { money } from '../format.js';
 import { productVariants, applyAdjustment, locationCatalog, scopeCollections, conditionValueOptions } from '../pricing.js';
 import { VariantPicker } from './VariantPicker.jsx';
 import { CollectionPicker } from './CollectionPicker.jsx';
-
-// Timezone options mirror the B2B god file's Active dates card.
-const TIMEZONES = [
-  '(GMT+07:00) Indochina Time - Bangkok',
-  '(GMT+00:00) UTC',
-  '(GMT-05:00) Eastern Time - New York',
-  '(GMT+10:00) AEST - Sydney',
-];
+import { TIMEZONES } from '../timezones.js';
 
 // Two fields side by side once the card is wide enough (Polaris React
 // InlineGrid columns={{ xs: 1, sm: 2 }}).
@@ -22,14 +15,15 @@ const TWO_UP = '@container (inline-size > 400px) 1fr 1fr, 1fr';
 // Cards used by the pricing editor: status/dates, product scope, quantity discount
 // basis, and per-variant price overrides. Split out of PricingEditor for readability.
 
-// Active dates: timezone + start date/time, with an optional end date (god-file parity).
-export function ActiveDatesCard({ builder, patch }) {
+// Active dates: timezone (the store's until one is picked: `storeTz`) + start date/time,
+// with an optional end date (god-file parity).
+export function ActiveDatesCard({ builder, patch, storeTz = TIMEZONES[0] }) {
   // Seed policies carry an endDate without an explicit flag — treat that as "has end".
   const hasEnd = builder.hasEndDate ?? !!builder.endDate;
   return (
     <s-section heading="Active dates">
       <s-stack gap="small">
-        <s-select label="Timezone" value={builder.timezone || TIMEZONES[0]} onChange={(e) => patch({ timezone: e.currentTarget.value })}>
+        <s-select label="Timezone" value={builder.timezone || storeTz} onChange={(e) => patch({ timezone: e.currentTarget.value })}>
           {TIMEZONES.map((tz) => (
             <s-option key={tz} value={tz}>
               {tz}

@@ -898,3 +898,79 @@ body {
   background: var(--p-color-bg-surface, #fff);
   border-top: 1px solid var(--p-color-border-secondary, #ebebeb);
 }
+
+/* ---------- Plain list table ---------- */
+/* A light table for a short list in a card (the location page's Quotes and Order
+   history): subdued headings with no band, roomy rows split by hairlines that start
+   at the text. s-table can't be restyled (shadow DOM), so this is a plain <table>. */
+.wc-table-scroll {
+  overflow-x: auto;
+}
+.wc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--wc-text);
+}
+/* Headings a step smaller and lighter than the rows, so the rows read first. */
+.wc-table th {
+  padding: 8px 16px 8px 0;
+  text-align: left;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 450;
+  color: #737373;
+  white-space: nowrap;
+  border-bottom: 1px solid #ebebeb;
+}
+.wc-table td {
+  padding: 14px 16px 14px 0;
+  vertical-align: middle;
+  border-bottom: 1px solid #f3f3f3;
+}
+.wc-table th:last-child,
+.wc-table td:last-child {
+  padding-right: 0;
+}
+.wc-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.wc-table .wc-table__num {
+  text-align: right;
+}
+.wc-table__muted {
+  color: var(--wc-text-subdued);
+}
+.wc-table__row--link {
+  cursor: pointer;
+}
+.wc-table__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: #005bd3;
+  cursor: pointer;
+}
+.wc-table__row--link:hover .wc-table__link,
+.wc-table__link:focus-visible {
+  text-decoration: underline;
+}
+
+/* ---------- Hover-revealed row action ---------- */
+/* A row's secondary action (e.g. a buyer's ×) shows on hover or keyboard focus;
+   always on touch screens, which have no hover. */
+.wc-hover-row .wc-hover-target {
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.wc-hover-row:hover .wc-hover-target,
+.wc-hover-row:focus-within .wc-hover-target {
+  opacity: 1;
+}
+@media (hover: none) {
+  .wc-hover-row .wc-hover-target {
+    opacity: 1;
+  }
+}
