@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useStore } from '../store.jsx';
-import { LIMIT_KINDS, limitErrors, defaultLimitMessage, normalizeLimit, limitOverlaps, productRules, ruleSkus, canReview, isLimitAssigned, limitTargetsLabel, isD2CLimit } from '../limits.js';
+import { LIMIT_KINDS, limitErrors, normalizeLimit, limitOverlaps, productRules, ruleSkus, canReview, isLimitAssigned, limitTargetsLabel, isD2CLimit } from '../limits.js';
 import { money } from '../format.js';
 import { LimitOverlapMessage } from './LimitOverlapList.jsx';
 import { LimitRulesCard } from './LimitRulesCard.jsx';
@@ -356,7 +356,11 @@ export function LimitEditor() {
             rows={2}
             value={draft.message || ''}
             onInput={(e) => patch({ message: e.currentTarget.value })}
-            placeholder={defaultLimitMessage(normalizeLimit(draft))}
+            placeholder={
+              draft.kind === 'product'
+                ? 'Some products in your cart are outside their quantity limits.'
+                : 'Your order doesn’t meet the order limits for your account.'
+            }
             details="Shown in the cart and at checkout when an order breaks this limit. Leave it empty to use the suggested message. When the limit sets more than one thing, buyers see the suggested message for the one they broke."
             autocomplete="off"
           />
