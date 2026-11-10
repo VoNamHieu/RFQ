@@ -615,7 +615,17 @@ export const orderSeed = {
       status: 'Paid', shopifyStatus: 'Paid', reason: null
     },
     {
-      id: '#1028', location: 'Bac Ninh site', buyer: 'Pham Duc', date: '2026-06-12', amount: 4380, lines: 4, po: 'PO-9651',
+      id: '#1028', location: 'Bac Ninh site', buyer: 'Pham Duc', date: '2026-06-12', amount: 4795.91, lines: 4, po: 'PO-9651',
+      // Demo: an order with a discount code, shipping and several taxes (one on the
+      // shipping) — the total is the items ($4,380) less the discount, plus shipping and
+      // the taxes: VAT and the fee on the discounted items ($4,161), VAT on the shipping.
+      discount: { label: 'SUMMERSITE', amount: 219 },
+      shippingLine: { title: 'Freight (LTL)', amount: 180 },
+      taxLines: [
+        { label: 'VAT 10%', amount: 416.1 },
+        { label: 'Shipping VAT 10%', amount: 18 },
+        { label: 'Environmental fee 0.5%', amount: 20.81 },
+      ],
       // Demo: its products, at the prices it was placed at (as Analytics has them).
       items: [
         { sku: 'HOS-12', title: "Reinforced hose, 12m", qty: 20, price: 119.0 },

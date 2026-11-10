@@ -98,6 +98,12 @@ body:has(.cd-page) {
   margin: 4px 0 0;
   color: var(--wc-text-subdued);
 }
+/* Links under a page's title (an order's Buyer message, Message to the buyer): one line. */
+.cd-intro__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
 /* Three tiles of equal width (one column on a narrow page). */
 .cd-stats {
   display: grid;
@@ -532,6 +538,35 @@ body:has(.cd-page) {
 /* An order's total, in its items card's footer. */
 .cd-order-total {
   font-size: 14px;
+}
+/* An order's money summary under its items (Shopify's order page): label, its code /
+   method / rate in grey, the amount on the right; Total in bold over a hairline. */
+.cd-order-summary {
+  display: grid;
+  grid-template-columns: minmax(72px, 120px) minmax(0, 1fr) auto;
+  column-gap: 12px;
+  row-gap: 6px;
+  padding: 12px 16px;
+  border-top: 1px solid #ebebeb;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--wc-text);
+}
+.cd-order-summary .cd-num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.cd-order-summary__note {
+  color: var(--wc-text-subdued);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.cd-order-summary__total {
+  padding-top: 8px;
+  margin-top: 2px;
+  border-top: 1px solid #ebebeb;
+  font-weight: 650;
 }
 .cd-text-link--indent {
   padding-left: 12px;
