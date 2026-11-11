@@ -3,5 +3,76 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "cleanUrls": true,
-  "trailingSlash": true
+  "trailingSlash": true,
+  "redirects": [
+    {
+      "source": "/",
+      "missing": [
+        {
+          "type": "query",
+          "key": "v"
+        }
+      ],
+      "destination": "/versions/current/",
+      "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "query",
+          "key": "v",
+          "value": "current"
+        }
+      ],
+      "destination": "/versions/current/",
+      "permanent": false
+    },
+    {
+      "source": "/b2b/",
+      "missing": [
+        {
+          "type": "query",
+          "key": "v"
+        }
+      ],
+      "destination": "/versions/current/b2b/",
+      "permanent": false
+    },
+    {
+      "source": "/b2b/",
+      "has": [
+        {
+          "type": "query",
+          "key": "v",
+          "value": "current"
+        }
+      ],
+      "destination": "/versions/current/b2b/",
+      "permanent": false
+    },
+    {
+      "source": "/storefront/",
+      "missing": [
+        {
+          "type": "query",
+          "key": "v"
+        }
+      ],
+      "destination": "/versions/current/storefront/",
+      "permanent": false
+    },
+    {
+      "source": "/storefront/",
+      "has": [
+        {
+          "type": "query",
+          "key": "v",
+          "value": "current"
+        }
+      ],
+      "destination": "/versions/current/storefront/",
+      "permanent": false
+    }
+  ]
 }
