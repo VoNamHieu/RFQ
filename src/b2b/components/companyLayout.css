@@ -269,6 +269,44 @@ body:has(.cd-page) {
   gap: 4px;
   white-space: nowrap;
 }
+/* Read by screen readers only (a heading over a column of icon buttons). */
+.cd-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+/* Its actions on the right (a list page's Create button, etc.). */
+.cd-list-head__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+/* Orders & rules: a section per list, its button on the card's bottom edge. */
+.cd-terms-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+  box-sizing: border-box;
+}
+.cd-terms-card > s-stack {
+  margin-top: auto;
+}
+/* Cards side by side (Select pricing type's two types); one column on a narrow page. */
+.cd-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+@container (max-width: 560px) {
+  .cd-card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 /* Tabs, search and sort on top of a list's card (the company list). */
 .cd-card__filters {
   padding: 8px;

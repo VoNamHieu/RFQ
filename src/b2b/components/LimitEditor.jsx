@@ -5,11 +5,15 @@ import { money } from '../format.js';
 import { LimitOverlapMessage } from './LimitOverlapList.jsx';
 import { LimitRulesCard } from './LimitRulesCard.jsx';
 import { SelectCompaniesModal, CustomerTargetsBox, companyPicks } from './AssignmentCard.jsx';
-import { Modal, useWcId, PageHeader } from '../../shared/wc.jsx';
+import { Modal, useWcId } from '../../shared/wc.jsx';
+import { CdPageHead, editorBackLabel } from './companyLayout.jsx';
 import { limitCatalog, withCatalog } from '../limitCatalog.js';
 import { isContractTerm } from '../agreements.js';
 import { versionFlags } from '../../shared/versions.js';
 import { TIMEZONES, storeTimezone } from '../timezones.js';
+
+// Main column + Status side by side once the page is wide enough (as the pricing editor's).
+const MAIN_ASIDE = '@container (inline-size > 700px) 2fr 1fr, 1fr';
 
 const str = (v) => (v == null ? '' : String(v));
 
@@ -45,6 +49,7 @@ export function LimitEditor() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmSave, setConfirmSave] = useState(false);
   const scopeName = useWcId('limit-scope');
+  const tipId = useWcId('limit-tip');
   const patch = (p) => dispatch({ type: 'LIMIT_EDITOR_PATCH', patch: p });
   const close = () => dispatch({ type: 'CLOSE_LIMIT_EDITOR' });
 
@@ -178,21 +183,38 @@ export function LimitEditor() {
     />
   );
 
+  // The company page's look, as the pricing editor's: back (named as the page it returns
+  // to) with the actions on top, then the title; the cards below are as they were, the
+  // main column and Status side by side.
   return (
-    <>
-    <PageHeader
-      heading={isNew ? `Create ${kind.label.toLowerCase()}` : `Edit limit: ${draft.name}`}
-      // In a contract: its number by the title, and saving or going back returns to it.
-      titleMetadata={contract ? <s-badge>{`Contract ${contract.number}`}</s-badge> : null}
-      backAction={{ content: contract ? contract.number : 'Order limits', onAction: close }}
-      primaryAction={{ content: contract ? (isNew ? 'Add to contract' : 'Done') : isNew ? 'Create limit' : 'Save', onAction: save }}
-      secondaryActions={[
-        // A contract's own limit comes out of it in the contract editor.
-        ...(isNew || contract ? [] : [{ content: 'Delete', destructive: true, onAction: () => setConfirmDelete(true) }]),
-        { content: 'Cancel', onAction: close },
-      ]}
+    <div className="cd-page">
+    <CdPageHead
+      title={
+        <span className="cd-inline">
+          {isNew ? `Create ${kind.label.toLowerCase()}` : `Edit limit: ${draft.name}`}
+          {/* In a contract: its number by the title, and saving or going back returns to it. */}
+          {contract ? <span className="cd-chip cd-chip--neutral">{`Contract ${contract.number}`}</span> : null}
+        </span>
+      }
+      back={{ label: contract ? contract.number : editorBackLabel(state, state.limitEditor.returnTo, 'Order limits'), onAction: close }}
+      actionsOnTop
+      actions={
+        <>
+          {/* A contract's own limit comes out of it in the contract editor. */}
+          {isNew || contract ? null : (
+            <s-button tone="critical" onClick={() => setConfirmDelete(true)}>
+              Delete
+            </s-button>
+          )}
+          <s-button onClick={close}>Cancel</s-button>
+          <s-button variant="primary" onClick={save}>
+            {contract ? (isNew ? 'Add to contract' : 'Done') : isNew ? 'Create limit' : 'Save'}
+          </s-button>
+        </>
+      }
     />
-    <s-page>
+    <s-query-container>
+    <s-grid gridTemplateColumns={MAIN_ASIDE} gap="base" alignItems="start">
       <s-stack gap="base">
         <s-section>
           <s-stack gap="small">
@@ -300,14 +322,45 @@ export function LimitEditor() {
           <s-section>
             <s-stack gap="base">
               <s-stack gap="small-200">
-                <s-heading>Order value</s-heading>
+                <s-stack direction="inline" gap="small-400" alignItems="center">
+                  <s-heading>Order value</s-heading>
+                  <span style={{ display: 'inline-flex', cursor: 'help' }}>
+                    <s-icon type="info" color="subdued" interestFor={`${tipId}-value`} />
+                  </span>
+                  <s-tooltip id={`${tipId}-value`}>
+                    The cart subtotal at the {isD2C ? 'customer’s' : 'buyer’s B2B'} prices, before tax, shipping and order discounts. In your store currency, converted for buyers who pay in another.
+                  </s-tooltip>
+                </s-stack>
                 <s-grid gridTemplateColumns="repeat(2, minmax(0, 1fr))" gap="small">
                   {numberField('minValue', 'Minimum', { money: true })}
                   {numberField('maxValue', 'Maximum', { money: true })}
                 </s-grid>
-                <s-paragraph color="subdued" fontSize="small">
-                  The cart subtotal at the {isD2C ? 'customer’s' : 'buyer’s B2B'} prices, before tax, shipping and order discounts. In your store currency, converted for buyers who pay in another.
-                </s-paragraph>
+                {/* The maximum order value per week or month, so splitting an order doesn't
+                    get around it. Upcoming only (limitPeriods flag, versions.js). The label is
+                    drawn here to carry its tooltip. */}
+                {versionFlags().limitPeriods && (
+                  <s-stack gap="small-400">
+                    <s-stack direction="inline" gap="small-400" alignItems="center">
+                      <s-text>Count the maximum order value</s-text>
+                      <span style={{ display: 'inline-flex', cursor: 'help' }}>
+                        <s-icon type="info" color="subdued" interestFor={`${tipId}-period`} />
+                      </span>
+                      <s-tooltip id={`${tipId}-period`}>
+                        Weekly and monthly maximums add up the buyer’s orders in that period, including ones waiting for review, so splitting an order doesn’t get around them.
+                      </s-tooltip>
+                    </s-stack>
+                    <s-select
+                      label="Count the maximum order value"
+                      labelAccessibilityVisibility="exclusive"
+                      value={draft.period || 'order'}
+                      onChange={(e) => patch({ period: e.currentTarget.value })}
+                    >
+                      <s-option value="order">Per order</s-option>
+                      <s-option value="week">Per week (Monday to Sunday)</s-option>
+                      <s-option value="month">Per month</s-option>
+                    </s-select>
+                  </s-stack>
+                )}
               </s-stack>
               <s-stack gap="small-200">
                 <s-heading>Order quantity</s-heading>
@@ -351,19 +404,31 @@ export function LimitEditor() {
         )}
 
         <s-section heading="Buyer message">
-          <s-text-area
-            label="Message buyers see"
-            rows={2}
-            value={draft.message || ''}
-            onInput={(e) => patch({ message: e.currentTarget.value })}
-            placeholder={
-              draft.kind === 'product'
-                ? 'Some products in your cart are outside their quantity limits.'
-                : 'Your order doesn’t meet the order limits for your account.'
-            }
-            details="Shown in the cart and at checkout when an order breaks this limit. Leave it empty to use the suggested message. When the limit sets more than one thing, buyers see the suggested message for the one they broke."
-            autocomplete="off"
-          />
+          {/* The label is drawn here to carry its tooltip. */}
+          <s-stack gap="small-400">
+            <s-stack direction="inline" gap="small-400" alignItems="center">
+              <s-text>Message buyers see</s-text>
+              <span style={{ display: 'inline-flex', cursor: 'help' }}>
+                <s-icon type="info" color="subdued" interestFor={`${tipId}-message`} />
+              </span>
+              <s-tooltip id={`${tipId}-message`}>
+                Shown in the cart and at checkout when an order breaks this limit. Leave it empty to use the suggested message. When the limit sets more than one thing, buyers see the suggested message for the one they broke.
+              </s-tooltip>
+            </s-stack>
+            <s-text-area
+              label="Message buyers see"
+              labelAccessibilityVisibility="exclusive"
+              rows={2}
+              value={draft.message || ''}
+              onInput={(e) => patch({ message: e.currentTarget.value })}
+              placeholder={
+                draft.kind === 'product'
+                  ? 'Some products in your cart are outside their quantity limits.'
+                  : 'Your order doesn’t meet the order limits for your account.'
+              }
+              autocomplete="off"
+            />
+          </s-stack>
         </s-section>
 
         {!forContracts && (
@@ -399,37 +464,22 @@ export function LimitEditor() {
         </s-section>
         )}
 
-        {/* A maximum order value per week or month, so splitting an order doesn't get
-            around it. Hidden behind the limitPeriods flag (versions.js) for now. */}
-        {draft.kind === 'order' && versionFlags().limitPeriods && (
-          <s-section heading="Advanced">
-            <s-select
-              label="Count the maximum order value"
-              value={draft.period || 'order'}
-              onChange={(e) => patch({ period: e.currentTarget.value })}
-              details="Weekly and monthly maximums add up the buyer’s orders in that period, including ones waiting for review, so splitting an order doesn’t get around them."
-            >
-              <s-option value="order">Per order</s-option>
-              <s-option value="week">Per week (Monday to Sunday)</s-option>
-              <s-option value="month">Per month</s-option>
-            </s-select>
-          </s-section>
-        )}
       </s-stack>
 
-      {/* A contract's own limit has no Status: an empty aside keeps the page's two
-          columns, like the other limits' (s-page lays out an aside column only when the
-          slot has something). */}
+      {/* A contract's own limit has no Status: an empty column keeps the page's two
+          columns, like the other limits'. */}
       {forContracts ? (
-        <div slot="aside" />
+        <div />
       ) : (
-        <s-section slot="aside">
+        <s-section>
           <s-select label="Status" value={draft.status} onChange={(e) => patch({ status: e.currentTarget.value })}>
             <s-option value="Active">Active</s-option>
             <s-option value="Inactive">Inactive</s-option>
           </s-select>
         </s-section>
       )}
+    </s-grid>
+    </s-query-container>
 
       <SelectCompaniesModal
         needsLocation
@@ -474,7 +524,6 @@ export function LimitEditor() {
         </Modal>
       )}
 
-    </s-page>
-    </>
+    </div>
   );
 }

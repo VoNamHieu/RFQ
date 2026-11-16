@@ -173,6 +173,7 @@ export function newLimit(kind) {
     ...Object.fromEntries(ORDER_FIELDS.map((k) => [k, null])),
     maxAction: 'block', // over a maximum (order value or quantity): 'block' checkout, or 'review'
     period: 'order', // the maximum value counts each order, or every order in a week or month
+    periodBadge: true, // counted per week or month: the counting badge in the cart and on the account page
     audienceType: 'b2b',
     storeWide: true,
     companyIds: [],
@@ -241,6 +242,9 @@ export function normalizeLimit(input) {
   l.maxAction = l.maxAction === 'review' && canReview(l) ? 'review' : 'block';
   if (l.kind === 'order') l.period = PERIODS.includes(l.period) ? l.period : 'order';
   else delete l.period;
+  // Only a maximum counted per week or month has the counting badge (on unless turned off).
+  if (l.kind === 'order' && l.period !== 'order') l.periodBadge = l.periodBadge !== false;
+  else delete l.periodBadge;
   if (l.kind === 'order') {
     l.settings = Object.fromEntries(ORDER_FIELDS.map((k) => [k, fromInput(d[k], k)]));
     delete l.rules;
@@ -723,7 +727,8 @@ function cartProblemsIn(rec, lines, subtotal, spent = {}) {
   ['week', 'month'].forEach((p) => {
     const cap = setting(`maxValue@${p}`);
     const total = sofar(p) + subtotal;
-    if (cap && total > cap.value) add('maxValue', cap, `Your orders this ${p} come to ${money(sofar(p))}. This one would take you to ${money(total)}, over your ${money(cap.value)} ${p}ly limit. Remove ${money(total - cap.value)} to check out.`, cap.value, p);
+    // Short, as the real cart's: its progress bar shows what was ordered in the period and this order.
+    if (cap && total > cap.value) add('maxValue', cap, `${p === 'week' ? 'Weekly' : 'Monthly'} limit reached. Remove ${money(total - cap.value)} to check out.`, cap.value, p);
   });
   const minQty = setting('minQty');
   if (minQty && totalQty < minQty.value) add('minQty', minQty, `Your order needs at least ${units(minQty.value)}. Add ${units(minQty.value - totalQty)} more.`);

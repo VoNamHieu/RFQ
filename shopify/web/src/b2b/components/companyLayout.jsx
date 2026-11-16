@@ -220,3 +220,14 @@ export function backActionFor(state, dispatch, view) {
   if (!b || b.from !== view) return null;
   return { content: `Back to ${b.label}`, onAction: () => dispatch({ type: 'NAVIGATE', view: b.view, patch: { backTo: null, ...b.patch } }) };
 }
+
+// An editor's way back (the contract and order limit editors close to `returnTo`), named
+// as the page it returns to: the company, location or order it was opened from, else
+// `fallback` (its list).
+export function editorBackLabel(state, returnTo, fallback) {
+  const company = returnTo?.selectedCompany ? state.db.companies.find((c) => c.id === returnTo.selectedCompany) : null;
+  if (returnTo?.view === 'company') return company?.name || fallback;
+  if (returnTo?.view === 'location') return (company?.locations || []).find((l) => l.id === returnTo.selectedLocation)?.name || company?.name || fallback;
+  if (returnTo?.view === 'order') return returnTo.selectedOrder || fallback;
+  return fallback;
+}

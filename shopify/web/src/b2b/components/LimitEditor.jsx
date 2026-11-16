@@ -5,11 +5,15 @@ import { money } from '../format.js';
 import { LimitOverlapMessage } from './LimitOverlapList.jsx';
 import { LimitRulesCard } from './LimitRulesCard.jsx';
 import { SelectCompaniesModal, CustomerTargetsBox, companyPicks } from './AssignmentCard.jsx';
-import { Modal, useWcId, PageHeader } from '../../shared/wc.jsx';
+import { Modal, useWcId } from '../../shared/wc.jsx';
+import { CdPageHead, editorBackLabel } from './companyLayout.jsx';
 import { limitCatalog, withCatalog } from '../limitCatalog.js';
 import { isContractTerm } from '../agreements.js';
 import { versionFlags } from '../../shared/versions.js';
 import { TIMEZONES, storeTimezone } from '../timezones.js';
+
+// Main column + Status side by side once the page is wide enough (as the pricing editor's).
+const MAIN_ASIDE = '@container (inline-size > 700px) 2fr 1fr, 1fr';
 
 const str = (v) => (v == null ? '' : String(v));
 
@@ -179,21 +183,38 @@ export function LimitEditor() {
     />
   );
 
+  // The company page's look, as the pricing editor's: back (named as the page it returns
+  // to) with the actions on top, then the title; the cards below are as they were, the
+  // main column and Status side by side.
   return (
-    <>
-    <PageHeader
-      heading={isNew ? `Create ${kind.label.toLowerCase()}` : `Edit limit: ${draft.name}`}
-      // In a contract: its number by the title, and saving or going back returns to it.
-      titleMetadata={contract ? <s-badge>{`Contract ${contract.number}`}</s-badge> : null}
-      backAction={{ content: contract ? contract.number : 'Order limits', onAction: close }}
-      primaryAction={{ content: contract ? (isNew ? 'Add to contract' : 'Done') : isNew ? 'Create limit' : 'Save', onAction: save }}
-      secondaryActions={[
-        // A contract's own limit comes out of it in the contract editor.
-        ...(isNew || contract ? [] : [{ content: 'Delete', destructive: true, onAction: () => setConfirmDelete(true) }]),
-        { content: 'Cancel', onAction: close },
-      ]}
+    <div className="cd-page">
+    <CdPageHead
+      title={
+        <span className="cd-inline">
+          {isNew ? `Create ${kind.label.toLowerCase()}` : `Edit limit: ${draft.name}`}
+          {/* In a contract: its number by the title, and saving or going back returns to it. */}
+          {contract ? <span className="cd-chip cd-chip--neutral">{`Contract ${contract.number}`}</span> : null}
+        </span>
+      }
+      back={{ label: contract ? contract.number : editorBackLabel(state, state.limitEditor.returnTo, 'Order limits'), onAction: close }}
+      actionsOnTop
+      actions={
+        <>
+          {/* A contract's own limit comes out of it in the contract editor. */}
+          {isNew || contract ? null : (
+            <s-button tone="critical" onClick={() => setConfirmDelete(true)}>
+              Delete
+            </s-button>
+          )}
+          <s-button onClick={close}>Cancel</s-button>
+          <s-button variant="primary" onClick={save}>
+            {contract ? (isNew ? 'Add to contract' : 'Done') : isNew ? 'Create limit' : 'Save'}
+          </s-button>
+        </>
+      }
     />
-    <s-page>
+    <s-query-container>
+    <s-grid gridTemplateColumns={MAIN_ASIDE} gap="base" alignItems="start">
       <s-stack gap="base">
         <s-section>
           <s-stack gap="small">
@@ -339,6 +360,15 @@ export function LimitEditor() {
                       <s-option value="week">Per week (Monday to Sunday)</s-option>
                       <s-option value="month">Per month</s-option>
                     </s-select>
+                    {/* Counted per week or month: whether buyers see the counting badge (what's
+                        left this period) in the cart and on the account page. */}
+                    {(draft.period === 'week' || draft.period === 'month') && (
+                      <s-checkbox
+                        label="Show a counting badge in the cart and on the account page"
+                        checked={draft.periodBadge !== false}
+                        onChange={(e) => patch({ periodBadge: e.currentTarget.checked })}
+                      />
+                    )}
                   </s-stack>
                 )}
               </s-stack>
@@ -446,19 +476,20 @@ export function LimitEditor() {
 
       </s-stack>
 
-      {/* A contract's own limit has no Status: an empty aside keeps the page's two
-          columns, like the other limits' (s-page lays out an aside column only when the
-          slot has something). */}
+      {/* A contract's own limit has no Status: an empty column keeps the page's two
+          columns, like the other limits'. */}
       {forContracts ? (
-        <div slot="aside" />
+        <div />
       ) : (
-        <s-section slot="aside">
+        <s-section>
           <s-select label="Status" value={draft.status} onChange={(e) => patch({ status: e.currentTarget.value })}>
             <s-option value="Active">Active</s-option>
             <s-option value="Inactive">Inactive</s-option>
           </s-select>
         </s-section>
       )}
+    </s-grid>
+    </s-query-container>
 
       <SelectCompaniesModal
         needsLocation
@@ -503,7 +534,6 @@ export function LimitEditor() {
         </Modal>
       )}
 
-    </s-page>
-    </>
+    </div>
   );
 }

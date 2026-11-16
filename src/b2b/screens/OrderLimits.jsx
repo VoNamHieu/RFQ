@@ -4,9 +4,9 @@ import { LIMIT_KINDS, limitTargetsLabel, isLimitAssigned, isD2CLimit, limitOverl
 import { LimitEditor, withCatalog, deleteLimitText } from '../components/LimitEditor.jsx';
 import { LimitOverlapMessage } from '../components/LimitOverlapList.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
-import { Modal, IndexFiltersBar, useWcId, PageHeader } from '../../shared/wc.jsx';
+import { Modal, IndexFiltersBar, useWcId } from '../../shared/wc.jsx';
+import { CdPageHead, StatusDot, backActionFor } from '../components/companyLayout.jsx';
 import { fmtDay, isContractTerm } from '../agreements.js';
-import { backActionFor } from '../components/companyLayout.jsx';
 
 // Tabs by who a limit is for, like the Pricing list; the kind is a filter.
 const AUDIENCE = [
@@ -14,7 +14,13 @@ const AUDIENCE = [
   { id: 'b2b', label: 'Companies' },
   { id: 'd2c', label: 'Customers' },
 ];
-// Status badge, by limitState: turned off, not started yet, applying, or past its end date.
+// Opened from a company or location page: the way back there (named as that page).
+function listBack(state, dispatch) {
+  const back = backActionFor(state, dispatch, 'limits');
+  return back ? { label: state.backTo?.label || 'Back', onAction: back.onAction } : null;
+}
+
+// Status dot, by limitState: turned off, not started yet, applying, or past its end date.
 const STATE_TONE = { Active: 'success', Upcoming: 'info', Expired: undefined, Inactive: undefined };
 const TYPE_CHOICES = [
   { label: 'All types', value: 'all' },
@@ -24,29 +30,26 @@ const TYPE_CHOICES = [
 // Full-page "Select limit type" step shown before the editor, like Select
 // pricing type: pick a kind's card, then set it up. The back action returns to the list.
 function LimitTypeChooser({ onBack, onPick, backLabel = 'Order limits' }) {
+  // The company page's look: back on top, the title, then a card per kind.
   return (
-    <>
-    <PageHeader heading="Select limit type" backAction={{ content: backLabel, onAction: onBack }} />
-    <s-page>
-      <s-query-container>
-        <s-grid gridTemplateColumns="@container (inline-size > 490px) 1fr 1fr, 1fr" gap="base">
-          {Object.entries(LIMIT_KINDS).map(([kind, k]) => (
-            <s-section key={kind}>
-              <s-stack gap="base">
-                <s-stack gap="small-300">
-                  <s-heading fontSize="large">{k.label}</s-heading>
-                  <s-paragraph color="subdued">{k.description}</s-paragraph>
-                </s-stack>
-                <s-stack direction="inline">
-                  <s-button onClick={() => onPick(kind)}>Create limit</s-button>
-                </s-stack>
+    <div className="cd-page">
+      <CdPageHead title="Select limit type" back={{ label: backLabel, onAction: onBack }} />
+      <div className="cd-card-grid">
+        {Object.entries(LIMIT_KINDS).map(([kind, k]) => (
+          <div key={kind} className="cd-card">
+            <div className="cd-card__body cd-terms-card">
+              <div>
+                <h2 className="cd-section__title">{k.label}</h2>
+                <p className="cd-section__subtitle">{k.description}</p>
+              </div>
+              <s-stack direction="inline">
+                <s-button onClick={() => onPick(kind)}>Create limit</s-button>
               </s-stack>
-            </s-section>
-          ))}
-        </s-grid>
-      </s-query-container>
-    </s-page>
-    </>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -93,34 +96,36 @@ export function OrderLimits() {
   // A contract's own limit is only in its contract (edited in the contract editor).
   const all = (state.db.limits || []).filter((l) => !isContractTerm(l));
   const create = { content: 'Create limit', onAction: () => setChooserOpen(true) };
-  // The order-limit test console (#/b2b/order-limit-tests).
-  const runTests = { content: 'Run tests', onAction: () => dispatch({ type: 'NAVIGATE', view: 'limitTests' }) };
-  const headerButtons = (
-    <>
-      <s-button slot="primary-action" variant="primary" onClick={create.onAction}>
-        {create.content}
-      </s-button>
-      <s-button slot="secondary-actions" onClick={runTests.onAction}>
-        {runTests.content}
-      </s-button>
-    </>
+  // Back to the company or location page it was opened from, if it was. Run tests opens
+  // the order-limit test console (#/b2b/order-limit-tests).
+  // In the company page's look: back, the title with Run tests and Create limit.
+  const header = (
+    <CdPageHead
+      title="Order limits"
+      subtitle="Rules on what B2B buyers and D2C wholesale customers can check out, checked in the cart and at checkout."
+      back={listBack(state, dispatch)}
+      actions={
+        <>
+          <s-button onClick={() => dispatch({ type: 'NAVIGATE', view: 'limitTests' })}>Run tests</s-button>
+          <s-button variant="primary" onClick={create.onAction}>
+            {create.content}
+          </s-button>
+        </>
+      }
+    />
   );
-  // Opened from a company or location page: a back arrow there before the title.
-  const back = backActionFor(state, dispatch, 'limits');
-  const backHeader = back ? <PageHeader heading="Order limits" backAction={back} primaryAction={create} secondaryActions={[runTests]} /> : null;
   if (!all.length) {
     return (
-      <>
-      {backHeader}
-      <s-page heading={back ? undefined : 'Order limits'}>
-        {back ? null : headerButtons}
-        <s-section>
-          <EmptyBlock heading="Set rules for what buyers can order" action={create}>
-            Require a minimum order, sell products in case packs, or review large orders before they go through. Apply a limit to B2B companies and locations, or to D2C wholesale customers.
-          </EmptyBlock>
-        </s-section>
-      </s-page>
-      </>
+      <div className="cd-page">
+        {header}
+        <div className="cd-card">
+          <div className="cd-card__body">
+            <EmptyBlock heading="Set rules for what buyers can order" action={create}>
+              Require a minimum order, sell products in case packs, or review large orders before they go through. Apply a limit to B2B companies and locations, or to D2C wholesale customers.
+            </EmptyBlock>
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -139,111 +144,97 @@ export function OrderLimits() {
     else dispatch({ type: 'TOGGLE_LIMIT_STATUS', id: l.id });
   };
 
+  // The list in a bordered card: tabs, search and the type filter on top, a plain table.
   return (
-    <>
-    {backHeader}
-    <s-page heading={back ? undefined : 'Order limits'}>
-      {back ? null : headerButtons}
-      <s-stack gap="base">
-        <s-paragraph className="wc-page-intro" color="subdued">Rules on what B2B buyers and D2C wholesale customers can check out, checked in the cart and at checkout.</s-paragraph>
-
-        <s-section padding="none">
-          <s-table>
-            <IndexFiltersBar
-              slot="filters"
-              query={search}
-              queryPlaceholder="Search limits by name"
-              onQueryChange={setSearch}
-              tabs={AUDIENCE.map((a) => ({ id: `aud-${a.id}`, content: a.label }))}
-              selected={Math.max(0, AUDIENCE.findIndex((a) => a.id === audience))}
-              onSelect={(i) => setAudience(AUDIENCE[i].id)}
-              filters={[{ key: 'kind', label: 'Limit type', choices: TYPE_CHOICES, value: type, defaultValue: 'all' }]}
-              onFilterChange={(key, v) => setType(v)}
-              onClearAll={() => setType('all')}
-            />
-            <s-table-header-row>
-              <s-table-header listSlot="primary">Name</s-table-header>
-              <s-table-header listSlot="labeled">Type</s-table-header>
-              <s-table-header listSlot="labeled">Applies to</s-table-header>
-              <s-table-header listSlot="labeled">Latest updates</s-table-header>
-              <s-table-header listSlot="secondary">Status</s-table-header>
-              <s-table-header listSlot="inline">
-                <s-text accessibilityVisibility="exclusive">Actions</s-text>
-              </s-table-header>
-            </s-table-header-row>
-            <s-table-body>
-              {limits.map((l) => {
-                const isOff = l.status !== 'Active';
-                const id = `${rowId}-${l.id}`;
-                return (
-                  <s-table-row key={l.id} clickDelegate={`${id}-open`}>
-                    <s-table-cell>
-                      <s-stack direction="inline" gap="small-200" alignItems="center">
-                        <s-link id={`${id}-open`} onClick={() => edit(l)}>
+    <div className="cd-page">
+      {header}
+      <div className="cd-card">
+        <div className="cd-card__filters">
+          <IndexFiltersBar
+            query={search}
+            queryPlaceholder="Search limits by name"
+            onQueryChange={setSearch}
+            tabs={AUDIENCE.map((a) => ({ id: `aud-${a.id}`, content: a.label }))}
+            selected={Math.max(0, AUDIENCE.findIndex((a) => a.id === audience))}
+            onSelect={(i) => setAudience(AUDIENCE[i].id)}
+            filters={[{ key: 'kind', label: 'Limit type', choices: TYPE_CHOICES, value: type, defaultValue: 'all' }]}
+            onFilterChange={(key, v) => setType(v)}
+            onClearAll={() => setType('all')}
+          />
+        </div>
+        {limits.length ? (
+          <div className="cd-table-scroll">
+            <table className="cd-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Applies to</th>
+                  <th>Latest updates</th>
+                  <th>Status</th>
+                  <th className="cd-actions">
+                    <span className="cd-visually-hidden">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {limits.map((l) => {
+                  const isOff = l.status !== 'Active';
+                  const id = `${rowId}-${l.id}`;
+                  const st = limitState(l);
+                  return (
+                    // The row opens the editor; its name is the keyboard target (the click bubbles up).
+                    <tr key={l.id} className="cd-row-link" onClick={() => edit(l)}>
+                      <td>
+                        <button type="button" className="cd-link-button">
                           {l.name}
-                        </s-link>
-                      </s-stack>
-                    </s-table-cell>
-                    <s-table-cell>{LIMIT_KINDS[l.kind].label}</s-table-cell>
-                    <s-table-cell>
-                      <s-text color={isLimitAssigned(l) ? undefined : 'subdued'}>{limitTargetsLabel(l, state.db)}</s-text>
-                    </s-table-cell>
-                    <s-table-cell>{l.updatedAt || l.createdAt ? fmtDay(l.updatedAt || l.createdAt) : '—'}</s-table-cell>
-                    <s-table-cell>
-                      <s-badge tone={STATE_TONE[limitState(l)]}>{limitState(l)}</s-badge>
-                    </s-table-cell>
-                    <s-table-cell>
-                      <s-stack direction="inline" gap="small-400" justifyContent="end">
-                        <s-button
-                          icon={isOff ? 'toggle-off' : 'toggle-on'}
-                          variant="tertiary"
-                          accessibilityLabel={isOff ? 'Turn on' : 'Turn off'}
-                          interestFor={`${id}-toggle-tip`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggle(l);
-                          }}
-                        />
-                        <s-tooltip id={`${id}-toggle-tip`}>{isOff ? 'Turn on' : 'Turn off'}</s-tooltip>
-                        <s-button
-                          icon="edit"
-                          variant="tertiary"
-                          accessibilityLabel="Edit limit"
-                          interestFor={`${id}-edit-tip`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            edit(l);
-                          }}
-                        />
-                        <s-tooltip id={`${id}-edit-tip`}>Edit limit</s-tooltip>
-                        <s-button
-                          icon="delete"
-                          variant="tertiary"
-                          tone="critical"
-                          accessibilityLabel="Delete limit"
-                          interestFor={`${id}-delete-tip`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setConfirmDelete(l);
-                          }}
-                        />
-                        <s-tooltip id={`${id}-delete-tip`}>Delete limit</s-tooltip>
-                      </s-stack>
-                    </s-table-cell>
-                  </s-table-row>
-                );
-              })}
-            </s-table-body>
-          </s-table>
-          {limits.length === 0 ? (
-            <s-box padding="base">
-              <div style={{ textAlign: 'center' }}>
-                <s-text color="subdued">No limits match these filters.</s-text>
-              </div>
-            </s-box>
-          ) : null}
-        </s-section>
-      </s-stack>
+                        </button>
+                      </td>
+                      <td className="cd-nowrap">{LIMIT_KINDS[l.kind].label}</td>
+                      <td className={isLimitAssigned(l) ? undefined : 'cd-muted'}>{limitTargetsLabel(l, state.db)}</td>
+                      <td className="cd-nowrap">{l.updatedAt || l.createdAt ? fmtDay(l.updatedAt || l.createdAt) : '—'}</td>
+                      <td>
+                        <StatusDot tone={STATE_TONE[st]}>{st}</StatusDot>
+                      </td>
+                      <td className="cd-actions cd-num" onClick={(e) => e.stopPropagation()}>
+                        <span className="cd-row-actions">
+                          <s-button
+                            icon={isOff ? 'toggle-off' : 'toggle-on'}
+                            variant="tertiary"
+                            accessibilityLabel={isOff ? 'Turn on' : 'Turn off'}
+                            interestFor={`${id}-toggle-tip`}
+                            onClick={() => toggle(l)}
+                          />
+                          <s-tooltip id={`${id}-toggle-tip`}>{isOff ? 'Turn on' : 'Turn off'}</s-tooltip>
+                          <s-button
+                            icon="edit"
+                            variant="tertiary"
+                            accessibilityLabel="Edit limit"
+                            interestFor={`${id}-edit-tip`}
+                            onClick={() => edit(l)}
+                          />
+                          <s-tooltip id={`${id}-edit-tip`}>Edit limit</s-tooltip>
+                          <s-button
+                            icon="delete"
+                            variant="tertiary"
+                            tone="critical"
+                            accessibilityLabel="Delete limit"
+                            interestFor={`${id}-delete-tip`}
+                            onClick={() => setConfirmDelete(l)}
+                          />
+                          <s-tooltip id={`${id}-delete-tip`}>Delete limit</s-tooltip>
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="cd-card__empty">No limits match these filters.</div>
+        )}
+      </div>
 
       {confirmDelete && (
         <Modal onClose={() => setConfirmDelete(null)} heading={`Delete ${confirmDelete.name}?`}>
@@ -285,7 +276,6 @@ export function OrderLimits() {
           </s-button>
         </Modal>
       )}
-    </s-page>
-    </>
+    </div>
   );
 }

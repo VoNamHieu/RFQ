@@ -23,6 +23,38 @@ export function CdSection({ title, subtitle, controls, children }) {
   );
 }
 
+// A list page's top, in the company page's look: when it was opened from another page,
+// the way back there (a round arrow and that page's name); then the title (and a grey
+// line under it) with its actions on the right; then `below` (e.g. tabs).
+// `back`: { label, onAction }. `actionsOnTop`: the actions sit on the back's row, as on
+// the company and order pages (the pricing editor: Cancel and Save).
+export function CdPageHead({ title, subtitle, back, actions, actionsOnTop = false, below }) {
+  const actionsBox = actions ? <div className="cd-list-head__actions">{actions}</div> : null;
+  return (
+    <>
+      {back ? (
+        <div className="cd-topbar">
+          <button type="button" className="cd-back" onClick={back.onAction}>
+            <span className="cd-back__circle">
+              <s-icon type="chevron-left" />
+            </span>
+            {back.label}
+          </button>
+          {actionsOnTop ? actionsBox : null}
+        </div>
+      ) : null}
+      <div className="cd-list-head">
+        <div>
+          <h1 className="cd-title">{title}</h1>
+          {subtitle ? <p className="cd-subtitle">{subtitle}</p> : null}
+        </div>
+        {back && actionsOnTop ? null : actionsBox}
+      </div>
+      {below}
+    </>
+  );
+}
+
 // A status as a coloured dot and its name. tone: attention, info, success, warning,
 // critical; none = neutral grey.
 export function StatusDot({ tone, children }) {
@@ -180,4 +212,15 @@ export function backActionFor(state, dispatch, view) {
   const b = state.backTo;
   if (!b || b.from !== view) return null;
   return { content: `Back to ${b.label}`, onAction: () => dispatch({ type: 'NAVIGATE', view: b.view, patch: { backTo: null, ...b.patch } }) };
+}
+
+// An editor's way back (the contract and order limit editors close to `returnTo`), named
+// as the page it returns to: the company, location or order it was opened from, else
+// `fallback` (its list).
+export function editorBackLabel(state, returnTo, fallback) {
+  const company = returnTo?.selectedCompany ? state.db.companies.find((c) => c.id === returnTo.selectedCompany) : null;
+  if (returnTo?.view === 'company') return company?.name || fallback;
+  if (returnTo?.view === 'location') return (company?.locations || []).find((l) => l.id === returnTo.selectedLocation)?.name || company?.name || fallback;
+  if (returnTo?.view === 'order') return returnTo.selectedOrder || fallback;
+  return fallback;
 }
