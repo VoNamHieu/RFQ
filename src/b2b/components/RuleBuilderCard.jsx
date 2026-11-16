@@ -147,6 +147,8 @@ export function RuleBuilderCard() {
     const matchN = ruleMatchCount(rule, products);
     const rk = rule.rule === 'set' ? 'set' : rule.valueType === 'amount' ? 'decrease_amt' : 'decrease_pct';
     const suffix = rk === 'decrease_pct' ? '%' : '$';
+    // Save stopped on this rule: nothing picked yet.
+    const missing = state.ruleMissing && !values.filter(Boolean).length ? `Pick at least one ${ruleTypeLabel(rule).toLowerCase()}` : null;
 
     const setValues = (next) =>
       dispatch({
@@ -216,7 +218,7 @@ export function RuleBuilderCard() {
                     ))}
                   </s-stack>
                 )}
-                {remaining.length > 0 && (
+                {remaining.length > 0 ? (
                   // Keyed by the picked values so the select remounts (back to the
                   // placeholder) after each pick — its value is always "".
                   <s-select
@@ -224,6 +226,7 @@ export function RuleBuilderCard() {
                     label="Add value"
                     labelAccessibilityVisibility="exclusive"
                     placeholder={values.length ? 'Add another…' : 'Select…'}
+                    error={missing || undefined}
                     value=""
                     onChange={(e) => {
                       const v = e.currentTarget.value;
@@ -237,7 +240,9 @@ export function RuleBuilderCard() {
                       </s-option>
                     ))}
                   </s-select>
-                )}
+                ) : missing ? (
+                  <s-text tone="critical">{missing}</s-text>
+                ) : null}
               </s-stack>
             )}
 

@@ -3,6 +3,7 @@ import { shopifyCompanies } from './data/directory.js';
 import { policyUsageCount, slotIds, hasOwnSlot, TODAY, setContractPricing } from './pricing.js';
 import { newRule, newBaseBuilder, newQuantityBuilder, builderDraft } from './builders.js';
 import { buildInitialState } from './initialState.js';
+import { saveLive, fetchBuyerEvents } from './live/shopifyLive.js';
 import { newLimit, normalizeLimit, upgradeLimits, toDraft, turnLimitOn } from './limits.js';
 import { versionFlags } from '../shared/versions.js';
 import {
@@ -14,6 +15,7 @@ import {
   liveStatus,
   fmtDay,
   addVersion,
+  logProposalUpdate,
   closeAgreement,
   takeEffect,
   handOver,
@@ -23,9 +25,7 @@ import {
   newlyBroken,
   recordContractNumber,
   stampContractLimits,
-  storefrontContracts,
   joinLaterLocations,
-  dropContractLocations,
   isContractTerm,
   contractOf,
   noStagedTerms,
@@ -37,6 +37,16 @@ import {
   asContractPricing,
   asContractLimit,
   newLimitId,
+  declineOf,
+  openChangeRequests,
+  responseKey,
+  canDeleteAgreement,
+  canCancelAgreement,
+  cancelRequestOf,
+  canEndAgreement,
+  pendingVersionOf,
+  pendingDraft,
+  sendPendingVersion,
 } from './agreements.js';
 import { todayISO, registrationDuplicates, isD2CRegistration } from './registrations.js';
 import {
@@ -52,7 +62,9 @@ import {
   injectOrderRequests,
   storefrontHeldOrders,
 } from './dbHelpers.js';
-import { publishOrderLimits, publishedOrderLimits, publishContracts, publishHeldOrders, readOrderRequests, removeOrderRequests, readInvoiceCheckouts, removeInvoiceCheckouts, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, INVOICE_CHECKOUTS_KEY } from '../shared/persistence.js';
+import { publishOrderLimits, publishedOrderLimits, publishContracts, publishHeldOrders, readOrderRequests, removeOrderRequests, readInvoiceCheckouts, removeInvoiceCheckouts, readBuyerEvents, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, INVOICE_CHECKOUTS_KEY, BUYER_EVENTS_KEY } from '../shared/persistence.js';
+import { publishablePortalContracts } from './portalContracts.js';
+import { applyBuyerEvents, latestBuyerResponse } from './buyerEvents.js';
 
 // The B2B god file rebuilt #app from a single `state` on every action. Here that
 // is a reducer over a view state machine + the mutable demo db. The db helpers,
@@ -300,10 +312,12 @@ function approveAsCustomer(db, reg, customer) {
   Object.assign(reg, { status: 'approved', decidedAt: todayISO(), customerId: cu.id, linkedCustomerId: customer ? customer.id : null });
 }
 
-// The contract editor on `ag` (a copy, nothing staged yet). `returnTo`: where closing
-// it goes — by default the page it was opened from.
+// The contract editor on `ag` (a copy, nothing staged yet) — on the version waiting for
+// its buyers, when it has one (pendingVersionOf), with that version's pricing and limits
+// staged. `returnTo`: where closing it goes — by default the page it was opened from.
 function openContractEditor(state, ag, returnTo = { view: state.view, selectedCompany: state.selectedCompany, companyTab: state.companyTab, selectedLocation: state.selectedLocation }) {
-  return { ...state, view: 'agreements', agreementEditor: { draft: clone(ag), staged: noStagedTerms(), returnTo } };
+  const staged = ag.pending ? clone(ag.pending.staged || noStagedTerms()) : noStagedTerms();
+  return { ...state, view: 'agreements', agreementEditor: { draft: pendingDraft(ag), staged, returnTo } };
 }
 
 function reducer(state, action) {
@@ -510,8 +524,7 @@ function reducer(state, action) {
       const c = db.companies.find((x) => x.id === action.companyId);
       if (!c) return state;
       const ids = action.locationIds || [];
-      const gone = (c.locations || []).filter((l) => ids.includes(l.id));
-      const names = gone.map((l) => l.name);
+      const names = (c.locations || []).filter((l) => ids.includes(l.id)).map((l) => l.name);
       c.locations = (c.locations || []).filter((l) => !ids.includes(l.id));
       (c.contacts || []).forEach((ct) => {
         if (names.includes(ct.locations)) ct.locations = '';
@@ -520,9 +533,13 @@ function reducer(state, action) {
         ...l,
         locationKeys: (l.locationKeys || []).filter((k) => !ids.some((id) => k === `${c.id}::${id}`)),
       }));
-      // Its contracts stop naming them; one on all its locations names the ones left.
-      // A live one that had them gets a new version ("Removed …"); one with none left ends.
-      dropContractLocations(db, c, gone);
+      db.agreements = (db.agreements || []).map((a) =>
+        a.companyId === c.id && a.locationIds ? { ...a, locationIds: a.locationIds.filter((id) => !ids.includes(id)) } : a
+      );
+      // A live contract for some locations that has none left ends.
+      db.agreements.forEach((a) => {
+        if (a.companyId === c.id && isLive(a) && Array.isArray(a.locationIds) && !a.locationIds.length) closeAgreement(db, a, 'Ended', 'Ended');
+      });
       const leaveDetail = state.view === 'location' && ids.includes(state.selectedLocation);
       return {
         ...state,
@@ -893,13 +910,14 @@ function reducer(state, action) {
     }
     case 'BUILDER_PATCH':
       return { ...state, builder: { ...state.builder, ...action.patch } };
+    // `missing`: opened by Save on a rule with nothing picked — its editor says so.
     case 'SET_RULE_EDIT':
-      return { ...state, ruleEdit: action.index, addRuleMenu: false };
+      return { ...state, ruleEdit: action.index, addRuleMenu: false, ruleMissing: !!action.missing };
     case 'TOGGLE_ADD_RULE_MENU':
       return { ...state, addRuleMenu: action.open != null ? action.open : !state.addRuleMenu };
     case 'ADD_RULE': {
       const rules = [...(state.builder.conditionalRules || []), newRule(action.field)];
-      return { ...state, builder: { ...state.builder, conditionalRules: rules }, ruleEdit: rules.length - 1, addRuleMenu: false };
+      return { ...state, builder: { ...state.builder, conditionalRules: rules }, ruleEdit: rules.length - 1, addRuleMenu: false, ruleMissing: false };
     }
     case 'UPDATE_RULE': {
       const rules = (state.builder.conditionalRules || []).map((r, i) =>
@@ -1138,6 +1156,11 @@ function reducer(state, action) {
       injectOrderRequests(db, action.requests);
       return { ...state, db };
     }
+    // Buyers' answers sent from the storefront's B2B Portal while this app is open.
+    case 'SYNC_BUYER_EVENTS': {
+      const db = clone(state.db);
+      return applyBuyerEvents(db, action.events) ? { ...state, db } : state;
+    }
     // ----- Orders held by an order maximum sent for review (order limits) -----
     // Approving sends the buyer an invoice for the held draft order: it stays a
     // draft order ('Invoice sent') until they check out from it (INVOICE_CHECKOUTS).
@@ -1227,7 +1250,14 @@ function reducer(state, action) {
       draft.name = (draft.name || '').trim();
       draft.updatedAt = new Date().toISOString();
       const prev = draft.id ? (db.agreements || []).find((a) => a.id === draft.id) : null;
+      // One its buyers must approve goes to them instead (SEND_PROPOSAL).
+      if (prev?.status === 'Active' && prev.approval) return state;
       const wasLive = isLive(prev);
+      // A proposal the buyer approved is activated as the version they saw: no new
+      // version unless its terms changed.
+      const activating = prev?.status === 'Proposed';
+      // Saved with Buyer must approve, it stays on.
+      if (prev?.approval) draft.approval = true;
       if (!draft.id) {
         draft.id = `ag${Date.now()}`;
         // Unique even when saved within the same millisecond as another.
@@ -1247,19 +1277,84 @@ function reducer(state, action) {
       else if (prev?.status === 'Active') applyAgreement(db, draft);
       else takeEffect(db, draft);
       const note = wasLive ? agreementChanges(prev, draft, db, state.db) : status === 'Scheduled' ? `Activated, starts ${fmtDay(draft.startDate)}` : 'Activated';
-      addVersion(db, draft, note);
+      // A proposal activated keeps its version (it wasn't activated before); new terms
+      // with it go in its Activities log (logProposalUpdate).
+      if (activating) {
+        const changes = agreementChanges(prev, draft, db, state.db);
+        if (changes) logProposalUpdate(db, draft, changes);
+        draft.history = [{ version: draft.version, date: TODAY, note }, ...(draft.history || [])];
+      } else addVersion(db, draft, note);
       // Its own pricing and limits taken out in the editor go.
       dropOwnTerms(db, draft);
       const returnTo = action.draft ? {} : state.agreementEditor?.returnTo || {};
       const toast = wasLive ? `Version ${draft.version} saved` : draft.status === 'Scheduled' ? `${draft.number} scheduled` : `${draft.number} activated`;
       return { ...state, db, ...returnTo, agreementEditor: action.draft ? state.agreementEditor : null, toast };
     }
+    // Send to buyer (Buyer must approve this contract ticked in its editor): the contract
+    // goes to its buyers to approve as a new version, Proposed — nothing of it applies.
+    // A new one gets its number; a Proposed one goes again (their answer to the last
+    // version no longer counts); a Scheduled one goes back to them and won't start
+    // until they approve it and it's activated.
+    case 'SEND_PROPOSAL': {
+      const db = clone(state.db);
+      const draft = clone(state.agreementEditor.draft);
+      const staged = state.agreementEditor?.staged;
+      draft.name = (draft.name || '').trim();
+      draft.updatedAt = new Date().toISOString();
+      const prev = draft.id ? (db.agreements || []).find((a) => a.id === draft.id) : null;
+      // An Active one saved with Buyer must approve: the change waits for its buyers as
+      // its next version; the version in force stays until they approve it.
+      if (prev?.status === 'Active' && prev.approval) {
+        sendPendingVersion(prev, draft, staged, withStagedTerms(state.db, staged), state.db);
+        return { ...state, db, ...(state.agreementEditor?.returnTo || {}), agreementEditor: null, toast: `Version ${pendingVersionOf(prev).version} sent to buyer` };
+      }
+      if (prev && prev.status !== 'Proposed' && prev.status !== 'Scheduled') return state;
+      draft.approval = true;
+      if (!draft.id) {
+        draft.id = `ag${Date.now()}`;
+        while ((db.agreements || []).some((a) => a.id === draft.id)) draft.id += 'x';
+      }
+      db.agreements = prev ? db.agreements.map((a) => (a.id === draft.id ? draft : a)) : [...(db.agreements || []), draft];
+      if (!prev) recordContractNumber(db, draft);
+      saveStagedTerms(db, draft, staged);
+      // Not going live: what it would take over is worked out again when it's activated.
+      delete draft.takesOver;
+      draft.status = 'Proposed';
+      const changes = prev ? agreementChanges(prev, draft, db, state.db) : '';
+      // Not activated yet (Proposed): sent again it keeps its version — the change goes in
+      // its Activities log (logProposalUpdate). A new one, or a Scheduled one going back
+      // to its buyers, is a new version.
+      if (prev?.status === 'Proposed') logProposalUpdate(db, draft, changes);
+      else addVersion(db, draft, prev ? `Sent to buyer again${changes ? ` · ${changes}` : ''}` : 'Sent to buyer');
+      dropOwnTerms(db, draft);
+      return { ...state, db, ...(state.agreementEditor?.returnTo || {}), agreementEditor: null, toast: `${draft.number} sent to buyer` };
+    }
+    // Decline request: the merchant turns down the buyer's latest request for changes
+    // to a Proposed contract, with a reply they see in their B2B Portal. The contract
+    // stays as it is (same version) and waits for the buyer to answer again.
+    case 'DECLINE_CHANGES': {
+      const db = clone(state.db);
+      const ag = (db.agreements || []).find((a) => a.id === action.id);
+      // Or their request for changes to an Active one's version waiting for them.
+      const asked = pendingVersionOf(ag) || ag;
+      const r = latestBuyerResponse(asked);
+      const message = String(action.message || '').trim();
+      if (asked?.status !== 'Proposed' || r?.kind !== 'changes' || declineOf(asked) || !message) return state;
+      // Every request for changes still waiting (they can send several), with the same
+      // reply. `time`: when (the B2B Portal lists the contract changed last first).
+      const time = new Date().toISOString();
+      ag.declines = [...(ag.declines || []), ...openChangeRequests(asked).map((x) => ({ responseKey: responseKey(x), version: asked.version, at: TODAY, time, message }))];
+      // The editor open on it keeps its declines, so saving from it doesn't drop them.
+      const editor = state.agreementEditor?.draft.id === ag.id ? { ...state.agreementEditor, draft: { ...state.agreementEditor.draft, declines: ag.declines } } : state.agreementEditor;
+      return { ...state, db, agreementEditor: editor, toast: 'Request declined' };
+    }
     // Ending takes the agreement's terms off the company; it stays as history. A
-    // scheduled one hasn't been applied yet: it's cancelled before it starts.
+    // scheduled one hasn't been applied yet: it's cancelled before it starts — not one
+    // its buyers approved (canEndAgreement).
     case 'END_AGREEMENT': {
       const db = clone(state.db);
       const ag = (db.agreements || []).find((a) => a.id === action.id);
-      if (!isLive(ag)) return state;
+      if (!canEndAgreement(ag)) return state;
       closeAgreement(db, ag, 'Ended', ag.status === 'Scheduled' ? 'Cancelled before it started' : 'Ended');
       return { ...state, db, toast: `${ag.number} ended` };
     }
@@ -1272,10 +1367,43 @@ function reducer(state, action) {
       addVersion(db, ag, `Extended until ${fmtDay(action.endDate)}`);
       return { ...state, db, toast: `${ag.number} extended` };
     }
-    // Its own pricing and limits go with it.
+    // Reject request: the merchant turns down its buyers' request to cancel a contract
+    // that hasn't started (Proposed or Scheduled), with a note they see in their B2B
+    // Portal. It goes back to the status it had before the request (Awaiting buyer or
+    // Scheduled), at the same version.
+    case 'REJECT_CANCELLATION': {
+      const db = clone(state.db);
+      const ag = (db.agreements || []).find((a) => a.id === action.id);
+      const r = cancelRequestOf(ag);
+      const message = String(action.message || '').trim();
+      if (!r || !message) return state;
+      // `time`: when (the B2B Portal lists the contract changed last first).
+      ag.declines = [...(ag.declines || []), { responseKey: responseKey(r), version: ag.version, at: TODAY, time: new Date().toISOString(), message }];
+      // The editor open on it keeps its declines, so saving from it doesn't drop them.
+      const editor = state.agreementEditor?.draft.id === ag.id ? { ...state.agreementEditor, draft: { ...state.agreementEditor.draft, declines: ag.declines } } : state.agreementEditor;
+      return { ...state, db, agreementEditor: editor, toast: 'Request rejected' };
+    }
+    // Cancel contract: its buyers asked to cancel a contract that hasn't started — it's
+    // Cancelled right away (kept as history; none of its terms apply), and it leaves
+    // their B2B Portal. Only while their request is open (canCancelAgreement).
+    case 'CANCEL_AGREEMENT': {
+      const db = clone(state.db);
+      const ag = (db.agreements || []).find((a) => a.id === action.id);
+      if (!canCancelAgreement(ag)) return state;
+      closeAgreement(db, ag, 'Cancelled', 'Cancelled at the buyer’s request');
+      return {
+        ...state,
+        db,
+        // Cancelled from its editor: the editor closes, back where it was opened from.
+        ...(state.agreementEditor?.draft.id === action.id ? { ...(state.agreementEditor.returnTo || {}), agreementEditor: null } : {}),
+        toast: `${ag.number} cancelled`,
+      };
+    }
+    // Its own pricing and limits go with it. Never one its buyers must approve
+    // (canDeleteAgreement), before or after it's cancelled.
     case 'DELETE_AGREEMENT': {
       const ag = (state.db.agreements || []).find((a) => a.id === action.id);
-      if (ag?.status !== 'Scheduled') return state;
+      if (!canDeleteAgreement(ag)) return state;
       const db = { ...state.db, agreements: state.db.agreements.filter((a) => a.id !== ag.id) };
       dropOwnTerms(db, ag, []);
       return {
@@ -1363,7 +1491,7 @@ function reducer(state, action) {
 // A live contract's pricing and limits change only through it: any other action
 // that would take one off where it applies, turn it off or delete it is turned
 // down (the screens lock those actions first; this catches every other way).
-const CONTRACT_ACTIONS = new Set(['SAVE_AGREEMENT', 'END_AGREEMENT', 'RENEW_AGREEMENT', 'DELETE_AGREEMENT', 'DELETE_COMPANY', 'DELETE_LOCATIONS', 'SET_EMPTY_MODE', 'SYNC_LIMITS']);
+const CONTRACT_ACTIONS = new Set(['SAVE_AGREEMENT', 'SEND_PROPOSAL', 'DECLINE_CHANGES', 'REJECT_CANCELLATION', 'CANCEL_AGREEMENT', 'SYNC_BUYER_EVENTS', 'END_AGREEMENT', 'RENEW_AGREEMENT', 'DELETE_AGREEMENT', 'DELETE_COMPANY', 'DELETE_LOCATIONS', 'SET_EMPTY_MODE', 'SYNC_LIMITS']);
 function checkedReducer(state, action) {
   const next = reducer(state, action);
   if (next.db === state.db || CONTRACT_ACTIONS.has(action.type) || !versionFlags().agreements) return next;
@@ -1377,37 +1505,86 @@ function guardedReducer(state, action) {
 }
 
 const StoreContext = createContext(null);
+// How often the app inside Shopify admin picks up what buyers sent (StoreProvider).
+const BUYER_EVENTS_EVERY = 20000;
 
-export function StoreProvider({ children }) {
-  const [state, dispatch] = useReducer(guardedReducer, undefined, buildInitialState);
+// `live`: inside Shopify admin, the store's records ({ db, installationId, currency },
+// live/shopifyLive.js) — every change is saved to the store, where the storefront
+// reads it. Without it, the demo's, shared with the demo storefront through this
+// browser's storage.
+export function StoreProvider({ live = null, children }) {
+  const [state, dispatch] = useReducer(guardedReducer, live, buildInitialState);
   // Live contracts' pricing applies first, on the contract's dates: the engine reads it
   // before this render.
   setContractPricing(liveContractPricing(state.db));
+  // Inside Shopify admin: saved a moment after the last change (not the
+  // sample-data-hidden state, which would wipe the app's records).
+  useEffect(() => {
+    if (!live || state.emptyMode) return undefined;
+    const t = setTimeout(() => {
+      saveLive(live.installationId, state.db, live.currency).catch((e) =>
+        window.shopify?.toast?.show(`Couldn’t save to Shopify: ${e.message}`, { isError: true }),
+      );
+    }, 800);
+    return () => clearTimeout(t);
+  }, [live, state.db, state.emptyMode]);
+  // Inside Shopify admin: what buyers send while the app is open (answers to contracts —
+  // one they approved is activated) comes in every BUYER_EVENTS_EVERY ms and whenever
+  // the app is looked at again, not only when it's opened.
+  useEffect(() => {
+    if (!live) return undefined;
+    let busy = false;
+    const pull = () => {
+      if (busy || document.visibilityState === 'hidden') return;
+      busy = true;
+      fetchBuyerEvents()
+        .then((events) => dispatch({ type: 'SYNC_BUYER_EVENTS', events }))
+        .catch(() => {})
+        .finally(() => {
+          busy = false;
+        });
+    };
+    const t = setInterval(pull, BUYER_EVENTS_EVERY);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') pull();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', pull);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', pull);
+    };
+  }, [live]);
   // Order limits reach the storefront (and other windows of this app); order
   // requests come back from it, even while this tab is open. A request the
   // merchant approved or declined is done, so it doesn't come back on reload (see
   // persistence.js). The sample-data-hidden state isn't saved.
   useEffect(() => {
-    if (!state.emptyMode) publishOrderLimits(state.db.limits || []);
-  }, [state.db.limits, state.emptyMode]);
-  // Active contracts reach the buyer's account on the storefront the same way.
+    if (!live && !state.emptyMode) publishOrderLimits(state.db.limits || []);
+  }, [live, state.db.limits, state.emptyMode]);
+  // The B2B Portal's contract cards reach the buyer's account on the storefront the
+  // same way (its Active and upcoming contracts, with their prices and history).
   useEffect(() => {
-    if (!state.emptyMode) publishContracts(storefrontContracts(state.db));
-  }, [state.db.agreements, state.db.policies, state.db.companies, state.emptyMode]);
+    if (!live && !state.emptyMode) publishContracts(publishablePortalContracts(state.db));
+  }, [live, state.db.agreements, state.db.policies, state.db.limits, state.db.companies, state.db.products, state.emptyMode]);
   // …and so do the orders held for review, for the buyer's Orders on the B2B Portal.
   useEffect(() => {
-    if (!state.emptyMode) publishHeldOrders(storefrontHeldOrders(state.db));
-  }, [state.db.companies, state.emptyMode]);
+    if (!live && !state.emptyMode) publishHeldOrders(storefrontHeldOrders(state.db));
+  }, [live, state.db.companies, state.emptyMode]);
   useEffect(() => {
+    if (live) return undefined;
     const onStorage = (e) => {
       if (e.key === ORDER_REQUESTS_KEY) dispatch({ type: 'SYNC_ORDER_REQUESTS', requests: readOrderRequests() });
       if (e.key === INVOICE_CHECKOUTS_KEY) dispatch({ type: 'INVOICE_CHECKOUTS', ids: readInvoiceCheckouts() });
+      if (e.key === BUYER_EVENTS_KEY) dispatch({ type: 'SYNC_BUYER_EVENTS', events: readBuyerEvents() });
       if (e.key === ORDER_LIMITS_KEY && Array.isArray(publishedOrderLimits())) dispatch({ type: 'SYNC_LIMITS', limits: upgradeLimits(publishedOrderLimits()) });
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, []);
   useEffect(() => {
+    if (live) return;
     const done = state.db.companies.flatMap((c) => c.orders || []).filter((o) => o.requestId && o.status !== 'Needs review');
     if (done.length) removeOrderRequests(done.map((o) => o.requestId));
     // Invoice checkouts are done once their order is placed; one for an order that

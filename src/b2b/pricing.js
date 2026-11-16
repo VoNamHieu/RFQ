@@ -5,9 +5,12 @@
 // company's "needs a price" are all DERIVED from the data, never stored.
 import { COLLECTIONS, CATALOG_PRICES } from './data/constants.js';
 
-// Demo "today" anchor for dated validity (legacy TODAY = new Date('2026-07-28')).
+// "Today" for dated validity: the prototype's demo anchor (legacy TODAY = new
+// Date('2026-07-28')); the live app in Shopify admin (b2b/shopify.html sets QS_EMBED)
+// and the B2B Portal's backend (no window) use the real date.
 // Dates are plain YYYY-MM-DD, so lexical string comparison matches Date order.
-export const TODAY = '2026-07-28';
+const REAL_TODAY = typeof window === 'undefined' || window.QS_EMBED === 'shopify';
+export const TODAY = REAL_TODAY ? new Date().toISOString().slice(0, 10) : '2026-07-28';
 
 export const KIND_ORDER = ['base', 'quantity'];
 export const kindOf = (p) => (p?.priceKind === 'quantity' ? 'quantity' : 'base');
@@ -169,11 +172,17 @@ const variantBase = (product, variant) => {
 const explicitOn = (p) => !!(p && Object.keys(p.variantAdjustments || {}).length);
 
 // A base only prices products in its scope (all | collection | products); a
-// product outside that scope falls through to the NEXT base by priority.
-export function baseInScope(base, sku) {
+// product outside that scope falls through to the NEXT base by priority. A product
+// one of its rules matches is in it too, whatever that scope (an All products rule:
+// every product) — the editor doesn't show the scope, so a rule added there reaches
+// what it says (a pricing built from quotes is scoped to the quoted products).
+// `product`: the product, or just its sku (then its rules aren't checked).
+export function baseInScope(base, product) {
   if (!base) return false;
+  const sku = typeof product === 'string' ? product : product?.sku;
   const st = base.scopeType;
   if (!st || st === 'all') return true;
+  if (product && typeof product === 'object' && (base.conditionalRules || []).some((r) => ruleMatches(r, product))) return true;
   if (st === 'collection') return scopeCollections(base).some((c) => (COLLECTIONS[c] || []).includes(sku));
   if (st === 'products') return (base.selectedProducts || []).includes(sku);
   return true;
@@ -201,8 +210,25 @@ function inScope(profile, product) {
   }
 }
 
+// A quantity pricing's own product scope (the storefront's quantity prices).
+export const quantityInScope = (profile, product) => inScope(profile, product);
+
+// An "All products" condition has nothing to pick: it is complete as it is.
 const condValues = (c) =>
-  !c ? [] : Array.isArray(c.values) ? c.values.filter(Boolean) : c.value != null && c.value !== '' ? [c.value] : [];
+  !c
+    ? []
+    : c.field === 'all'
+      ? ['all']
+      : Array.isArray(c.values)
+        ? c.values.filter(Boolean)
+        : c.value != null && c.value !== ''
+          ? [c.value]
+          : [];
+
+// A conditional rule the pricing can save: what it applies to is picked (All products
+// needs nothing), and it changes the price.
+export const ruleIsComplete = (rule) =>
+  (rule?.conditions || []).some((c) => condValues(c).length > 0) && !!rule.rule && rule.rule !== 'keep';
 
 function conditionMatches(cond, product) {
   const vals = condValues(cond);
@@ -308,7 +334,7 @@ export function policyPriceBreakdown(profile, product, variant) {
 function resolveProductDetail(company, product, policies, variant, location) {
   const holder = (kind) => (hasOwnSlot(location, kind) ? location : company);
   for (const p of companyActiveBasePolicies(holder('base'), policies)) {
-    if (!baseInScope(p, product.sku)) continue;
+    if (!baseInScope(p, product)) continue;
     const r = priceForDetail(p, product, variant);
     if (r) return r;
   }

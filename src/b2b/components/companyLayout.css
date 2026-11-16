@@ -14,6 +14,10 @@ body:has(.cd-page) {
   margin-inline: auto;
   padding-block: 16px 48px;
 }
+/* A wider one (a company's Quotes and Orders on a page of their own). */
+.cd-page--wide {
+  width: min(100% - 32px, 1200px);
+}
 
 /* Back to Companies on the left, More actions on the right. */
 .cd-topbar {
@@ -262,6 +266,11 @@ body:has(.cd-page) {
   font-weight: 600;
   letter-spacing: normal;
 }
+/* Decline / Approve in a table's narrow actions column (Home's orders waiting for
+   review): as wide as both buttons, so they stay on one line. */
+.cd-held-actions {
+  min-width: max-content;
+}
 /* A row's icon buttons (the company list), side by side. */
 .cd-row-actions {
   display: inline-flex;
@@ -284,6 +293,14 @@ body:has(.cd-page) {
   flex: none;
   align-items: center;
   gap: 8px;
+}
+/* The pricing editor's title in its top bar (the full-screen editor). */
+.cd-editor-title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+  color: var(--wc-text);
 }
 /* Orders & rules: a section per list, its button on the card's bottom edge. */
 .cd-terms-card {
@@ -371,6 +388,11 @@ body:has(.cd-page) {
 }
 .cd-table .cd-nowrap {
   white-space: nowrap;
+}
+/* Many columns (Contracts): the cells' sides tighter. */
+.cd-table--dense th,
+.cd-table--dense td {
+  padding-inline: 12px;
 }
 /* A table that scrolls inside its card (the price preview): its headings stay on top. */
 .cd-table-scroll--tall {
@@ -502,6 +524,110 @@ body:has(.cd-page) {
 }
 .cd-addto .cd-banner {
   margin: 0;
+}
+/* A page's sections one under another (Home). */
+.cd-stack {
+  display: grid;
+  gap: 24px;
+}
+/* A row of a card list (Home's Needs attention, orders waiting for review): text on the
+   left, its action on the right, rows split by hairlines. */
+.cd-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #ebebeb;
+  font-size: 13px;
+  line-height: 20px;
+}
+.cd-list-row:last-child {
+  border-bottom: 0;
+}
+.cd-note--after {
+  margin-top: 8px;
+}
+/* Home's feature cards: four (two, one) to a row, each as tall as the row, the action
+   on its bottom edge. */
+.cd-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+@container (max-width: 720px) {
+  .cd-feature-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container (max-width: 400px) {
+  .cd-feature-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.cd-feature-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 16px;
+}
+.cd-feature-card__value {
+  display: block;
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 650;
+  color: var(--wc-text);
+}
+.cd-feature-card__action {
+  margin-top: auto;
+}
+/* Fields side by side (Settings' default behaviors): three to a row, one on a narrow page. */
+.cd-field-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+@container (max-width: 600px) {
+  .cd-field-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* Home's "What happens next": a short list. */
+.cd-next p,
+.cd-next ul {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 20px;
+}
+.cd-next ul {
+  padding-left: 20px;
+}
+/* Label – value lines in a card (a quote's payment and timeline). */
+.cd-lines {
+  display: grid;
+  gap: 8px;
+}
+.cd-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.cd-line__value {
+  display: inline-flex;
+  gap: 32px;
+}
+.cd-line--strong {
+  font-weight: 650;
+}
+.cd-line--total {
+  padding-top: 8px;
+  border-top: 1px solid #ebebeb;
+}
+.cd-note--end {
+  text-align: end;
 }
 /* Why this price (the price preview's drill-in): the product as a title, then sections
    titled above bordered cards; the applied pricing's card lists the price's steps. */
@@ -830,4 +956,77 @@ body:has(.cd-page) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A registration's application: the form's sections in one card, split by hairlines;
+   each answer a grey label on the left and the answer on the right (one column on a
+   narrow page). */
+.cd-answers {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  font-size: 13px;
+  line-height: 20px;
+}
+.cd-answers + .cd-answers {
+  border-top: 1px solid #ebebeb;
+}
+.cd-answers__title {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 650;
+  color: var(--wc-text-subdued);
+}
+.cd-answer {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 8px;
+}
+@container (max-width: 520px) {
+  .cd-answer {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}
+.cd-answer__value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.cd-answer__text {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+/* A registration's decision in the side column: what approving does, its notes and
+   choices, then Decline and the primary action on the right, set off by a hairline. */
+.cd-decision {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+  font-size: 13px;
+  line-height: 20px;
+}
+.cd-decision p {
+  margin: 0;
+}
+.cd-decision .cd-banner {
+  margin: 0;
+}
+.cd-decision__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #ebebeb;
+}
+.cd-decision__after {
+  margin-top: 12px;
+}
+/* A status by a page's title (the registration form's Live / Draft / Off): the body's size. */
+.cd-title .cd-status {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 450;
+  letter-spacing: normal;
 }

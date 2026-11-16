@@ -255,6 +255,7 @@ export function LimitEditor() {
                   ids={draft.customerTargetIds || []}
                   onTarget={setTarget}
                   onSetId={setCustomerId}
+                  onSetIds={(list) => patch({ customerTargetIds: list })}
                   name={`${scopeName}-customers`}
                 />
                 {errors.targets && (
@@ -359,6 +360,15 @@ export function LimitEditor() {
                       <s-option value="week">Per week (Monday to Sunday)</s-option>
                       <s-option value="month">Per month</s-option>
                     </s-select>
+                    {/* Counted per week or month: whether buyers see the counting badge (what's
+                        left this period) in the cart and on the account page. */}
+                    {(draft.period === 'week' || draft.period === 'month') && (
+                      <s-checkbox
+                        label="Show a counting badge in the cart and on the account page"
+                        checked={draft.periodBadge !== false}
+                        onChange={(e) => patch({ periodBadge: e.currentTarget.checked })}
+                      />
+                    )}
                   </s-stack>
                 )}
               </s-stack>

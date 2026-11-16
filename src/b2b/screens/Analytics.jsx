@@ -14,6 +14,7 @@ import {
   analyticsQuantityEvents,
   analyticsPricingChanges,
 } from '../data/analytics.js';
+import { DevStrip } from '../../shared/DevStrip.jsx';
 
 // Fixed demo anchors (legacy renderAnalytics: analyticsToday / analyticsNow).
 const TODAY = new Date('2026-08-24T00:00:00');
@@ -2059,7 +2060,7 @@ export function Analytics({ embeddedCompanyId = null }) {
   const content = (
     <s-stack gap="base">
       {SHOW_DEV_TOOLS && (
-        <s-box background="subdued" border="base" borderRadius="base" padding="small-200">
+        <DevStrip id="analytics">
           <s-stack gap="small-200">
             <s-stack direction="inline" gap="small-200" alignItems="center">
               <s-badge tone="info">Dev</s-badge>
@@ -2108,7 +2109,7 @@ export function Analytics({ embeddedCompanyId = null }) {
               </s-press-button>
             </s-stack>
           </s-stack>
-        </s-box>
+        </DevStrip>
       )}
       {showEmpty && (
         <s-banner tone="info">

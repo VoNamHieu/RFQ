@@ -428,6 +428,28 @@ body {
   font-weight: 650;
 }
 
+/* Page-level tabs: a line under the header, the open one underlined. */
+.wc-tabs--underline {
+  gap: 20px;
+  padding: 0;
+  border-bottom: 1px solid var(--wc-border);
+}
+.wc-tabs--underline .wc-tab {
+  min-height: 36px;
+  margin-bottom: -1px;
+  padding: 8px 2px;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+}
+.wc-tabs--underline .wc-tab:hover {
+  background: none;
+  border-bottom-color: var(--wc-border);
+}
+.wc-tabs--underline .wc-tab[aria-selected='true'] {
+  background: none;
+  border-bottom-color: var(--wc-text);
+}
 .wc-tab:focus-visible {
   outline: 2px solid #005bd3;
   outline-offset: 1px;
@@ -973,4 +995,9 @@ body {
   .wc-hover-row .wc-hover-target {
     opacity: 1;
   }
+}
+
+/* A row under a page header's title (PageHeader `below`), e.g. tabs. */
+.wc-page-header__below {
+  margin-top: 16px;
 }

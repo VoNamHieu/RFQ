@@ -11,7 +11,7 @@ import { OrdersTab } from '../components/tabs/OrdersTab.jsx';
 import { LocationsTab } from '../components/tabs/LocationsTab.jsx';
 import { ContactsTab } from '../components/tabs/ContactsTab.jsx';
 import { CompanyAnalytics } from '../components/CompanyAnalytics.jsx';
-import { SideBlock, SideRow, backActionFor } from '../components/companyLayout.jsx';
+import { SideBlock, SideRow, CdPageHead, backActionFor } from '../components/companyLayout.jsx';
 import { versionFlags } from '../../shared/versions.js';
 import { MenuButton, Modal, PageHeader } from '../../shared/wc.jsx';
 
@@ -92,19 +92,18 @@ export function CompanyDetail() {
   const fullPage = FULL_PAGES[state.companyTab];
   if (fullPage) {
     const { heading, card, Card } = fullPage;
+    // Opened from a location's held-orders banner: back to that location.
+    const fromList = backActionFor(state, dispatch, state.companyTab);
+    // The company page's look (a wide one): back, then the title and the company.
     return (
-      <>
-        <PageHeader
-          heading={heading}
+      <div className="cd-page cd-page--wide">
+        <CdPageHead
+          title={heading}
           subtitle={company.name}
-          inlineSize="large"
-          // Opened from a location's held-orders banner: back to that location.
-          backAction={backActionFor(state, dispatch, state.companyTab) || { content: company.name, onAction: () => dispatch({ type: 'SET_COMPANY_TAB', tab: card }) }}
+          back={fromList ? { label: state.backTo?.label || 'Back', onAction: fromList.onAction } : { label: company.name, onAction: () => dispatch({ type: 'SET_COMPANY_TAB', tab: card }) }}
         />
-        <s-page inlineSize="large">
-          <Card company={company} full />
-        </s-page>
-      </>
+        <Card company={company} full />
+      </div>
     );
   }
 

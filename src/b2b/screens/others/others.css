@@ -44,6 +44,17 @@
   margin-inline-end: 4px;
 }
 
+/* Notification templates card: a hairline under the tabs and between the rows. */
+.oth-divider {
+  border-top: 1px solid #ebebeb;
+}
+.oth-notif-row {
+  padding: 12px 16px;
+}
+.oth-notif-row + .oth-notif-row {
+  border-top: 1px solid #ebebeb;
+}
+
 /* ── Email template editor (features/Email/components/AutoResponseEmailEditor) ── */
 
 /* "Dynamic value" popover trigger: a bare text button in #08f, underlined on hover. */

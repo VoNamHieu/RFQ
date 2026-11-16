@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useReducer } from 'react';
 import { accountForEmail, productBySku, b2bPriceFor } from './data/products.js';
-import { ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, HELD_ORDERS_KEY } from '../shared/persistence.js';
+import { ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, HELD_ORDERS_KEY, CONTRACTS_KEY, BUYER_EVENTS_KEY } from '../shared/persistence.js';
 
 // Storefront state machine. Deliberately small — three pages (home / product /
 // account) plus the cross-cutting bits a Dawn storefront needs: a cart, a
@@ -122,6 +122,10 @@ function reducer(state, action) {
     // the B2B Portal's Orders follow.
     case 'REVIEWS_CHANGED':
       return { ...state, reviewsVersion: (state.reviewsVersion || 0) + 1 };
+    // The B2B app published its contracts again, or a buyer answered one (here, or in
+    // another tab): re-render so the B2B Portal's contract cards follow.
+    case 'CONTRACTS_CHANGED':
+      return { ...state, contractsVersion: (state.contractsVersion || 0) + 1 };
     case 'TOAST':
       return { ...state, toast: action.message };
     case 'CLEAR_TOAST':
@@ -148,6 +152,7 @@ export function StoreProvider({ children }) {
     const onStorage = (e) => {
       if (e.key === ORDER_LIMITS_KEY) dispatch({ type: 'LIMITS_CHANGED' });
       if (e.key === HELD_ORDERS_KEY || e.key === ORDER_REQUESTS_KEY) dispatch({ type: 'REVIEWS_CHANGED' });
+      if (e.key === CONTRACTS_KEY || e.key === BUYER_EVENTS_KEY) dispatch({ type: 'CONTRACTS_CHANGED' });
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);

@@ -12,7 +12,7 @@ import './SummaryHoverCard.css';
 // editor name them, a contract's as the contract editor's Overview. The card stays open while the pointer moves onto it; a click,
 // Escape or a scroll closes it.
 
-const STATUS_TONE = { Active: 'success', Scheduled: 'info', Upcoming: 'info' };
+const STATUS_TONE = { Active: 'success', Scheduled: 'info', Upcoming: 'info', 'Changes requested': 'warning' };
 const SHOW_DELAY = 250;
 const HIDE_DELAY = 150;
 const CARD_WIDTH = 300;
@@ -69,7 +69,7 @@ export function limitSummaryItems({ limit, rules, contract }, db) {
 // are the ones its pricing covers (as the editor counts them).
 export function contractSummaryItems(ag, company, db) {
   const pricing = [...ag.terms.base, ...ag.terms.quantity].map((id) => (db.policies || []).find((p) => p.id === id)).filter(Boolean);
-  const covers = (p, product) => (kindOf(p) === 'base' ? baseInScope(p, product.sku) : policyPriceBreakdown(p, product)?.inScope);
+  const covers = (p, product) => (kindOf(p) === 'base' ? baseInScope(p, product) : policyPriceBreakdown(p, product)?.inScope);
   const covered = (db.products || []).filter((product) => pricing.some((p) => covers(p, product)));
   return [
     ['organization', 'Company', company.name],

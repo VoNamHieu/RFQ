@@ -67,6 +67,53 @@ export const shopifyCompanyDirectory = [
       { name: 'Ngoc Anh', email: 'procurement@lotushotels.vn', role: 'Location admin', access: 'You approve first', location: 'Head office' },
       { name: 'Phan Yen', email: 'yen@lotushotels.vn', role: 'Ordering only', access: 'Buys directly', location: 'Hoi An property' }
     ]
+  },
+  // A few more, so the Add companies list is long enough to scroll.
+  {
+    id: 'shp_c9', name: 'Saigon Office Solutions', status: 'Active', locations: [
+      { id: 'shp_l16', name: 'District 1', terms: 'Net 30', ordering: 'Buys directly' }
+    ], contacts: [{ name: 'Tran Thu', email: 'thu@saigonoffice.vn', role: 'Location admin', access: 'Buys directly', location: 'District 1' }]
+  },
+  {
+    id: 'shp_c10', name: 'Hai Au Logistics', status: 'Active', locations: [
+      { id: 'shp_l17', name: 'Hai Phong port', terms: 'Net 30', ordering: 'Buys directly' },
+      { id: 'shp_l18', name: 'Quang Ninh depot', terms: 'Net 15', ordering: 'You approve first' },
+      { id: 'shp_l19', name: 'Hanoi office', terms: 'Net 30', ordering: 'Buys directly' }
+    ], contacts: [
+      { name: 'Dang Hai', email: 'hai@haiaulogistics.vn', role: 'Location admin', access: 'Buys directly', location: 'Hai Phong port' },
+      { name: 'Ly Mai', email: 'mai@haiaulogistics.vn', role: 'Ordering only', access: 'You approve first', location: 'Quang Ninh depot' },
+      { name: 'Ngo Tuan', email: 'tuan@haiaulogistics.vn', role: 'Ordering only', access: 'Buys directly', location: 'Hanoi office' }
+    ]
+  },
+  {
+    id: 'shp_c11', name: 'Thanh Cong Textiles', status: 'Active', locations: [
+      { id: 'shp_l20', name: 'Nam Dinh mill', terms: 'Net 45', ordering: 'Buys directly' },
+      { id: 'shp_l21', name: 'Ho Chi Minh showroom', terms: 'Due on receipt', ordering: 'Buys directly' }
+    ], contacts: [
+      { name: 'Hoang Lan', email: 'lan@thanhcongtextiles.vn', role: 'Location admin', access: 'Buys directly', location: 'Nam Dinh mill' },
+      { name: 'Vu Khanh', email: 'khanh@thanhcongtextiles.vn', role: 'Ordering only', access: 'Buys directly', location: 'Ho Chi Minh showroom' }
+    ]
+  },
+  {
+    id: 'shp_c12', name: 'Blue Ocean Restaurants', status: 'Active', locations: [
+      { id: 'shp_l22', name: 'Nha Trang', terms: 'Due on receipt', ordering: 'You approve first' },
+      { id: 'shp_l23', name: 'Vung Tau', terms: 'Due on receipt', ordering: 'You approve first' }
+    ], contacts: [{ name: 'Le Binh', email: 'binh@blueocean.vn', role: 'Location admin', access: 'You approve first', location: 'Nha Trang' }]
+  },
+  {
+    id: 'shp_c13', name: 'Green Leaf Pharmacy', status: 'Active', locations: [
+      { id: 'shp_l24', name: 'Hue', terms: 'Net 15', ordering: 'Buys directly' }
+    ], contacts: [{ name: 'Cao Ha', email: 'ha@greenleaf.vn', role: 'Location admin', access: 'Buys directly', location: 'Hue' }]
+  },
+  {
+    id: 'shp_c14', name: 'Dong A Electrical', status: 'Active', locations: [
+      { id: 'shp_l25', name: 'Bien Hoa factory', terms: 'Net 30', ordering: 'Buys directly' },
+      { id: 'shp_l26', name: 'Binh Duong warehouse', terms: 'Net 30', ordering: 'You approve first' }
+    ], contacts: [
+      { name: 'Truong Son', email: 'son@donga-electric.vn', role: 'Location admin', access: 'Buys directly', location: 'Bien Hoa factory' },
+      { name: 'Ha Vy', email: 'vy@donga-electric.vn', role: 'Ordering only', access: 'You approve first', location: 'Binh Duong warehouse' },
+      { name: 'Dinh Long', email: 'long@donga-electric.vn', role: 'Ordering only', access: 'Buys directly', location: 'Binh Duong warehouse' }
+    ]
   }
 ];
 

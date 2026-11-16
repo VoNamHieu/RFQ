@@ -5,8 +5,9 @@ import { LimitEditor, withCatalog, deleteLimitText } from '../components/LimitEd
 import { LimitOverlapMessage } from '../components/LimitOverlapList.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
 import { Modal, IndexFiltersBar, useWcId } from '../../shared/wc.jsx';
-import { CdPageHead, StatusDot, backActionFor } from '../components/companyLayout.jsx';
+import { CdPageHead, StatusDot } from '../components/companyLayout.jsx';
 import { fmtDay, isContractTerm } from '../agreements.js';
+import { termsBack } from './ContractsAndLimits.jsx';
 
 // Tabs by who a limit is for, like the Pricing list; the kind is a filter.
 const AUDIENCE = [
@@ -14,12 +15,6 @@ const AUDIENCE = [
   { id: 'b2b', label: 'Companies' },
   { id: 'd2c', label: 'Customers' },
 ];
-// Opened from a company or location page: the way back there (named as that page).
-function listBack(state, dispatch) {
-  const back = backActionFor(state, dispatch, 'limits');
-  return back ? { label: state.backTo?.label || 'Back', onAction: back.onAction } : null;
-}
-
 // Status dot, by limitState: turned off, not started yet, applying, or past its end date.
 const STATE_TONE = { Active: 'success', Upcoming: 'info', Expired: undefined, Inactive: undefined };
 const TYPE_CHOICES = [
@@ -96,14 +91,14 @@ export function OrderLimits() {
   // A contract's own limit is only in its contract (edited in the contract editor).
   const all = (state.db.limits || []).filter((l) => !isContractTerm(l));
   const create = { content: 'Create limit', onAction: () => setChooserOpen(true) };
-  // Back to the company or location page it was opened from, if it was. Run tests opens
-  // the order-limit test console (#/b2b/order-limit-tests).
+  // A list of Orders & rules: back to it (or to the company or location page it was
+  // opened from). Run tests opens the order-limit test console (#/b2b/order-limit-tests).
   // In the company page's look: back, the title with Run tests and Create limit.
   const header = (
     <CdPageHead
       title="Order limits"
       subtitle="Rules on what B2B buyers and D2C wholesale customers can check out, checked in the cart and at checkout."
-      back={listBack(state, dispatch)}
+      back={termsBack(state, dispatch, 'limits')}
       actions={
         <>
           <s-button onClick={() => dispatch({ type: 'NAVIGATE', view: 'limitTests' })}>Run tests</s-button>

@@ -3,9 +3,12 @@ import { useStore } from '../store.jsx';
 import { companyNeedsPrice, kindOf, policyStatus, policyUsageCount } from '../pricing.js';
 import { versionFlags, withVersion } from '../../shared/versions.js';
 import quotesArt from '../assets/quote-block.webp';
-import { heldOrders, heldReason, HeldOrderActions, buyerMessageText } from '../components/HeldOrders.jsx';
+import { heldOrders, heldParts, HeldOrderActions, buyerMessageText } from '../components/HeldOrders.jsx';
 import { money } from '../format.js';
 import { isContractTerm } from '../agreements.js';
+import { DevStrip } from '../../shared/DevStrip.jsx';
+import { Modal } from '../../shared/wc.jsx';
+import { CdPageHead, CdSection, StatusDot } from '../components/companyLayout.jsx';
 
 // Prototype: show the dev toggles in production too (flip to import.meta.env.DEV to hide in prod).
 const SHOW_DEV_TOOLS = true;
@@ -35,9 +38,6 @@ export function Home() {
   const { companies, policies } = db;
   const hasForm = !!db.hasRegistrationForm;
   const formPublished = hasForm && !!db.registrationFormPublished;
-  // Turned off in the form builder: still set up, but buyers can't apply meanwhile.
-  const formOff = hasForm && !!db.registrationFormOff;
-  const formLive = formPublished && !formOff;
   const locations = companies.reduce((n, c) => n + (c.locations || []).length, 0);
   const needPrice = companies.filter((c) => companyNeedsPrice(c, policies, db.defaults)).length;
   const activePricing = policies.filter((p) => policyStatus(p, db).label !== 'Inactive').length;
@@ -115,19 +115,27 @@ export function Home() {
 
   const guideVisible = !state.homeGuideHidden;
 
+  // The company page's look: a white page, the title with its two actions, then
+  // sections titled above bordered cards.
   return (
-    <s-page heading={setupComplete ? 'Wholesale B2B Solution' : 'Get your B2B selling workflow ready'}>
-      <s-button slot="secondary-actions" onClick={addCompany}>Add company</s-button>
-      <s-button slot="secondary-actions" onClick={createPricing}>Create pricing</s-button>
-      <s-stack gap="base">
-        <s-text className="wc-page-intro" color="subdued">
-          {setupComplete
+    <div className="cd-page">
+      <CdPageHead
+        title={setupComplete ? 'Wholesale B2B Solution' : 'Get your B2B selling workflow ready'}
+        subtitle={
+          setupComplete
             ? 'Your B2B companies, pricing and registrations at a glance.'
-            : 'Complete a few setup steps to start accepting B2B registrations and selling with custom pricing.'}
-        </s-text>
-
+            : 'Complete a few setup steps to start accepting B2B registrations and selling with custom pricing.'
+        }
+        actions={
+          <>
+            <s-button onClick={addCompany}>Add company</s-button>
+            <s-button onClick={createPricing}>Create pricing</s-button>
+          </>
+        }
+      />
+      <div className="cd-stack">
         {SHOW_DEV_TOOLS && (
-          <s-box background="subdued" border="base" borderRadius="base" padding="small-200">
+          <DevStrip id="home">
             <s-stack direction="inline" gap="small-200" alignItems="center">
               <s-badge tone="info">Dev</s-badge>
               <s-text fontSize="small" color="subdued">
@@ -146,7 +154,7 @@ export function Home() {
                 {devPreview === 'noQuotes' ? 'Show quotes' : 'Preview empty quotes'}
               </s-press-button>
             </s-stack>
-          </s-box>
+          </DevStrip>
         )}
 
         {guideVisible && (
@@ -154,98 +162,78 @@ export function Home() {
             onDismiss={() => dispatch({ type: 'SET_HOME_GUIDE', hidden: true })} />
         )}
 
-        <s-section heading="Needs attention">
-          {attention.length ? (
-            <s-stack gap="none">
-              {attention.map((a, i) => (
-                <React.Fragment key={a.title}>
-                  {i ? <s-divider /> : null}
-                  <s-box paddingBlock="small">
-                    <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="base" alignItems="center">
-                      <s-stack gap="small-500">
-                        <s-paragraph fontWeight="semibold">{a.title}</s-paragraph>
-                        <s-paragraph fontSize="small" color="subdued">{a.meta}</s-paragraph>
-                      </s-stack>
-                      {a.action ? <s-button onClick={a.action.onAction}>{a.action.content}</s-button> : null}
-                    </s-grid>
-                  </s-box>
-                </React.Fragment>
-              ))}
-            </s-stack>
-          ) : (
-            <s-paragraph color="subdued">You're all caught up. Nothing needs your attention right now.</s-paragraph>
-          )}
-        </s-section>
+        <CdSection title="Needs attention">
+          <div className="cd-card">
+            {attention.length ? (
+              attention.map((a) => (
+                <div key={a.title} className="cd-list-row">
+                  <div>
+                    <span className="cd-primary">{a.title}</span>
+                    <span className="cd-sub">{a.meta}</span>
+                  </div>
+                  {a.action ? <s-button onClick={a.action.onAction}>{a.action.content}</s-button> : null}
+                </div>
+              ))
+            ) : (
+              <div className="cd-card__empty">You're all caught up. Nothing needs your attention right now.</div>
+            )}
+          </div>
+        </CdSection>
 
-        {/* Buyers are waiting on these; each order has its own decision. */}
+        {/* Buyers are waiting on these; each order has its own decision. Why they wait is
+            in the ⓘ; a row opens the order (the whole reason, the buyer's message). */}
         {held.length ? (
-          <s-section heading={`${plural(held.length, 'order', 'orders')} waiting for your review`}>
-            <s-paragraph fontSize="small" color="subdued">
-              They’re over an order maximum, so the buyers sent them for your review instead of checking out. Approving one creates the order.
-            </s-paragraph>
-            <HeldOrderList
-              items={held}
-              db={db}
-              onOpen={(company, location) =>
-                location
-                  ? dispatch({ type: 'OPEN_LOCATION', companyId: company.id, locationId: location.id })
-                  : dispatch({ type: 'OPEN_COMPANY', id: company.id, tab: 'orders' })}
-            />
-          </s-section>
+          <CdSection
+            title={`Orders waiting for review (${held.length})`}
+            info="They’re over an order maximum, so the buyers sent them for your review instead of checking out. Approving one creates the order."
+          >
+            <HeldOrderList items={held} db={db} />
+          </CdSection>
         ) : null}
 
-        <s-stack gap="small">
-          <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="base" alignItems="center">
-            <s-heading fontSize="large">Your B2B at a glance</s-heading>
-            {flags.analytics && <s-link onClick={() => nav('analytics')}>View analytics</s-link>}
-          </s-grid>
-          <style>{FEATURE_CARD_CSS}</style>
-          <s-query-container>
-            <s-grid
-              gridTemplateColumns="@container (inline-size > 400px) 1fr 1fr, (inline-size > 720px) 1fr 1fr 1fr 1fr, 1fr"
-              gap="small"
-            >
-              <FeatureCard icon="team" title="Companies" value={companies.length}
-                caption={`${locations} ${locations <= 1 ? 'location' : 'locations'}`}
-                desc="B2B companies with their locations, buyers and payment terms."
-                action={companies.length ? { content: 'View companies', onAction: () => viewCompanies() } : { content: 'Add company', onAction: addCompany }} />
-              <FeatureCard icon="product" title="B2B pricing" value={activePricing}
-                caption={policies.length ? `active · ${plural(quantityPricing, 'quantity break', 'quantity breaks')}` : 'active'}
-                desc="Base prices and quantity breaks for companies and customers."
-                action={policies.length ? { content: 'View pricing', onAction: () => nav('pricing') } : { content: 'Create pricing', onAction: createPricing }} />
-              <FeatureCard icon="note" title="Registrations" value={pending} caption="pending review"
-                badge={formOff ? <s-badge>Form off</s-badge> : formLive ? <s-badge tone="success">Form live</s-badge> : hasForm ? <s-badge tone="caution">Form draft</s-badge> : <s-badge>No form</s-badge>}
-                desc="B2B applications from the registration form on your storefront."
-                action={hasForm ? { content: 'View registrations', onAction: () => viewRegistrations() } : { content: 'Create form', onAction: openForm }} />
-              {rfqInstalled ? (
-                <FeatureCard icon="clipboard" title="Quotes" value={openQuotes.length}
-                  caption={`open · ${plural(dealsClosed, 'deal', 'deals')} closed`}
-                  desc="Quote requests from the RFQ app, tracked on each company."
-                  action={{ content: 'Open RFQ app', onAction: openRfq }} />
-              ) : (
-                <FeatureCard icon="clipboard" title="Quotes" badge={<s-badge>Not installed</s-badge>} art={quotesArt}
-                  desc="Install O:Request a Quote to collect quote requests and turn accepted quotes into B2B pricing."
-                  action={{ content: 'Install app', onAction: () => toast('Opening App Store') }} />
-              )}
-            </s-grid>
-          </s-query-container>
-        </s-stack>
+        <CdSection title="Your B2B at a glance" controls={flags.analytics ? <s-link onClick={() => nav('analytics')}>View analytics</s-link> : null}>
+          <div className="cd-feature-grid">
+            <FeatureCard icon="team" title="Companies" value={companies.length}
+              caption={`${locations} ${locations <= 1 ? 'location' : 'locations'}`}
+              desc="B2B companies with their locations, buyers and payment terms."
+              action={companies.length ? { content: 'View companies', onAction: () => viewCompanies() } : { content: 'Add company', onAction: addCompany }} />
+            <FeatureCard icon="product" title="B2B pricing" value={activePricing}
+              caption={policies.length ? `active · ${plural(quantityPricing, 'quantity break', 'quantity breaks')}` : 'active'}
+              desc="Base prices and quantity breaks for companies and customers."
+              action={policies.length ? { content: 'View pricing', onAction: () => nav('pricing') } : { content: 'Create pricing', onAction: createPricing }} />
+            <FeatureCard icon="note" title="Registrations" value={pending} caption="pending review"
+              desc="B2B applications from the registration form on your storefront."
+              action={hasForm ? { content: 'View registrations', onAction: () => viewRegistrations() } : { content: 'Create form', onAction: openForm }} />
+            {rfqInstalled ? (
+              <FeatureCard icon="clipboard" title="Quotes" value={openQuotes.length}
+                caption={`open · ${plural(dealsClosed, 'deal', 'deals')} closed`}
+                desc="Quote requests from the RFQ app, tracked on each company."
+                action={{ content: 'Open RFQ app', onAction: openRfq }} />
+            ) : (
+              <FeatureCard icon="clipboard" title="Quotes" badge={<StatusDot>Not installed</StatusDot>} art={quotesArt}
+                desc="Install O:Request a Quote to collect quote requests and turn accepted quotes into B2B pricing."
+                action={{ content: 'Install app', onAction: () => toast('Opening App Store') }} />
+            )}
+          </div>
+        </CdSection>
 
         {!setupComplete && (
-          <s-section>
-            <s-grid gridTemplateColumns="auto minmax(0, 1fr)" gap="small" alignItems="start">
-              <s-icon type="info" tone="info" />
-              <s-stack gap="small-400">
-                <s-heading>What happens next</s-heading>
-                <s-paragraph>Once you complete the setup, you can:</s-paragraph>
-                <s-unordered-list>
-                  <s-list-item>Review registration requests from your storefront</s-list-item>
-                  <s-list-item>Approve and assign buyers to companies</s-list-item>
-                  <s-list-item>Reuse your B2B pricing across products and customer groups</s-list-item>
-                </s-unordered-list>
-              </s-stack>
-            </s-grid>
-          </s-section>
+          <div className="cd-card">
+            <div className="cd-card__body">
+              <s-grid gridTemplateColumns="auto minmax(0, 1fr)" gap="small" alignItems="start">
+                <s-icon type="info" tone="info" />
+                <div className="cd-next">
+                  <h2 className="cd-section__title">What happens next</h2>
+                  <p>Once you complete the setup, you can:</p>
+                  <ul>
+                    <li>Review registration requests from your storefront</li>
+                    <li>Approve and assign buyers to companies</li>
+                    <li>Reuse your B2B pricing across products and customer groups</li>
+                  </ul>
+                </div>
+              </s-grid>
+            </div>
+          </div>
         )}
 
         <s-box paddingBlock="large">
@@ -258,72 +246,130 @@ export function Home() {
             <s-text>.</s-text>
           </div>
         </s-box>
-      </s-stack>
-    </s-page>
+      </div>
+    </div>
+  );
+}
+
+// Held orders in their own section under Needs attention, as the company page's Orders
+// card: a row each — the order (its date and buyer), the company and location, the total,
+// why it's held in short, and Decline / Approve. The buyer's message is a link under the
+// order (as on the Orders card) that opens it; the row opens the order's page (back to the home).
+const HELD_SHOWN = 5;
+const shortDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+function HeldOrderList({ items, db }) {
+  const { dispatch } = useStore();
+  const [noteOf, setNoteOf] = useState(null);
+  const shown = items.slice(0, HELD_SHOWN);
+  const own = (e) => e.stopPropagation();
+  const open = (company, order) =>
+    dispatch({
+      type: 'OPEN_ORDER',
+      companyId: company.id,
+      orderId: order.id,
+      backTo: { from: 'order', label: 'Home', view: 'home', patch: {} },
+    });
+  return (
+    <>
+      <div className="cd-card">
+        <div className="cd-table-scroll">
+          <table className="cd-table">
+            <thead>
+              <tr>
+                <th>Order</th>
+                <th>Company</th>
+                <th className="cd-num">Total</th>
+                <th>Why it’s held</th>
+                <th className="cd-actions">
+                  <span className="cd-visually-hidden">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map(({ order, company, location }) => {
+                const message = buyerMessageText(order);
+                return (
+                  <tr key={`${company.id}${order.id}`} className="cd-row-link" onClick={() => open(company, order)}>
+                    <td className="cd-nowrap">
+                      <button type="button" className="cd-link-button">
+                        {order.id}
+                      </button>
+                      <span className="cd-sub">{`${shortDate(order.date)} · ${order.buyer}`}</span>
+                      {message ? (
+                        <button
+                          type="button"
+                          className="cd-text-link"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setNoteOf(order);
+                          }}
+                        >
+                          Buyer message
+                        </button>
+                      ) : null}
+                    </td>
+                    <td>
+                      {company.name}
+                      {location ? <span className="cd-sub">{location.name}</span> : null}
+                    </td>
+                    <td className="cd-num cd-nowrap">
+                      <span className="cd-primary">{money(order.amount)}</span>
+                    </td>
+                    <td>{heldParts(order, db).held.text}</td>
+                    <td className="cd-actions" onClick={own}>
+                      {/* Decline and Approve on one line, however narrow the column. */}
+                      <div className="cd-held-actions">
+                        <HeldOrderActions companyId={company.id} order={order} />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {items.length > shown.length ? <p className="cd-note cd-note--after">{`And ${items.length - shown.length} more in each company’s Orders.`}</p> : null}
+      {noteOf ? (
+        <Modal onClose={() => setNoteOf(null)} heading={`Buyer message · ${noteOf.id}`}>
+          <s-stack gap="small">
+            <s-text color="subdued">{[noteOf.buyer, noteOf.location, shortDate(noteOf.date)].filter(Boolean).join(' · ')}</s-text>
+            <s-paragraph>{`“${noteOf.buyerMessage}”`}</s-paragraph>
+          </s-stack>
+          <s-button slot="secondary-actions" onClick={() => setNoteOf(null)}>
+            Close
+          </s-button>
+        </Modal>
+      ) : null}
+    </>
   );
 }
 
 // Shopify's setup-guide composition: progress "X of Y", collapsible, dismissible,
 // one step open at a time (the first unfinished one by default); a click on a
 // step's title opens it instead.
-// Held orders in their own section under Needs attention: which company and
-// location, how much, why it's held, and Approve / Decline right there.
-const HELD_SHOWN = 5;
-const shortDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-function HeldOrderList({ items, db, onOpen }) {
-  const shown = items.slice(0, HELD_SHOWN);
-  return (
-    <s-box paddingBlockStart="small">
-      <s-stack gap="small-200">
-        <s-box border="base" borderRadius="base">
-          {shown.map(({ order, company, location }, i) => (
-            <React.Fragment key={`${company.id}${order.id}`}>
-              {i ? <s-divider /> : null}
-              <s-box padding="small">
-                <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small" alignItems="center">
-                  <s-stack gap="small-500">
-                    <s-stack direction="inline" gap="small-200" alignItems="center">
-                      <s-link onClick={() => onOpen(company, location)}>{order.id}</s-link>
-                      <s-text>{`${company.name}${location ? ` · ${location.name}` : ''}`}</s-text>
-                      <s-text fontWeight="semibold">{money(order.amount)}</s-text>
-                    </s-stack>
-                    <s-paragraph fontSize="small" color="subdued">{`${order.buyer} · ${shortDate(order.date)} · ${heldReason(order, db)}`}</s-paragraph>
-                    {buyerMessageText(order) ? <s-paragraph fontSize="small">{buyerMessageText(order)}</s-paragraph> : null}
-                  </s-stack>
-                  <HeldOrderActions companyId={company.id} order={order} />
-                </s-grid>
-              </s-box>
-            </React.Fragment>
-          ))}
-        </s-box>
-        {items.length > shown.length ? (
-          <s-paragraph fontSize="small" color="subdued">{`And ${items.length - shown.length} more in each company’s Orders tab.`}</s-paragraph>
-        ) : null}
-      </s-stack>
-    </s-box>
-  );
-}
-
 function SetupGuide({ steps, doneCount, onDismiss }) {
   const firstOpen = steps.findIndex((s) => !s.done);
   const [open, setOpen] = useState(firstOpen);
   const [collapsed, setCollapsed] = useState(false);
   const pct = Math.round((doneCount / steps.length) * 100);
 
+  // A bordered card, as the company page's.
   return (
-    <s-section>
+    <div className="cd-card">
+      <div className="cd-card__body">
       <s-stack gap="small">
         {/* Header: title with its controls on one line, then the description, then progress. */}
         <s-stack gap="small-400">
           <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-400" alignItems="center">
-            <s-heading fontSize="large">Setup guide</s-heading>
+            <h2 className="cd-section__title">Setup guide</h2>
             <s-stack direction="inline" gap="small-400">
               <s-button variant="tertiary" icon="x" accessibilityLabel="Dismiss setup guide" onClick={onDismiss} />
               <s-button variant="tertiary" icon={collapsed ? 'chevron-down' : 'chevron-up'}
                 accessibilityLabel={collapsed ? 'Expand setup guide' : 'Collapse setup guide'} onClick={() => setCollapsed((v) => !v)} />
             </s-stack>
           </s-grid>
-          <s-paragraph color="subdued">Use this guide to get your B2B store up and running.</s-paragraph>
+          <p className="cd-note">Use this guide to get your B2B store up and running.</p>
         </s-stack>
         <s-stack gap="small-300">
           <s-paragraph fontSize="small" color="subdued">{`${doneCount} of ${steps.length} tasks completed`}</s-paragraph>
@@ -340,7 +386,8 @@ function SetupGuide({ steps, doneCount, onDismiss }) {
           </s-stack>
         )}
       </s-stack>
-    </s-section>
+      </div>
+    </div>
   );
 }
 
@@ -390,18 +437,8 @@ function StepMark({ state }) {
   );
 }
 
-// Feature cards share one row height; these rules let each card fill it so the
-// action can sit on the card's bottom edge. The card surface is app-drawn (an
-// s-section can't be stretched to its grid row from outside its shadow root).
-const FEATURE_CARD_CSS = `
-.qs-feature-card {
-  display: flex; flex-direction: column; gap: var(--p-space-300); height: 100%;
-  padding: 16px; border-radius: 12px; background: var(--p-color-bg-surface);
-  box-shadow: 0 1px 0 0 rgba(26, 26, 26, 0.07), inset 0 1px 0 0 rgba(204, 204, 204, 0.5),
-    inset 1px 0 0 0 rgba(0, 0, 0, 0.07), inset -1px 0 0 0 rgba(0, 0, 0, 0.07), inset 0 -1px 0 0 rgba(0, 0, 0, 0.13);
-}
-.qs-feature-card__action { margin-top: auto; }
-`;
+// Feature cards share one row height (.cd-feature-card in companyLayout.css): each card
+// fills it, so the action sits on the card's bottom edge.
 
 // A core feature: its key number, what it's for, and one action. Every card keeps the same
 // rows — while a feature has no number yet its slot shows the feature's art (or stays empty),
@@ -410,19 +447,19 @@ const FEATURE_CARD_CSS = `
 function FeatureCard({ icon, title, badge, value, caption, desc, action, art }) {
   const noValue = value == null;
   return (
-    <div className="qs-feature-card">
+    <div className="cd-card cd-feature-card">
       <s-stack direction="inline" justifyContent="space-between" alignItems="center" gap="small-200">
         <s-stack direction="inline" gap="small-200" alignItems="center">
           <s-icon type={icon} />
-          <s-heading>{title}</s-heading>
+          <h3 className="cd-section__title">{title}</h3>
         </s-stack>
         {badge}
       </s-stack>
       <div style={{ position: 'relative' }}>
         <div aria-hidden={noValue || undefined} style={noValue ? { visibility: 'hidden' } : undefined}>
           <s-stack gap="small-500">
-            <s-heading fontSize="large-400" accessibilityRole="presentation">{noValue ? '0' : String(value)}</s-heading>
-            <s-paragraph fontSize="small" color="subdued">{caption || ' '}</s-paragraph>
+            <span className="cd-feature-card__value">{noValue ? '0' : String(value)}</span>
+            <span className="cd-sub">{caption || ' '}</span>
           </s-stack>
         </div>
         {/* Art fills exactly the number's slot, centered, so the rows stay aligned. */}
@@ -430,8 +467,8 @@ function FeatureCard({ icon, title, badge, value, caption, desc, action, art }) 
           <img src={art} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'center' }} />
         )}
       </div>
-      <s-paragraph fontSize="small" color="subdued">{desc}</s-paragraph>
-      <div className="qs-feature-card__action">
+      <p className="cd-note">{desc}</p>
+      <div className="cd-feature-card__action">
         <s-button inlineSize="fill" onClick={action.onAction}>{action.content}</s-button>
       </div>
     </div>

@@ -150,9 +150,11 @@ export function MenuButton({ items, children, icon, variant, tone, disabled, acc
 
 // Tab strip (Polaris web components have no tabs component).
 // tabs: [{ id, content, badge? }] or strings; selected: index; onSelect(index).
-export function Tabs({ tabs, selected, onSelect, flush = false }) {
+// `underline`: page-level tabs (a line under the page header), set apart from a
+// table's pill tabs.
+export function Tabs({ tabs, selected, onSelect, flush = false, underline = false }) {
   return (
-    <div className={`wc-tabs${flush ? ' wc-tabs--flush' : ''}`} role="tablist">
+    <div className={`wc-tabs${flush ? ' wc-tabs--flush' : ''}${underline ? ' wc-tabs--underline' : ''}`} role="tablist">
       {tabs.map((t, i) => {
         const tab = typeof t === 'string' ? { id: t, content: t } : t;
         return (
@@ -426,6 +428,8 @@ export function PageHeader({
   secondaryActions = [],
   actionGroups = [],
   inlineSize = 'base',
+  // A row under the title, e.g. tabs between related lists.
+  below = null,
 }) {
   const secondary = secondaryActions.filter(Boolean);
   const groups = actionGroups.filter(Boolean);
@@ -475,6 +479,7 @@ export function PageHeader({
           </div>
         ) : null}
       </div>
+      {below ? <div className="wc-page-header__below">{below}</div> : null}
     </div>
   );
 }

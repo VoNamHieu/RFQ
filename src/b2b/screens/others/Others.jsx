@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Email } from './Email.jsx';
 import { OTHERS_HELP_URL } from './data.js';
 import './others.css';
+import { CdPageHead } from '../../components/companyLayout.jsx';
 
 // Others page, laid out like the RFQ app's Configuration page: a settings menu on the
 // left, the picked section on the right. Email notifications is the only section.
@@ -22,8 +23,11 @@ export function Others() {
     />
   );
 
+  // The company page's look: the title (none while a template is edited — the editor
+  // has its own), then the menu and the picked section.
   return (
-    <s-page heading={isTemplateEditorOpen ? undefined : 'Settings'}>
+    <div className="cd-page">
+      {isTemplateEditorOpen ? null : <CdPageHead title="Settings" />}
       {/* `oth-page` = the page's content width (the template editor's breakpoint);
           `oth-content` = the section column's (the notification rows'). */}
       <s-query-container containerName="oth-page">
@@ -33,7 +37,7 @@ export function Others() {
           alignItems="start"
         >
           {isTemplateEditorOpen ? null : (
-            <s-section padding="none">
+            <div className="cd-card">
               <s-box padding="small-200">
                 <div className="oth-menu" role="listbox" aria-label="Settings">
                   {MENU.map((m) => (
@@ -54,7 +58,7 @@ export function Others() {
                   ))}
                 </div>
               </s-box>
-            </s-section>
+            </div>
           )}
           <s-query-container containerName="oth-content">
             <s-box paddingBlockEnd="base">{content}</s-box>
@@ -70,6 +74,6 @@ export function Others() {
           </s-link>
         </div>
       </s-box>
-    </s-page>
+    </div>
   );
 }

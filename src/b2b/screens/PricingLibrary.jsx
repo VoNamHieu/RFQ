@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store.jsx';
 import { policyStatus, policyUsage, policyUsageCount, companyBaseEntries, companyQuantityEntries, locationOnlyEntries, locationPricingEntries } from '../pricing.js';
-import { Modal, IndexFiltersBar, useWcId, wcTone, PageHeader } from '../../shared/wc.jsx';
+import { Modal, IndexFiltersBar, useWcId } from '../../shared/wc.jsx';
 import { isContractTerm } from '../agreements.js';
-import { backActionFor } from '../components/companyLayout.jsx';
+import { backActionFor, CdPageHead, StatusDot, CardFoot, rangeLabel } from '../components/companyLayout.jsx';
 import basePricingArt from '../assets/base-pricing-empty.webp';
 import quantityPricingArt from '../assets/quantity-pricing-empty.webp';
 
@@ -52,30 +52,29 @@ const PRICING_TYPES = [
 // "Create pricing" action (then the editor), and from a company or location page's
 // Add pricing ⊕ (then the pricing of that type to add); the back action returns.
 export function PricingTypeChooser({ onBack, onPick, backLabel = 'Pricing settings', actionLabel = 'Create pricing' }) {
+  // The company page's look: back on top, the title, then the two types as cards.
   return (
-    <>
-    <PageHeader heading="Select pricing type" backAction={{ content: backLabel, onAction: onBack }} />
-    <s-page>
-      <s-query-container>
-        <s-grid gridTemplateColumns="@container (inline-size > 490px) 1fr 1fr, 1fr" gap="base">
-          {PRICING_TYPES.map((t) => (
-            <s-section key={t.kind}>
+    <div className="cd-page">
+      <CdPageHead title="Select pricing type" back={{ label: backLabel, onAction: onBack }} />
+      <div className="cd-card-grid">
+        {PRICING_TYPES.map((t) => (
+          <div key={t.kind} className="cd-card">
+            <div className="cd-card__body">
               <s-stack gap="base">
                 <img src={t.image} alt="" style={{ display: 'block', height: 140, width: 'auto', maxWidth: '100%', objectFit: 'contain', margin: '0 auto' }} />
-                <s-stack gap="small-300">
-                  <s-heading fontSize="large">{t.title}</s-heading>
-                  <s-paragraph color="subdued">{t.description}</s-paragraph>
-                </s-stack>
+                <div>
+                  <h2 className="cd-section__title">{t.title}</h2>
+                  <p className="cd-section__subtitle">{t.description}</p>
+                </div>
                 <s-stack direction="inline">
                   <s-button onClick={() => onPick(t.kind, t.mode)}>{actionLabel}</s-button>
                 </s-stack>
               </s-stack>
-            </s-section>
-          ))}
-        </s-grid>
-      </s-query-container>
-    </s-page>
-    </>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -171,45 +170,37 @@ export function PricingLibrary() {
   const current = Math.min(page, pageCount - 1);
   const start = current * PAGE_SIZE;
   const pagePolicies = policies.slice(start, start + PAGE_SIZE);
-  const pageLabel = total === 0 ? '0 of 0' : `${start + 1}–${start + pagePolicies.length} of ${total}`;
 
   const openEditor = (p) => dispatch({ type: 'OPEN_EDITOR', policy: p, context: { mode: 'edit' } });
 
+  // A row's own buttons (on / off, edit, delete) don't open it.
+  const own = (e) => e.stopPropagation();
   const rows = pagePolicies.map((p) => {
     const st = statusOf(p);
     const isOff = p.status === 'Inactive';
     const id = `${tipId}-${p.id}`;
     return (
-      // A row click opens the editor (delegated to the name link).
-      <s-table-row key={p.id} clickDelegate={`${id}-open`}>
-        <s-table-cell>
-          <s-stack direction="inline" gap="small-200" alignItems="center">
-            <s-link id={`${id}-open`} tone="neutral" onClick={() => openEditor(p)}>
-              <s-text fontWeight="semibold">{p.name}</s-text>
-            </s-link>
-          </s-stack>
-        </s-table-cell>
-        <s-table-cell>{p.priceKind === 'quantity' ? 'Quantity pricing' : 'Base pricing'}</s-table-cell>
-        <s-table-cell>
-          <s-badge tone={p.audienceType === 'b2b' ? 'info' : undefined}>{p.audienceType === 'b2b' ? 'Companies' : 'Customers'}</s-badge>
-        </s-table-cell>
-        <s-table-cell>
-          <s-badge tone={wcTone(st.tone)}>{st.label}</s-badge>
-        </s-table-cell>
-        <s-table-cell>
-          <s-text>{p.priority ?? 0}</s-text>
-        </s-table-cell>
-        <s-table-cell>
-          <s-stack direction="inline" gap="small-400" justifyContent="end" alignItems="center">
+      // The row opens the editor; its name is the keyboard target (the click bubbles up).
+      <tr key={p.id} className="cd-row-link" onClick={() => openEditor(p)}>
+        <td>
+          <button type="button" className="cd-link-button">
+            {p.name}
+          </button>
+        </td>
+        <td>{p.priceKind === 'quantity' ? 'Quantity pricing' : 'Base pricing'}</td>
+        <td>{p.audienceType === 'b2b' ? 'Companies' : 'Customers'}</td>
+        <td>
+          <StatusDot tone={st.tone}>{st.label}</StatusDot>
+        </td>
+        <td className="cd-num">{p.priority ?? 0}</td>
+        <td className="cd-actions cd-num" onClick={own}>
+          <span className="cd-row-actions">
             <s-button
               icon={isOff ? 'toggle-off' : 'toggle-on'}
               variant="tertiary"
               accessibilityLabel={isOff ? 'Turn on' : 'Turn off'}
               interestFor={`${id}-toggle-tip`}
-              onClick={(e) => {
-                e.stopPropagation();
-                dispatch({ type: 'TOGGLE_POLICY_STATUS', id: p.id });
-              }}
+              onClick={() => dispatch({ type: 'TOGGLE_POLICY_STATUS', id: p.id })}
             />
             <s-tooltip id={`${id}-toggle-tip`}>{isOff ? 'Turn on' : 'Turn off'}</s-tooltip>
             <s-button
@@ -217,10 +208,7 @@ export function PricingLibrary() {
               variant="tertiary"
               accessibilityLabel="Edit pricing"
               interestFor={`${id}-edit-tip`}
-              onClick={(e) => {
-                e.stopPropagation();
-                openEditor(p);
-              }}
+              onClick={() => openEditor(p)}
             />
             <s-tooltip id={`${id}-edit-tip`}>Edit pricing</s-tooltip>
             <s-button
@@ -229,15 +217,12 @@ export function PricingLibrary() {
               tone="critical"
               accessibilityLabel="Delete pricing"
               interestFor={`${id}-delete-tip`}
-              onClick={(e) => {
-                e.stopPropagation();
-                setConfirmDelete(p);
-              }}
+              onClick={() => setConfirmDelete(p)}
             />
             <s-tooltip id={`${id}-delete-tip`}>Delete pricing</s-tooltip>
-          </s-stack>
-        </s-table-cell>
-      </s-table-row>
+          </span>
+        </td>
+      </tr>
     );
   });
 
@@ -246,26 +231,23 @@ export function PricingLibrary() {
 
   // Opened from a company or location page: a back arrow there before the title.
   const back = backActionFor(state, dispatch, 'pricing');
+  // The company page's look: a white page, the title with Create pricing, then the list
+  // in a bordered card — tabs, search, filters and sort on top, a plain table, the pages.
   return (
-    <>
-    {back ? <PageHeader heading="Pricing settings" backAction={back} primaryAction={{ content: 'Create pricing', onAction: () => setChooserOpen(true) }} /> : null}
-    <s-page heading={back ? undefined : 'Pricing settings'}>
-      {back ? null : (
-        <s-button slot="primary-action" variant="primary" onClick={() => setChooserOpen(true)}>
-          Create pricing
-        </s-button>
-      )}
+    <div className="cd-page">
+      <CdPageHead
+        title="Pricing settings"
+        back={back ? { label: state.backTo?.label || 'Back', onAction: back.onAction } : null}
+        actions={
+          <s-button variant="primary" onClick={() => setChooserOpen(true)}>
+            Create pricing
+          </s-button>
+        }
+      />
 
-      <s-section padding="none">
-        <s-table
-          paginate={pageCount > 1}
-          hasPreviousPage={current > 0}
-          hasNextPage={current < pageCount - 1}
-          onPreviousPage={() => setPage(Math.max(current - 1, 0))}
-          onNextPage={() => setPage(Math.min(current + 1, pageCount - 1))}
-        >
+      <div className="cd-card">
+        <div className="cd-card__filters">
           <IndexFiltersBar
-            slot="filters"
             query={search}
             queryPlaceholder="Search pricing by name"
             onQueryChange={setSearch}
@@ -310,32 +292,30 @@ export function PricingLibrary() {
               setLocationFilter('all');
             }}
           />
-          <s-table-header-row>
-            <s-table-header listSlot="primary">Name</s-table-header>
-            <s-table-header listSlot="labeled">Pricing type</s-table-header>
-            <s-table-header listSlot="labeled">Assigned to</s-table-header>
-            <s-table-header listSlot="secondary">Status</s-table-header>
-            <s-table-header listSlot="labeled">Priority</s-table-header>
-            <s-table-header listSlot="inline">
-              <s-text accessibilityVisibility="exclusive">Actions</s-text>
-            </s-table-header>
-          </s-table-header-row>
-          <s-table-body>{rows}</s-table-body>
-        </s-table>
-        {rows.length === 0 ? (
-          <s-box padding="base">
-            <div style={{ textAlign: 'center' }}>
-              <s-text color="subdued">No pricing matches these filters.</s-text>
-            </div>
-          </s-box>
-        ) : pageCount > 1 ? (
-          <s-box paddingBlockEnd="small">
-            <div style={{ textAlign: 'center' }}>
-              <s-text color="subdued" fontSize="small">{pageLabel}</s-text>
-            </div>
-          </s-box>
-        ) : null}
-      </s-section>
+        </div>
+        {rows.length ? (
+          <div className="cd-table-scroll">
+            <table className="cd-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Pricing type</th>
+                  <th>Assigned to</th>
+                  <th>Status</th>
+                  <th className="cd-num">Priority</th>
+                  <th className="cd-actions">
+                    <span className="cd-visually-hidden">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>{rows}</tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="cd-card__empty">No pricing matches these filters.</div>
+        )}
+        <CardFoot current={current} count={pageCount} label={rangeLabel(start, pagePolicies.length, total)} onPage={setPage} />
+      </div>
 
       {confirmDelete && (
         <Modal onClose={() => setConfirmDelete(null)} heading={`Delete ${confirmDelete.name}?`}>
@@ -358,7 +338,6 @@ export function PricingLibrary() {
           </s-button>
         </Modal>
       )}
-    </s-page>
-    </>
+    </div>
   );
 }

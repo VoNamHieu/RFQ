@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../store.jsx';
 import { IndexFiltersBar, useWcId } from '../../../shared/wc.jsx';
+import { CdPageHead, CardFoot, rangeLabel } from '../../components/companyLayout.jsx';
+import { termsBack } from '../ContractsAndLimits.jsx';
 import { EmptyBlock } from '../../../shared/EmptyBlock.jsx';
 import { DISCOUNTS, DISCOUNT_HELP_URL, DISCOUNT_TAB, DISCOUNT_LIST_PER_PAGE, EMPTY_STATE_IMAGE } from './data.js';
 import { DiscountRow, deriveDisplayStatus, isDiscountExpired, typeLabel } from './DiscountRow.jsx';
@@ -18,7 +20,7 @@ const BULK_DELETE_MESSAGE =
 let sessionDiscounts = null;
 
 export function Discounts() {
-  const { dispatch } = useStore();
+  const { state, dispatch } = useStore();
   const toast = (message) => dispatch({ type: 'TOAST', message });
   const openInFullApp = (name) => toast(`Opens ${name} in the full app`);
 
@@ -46,21 +48,24 @@ export function Discounts() {
   useEffect(() => () => clearTimeout(toggleTimer.current), []);
 
   // ---- empty state: no discounts at all ----
+  // A list of Orders & rules, in the company page's look: back to it, the title and its
+  // actions on the right.
+  const header = (actions) => <CdPageHead title="Discount" back={termsBack(state, dispatch, 'discounts')} actions={actions} />;
   if (items.length === 0) {
     return (
-      <s-page heading="Discount">
-        <s-button slot="secondary-actions" onClick={() => openInFullApp('Appearance')}>
-          Appearance
-        </s-button>
-        <s-section>
-          <EmptyBlock
-            heading="Create your first discount"
-            image={EMPTY_STATE_IMAGE}
-            action={{ content: 'Create discount', onAction: () => openInFullApp('Create discount') }}
-          >
-            Build your discount quickly and easily
-          </EmptyBlock>
-        </s-section>
+      <div className="cd-page">
+        {header(<s-button onClick={() => openInFullApp('Appearance')}>Appearance</s-button>)}
+        <div className="cd-card">
+          <div className="cd-card__body">
+            <EmptyBlock
+              heading="Create your first discount"
+              image={EMPTY_STATE_IMAGE}
+              action={{ content: 'Create discount', onAction: () => openInFullApp('Create discount') }}
+            >
+              Build your discount quickly and easily
+            </EmptyBlock>
+          </div>
+        </div>
         <s-box paddingBlock="large">
           <div style={{ textAlign: 'center' }}>
             <s-text>Learn more about </s-text>
@@ -69,7 +74,7 @@ export function Discounts() {
             </s-link>
           </div>
         </s-box>
-      </s-page>
+      </div>
     );
   }
 
@@ -180,34 +185,23 @@ export function Discounts() {
     toast('Discounts deleted');
   };
 
+  // The list in a bordered card: tabs, search, the date filter and the selection's
+  // Delete on top, then a plain table (a row's click ticks it) and the pages.
   return (
-    <s-page heading="Discount">
-      <s-button slot="primary-action" variant="primary" onClick={() => openInFullApp('Create discount')}>
-        Create rule
-      </s-button>
-      <s-button slot="secondary-actions" onClick={() => openInFullApp('Usage history')}>
-        Usage history
-      </s-button>
-      <s-button slot="secondary-actions" onClick={() => openInFullApp('Appearance settings')}>
-        Appearance settings
-      </s-button>
+    <div className="cd-page">
+      {header(
+        <>
+          <s-button onClick={() => openInFullApp('Usage history')}>Usage history</s-button>
+          <s-button onClick={() => openInFullApp('Appearance settings')}>Appearance settings</s-button>
+          <s-button variant="primary" onClick={() => openInFullApp('Create discount')}>
+            Create rule
+          </s-button>
+        </>,
+      )}
 
-      <s-section padding="none">
-        <s-table
-          paginate={pageRows.length > 0}
-          hasPreviousPage={current > 1}
-          hasNextPage={current * DISCOUNT_LIST_PER_PAGE < total}
-          onPreviousPage={() => {
-            setPage(Math.max(current - 1, 1));
-            clearSelection();
-          }}
-          onNextPage={() => {
-            setPage(Math.min(current + 1, lastPage));
-            clearSelection();
-          }}
-        >
+      <div className="cd-card">
+        <div className="cd-card__filters">
           <IndexFiltersBar
-            slot="filters"
             query={querySearch}
             queryPlaceholder="Search by name, code, or type"
             onQueryChange={handleQueryChange}
@@ -259,27 +253,31 @@ export function Discounts() {
               </s-stack>
             ) : null}
           </IndexFiltersBar>
-          {/* Like IndexTable, an empty result shows only the empty search state (no column headings). */}
-          {pageRows.length > 0 ? (
-            <>
-              <s-table-header-row>
-                <s-table-header listSlot="inline">
-                  <s-checkbox
-                    accessibilityLabel={allSelected ? 'Deselect all discounts' : 'Select all discounts'}
-                    checked={allSelected}
-                    indeterminate={selected.length > 0 && !allSelected}
-                    onChange={(e) => selectAll(e.currentTarget.checked)}
-                  />
-                </s-table-header>
-                <s-table-header listSlot="primary">Name</s-table-header>
-                <s-table-header listSlot="secondary">Status</s-table-header>
-                <s-table-header listSlot="labeled">Code</s-table-header>
-                <s-table-header listSlot="labeled">Created date</s-table-header>
-                <s-table-header listSlot="labeled">Type</s-table-header>
-                <s-table-header listSlot="labeled">Used</s-table-header>
-                <s-table-header listSlot="inline">Actions</s-table-header>
-              </s-table-header-row>
-              <s-table-body>
+        </div>
+        {/* Like IndexTable, an empty result shows only the empty search state (no column headings). */}
+        {pageRows.length > 0 ? (
+          <div className="cd-table-scroll">
+            <table className="cd-table">
+              <thead>
+                <tr>
+                  <th className="cd-check">
+                    <s-checkbox
+                      accessibilityLabel={allSelected ? 'Deselect all discounts' : 'Select all discounts'}
+                      checked={allSelected}
+                      indeterminate={selected.length > 0 && !allSelected}
+                      onChange={(e) => selectAll(e.currentTarget.checked)}
+                    />
+                  </th>
+                  <th>Name</th>
+                  <th>Status</th>
+                  <th>Code</th>
+                  <th>Created date</th>
+                  <th>Type</th>
+                  <th className="cd-num">Used</th>
+                  <th className="cd-actions cd-num">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
                 {pageRows.map((item) => (
                   <DiscountRow
                     key={item.id}
@@ -294,15 +292,22 @@ export function Discounts() {
                     onCopy={handleCopyCode}
                   />
                 ))}
-              </s-table-body>
-            </>
-          ) : (
-            // Keeps s-table's required header row; IndexTable shows no headings when empty.
-            <s-table-header-row />
-          )}
-        </s-table>
-        {pageRows.length === 0 ? <NoResults /> : null}
-      </s-section>
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <NoResults />
+        )}
+        <CardFoot
+          current={current - 1}
+          count={lastPage}
+          label={rangeLabel((current - 1) * DISCOUNT_LIST_PER_PAGE, pageRows.length, total)}
+          onPage={(i) => {
+            setPage(i + 1);
+            clearSelection();
+          }}
+        />
+      </div>
 
       <DiscountDeleteModal
         open={openDeleteModal}
@@ -315,7 +320,7 @@ export function Discounts() {
         onConfirm={handleBulkDelete}
         message={BULK_DELETE_MESSAGE}
       />
-    </s-page>
+    </div>
   );
 }
 

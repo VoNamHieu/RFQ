@@ -7,8 +7,8 @@ import { shopifyCompanies } from '../data/directory.js';
 // The very first time (no company in the app yet) it picks just one, which lands
 // on its Pricing tab to set up; after that several can be added at once and it
 // ends on the company list, the added ones first. A ticked company opens its
-// locations under it, all ticked: the ticked ones come in, and contacts come with their
-// location. A company added before with only some locations stays listed
+// locations under it, all ticked: the ticked ones come in, and contacts come with
+// their location (said first, above the search). A company added before with only some locations stays listed
 // ("Added") so the rest can be added. "Automatically add new locations" (ticked
 // by default) makes locations created on the ticked companies in Shopify later
 // join them too.
@@ -91,11 +91,14 @@ export function AddCompanyWizard() {
         <s-banner tone="info">Every Shopify company is already in the B2B app.</s-banner>
       ) : (
         <s-stack gap="base">
-          {hiddenCount > 0 ? (
-            <s-banner tone="info">
-              {`${hiddenCount} ${hiddenCount === 1 ? 'company' : 'companies'} already added ${hiddenCount === 1 ? 'is' : 'are'} hidden.`}
-            </s-banner>
-          ) : null}
+          {/* What adding brings, first (it was under the auto-add option). */}
+          <s-paragraph color="subdued">
+            {nSel > 1
+              ? 'Each company comes with its ticked locations and their contacts. Set pricing from each company’s page.'
+              : chosen[0]?.linked
+                ? `Adds the ticked locations, and their contacts, to ${chosen[0].shp.name}.`
+                : 'The company comes with the ticked locations and their contacts.'}
+          </s-paragraph>
           <s-search-field
             label="Search"
             labelAccessibilityVisibility="exclusive"
@@ -119,22 +122,23 @@ export function AddCompanyWizard() {
                     }
                   />
                 )}
+                {/* Companies already added are left out; the count says so (no banner). */}
                 <s-text color="subdued" fontSize="small">
-                  {`Showing ${filtered.length} ${filtered.length === 1 ? 'company' : 'companies'}`}
+                  {`Showing ${filtered.length} ${filtered.length === 1 ? 'company' : 'companies'}${hiddenCount > 0 ? ` · ${hiddenCount} already added` : ''}`}
                 </s-text>
               </s-grid>
             </s-box>
             <s-divider />
             {/* Only the list scrolls, so search, Select all and the auto-add
                 option below stay in view however many companies there are. It
-                shrinks on short screens: the rest of the modal takes ~480px. */}
-            <div style={{ maxHeight: 'max(160px, min(360px, calc(100vh - 480px)))', overflowY: 'auto' }}>
+                shrinks on short screens: the rest of the modal takes ~420px. */}
+            <div style={{ maxHeight: 'max(160px, min(440px, calc(100vh - 420px)))', overflowY: 'auto' }}>
               {filtered.length === 0 ? (
                 <s-box paddingBlockStart="small">
                   <s-paragraph color="subdued">No Shopify company matches your search.</s-paragraph>
                 </s-box>
               ) : (
-                filtered.map((r, idx) => {
+                filtered.map((r) => {
                   const { shp, linked, remaining } = r;
                   const sel = isSel(r);
                   const main = (shp.contacts || [])[0] || null;
@@ -142,8 +146,7 @@ export function AddCompanyWizard() {
                   const nCon = (shp.contacts || []).length;
                   return (
                     <React.Fragment key={shp.id}>
-                      {idx > 0 ? <s-divider /> : null}
-                      {/* The whole row picks the company. */}
+                      {/* The whole row picks the company. Rows split by space, not lines. */}
                       <button
                         type="button"
                         aria-pressed={sel}
@@ -154,19 +157,22 @@ export function AddCompanyWizard() {
                         <s-box paddingBlock="small">
                           <s-grid gridTemplateColumns="auto auto minmax(0, 1fr)" gap="small" alignItems="center">
                             {single ? <Radio checked={sel} /> : <CheckMark checked={sel} />}
-                            <s-avatar size="base" initials={initialsOf(shp.name)} alt={shp.name} />
+                            <Monogram name={shp.name} />
+                            {/* Two lines: the name, then its main contact and what comes with it. */}
                             <s-stack gap="small-500">
                               <s-stack direction="inline" gap="small-200" alignItems="center">
                                 <s-text fontWeight="semibold">{shp.name}</s-text>
                                 {linked ? <s-badge>Added</s-badge> : null}
                               </s-stack>
-                              {main ? (
-                                <s-paragraph color="subdued" fontSize="small">{`${main.name} · ${main.email}`}</s-paragraph>
-                              ) : null}
                               <s-paragraph color="subdued" fontSize="small">
-                                {linked
-                                  ? `${remaining.length} of ${nLoc} locations not added yet`
-                                  : `${nLoc} location${nLoc === 1 ? '' : 's'} · ${nCon} contact${nCon === 1 ? '' : 's'}`}
+                                {[
+                                  main?.name,
+                                  linked
+                                    ? `${remaining.length} of ${nLoc} locations not added yet`
+                                    : `${nLoc} location${nLoc === 1 ? '' : 's'} · ${nCon} contact${nCon === 1 ? '' : 's'}`,
+                                ]
+                                  .filter(Boolean)
+                                  .join(' · ')}
                               </s-paragraph>
                             </s-stack>
                           </s-grid>
@@ -202,17 +208,9 @@ export function AddCompanyWizard() {
           </div>
           <s-checkbox
             label="Automatically add new locations"
-            details="When a selected company gets a new location in Shopify, it's added here too and uses the company's pricing."
             checked={!!ac.autoAddLocations}
             onChange={(e) => patch({ autoAddLocations: e.currentTarget.checked })}
           />
-          <s-paragraph color="subdued" fontSize="small">
-            {nSel > 1
-              ? 'Each company comes with its ticked locations and their contacts. Set pricing from each company’s page.'
-              : chosen[0]?.linked
-                ? `Adds the ticked locations, and their contacts, to ${chosen[0].shp.name}.`
-                : 'The company comes with the ticked locations and their contacts.'}
-          </s-paragraph>
         </s-stack>
       )}
       <s-button
@@ -227,6 +225,31 @@ export function AddCompanyWizard() {
         Cancel
       </s-button>
     </Modal>
+  );
+}
+
+// The company's initials on a neutral grey square (the coloured avatars made the
+// list busy).
+function Monogram({ name }) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: 32,
+        height: 32,
+        flex: '0 0 auto',
+        borderRadius: 8,
+        background: 'var(--p-color-bg-fill-secondary, #f1f1f1)',
+        color: 'var(--p-color-text-secondary, #616161)',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 12,
+        fontWeight: 600,
+      }}
+    >
+      {initialsOf(name)}
+    </span>
   );
 }
 

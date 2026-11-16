@@ -197,14 +197,19 @@ export function EndContractModal({ ag, onClose, onDone }) {
   );
 }
 
-// Delete a Scheduled contract, confirmed — from the company's Contract tab, the
-// Contracts list and the contract editor.
+// Delete a Scheduled or Proposed contract, confirmed — from the company's Contract
+// tab, the Contracts list and the contract editor. A Proposed one leaves its buyers'
+// B2B Portal.
 export function DeleteContractModal({ ag, onClose }) {
   const { state, dispatch } = useStore();
   const company = state.db.companies.find((c) => c.id === ag.companyId);
   return (
     <Modal onClose={onClose} heading={`Delete ${ag.number}?`}>
-      <s-paragraph>{`It won’t start on ${fmtDay(ag.startDate)} and is removed with its history. Nothing changes for ${company?.name || 'the company'}.`}</s-paragraph>
+      <s-paragraph>
+        {ag.status === 'Proposed'
+          ? `Its buyers no longer see it, and it’s removed with its history. Nothing changes for ${company?.name || 'the company'}.`
+          : `It won’t start on ${fmtDay(ag.startDate)} and is removed with its history. Nothing changes for ${company?.name || 'the company'}.`}
+      </s-paragraph>
       <s-button
         slot="primary-action"
         variant="primary"

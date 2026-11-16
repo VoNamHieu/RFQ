@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { AdminFrame } from '../shared/AdminFrame.jsx';
 import { Toast } from '../shared/wc.jsx';
 import { useStore } from './store.jsx';
@@ -16,6 +16,7 @@ import { Registrations } from './screens/Registrations.jsx';
 import { RegistrationDetail } from './screens/RegistrationDetail.jsx';
 import { pendingCount } from './registrations.js';
 import { EMBEDDED } from './initialState.js';
+import { shopifyLinkFor, shopifyHref, shopifyScreenFor, shopifyScreenExists } from './shopifyRoutes.js';
 import { PricingEditor } from './components/PricingEditor.jsx';
 import { BuildFromQuotes } from './components/BuildFromQuotes.jsx';
 import { PriceBoard } from './components/PriceBoard.jsx';
@@ -29,7 +30,7 @@ import { Agreements } from './screens/Agreements.jsx';
 import { ManualOrders } from './screens/manualOrders/ManualOrders.jsx';
 import { Discounts } from './screens/discounts/Discounts.jsx';
 import { Others } from './screens/others/Others.jsx';
-import { PAST_STATUSES } from './agreements.js';
+import { TERMS_HEADING, OrdersAndRules } from './screens/ContractsAndLimits.jsx';
 
 const flags = versionFlags();
 
@@ -55,6 +56,9 @@ function CurrentView() {
       return flags.orderLimits ? <LimitTestConsole /> : <CompaniesList />;
     case 'agreements':
       return flags.agreements ? <Agreements /> : <CompaniesList />;
+    // The Orders & rules menu item: one page with a section for each list.
+    case 'terms':
+      return <OrdersAndRules />;
     case 'registrations':
       return <Registrations />;
     case 'registration':
@@ -79,6 +83,23 @@ function CurrentView() {
 
 export function App() {
   const { state, dispatch } = useStore();
+  // Inside Shopify admin: the screen's own link follows the screen (a new history entry
+  // per screen, so Back works), and Back / Forward open the screen of the link.
+  const shopifyLink = EMBEDDED === 'shopify' ? shopifyLinkFor(state) : null;
+  const shopifyTarget = shopifyLink ? shopifyHref(shopifyLink, window.location.search) : null;
+  useEffect(() => {
+    if (!shopifyTarget || `${window.location.pathname}${window.location.search}` === shopifyTarget) return;
+    window.history.pushState(null, '', shopifyTarget);
+  }, [shopifyTarget]);
+  useEffect(() => {
+    if (EMBEDDED !== 'shopify') return undefined;
+    const onPop = () => {
+      const screen = shopifyScreenFor(window.location.pathname, window.location.search);
+      if (screen && shopifyScreenExists(screen, state.db)) dispatch({ type: 'NAVIGATE', view: screen.view, patch: screen.patch });
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [state.db, dispatch]);
   const companyActive = ['customers', 'company', 'quote', 'location', 'order'].includes(state.view);
   // Registrations holds the submissions list, one registration's review, and the form builder.
   const registrationsActive = ['registrations', 'registration', 'form'].includes(state.view);
@@ -117,27 +138,17 @@ export function App() {
             },
             { label: `B2B Company (${state.db.companies.length})`, url: '#/b2b/company', matches: companyActive, onClick: () => dispatch({ type: 'NAVIGATE', view: 'customers' }) },
             { label: `Pricing (${state.db.policies.length})`, url: '#/b2b/pricing', matches: state.view === 'pricing', onClick: () => dispatch({ type: 'NAVIGATE', view: 'pricing' }) },
-            ...(flags.orderLimits
-              ? [{
-                  label: `Order limits (${(state.db.limits || []).length})`,
-                  url: '#/b2b/order-limits',
-                  matches: state.view === 'limits',
-                  onClick: () => dispatch({ type: 'NAVIGATE', view: 'limits', patch: { limitEditor: null, limitChooser: null } }),
-                }]
-              : []),
-            ...(flags.agreements
-              ? [{
-                  label: `Contracts (${(state.db.agreements || []).filter((a) => !PAST_STATUSES.includes(a.status)).length})`,
-                  url: '#/b2b/agreements',
-                  matches: state.view === 'agreements',
-                  onClick: () => dispatch({ type: 'NAVIGATE', view: 'agreements', patch: { agreementEditor: null } }),
-                }]
-              : []),
+            // One item for contracts, order limits, manual orders and discounts: a page
+            // with a section each (ContractsAndLimits).
+            {
+              label: TERMS_HEADING,
+              url: '#/b2b/orders-and-rules',
+              matches: ['terms', 'agreements', 'limits', 'manualOrders', 'discounts'].includes(state.view),
+              onClick: () => dispatch({ type: 'NAVIGATE', view: 'terms' }),
+            },
             ...(flags.analytics
               ? [{ label: 'Analytics', url: '#/b2b/analytics', matches: state.view === 'analytics', onClick: () => dispatch({ type: 'NAVIGATE', view: 'analytics' }) }]
               : []),
-            { label: 'Manual Order', url: '#/b2b/manual-order', matches: state.view === 'manualOrders', onClick: () => dispatch({ type: 'NAVIGATE', view: 'manualOrders' }) },
-            { label: 'Discount', url: '#/b2b/discount', matches: state.view === 'discounts', onClick: () => dispatch({ type: 'NAVIGATE', view: 'discounts' }) },
             { label: 'Settings', url: '#/b2b/others', matches: state.view === 'others', onClick: () => dispatch({ type: 'NAVIGATE', view: 'others' }) },
           ],
         },

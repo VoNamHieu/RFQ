@@ -1,9 +1,13 @@
 import React from 'react';
-import { Tip, wcTone } from '../../../shared/wc.jsx';
-import { DISCOUNT_TYPE_OPTIONS, STATUS_LABEL, STATUS_TONE } from './data.js';
+import { Tip } from '../../../shared/wc.jsx';
+import { StatusDot } from '../../components/companyLayout.jsx';
+import { DISCOUNT_TYPE_OPTIONS, STATUS_LABEL } from './data.js';
+
+// The status dot's tone (production: on → success, scheduled → attention, off → none).
+const DOT_TONE = { on: 'success', scheduled: 'attention' };
 
 // One discount row (production: features/Discount/components/List/DiscountRow.tsx +
-// DiscountRowActions.tsx).
+// DiscountRowActions.tsx), in the company page's table look.
 
 const toDate = (s) => (s ? new Date(s.endsWith('Z') ? s : `${s}Z`) : null);
 
@@ -77,26 +81,25 @@ export function DiscountRow({ item, tipId, isSelected, onSelect, isToggling, onT
   const displayStatus = item.displayStatus;
   return (
     // Like IndexTable.Row with selection on: clicking the row toggles its checkbox.
-    <s-table-row clickDelegate={`${tipId}-select`}>
-      <s-table-cell>
+    <tr className="cd-row-link" onClick={() => onSelect(item.id, !isSelected)}>
+      <td className="cd-check" onClick={(e) => e.stopPropagation()}>
         <s-checkbox
-          id={`${tipId}-select`}
           accessibilityLabel={`Select ${item.name}`}
           checked={isSelected}
           onChange={(e) => onSelect(item.id, e.currentTarget.checked)}
         />
-      </s-table-cell>
-      <s-table-cell>
-        <div className="discounts-name">
+      </td>
+      <td>
+        <div className="discounts-name cd-primary">
           <Tip content={item.name}>{item.name}</Tip>
         </div>
-      </s-table-cell>
-      <s-table-cell>
-        <s-badge tone={wcTone(STATUS_TONE[displayStatus])}>{STATUS_LABEL[displayStatus] ?? displayStatus}</s-badge>
-      </s-table-cell>
-      <s-table-cell>
+      </td>
+      <td>
+        <StatusDot tone={DOT_TONE[displayStatus]}>{STATUS_LABEL[displayStatus] ?? displayStatus}</StatusDot>
+      </td>
+      <td>
         <div className="discounts-code-cell">
-          <s-text>{item.code}</s-text>
+          <span>{item.code}</span>
           <span className="discounts-code-copy">
             <s-clickable accessibilityLabel="Copy code" interestFor={`${tipId}-copy`} onClick={(e) => act(e, () => onCopy(item.code))}>
               <s-icon type="clipboard" />
@@ -104,15 +107,11 @@ export function DiscountRow({ item, tipId, isSelected, onSelect, isToggling, onT
           </span>
           <s-tooltip id={`${tipId}-copy`}>Copy code</s-tooltip>
         </div>
-      </s-table-cell>
-      <s-table-cell>
-        <span className="discounts-nowrap">{formatCreated(item.created_at)}</span>
-      </s-table-cell>
-      <s-table-cell>
-        <span className="discounts-nowrap">{typeLabel(item.discount_type)}</span>
-      </s-table-cell>
-      <s-table-cell>{item.used_count}</s-table-cell>
-      <s-table-cell>
+      </td>
+      <td className="cd-nowrap">{formatCreated(item.created_at)}</td>
+      <td className="cd-nowrap">{typeLabel(item.discount_type)}</td>
+      <td className="cd-num">{item.used_count}</td>
+      <td className="cd-actions cd-num" onClick={(e) => e.stopPropagation()}>
         <RowActions
           id={item.id}
           tipId={tipId}
@@ -123,7 +122,7 @@ export function DiscountRow({ item, tipId, isSelected, onSelect, isToggling, onT
           onEdit={onEdit}
           onDelete={onDelete}
         />
-      </s-table-cell>
-    </s-table-row>
+      </td>
+    </tr>
   );
 }

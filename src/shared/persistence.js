@@ -49,11 +49,22 @@ export const ORDER_REQUESTS_KEY = 'qsOrderRequests';
 export const publishOrderLimits = (limits) => writeJSON(ORDER_LIMITS_KEY, limits);
 export const publishedOrderLimits = () => readJSON(ORDER_LIMITS_KEY);
 export const readOrderRequests = () => readJSON(ORDER_REQUESTS_KEY) || [];
-// Contracts ↔ storefront: the B2B app publishes its Active contracts (see
-// storefrontContracts in b2b/agreements.js) for the buyer's account page.
+// Contracts ↔ storefront: the B2B app publishes the B2B Portal's contract cards for
+// each company location (b2b/portalContracts.js, { v: 3, at }) for the buyer's
+// account page. Going the other way, what buyers send from it — an answer to an
+// upcoming contract — waits here as buyer events, as the real store keeps them
+// (b2b/buyerEvents.js): the B2B app applies them when it loads and as they come.
 export const CONTRACTS_KEY = 'qsContracts';
 export const publishContracts = (contracts) => writeJSON(CONTRACTS_KEY, contracts);
 export const publishedContracts = () => readJSON(CONTRACTS_KEY);
+export const BUYER_EVENTS_KEY = 'qsBuyerEvents';
+export const readBuyerEvents = () => readJSON(BUYER_EVENTS_KEY) || [];
+// `at`: when it was sent (ISO), on the demo's day.
+export function addBuyerEvent(type, data, at) {
+  const event = { id: `ev_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`, type, at, data };
+  writeJSON(BUYER_EVENTS_KEY, [...readBuyerEvents(), event]);
+  return event;
+}
 // Held orders ↔ storefront: the B2B app publishes the orders held for its review
 // and what became of them (see storefrontHeldOrders in b2b/dbHelpers.js), for the
 // buyer's Orders on the B2B Portal.
@@ -92,7 +103,7 @@ export function consumeHandoff() {
 // "Reset sample data" — clear the shared demo state + any pending handoff and
 // reload back to seed (legacy resetDemoData / the top-bar "Reset data" button).
 export function resetDemo() {
-  removeKeys(DEMO_STATE_KEY, HANDOFF_KEY, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, CONTRACTS_KEY, HELD_ORDERS_KEY, INVOICE_CHECKOUTS_KEY);
+  removeKeys(DEMO_STATE_KEY, HANDOFF_KEY, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, CONTRACTS_KEY, BUYER_EVENTS_KEY, HELD_ORDERS_KEY, INVOICE_CHECKOUTS_KEY);
   try {
     window.location.reload();
   } catch {

@@ -39,7 +39,7 @@ function resolveWalk(company, location, policies, product, variant) {
   const { bases, quantities } = locationPricingEntries(company, location, policies);
   let decided = false;
   const baseSteps = bases.map((entry, i) => {
-    const covers = baseInScope(entry.policy, product.sku);
+    const covers = baseInScope(entry.policy, product);
     let status;
     let breakdown = null;
     if (!decided && covers) {

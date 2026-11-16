@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
 import { CART_CASES, applyCartCase } from '../data/products.js';
 import { versionFlags } from '../../shared/versions.js';
-import { useCartCheckout, LineLimits, OrderLimits } from './CartCheckout.jsx';
+import { useCartCheckout, LineLimits, OrderLimits, QuotaBar } from './CartCheckout.jsx';
 import { money } from '../utils.js';
 import { CloseIcon } from './icons.jsx';
 
@@ -11,7 +11,7 @@ import { CloseIcon } from './icons.jsx';
 // account, a Demo case picks a cart and the limits it needs (CART_CASES).
 export function CartDrawer() {
   const { state, dispatch } = useStore();
-  const { lines, subtotal, blocking, orderProblems, orderReviews, lineProblems, review, keepForReview, checkoutHint, checkout, dialogs } = useCartCheckout();
+  const { lines, subtotal, blocking, orderProblems, orderReviews, lineProblems, review, keepForReview, checkoutHint, checkout, dialogs, quota } = useCartCheckout();
   const [cartCase, setCartCase] = useState('');
   if (!state.cartOpen) return null;
   const close = () => dispatch({ type: 'TOGGLE_CART', open: false });
@@ -38,6 +38,7 @@ export function CartDrawer() {
               </select>
             </label>
           )}
+          {lines.length > 0 && <QuotaBar quota={quota} subtotal={subtotal} />}
           {lines.length === 0 && <div className="empty">Your cart is empty.</div>}
           {lines.map((l, i) => (
             <div className="cart-line" key={`${l.sku}-${l.variantId}`}>

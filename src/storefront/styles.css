@@ -254,6 +254,16 @@ h3 { font-size: 1.8rem; }
 .badge--green { background: #e3f1e6; color: #1f7a34; }
 .badge--blue { background: var(--b2b-bg); color: var(--b2b); }
 .badge--amber { background: #fdf2dc; color: #9a6a00; }
+/* The top of the cart: a weekly or monthly maximum's progress bar (QuotaBar), as the
+   real cart's (qs-b2b-limits.css .qs-b2b-quota); amber once a maximum that blocks is passed. */
+.quota-bar { display: grid; gap: 0.5rem; margin: 0 0 0.8rem; padding: 0.8rem 1rem; border-radius: 0.8rem; background: #eef2fd; color: #1b3a8a; font-size: 1.3rem; line-height: 1.4; }
+.quota-bar p { display: flex; justify-content: space-between; gap: 0.4rem 1rem; flex-wrap: wrap; margin: 0; }
+.quota-bar b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.quota-bar__track { display: block; height: 0.6rem; border-radius: 99px; background: rgb(27 58 138 / 0.15); overflow: hidden; }
+.quota-bar__track i { display: block; height: 100%; border-radius: inherit; background: #1b3a8a; }
+.quota-bar.is-over { background: #fdf2dc; color: #9a6a00; }
+.quota-bar.is-over .quota-bar__track { background: rgb(154 106 0 / 0.18); }
+.quota-bar.is-over .quota-bar__track i { background: #9a6a00; }
 .def-list { display: grid; grid-template-columns: auto 1fr; gap: 0.8rem 1.6rem; font-size: 1.4rem; }
 .def-list dt { color: var(--color-muted); }
 .def-list dd { margin: 0; text-align: right; }
@@ -294,6 +304,7 @@ h3 { font-size: 1.8rem; }
 .cart-page--empty { text-align: center; }
 .cart-page--empty .button { margin-top: 2.4rem; }
 .cart-page .order-limits { margin-bottom: 3.2rem; }
+.cart-page > .quota-bar { margin-bottom: 3.2rem; }
 /* Columns: Product (media + info) · Quantity · Total. */
 .cart-items__head, .cart-item { display: grid; column-gap: 2rem; }
 .cart-items__head { grid-template-columns: 1fr 18rem 12rem; font-size: 1.1rem; letter-spacing: 0.1rem; text-transform: uppercase; color: var(--color-muted); padding-bottom: 1.8rem; border-bottom: 0.1rem solid var(--color-border); }
@@ -743,3 +754,95 @@ h3 { font-size: 1.8rem; }
 .limit-row__rule, .limit-row__detail { opacity: 0.75; }
 .limit-row__status { display: inline-flex; align-items: center; gap: 0.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .limit-row__status svg { width: 1.6rem; height: 1.6rem; flex: none; }
+
+/* ── B2B Portal contracts (components/PortalContracts.jsx) ──────────────────
+   As the real portal's Contracts section — each contract a framed part that opens
+   and closes — its term boxes, quota and modals. */
+.modal--large { max-width: 76rem; }
+.badge--red { background: #fde8e8; color: #b42318; }
+.pc-parts { display: flex; flex-direction: column; gap: 1.6rem; }
+.pc-part { border: 0.1rem solid #e5e5e5; border-radius: 0.8rem; padding: 1.6rem; }
+.pc-part__head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1.2rem; align-items: center; width: 100%; padding: 0; text-align: left; background: none; border: 0; font: inherit; font-size: 1.5rem; color: inherit; cursor: pointer; }
+.pc-part__head > svg { width: 2rem; height: 2rem; color: var(--color-muted); }
+.pc-part__title { font-size: 1.7rem; font-weight: 700; }
+.pc-part__body { display: flex; flex-direction: column; gap: 1.6rem; margin-top: 1.6rem; padding-top: 1.6rem; border-top: 0.1rem solid #e5e5e5; }
+.pc-part__body p { margin: 0; }
+.pc-part__body > .pc-facts { margin: 0; }
+.pc-links { display: inline-flex; gap: 1.6rem; }
+.pc-foot { display: flex; gap: 0.8rem; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
+.pc-menu-wrap { position: relative; display: inline-block; }
+.pc-menu-scrim { position: fixed; inset: 0; z-index: 20; }
+.pc-menu { position: absolute; right: 0; top: calc(100% + 0.4rem); z-index: 21; display: flex; flex-direction: column; min-width: 22rem; padding: 0.6rem; background: #fff; border: 0.1rem solid #e5e5e5; border-radius: 0.8rem; box-shadow: 0 0.8rem 2.4rem rgb(0 0 0 / 0.12); }
+.pc-menu button { padding: 0.8rem 1rem; text-align: left; background: none; border: 0; border-radius: 0.6rem; font: inherit; font-size: 1.45rem; color: inherit; cursor: pointer; }
+.pc-menu button:hover { background: #f4f4f4; }
+.pc-menu .pc-menu--critical { color: #b42318; }
+/* A weekly or monthly maximum's quota on the Contract card and Business account (Quota). */
+.pc-quota { display: flex; flex-direction: column; gap: 0.6rem; font-size: 1.45rem; }
+.pc-quota__head { display: flex; justify-content: space-between; gap: 1.2rem; flex-wrap: wrap; }
+.pc-quota__track { display: block; height: 0.8rem; border-radius: 99px; background: #ececec; overflow: hidden; }
+.pc-quota__track i { display: block; height: 100%; border-radius: inherit; background: var(--b2b); }
+.pc-quota.is-over .pc-quota__track i { background: #b42318; }
+.pc-title { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.pc-stack { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.pc-stack--gap { gap: 1.6rem; }
+.pc-stack > .badge { align-self: flex-start; }
+.pc-stack--end { align-items: flex-end; text-align: right; }
+.pc-small { font-size: 1.3rem; }
+.pc-h4 { font-size: 1.6rem; font-weight: 700; margin: 0; }
+.pc-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.6rem; margin-bottom: 1.6rem; }
+.pc-fact { display: flex; flex-direction: column; gap: 0.4rem; font-size: 1.5rem; }
+.pc-boxes { display: grid; grid-template-columns: 1fr; gap: 1.6rem; }
+.pc-boxes--two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pc-box-wrap { display: flex; flex-direction: column; gap: 0.6rem; font-size: 1.5rem; }
+.pc-box { border: 0.1rem solid #e5e5e5; border-radius: 0.8rem; padding: 0 1.6rem; }
+.pc-box-row { padding: 1.4rem 0; }
+.pc-box-row + .pc-box-row { border-top: 0.1rem solid #e5e5e5; }
+.pc-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1.2rem; align-items: center; }
+.pc-link { color: var(--b2b); font-weight: 600; white-space: nowrap; }
+.pc-values { display: inline-flex; gap: 0.6rem; align-items: baseline; flex-wrap: wrap; justify-content: flex-end; }
+.acct-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.acct-btn--critical { color: #b42318; }
+
+/* Modals' lists and tables */
+.pc-list { display: flex; flex-direction: column; font-size: 1.5rem; }
+.pc-list > * + * { border-top: 0.1rem solid #e5e5e5; }
+.pc-version { display: grid; grid-template-columns: minmax(0, 1fr) auto 2rem; gap: 1.2rem; align-items: center; padding: 1.4rem 0; width: 100%; text-align: left; background: none; border: 0; font: inherit; color: inherit; }
+.pc-version svg { width: 2rem; height: 2rem; color: var(--color-muted); }
+.pc-version--open { cursor: pointer; }
+.pc-version--open:hover { background: #fafafa; }
+/* A pricing or limit in its list (PricingList, LimitList): it opens (›) on its own screen. */
+.pc-row { display: grid; grid-template-columns: minmax(0, 1fr) 2rem; gap: 1.2rem; align-items: center; padding: 1.4rem 0; width: 100%; text-align: left; background: none; border: 0; font: inherit; color: inherit; }
+.pc-row svg { width: 2rem; height: 2rem; color: var(--color-muted); }
+.pc-row--open { cursor: pointer; }
+.pc-row--open:hover { background: #fafafa; }
+.pc-tabs { display: flex; gap: 0.8rem; }
+.pc-tab { border: 0.1rem solid #d9d9d9; background: #fff; border-radius: 0.8rem; padding: 0.6rem 1.4rem; font: inherit; font-size: 1.4rem; font-weight: 600; cursor: pointer; }
+.pc-tab.is-active { background: #ececec; border-color: #c9c9c9; }
+.pc-info { display: grid; grid-template-columns: 3fr 2fr; gap: 1.4rem; padding: 1.6rem; font-size: 1.5rem; }
+.pc-group { border: 0.1rem solid #e5e5e5; border-radius: 0.8rem; overflow: hidden; font-size: 1.45rem; }
+.pc-group-head { display: flex; align-items: center; gap: 0.8rem; padding: 0.8rem 1.2rem; background: #f6f6f6; }
+.pc-group-row { padding: 1rem 1.2rem; border-top: 0.1rem solid #e5e5e5; display: flex; flex-direction: column; gap: 0.8rem; }
+.pc-group-row.pc-line { display: grid; }
+.pc-group > .pc-group-row:first-child { border-top: 0; }
+.pc-term { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 1rem; align-items: center; }
+.pc-term > .pc-stack:first-child { grid-column: 1 / 3; }
+.pc-priority { border: 0.1rem solid #d9d9d9; border-radius: 10rem; padding: 0 0.8rem; font-size: 1.3rem; }
+.pc-chevron { background: none; border: 0; padding: 0.2rem; cursor: pointer; color: inherit; }
+.pc-chevron svg, .pc-changed svg { width: 1.8rem; height: 1.8rem; }
+.pc-up { transform: rotate(180deg); }
+.pc-changed { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 1rem; align-items: center; width: 100%; text-align: left; background: none; border: 0; padding: 0; font: inherit; color: inherit; }
+.pc-changed > .pc-stack:first-child { grid-column: 1 / 3; }
+.pc-changed--open { cursor: pointer; }
+.pc-changed-line { padding: 0.8rem 1.2rem; }
+.pc-settings { padding-top: 0.4rem; }
+.pc-table { display: flex; flex-direction: column; font-size: 1.5rem; }
+.pc-table-head { padding-bottom: 0.8rem; }
+.pc-table-row { padding: 1rem 0; border-top: 0.1rem solid #e5e5e5; }
+.pc-filters { display: grid; grid-template-columns: minmax(0, 1fr) 24rem; gap: 1.6rem; }
+.pc-price { display: grid; grid-template-columns: 4.4rem minmax(0, 1fr) auto; gap: 1.4rem; align-items: center; padding: 1.2rem 0; }
+.pc-thumb { width: 4.4rem; height: 4.4rem; border-radius: 0.6rem; border: 0.1rem solid #e5e5e5; background: #f3f3f3; object-fit: cover; display: block; }
+
+@media (max-width: 749px) {
+  .pc-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pc-boxes--two, .pc-info, .pc-filters { grid-template-columns: 1fr; }
+}

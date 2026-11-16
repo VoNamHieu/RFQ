@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
 import { resetDemo } from '../../shared/persistence.js';
 import { isContractTerm } from '../agreements.js';
+import { CdPageHead, CdSection, StatusDot } from '../components/companyLayout.jsx';
 
 const APPROVED_APP = [
   { label: 'Assign the standard wholesale pricing', value: 'standard' },
@@ -48,94 +49,108 @@ export function Settings() {
     { name: 'ERP import', status: 'Available', tone: undefined },
   ];
 
+  // The company page's look: a white page, the title with Reset and Save, then sections
+  // titled above bordered cards.
   return (
-    <s-page heading="Settings">
-      <s-button slot="primary-action" variant="primary" onClick={() => toast('Settings saved')}>
-        Save
-      </s-button>
-      <s-button slot="secondary-actions" onClick={resetDemo}>
-        Reset sample data
-      </s-button>
+    <div className="cd-page">
+      <CdPageHead
+        title="Settings"
+        actions={
+          <>
+            <s-button onClick={resetDemo}>Reset sample data</s-button>
+            <s-button variant="primary" onClick={() => toast('Settings saved')}>
+              Save
+            </s-button>
+          </>
+        }
+      />
 
-      <s-stack gap="base">
-        <s-section heading="What this app manages">
-          <s-paragraph color="subdued">
-            B2B pricing for {state.db.companies.length} linked companies and {state.db.policies.length} pricing rules. Prices resolve on the storefront when a buyer is signed into a company.
-          </s-paragraph>
-        </s-section>
+      <div className="cd-stack">
+        <CdSection title="What this app manages">
+          <div className="cd-card">
+            <div className="cd-card__body cd-muted">
+              B2B pricing for {state.db.companies.length} linked companies and {state.db.policies.length} pricing rules. Prices resolve on the storefront when a buyer is signed into a company.
+            </div>
+          </div>
+        </CdSection>
 
-        <s-query-container>
-          <s-grid gridTemplateColumns="@container (inline-size > 600px) 1fr 1fr, 1fr" gap="base">
-            <s-section heading="Connections">
-              <s-stack gap="small">
-                {connections.map((c, i) => (
-                  <React.Fragment key={c.name}>
-                    {i > 0 && <s-divider />}
-                    <s-stack direction="inline" justifyContent="space-between" alignItems="center">
-                      <s-text>{c.name}</s-text>
-                      <s-badge tone={c.tone}>{c.status}</s-badge>
-                    </s-stack>
-                  </React.Fragment>
-                ))}
-              </s-stack>
-            </s-section>
+        <div className="cd-card-grid">
+          <CdSection title="Connections">
+            <div className="cd-card">
+              {connections.map((c) => (
+                <div key={c.name} className="cd-list-row">
+                  <span>{c.name}</span>
+                  <StatusDot tone={c.tone}>{c.status}</StatusDot>
+                </div>
+              ))}
+            </div>
+          </CdSection>
 
-            <s-section heading="Store defaults">
-              <s-stack gap="small">
-                <s-select
-                  label="Default B2B pricing"
-                  details="Applies to every company or location that has no pricing of its own."
-                  value={toOption(state.db.defaults?.b2bPolicyId || '')}
-                  onChange={(e) => dispatch({ type: 'SET_DEFAULT_POLICY', key: 'b2bPolicyId', value: fromOption(e.currentTarget.value) })}
-                >
-                  <Options
-                    options={[
-                      { label: 'None', value: '' },
-                      // Contract pricing is given only by its contracts.
-                      ...state.db.policies.filter((p) => p.audienceType === 'b2b' && p.priceKind !== 'quantity' && !isContractTerm(p)).map((p) => ({ label: p.name, value: p.id })),
-                    ]}
-                  />
+          <CdSection title="Store defaults">
+            <div className="cd-card">
+              <div className="cd-card__body">
+                <s-stack gap="small">
+                  <s-select
+                    label="Default B2B pricing"
+                    details="Applies to every company or location that has no pricing of its own."
+                    value={toOption(state.db.defaults?.b2bPolicyId || '')}
+                    onChange={(e) => dispatch({ type: 'SET_DEFAULT_POLICY', key: 'b2bPolicyId', value: fromOption(e.currentTarget.value) })}
+                  >
+                    <Options
+                      options={[
+                        { label: 'None', value: '' },
+                        // Contract pricing is given only by its contracts.
+                        ...state.db.policies.filter((p) => p.audienceType === 'b2b' && p.priceKind !== 'quantity' && !isContractTerm(p)).map((p) => ({ label: p.name, value: p.id })),
+                      ]}
+                    />
+                  </s-select>
+                  <s-select
+                    label="Default wholesale pricing"
+                    details="Applies to signed-in customers not attached to a company."
+                    value={toOption(state.db.defaults?.wholesalePolicyId || '')}
+                    onChange={(e) => dispatch({ type: 'SET_DEFAULT_POLICY', key: 'wholesalePolicyId', value: fromOption(e.currentTarget.value) })}
+                  >
+                    <Options
+                      options={[{ label: 'None', value: '' }, ...state.db.policies.filter((p) => p.audienceType === 'd2c').map((p) => ({ label: p.name, value: p.id }))]}
+                    />
+                  </s-select>
+                </s-stack>
+              </div>
+            </div>
+          </CdSection>
+        </div>
+
+        <CdSection title="Default behaviors">
+          <div className="cd-card">
+            <div className="cd-card__body">
+              <div className="cd-field-grid">
+                <s-select label="When a wholesale application is approved" value={behaviors.approvedApp} onChange={setB('approvedApp')}>
+                  <Options options={APPROVED_APP} />
                 </s-select>
-                <s-select
-                  label="Default wholesale pricing"
-                  details="Applies to signed-in customers not attached to a company."
-                  value={toOption(state.db.defaults?.wholesalePolicyId || '')}
-                  onChange={(e) => dispatch({ type: 'SET_DEFAULT_POLICY', key: 'wholesalePolicyId', value: fromOption(e.currentTarget.value) })}
-                >
-                  <Options
-                    options={[{ label: 'None', value: '' }, ...state.db.policies.filter((p) => p.audienceType === 'd2c').map((p) => ({ label: p.name, value: p.id }))]}
-                  />
+                <s-select label="When an assigned pricing expires" value={behaviors.expiredPrice} onChange={setB('expiredPrice')}>
+                  <Options options={EXPIRED_PRICE} />
                 </s-select>
-              </s-stack>
-            </s-section>
-          </s-grid>
-        </s-query-container>
+                <s-select label="When a quote is accepted" value={behaviors.acceptedQuote} onChange={setB('acceptedQuote')}>
+                  <Options options={ACCEPTED_QUOTE} />
+                </s-select>
+              </div>
+            </div>
+          </div>
+        </CdSection>
 
-        <s-section heading="Default behaviors">
-          <s-query-container>
-            <s-grid gridTemplateColumns="@container (inline-size > 600px) 1fr 1fr 1fr, 1fr" gap="base">
-              <s-select label="When a wholesale application is approved" value={behaviors.approvedApp} onChange={setB('approvedApp')}>
-                <Options options={APPROVED_APP} />
-              </s-select>
-              <s-select label="When an assigned pricing expires" value={behaviors.expiredPrice} onChange={setB('expiredPrice')}>
-                <Options options={EXPIRED_PRICE} />
-              </s-select>
-              <s-select label="When a quote is accepted" value={behaviors.acceptedQuote} onChange={setB('acceptedQuote')}>
-                <Options options={ACCEPTED_QUOTE} />
-              </s-select>
-            </s-grid>
-          </s-query-container>
-        </s-section>
-
-        <s-section heading="Prototype">
-          <s-checkbox
-            label="Show the app with no data"
-            details="Clears this app's own records (companies, pricing, customers) to preview the fresh-install empty states. Shopify's products and companies are untouched."
-            checked={!!state.emptyMode}
-            onChange={(e) => dispatch({ type: 'SET_EMPTY_MODE', on: e.currentTarget.checked })}
-          />
-        </s-section>
-      </s-stack>
-    </s-page>
+        <CdSection title="Prototype">
+          <div className="cd-card">
+            <div className="cd-card__body">
+              <s-checkbox
+                label="Show the app with no data"
+                details="Clears this app's own records (companies, pricing, customers) to preview the fresh-install empty states. Shopify's products and companies are untouched."
+                checked={!!state.emptyMode}
+                onChange={(e) => dispatch({ type: 'SET_EMPTY_MODE', on: e.currentTarget.checked })}
+              />
+            </div>
+          </div>
+        </CdSection>
+      </div>
+    </div>
   );
 }

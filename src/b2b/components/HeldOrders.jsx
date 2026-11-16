@@ -3,6 +3,7 @@ import { useStore } from '../store.jsx';
 import { money } from '../format.js';
 import { reviewMaximumFor, spentSoFar } from '../limits.js';
 import { Modal } from '../../shared/wc.jsx';
+import { LIVE, reviewRequest } from '../live/shopifyLive.js';
 
 // Orders a maximum (order limits: an order value, or a product's) held back for review: status 'Needs review',
 // `heldAt` = what it broke then ({ value, limitId, limitName }, plus `sku` and `item` for a product). The buyer couldn't check out, so the order waits as a
@@ -92,6 +93,22 @@ export function HeldOrderActions({ companyId, order }) {
   const [confirm, setConfirm] = useState(false);
   const [withMessage, setWithMessage] = useState(false);
   const [message, setMessage] = useState('');
+  // Inside Shopify admin, an order request (a draft order from the storefront) is
+  // approved or declined in Shopify first (live/shopifyLive.js reviewRequest).
+  const [busy, setBusy] = useState(false);
+  const decide = async (approve, text = '') => {
+    const action = approve ? { type: 'APPROVE_ORDER', companyId, orderId: order.id } : { type: 'DECLINE_ORDER', companyId, orderId: order.id, message: text };
+    if (!(LIVE && order.draftId)) return dispatch(action);
+    setBusy(true);
+    try {
+      await reviewRequest(order, approve, text);
+      dispatch(action);
+    } catch (e) {
+      window.shopify?.toast?.show(`Couldn’t ${approve ? 'approve' : 'decline'} ${order.id}: ${e.message}`, { isError: true });
+    } finally {
+      setBusy(false);
+    }
+  };
   const close = () => {
     setConfirm(false);
     setWithMessage(false);
@@ -101,8 +118,8 @@ export function HeldOrderActions({ companyId, order }) {
     // Keep clicks off the row underneath (rows can open the order's location).
     <div onClick={(e) => e.stopPropagation()}>
       <s-stack direction="inline" gap="small-200">
-        <s-button onClick={() => setConfirm(true)}>Decline</s-button>
-        <s-button variant="primary" onClick={() => dispatch({ type: 'APPROVE_ORDER', companyId, orderId: order.id })}>
+        <s-button disabled={busy} onClick={() => setConfirm(true)}>Decline</s-button>
+        <s-button variant="primary" loading={busy || undefined} onClick={() => decide(true)}>
           Approve
         </s-button>
       </s-stack>
@@ -133,7 +150,7 @@ export function HeldOrderActions({ companyId, order }) {
             onClick={() => {
               const text = withMessage ? message.trim() : '';
               close();
-              dispatch({ type: 'DECLINE_ORDER', companyId, orderId: order.id, message: text });
+              decide(false, text);
             }}
           >
             Decline order

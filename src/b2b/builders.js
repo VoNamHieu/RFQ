@@ -1,7 +1,7 @@
 // Factory functions for editable working copies (the pricing "builder" the editor
 // mutates, and a new conditional rule). Kept separate from the store so screens
 // can import a fresh builder without pulling in the whole reducer.
-import { TODAY } from './pricing.js';
+import { TODAY, ruleIsComplete } from './pricing.js';
 
 let _ruleSeq = 1;
 export function newRule(field) {
@@ -70,14 +70,10 @@ export function newQuantityBuilder() {
 }
 
 // What saving a builder stores: conditional rules with no chosen value or no real
-// adjustment pruned (legacy validConditionalRule), and explicitEnabled derived from
-// the overrides.
+// adjustment pruned (legacy validConditionalRule; the editor's Save stops on such a
+// rule first, see PricingEditor) — an All products rule needs no value — and
+// explicitEnabled derived from the overrides.
 export function builderDraft(b) {
-  const conditionalRules = (b.conditionalRules || []).filter(
-    (r) =>
-      (r.conditions || []).some((c) =>
-        Array.isArray(c.values) ? c.values.filter(Boolean).length : c.value != null && c.value !== '',
-      ) && r.rule && r.rule !== 'keep',
-  );
+  const conditionalRules = (b.conditionalRules || []).filter(ruleIsComplete);
   return { ...b, conditionalRules, explicitEnabled: Object.keys(b.variantAdjustments || {}).length > 0 };
 }

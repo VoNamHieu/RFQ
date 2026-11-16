@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../store.jsx';
-import { SaveBar, Tabs, Modal, useWcId, PageHeader } from '../../shared/wc.jsx';
+import { SaveBar, Tabs, Modal, useWcId } from '../../shared/wc.jsx';
+import { CdPageHead, StatusDot } from '../components/companyLayout.jsx';
 import {
   BUILTIN_FIELDS, BUILTIN_ORDER, TEMPLATE_FIELDS, DEFAULT_FORM, writeRegistrationForm, readRegistrationForm, deleteRegistrationForm,
   canRequire, isLocked, isRequired, canRemove, headingLabel, choicesFor,
@@ -46,7 +47,6 @@ const CUSTOM_TYPES = [
 
 // Responsive column sets (Polaris React InlineGrid `columns={{ xs, md }}`), sized
 // by the container's own width. (Track lists with parentheses must be quoted.)
-const COLS_1_2 = '@container (inline-size > 600px) "repeat(2, minmax(0, 1fr))", "minmax(0, 1fr)"';
 const COLS_2_3 = '@container (inline-size > 520px) "repeat(3, minmax(0, 1fr))", "repeat(2, minmax(0, 1fr))"';
 const COLS_2_4 = '@container (inline-size > 520px) "repeat(4, minmax(0, 1fr))", "repeat(2, minmax(0, 1fr))"';
 
@@ -61,21 +61,30 @@ export function FormSettings({ entry }) {
   const create = () => { dispatch({ type: 'CREATE_REGISTRATION_FORM' }); setStep('editor'); };
 
   if (step === 'create') {
-    return <CreateStep toast={toast} onBack={entry === 'create' ? toRegistrations : () => setStep('empty')} onCreate={create} />;
+    return (
+      <CreateStep
+        toast={toast}
+        backLabel={entry === 'create' ? 'Registrations' : 'Form settings'}
+        onBack={entry === 'create' ? toRegistrations : () => setStep('empty')}
+        onCreate={create}
+      />
+    );
   }
   if (step === 'editor') {
     return entry === 'editor'
-      ? <EditorStep toast={toast} onBack={toRegistrations} title="B2B registration form" />
-      : <EditorStep toast={toast} onBack={() => setStep('create')} isNew />;
+      ? <EditorStep toast={toast} backLabel="Registrations" onBack={toRegistrations} title="B2B registration form" />
+      : <EditorStep toast={toast} backLabel="Create from" onBack={() => setStep('create')} isNew />;
   }
   return <EmptyStep toast={toast} onCreate={() => setStep('create')} onManageList={toRegistrations} />;
 }
 
 // ── Step 1 — empty ────────────────────────────────────────────────────────────
+// The company page's look: the title, then a bordered card.
 function EmptyStep({ toast, onCreate, onManageList }) {
   return (
-    <s-page heading="Form settings">
-      <s-section>
+    <div className="cd-page">
+      <CdPageHead title="Form settings" />
+      <div className="cd-card">
         <s-box padding="large-300">
           <s-stack gap="small" alignItems="center">
             <DocIllustration />
@@ -93,20 +102,20 @@ function EmptyStep({ toast, onCreate, onManageList }) {
             </s-box>
           </s-stack>
         </s-box>
-      </s-section>
+      </div>
       <LearnMore toast={toast} />
-    </s-page>
+    </div>
   );
 }
 
 // ── Step 2 — pick a template ──────────────────────────────────────────────────
-function CreateStep({ toast, onBack, onCreate }) {
+// As Select pricing type: back (named as the page it returns to), the title, then the
+// templates as bordered cards side by side.
+function CreateStep({ toast, backLabel, onBack, onCreate }) {
   return (
-    <>
-    <PageHeader heading="Create from" backAction={{ content: 'Back', onAction: onBack }} />
-    <s-page>
-      <s-query-container>
-        <s-grid gridTemplateColumns={COLS_1_2} gap="base">
+    <div className="cd-page">
+      <CdPageHead title="Create from" back={{ label: backLabel, onAction: onBack }} />
+      <div className="cd-card-grid">
           <TemplateCard
             title="B2B registration form"
             desc="Collect B2B applications with a simple, single-step form."
@@ -118,26 +127,28 @@ function CreateStep({ toast, onBack, onCreate }) {
             desc="Collect more detailed business information with a guided, multi-step form."
             action={<s-button disabled>Create form</s-button>}
           />
-        </s-grid>
-      </s-query-container>
+      </div>
       <LearnMore toast={toast} />
-    </s-page>
-    </>
+    </div>
   );
 }
 
 function TemplateCard({ title, badge, desc, action }) {
   return (
-    <s-section>
-      <s-stack gap="small-200">
-        <s-stack direction="inline" gap="small-200" alignItems="center">
-          <s-heading>{title}</s-heading>
-          {badge ? <s-badge tone="info">{badge}</s-badge> : null}
+    <div className="cd-card">
+      <div className="cd-card__body">
+        <s-stack gap="small-200">
+          <div>
+            <span className="cd-inline">
+              <h2 className="cd-section__title">{title}</h2>
+              {badge ? <s-badge tone="info">{badge}</s-badge> : null}
+            </span>
+            <p className="cd-section__subtitle">{desc}</p>
+          </div>
+          <s-box paddingBlockStart="small-200">{action}</s-box>
         </s-stack>
-        <s-paragraph color="subdued">{desc}</s-paragraph>
-        <s-box paddingBlockStart="small-200">{action}</s-box>
-      </s-stack>
-    </s-section>
+      </div>
+    </div>
   );
 }
 
@@ -146,7 +157,7 @@ function TemplateCard({ title, badge, desc, action }) {
 // registrations are reviewed · how it looks (optional) · where it goes live.
 const EDITOR_TABS = ['Form', 'Review process', 'Design', 'Publish form'];
 
-function EditorStep({ toast, onBack, isNew = false, title: pageTitle = 'Create B2B registration form' }) {
+function EditorStep({ toast, backLabel, onBack, isNew = false, title: pageTitle = 'Create B2B registration form' }) {
   // Live = the form is on at least one storefront place (same state Home reads).
   const { state, dispatch } = useStore();
   const live = !!state.db.registrationFormPublished;
@@ -280,21 +291,35 @@ function EditorStep({ toast, onBack, isNew = false, title: pageTitle = 'Create B
     setExpandedId(id);
   };
 
-  const badge = off ? <s-badge>Off</s-badge> : live ? <s-badge tone="success">Live</s-badge> : isNew ? null : <s-badge tone="caution">Draft</s-badge>;
+  const badge = off ? <StatusDot>Off</StatusDot> : live ? <StatusDot tone="success">Live</StatusDot> : isNew ? null : <StatusDot tone="attention">Draft</StatusDot>;
 
+  // The company page's look, as the editors': back (named as the page it returns to)
+  // with the actions on top, then the title and its status; the cards below are as
+  // they were.
   return (
     <>
       {dirty && <SaveBar message="Unsaved changes" onSave={() => save()} onDiscard={discard} />}
-      <PageHeader
-        heading={pageTitle}
-        backAction={{ content: 'Back', onAction: onBack }}
-        titleMetadata={badge}
-        secondaryActions={[
-          ...(isNew ? [] : [{ content: 'Delete form', destructive: true, onAction: () => setConfirmDelete(true) }]),
-          { content: off ? 'Turn form on' : 'Turn form off', onAction: () => dispatch({ type: 'SET_REGISTRATION_FORM_OFF', off: !off }) },
-        ]}
-      />
-      <s-page>
+      <div className="cd-page">
+        <CdPageHead
+          title={
+            <span className="cd-inline">
+              {pageTitle}
+              {badge}
+            </span>
+          }
+          back={{ label: backLabel, onAction: onBack }}
+          actionsOnTop
+          actions={
+            <>
+              {isNew ? null : (
+                <s-button tone="critical" onClick={() => setConfirmDelete(true)}>
+                  Delete form
+                </s-button>
+              )}
+              <s-button onClick={() => dispatch({ type: 'SET_REGISTRATION_FORM_OFF', off: !off })}>{off ? 'Turn form on' : 'Turn form off'}</s-button>
+            </>
+          }
+        />
         <s-stack gap="base">
           <Tabs tabs={EDITOR_TABS} selected={EDITOR_TABS.indexOf(tab)} onSelect={(i) => setTab(EDITOR_TABS[i])} flush />
 
@@ -363,7 +388,7 @@ function EditorStep({ toast, onBack, isNew = false, title: pageTitle = 'Create B
             </s-button>
           </Modal>
         )}
-      </s-page>
+      </div>
     </>
   );
 }

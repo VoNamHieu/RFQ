@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useStore } from '../store.jsx';
-import { kindOf, scopeLabel, baseInScope, policyPriceBreakdown, resolveDetail, withContractPricing } from '../pricing.js';
-import { limitSummary, isD2CLimit } from '../limits.js';
+import { kindOf, scopeLabel, baseInScope, policyPriceBreakdown, resolveDetail, withContractPricing, basePricingProductsLabel, basePricingCalculationLabel } from '../pricing.js';
+import { limitSummary, contractLimitConflicts, isD2CLimit } from '../limits.js';
 import {
   agreementChanges,
   companyAfterAgreement,
@@ -23,6 +23,14 @@ import {
   overlapLines,
   overlapsHeading,
   withStagedTerms,
+  proposalState,
+  statusLabel,
+  declineOf,
+  changeRequestBatch,
+  cancelRequestOf,
+  canDeleteAgreement,
+  canEndAgreement,
+  pendingVersionOf,
 } from '../agreements.js';
 import { TODAY } from '../pricing.js';
 import { PricingCombobox } from './PricingCombobox.jsx';
@@ -30,15 +38,19 @@ import { PricePreviewDialog } from './PricePreviewDialog.jsx';
 import { SelectCompaniesModal, companyPicks } from './AssignmentCard.jsx';
 import { TermGroup, VersionTimeline, EndContractModal, DeleteContractModal } from './ContractParts.jsx';
 import { ContractVersionModal } from './ContractVersionModal.jsx';
-import { LocationNames } from './LocationNames.jsx';
-import { MenuButton, Modal, PageHeader, Tip, useWcId } from '../../shared/wc.jsx';
+import { MenuButton, Modal, Tip, useWcId } from '../../shared/wc.jsx';
+import { CdPageHead, editorBackLabel } from './companyLayout.jsx';
 import { TIMEZONES, storeTimezone } from '../timezones.js';
+import { latestBuyerResponse } from '../buyerEvents.js';
+
+// Main column + side column side by side once the page is wide enough (as the pricing editor's).
+const MAIN_ASIDE = '@container (inline-size > 700px) 2fr 1fr, 1fr';
 
 // Create / edit a company's agreement — an in-frame page in the Agreements view
 // (OPEN_AGREEMENT_EDITOR). Its pricing and limits are its own: created here, or copied
 // from the Pricing and Order limits lists (Copy existing). Each opens in the pricing
 // or limit editor on top; what's saved there is staged here (`staged`) and goes in
-// with the contract — saving a live one applies it as a new version, and Cancel drops
+// with the contract — saving a live one applies it as a new version, and going back drops
 // it. Who gets them is all of the company's locations or some, picked like a
 // pricing's or order limit's companies (one company per contract). Saving a new one
 // puts it in force (Active, or Scheduled until its start date); a live one saves as
@@ -58,10 +70,46 @@ export function AgreementEditor() {
   // The name used in the help text before a company is picked.
   const who = company?.name || 'the company';
   const saved = (state.db.agreements || []).find((a) => a.id === draft.id);
+  // An Active one saved with Buyer must approve: the new version waiting for its buyers
+  // (sent from here; the editor opens on it), read as a proposal — the version in force
+  // stays until they approve it.
+  const waiting = pendingVersionOf(saved);
+  // The buyer's answer to this version (Approve / Request changes on their Upcoming contract card).
+  const buyerResponse = latestBuyerResponse(waiting || saved);
+  // Who answered and when: "Vo Hieu · Nov 9, 2026".
+  const answeredBy = buyerResponse ? [buyerResponse.buyer || buyerResponse.email, fmtDay(buyerResponse.at)].filter(Boolean).join(' · ') : '';
+  // The buyer's note (sent with Request changes or Request cancellation), opened from
+  // its own section. Their latest request for changes can be declined (Decline
+  // request in the header, with a reply they see): the contract then waits for them
+  // again.
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [declining, setDeclining] = useState(false);
+  const [reply, setReply] = useState('');
+  const declined = declineOf(waiting || saved);
+  // What the Buyer note shows: requests for changes sent one after another (all of them,
+  // oldest first — they can send more while one waits), or their latest answer.
+  const notes = buyerResponse?.kind === 'changes' ? changeRequestBatch(waiting || saved) : buyerResponse ? [buyerResponse] : [];
+  const byLine = (r) => [r.buyer || r.email, fmtDay(r.at)].filter(Boolean).join(' · ');
+  // Its buyers asked to cancel it (Proposed or Scheduled) and the request is open: the
+  // only actions are Reject request (with a note they see) and Cancel contract. To
+  // change its terms, the merchant rejects the request first.
+  const cancelRequest = cancelRequestOf(saved);
+  // A declined request to cancel it reads "rejected"; one for changes "declined".
+  const rejectedCancel = !!declined && buyerResponse?.kind === 'cancel';
   // Live = saved (Scheduled or Active); started = Active, so its start date is fixed.
   const live = isLive(saved);
   const started = saved?.status === 'Active';
   const startsLater = liveStatus(draft) === 'Scheduled';
+  // Buyer must approve this contract (ticked here, before it starts): a new one goes
+  // to the company's buyers first (Send to buyer, Proposed), and so does a Scheduled
+  // one saved with it ticked. A Proposed one goes again when changed, and is activated
+  // once they approved its version. Saved ticked, it can't be unticked (`approvalLocked`).
+  const approval = !!draft.approval;
+  const approvalLocked = !!saved?.approval;
+  const approvalChanged = !!saved && !!saved.approval !== approval;
+  const proposed = saved?.status === 'Proposed';
+  const proposal = proposalState(waiting || saved); // 'waiting' | 'approved' | 'changes' | null
+  const [sending, setSending] = useState(false);
   // How the company's pricing and limits change when it goes live: a started one's
   // live version comes off and the new one goes on; otherwise it takes effect.
   const change = started ? { off: saved, on: draft } : { start: draft };
@@ -79,6 +127,9 @@ export function AgreementEditor() {
   // as on the company's Contract tab. Ended, the editor closes.
   const [ending, setEnding] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Reject request / Cancel contract, while its buyers' request to cancel it is open.
+  const [rejecting, setRejecting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const scopeTipId = useWcId('scope-tip');
   const patch = (p) => dispatch({ type: 'AGREEMENT_EDITOR_PATCH', patch: p });
   const setTerms = (p) => patch({ terms: { ...draft.terms, ...p } });
@@ -91,8 +142,10 @@ export function AgreementEditor() {
   // "Automatically apply this contract to locations added later": ticked by default
   // for all locations, unticked for some; the merchant can change either.
   const laterFor = (locationIds) => ({ applyLater: locationIds === null });
-  // Always shown, here and in the company modal, whether or not the company has
-  // Auto-add locations on.
+  // Shown only for a company with Auto-add locations on — in the company modal, the one
+  // ticked there (ticking one picks it), so none before a company is ticked. Hidden, it
+  // keeps its value, so turning Auto-add back on shows it as it was.
+  const laterShown = !!company?.autoAddLocations;
   const setCompany = (id, locationIds) => patch({ companyId: id, locationIds, ...laterFor(locationIds), ...followStart(id, locationIds) });
   // The contract's company and locations as the picker's picks: the whole company,
   // or `companyId::locationId` keys for some of its locations.
@@ -130,6 +183,13 @@ export function AgreementEditor() {
     limits: (db.limits || []).filter((l) => copyable(l) && !isD2CLimit(l)).sort(regularFirst),
   };
   const contractBadge = (x) => (ownerOf(x) ? 'In other contract' : null);
+  // The limits picked for it that contradict each other (a warning: it still saves).
+  // Worked out again only when the limits change.
+  const limitConflicts = useMemo(
+    () => contractLimitConflicts(db, pickedOf(draft.terms.limits, db.limits)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [db.limits, db.products, draft.terms.limits],
+  );
 
   const errors = {};
   if (!draft.companyId) errors.company = 'Choose a company';
@@ -166,9 +226,22 @@ export function AgreementEditor() {
   // or order limit, locations, a start date not before today), confirm first: in the
   // Overlaps box when it overlaps other contracts.
   const goLive = () => (!valid ? setTried(true) : overlapsNow.length ? setOverlapBox(true) : setConfirm(true));
-  const nextVersion = (saved?.version || 0) + 1;
+  // Not Scheduled or Active yet (Proposed): sending it again keeps its version.
+  const nextVersion = waiting ? waiting.version : proposed ? saved.version : (saved?.version || 0) + 1;
   // Saving a live contract unchanged would only add an empty version.
-  const unchanged = live && sameAgreement(saved, draft, db, state.db);
+  const unchanged = live && !approvalChanged && sameAgreement(saved, draft, db, state.db);
+  const proposalUnchanged = proposed && sameAgreement(saved, draft, db, state.db);
+  // The version waiting for its buyers, as sent.
+  const waitingUnchanged = !!waiting && sameAgreement(waiting, draft, db, withStagedTerms(state.db, saved.pending.staged));
+  // Who approved it last and when (Approve in their B2B Portal), for its Status once it's
+  // Scheduled or Active and unchanged: "Approved by John Nguyen on Jul 28, 2026. "; ''
+  // without a record of it.
+  const approvedBy = [...(saved?.buyerResponses || [])].reverse().find((r) => r.kind === 'approve');
+  const approvedLine = approvedBy ? `Approved by ${approvedBy.buyer || approvedBy.email || 'the buyer'} on ${fmtDay(approvedBy.at)}. ` : '';
+  // An Active one saved with Buyer must approve goes to its buyers too, as its next version.
+  const sends = approval && (!saved || proposed || saved.status === 'Scheduled' || (started && !!saved.approval));
+  const canActivate = proposalUnchanged && (proposal === 'approved' || !approval);
+  const goSend = () => (!valid ? setTried(true) : setSending(true));
   // Only "Automatically apply this contract to locations added later" changed: the
   // confirm says just what that does (nothing is applied now).
   const onlyLater =
@@ -183,27 +256,60 @@ export function AgreementEditor() {
   const covered = contractProducts(db, draft);
   const overview = [
     ['organization', 'Company', company?.name || 'Not picked'],
-    ['location', 'Applies to', company ? (agreementScopeLabel(company, draft) ? <LocationNames label={agreementAppliesToLabel(company, draft)} /> : 'No locations') : '—'],
+    ['location', 'Applies to', company ? (agreementScopeLabel(company, draft) ? agreementAppliesToLabel(company, draft) : 'No locations') : '—'],
     ['calendar', 'Dates', agreementDatesLabel(draft)],
     ['receipt-dollar', 'Pricing', `${draft.terms.base.length} base · ${draft.terms.quantity.length} quantity`],
     ['order', 'Order limits', count(draft.terms.limits.length, 'limit')],
     ['product', 'Products', count(covered.length, 'product')],
   ];
 
+  const primary = cancelRequest
+    ? { content: 'Reject request', onAction: () => setRejecting(true) }
+    : canActivate
+    ? { content: 'Activate', onAction: goLive }
+    : sends
+      ? { content: 'Send to buyer', onAction: goSend, disabled: proposed ? proposalUnchanged && !approvalChanged : waiting ? waitingUnchanged : unchanged }
+      : { content: proposed ? 'Activate' : live ? `Save as version ${nextVersion}` : 'Save', onAction: goLive, disabled: unchanged };
+  // Its buyers' request to cancel it open: Cancel contract only, in place of End
+  // contract (no End contract or Delete contract until it's rejected).
+  const secondary = (
+    cancelRequest
+      ? [{ content: 'Cancel contract', destructive: true, onAction: () => setCancelling(true) }]
+      : [
+          canEndAgreement(saved) && { content: 'End contract', destructive: true, onAction: () => setEnding(true) },
+          // Where Delete contract is: Decline request while the buyer's request for
+          // changes waits; Delete contract only when it can be (canDeleteAgreement).
+          proposal === 'changes' && { content: 'Decline request', destructive: true, onAction: () => setDeclining(true) },
+          canDeleteAgreement(saved) && { content: 'Delete contract', destructive: true, onAction: () => setDeleting(true) },
+        ]
+  ).filter(Boolean);
+
+  // The company page's look, as the pricing editor's: back (named as the page it returns
+  // to) with the actions on top, then the title and the company; the cards below are as
+  // they were, the main column and the side column (Status, Buyer note, Overview,
+  // versions) side by side.
   return (
-    <>
-    <PageHeader
-      heading={saved ? `${draft.number} · ${saved.name}` : `New contract ${draft.number}`}
+    <div className="cd-page">
+    <CdPageHead
+      title={saved ? `${draft.number} · ${saved.name}` : `New contract ${draft.number}`}
       subtitle={company?.name}
-      backAction={{ content: 'Contracts', onAction: close }}
-      primaryAction={{ content: live ? `Save as version ${nextVersion}` : 'Save', onAction: goLive, disabled: unchanged }}
-      secondaryActions={[
-        live && { content: 'End contract', destructive: true, onAction: () => setEnding(true) },
-        saved?.status === 'Scheduled' && { content: 'Delete contract', destructive: true, onAction: () => setDeleting(true) },
-        { content: 'Cancel', onAction: close },
-      ]}
+      back={{ label: editorBackLabel(state, state.agreementEditor.returnTo, 'Contracts'), onAction: close }}
+      actionsOnTop
+      actions={
+        <>
+          {secondary.map((a) => (
+            <s-button key={a.content} tone={a.destructive ? 'critical' : undefined} onClick={a.onAction}>
+              {a.content}
+            </s-button>
+          ))}
+          <s-button variant="primary" disabled={primary.disabled} onClick={primary.onAction}>
+            {primary.content}
+          </s-button>
+        </>
+      }
     />
-    <s-page>
+    <s-query-container>
+    <s-grid gridTemplateColumns={MAIN_ASIDE} gap="base" alignItems="start">
       <s-stack gap="base">
         <s-section>
           <s-text-field
@@ -271,7 +377,9 @@ export function AgreementEditor() {
               rows={pickedOf(draft.terms.base, db.policies).map((p) => ({
                 key: p.id,
                 name: p.name,
-                detail: scopeLabel(p),
+                // What it prices and how, as the pricing editor's summary (Products ·
+                // Calculation): "Vendor: Manchester City FC · 20% off Shopify price".
+                detail: `${basePricingProductsLabel(p, db.products || [])} · ${basePricingCalculationLabel(p, db.products || [])}`,
                 side: `Priority ${p.priority ?? 0}`,
                 onOpen: () => editPricing(p),
                 actions: <TermActions name={p.name} onEdit={() => editPricing(p)} onRemove={() => remove('base', p.id)} />,
@@ -301,11 +409,15 @@ export function AgreementEditor() {
                 actions: <TermActions name={l.name} onEdit={() => editLimit(l)} onRemove={() => remove('limits', l.id)} />,
               }))}
             />
-            {/* The limits aren't checked against each other here: a note, on every contract,
-                and saving isn't blocked. */}
-            <s-paragraph color="subdued" fontSize="small">
-              Check that order limits and product limits don’t contradict each other. If they do, buyers can’t check out those products.
-            </s-paragraph>
+            {limitConflicts.length ? (
+              <s-banner tone="warning" heading="Some of these limits contradict each other">
+                <s-unordered-list>
+                  {limitConflicts.map((c, i) => (
+                    <s-list-item key={i}>{c}</s-list-item>
+                  ))}
+                </s-unordered-list>
+              </s-banner>
+            ) : null}
             {shown('terms') && (
               <s-paragraph tone="critical" id="agreement-terms">
                 {errors.terms}
@@ -313,6 +425,23 @@ export function AgreementEditor() {
             )}
           </s-stack>
         </s-section>
+
+        {/* Before it starts: whether it goes to the company's buyers to approve first. */}
+        {!started ? (
+          <s-section heading="Buyer approval">
+            <s-checkbox
+              label="Buyer must approve this contract"
+              details={
+                approvalLocked
+                  ? 'Saved with buyer approval, so it can’t be turned off. Each version goes to the company’s buyers and is activated once they approve it.'
+                  : 'It goes to the company’s buyers in their B2B Portal first and is activated once they approve it.'
+              }
+              checked={approval}
+              disabled={approvalLocked}
+              onChange={(e) => patch({ approval: e.currentTarget.checked })}
+            />
+          </s-section>
+        ) : null}
 
         <s-section>
           <s-stack gap="small-200">
@@ -357,12 +486,14 @@ export function AgreementEditor() {
                 ))}
               </s-stack>
             ) : null}
-            {/* Here and in the company modal. */}
-            <s-checkbox
-              label="Automatically apply this contract to locations added later"
-              checked={addsLaterLocations(draft)}
-              onChange={(e) => patch({ applyLater: e.currentTarget.checked })}
-            />
+            {/* Here and in the company modal, while the company auto-adds locations. */}
+            {laterShown && (
+              <s-checkbox
+                label="Automatically apply this contract to locations added later"
+                checked={addsLaterLocations(draft)}
+                onChange={(e) => patch({ applyLater: e.currentTarget.checked })}
+              />
+            )}
             {(shown('company') || shown('scope')) && (
               <s-paragraph tone="critical" id="agreement-scope">
                 {shown('company') || shown('scope')}
@@ -372,21 +503,65 @@ export function AgreementEditor() {
         </s-section>
       </s-stack>
 
-      <s-section slot="aside" heading="Status">
+      <s-stack gap="base">
+      <s-section heading="Status">
         <s-stack gap="small-200">
-          {live ? (
+          {live || proposed ? (
             <div>
-              <s-badge tone={started ? 'success' : 'info'}>{`${saved.status} · version ${saved.version}`}</s-badge>
+              <s-badge tone={started ? 'success' : proposal === 'changes' || cancelRequest ? 'warning' : proposed ? 'attention' : 'info'}>{statusLabel(saved)}</s-badge>
             </div>
           ) : null}
+          {/* A request for changes is its status, above, and in Buyer note, below; an
+              approval is in the sentence below ("Approved by … on …"). */}
           <s-paragraph color="subdued" fontSize="small">
-            {live
-              ? `Saving gives ${company?.name} your changes ${when}, as version ${nextVersion}.`
-              : `Nothing is applied yet. Saving gives ${who} these terms${draft.startDate ? ` from ${fmtDay(draft.startDate)}` : ''}.`}
+            {cancelRequest
+              ? `${who}’s buyers asked to cancel it. Cancel the contract, or reject the request with a note they see in their B2B Portal.`
+              : proposed
+              ? !proposalUnchanged
+                ? `Sending gives ${who}’s buyers your changes to approve. It stays version ${saved.version}; the changes go in its Activities log.`
+                : canActivate
+                  ? `Activating gives ${who} these terms ${when}${proposal === 'approved' ? '' : '. Its buyers haven’t approved it'}.`
+                  : proposal === 'changes'
+                    ? `Change it and send it again. Nothing applies until they approve it.`
+                    : `Waiting for ${who}’s buyers to approve it. It’s activated once they do. It expires if they don’t approve it by ${fmtDay(saved.startDate)}.`
+              : started && sends
+                ? waiting && waitingUnchanged
+                  ? proposal === 'changes'
+                    ? `${who}’s buyers asked for changes to version ${waiting.version}. Change it and send it again, or decline their request. Version ${saved.version} stays in force.`
+                    : `Version ${waiting.version} is waiting for ${who}’s buyers to approve it. Version ${saved.version} stays in force until they do.`
+                  : !waiting && unchanged
+                    ? `${approvedLine}Version ${saved.version} is in force.`
+                    : `Sending gives ${who}’s buyers your changes as version ${nextVersion} to approve. Version ${saved.version} stays in force until they do.`
+              : sends
+                ? saved
+                  ? unchanged
+                    ? `${approvedLine}It starts ${fmtDay(saved.startDate)}.`
+                    : `Sending gives ${who}’s buyers your changes as version ${nextVersion} to approve. It won’t start until they approve it.`
+                  : `Nothing is applied yet. ${who}’s buyers approve it first in their B2B Portal, and it’s activated once they do.`
+                : live
+                  ? `Saving gives ${company?.name} your changes ${when}, as version ${nextVersion}.`
+                  : `Nothing is applied yet. Saving gives ${who} these terms${draft.startDate ? ` from ${fmtDay(draft.startDate)}` : ''}.`}
           </s-paragraph>
         </s-stack>
       </s-section>
-      <s-section slot="aside" heading="Overview">
+      {/* What the buyer wrote with Request changes or Request cancellation: who and
+          when, and the note itself in a modal (View note). */}
+      {buyerResponse?.message ? (
+        <s-section heading="Buyer note">
+          <s-stack gap="small-300">
+            <s-link onClick={() => setNoteOpen(true)}>{notes.length > 1 ? `View notes (${notes.length})` : 'View note'}</s-link>
+            <s-paragraph color="subdued" fontSize="small">
+              {answeredBy}
+            </s-paragraph>
+            {declined ? (
+              <s-paragraph color="subdued" fontSize="small">
+                {`You ${rejectedCancel ? 'rejected' : 'declined'} it · ${fmtDay(declined.at)}`}
+              </s-paragraph>
+            ) : null}
+          </s-stack>
+        </s-section>
+      ) : null}
+      <s-section heading="Overview">
         <s-stack gap="small">
           <s-stack gap="small-300">
             {overview.map(([icon, label, value]) => (
@@ -406,13 +581,144 @@ export function AgreementEditor() {
       </s-section>
       {/* A saved one's version history, like on the company's Contract tab. */}
       {saved?.history?.length ? (
-        <s-section slot="aside">
+        <s-section>
           <VersionTimeline history={saved.history} onView={setViewing} />
         </s-section>
+      ) : null}
+      </s-stack>
+    </s-grid>
+    </s-query-container>
+      {noteOpen && buyerResponse?.message ? (
+        <Modal onClose={() => setNoteOpen(false)} heading={notes.length > 1 ? 'Buyer notes' : 'Buyer note'}>
+          <s-stack gap="small">
+            {notes.map((n, i) => (
+              <React.Fragment key={i}>
+                {i ? <s-divider /> : null}
+                <s-paragraph>{n.message}</s-paragraph>
+                <s-paragraph color="subdued">{byLine(n)}</s-paragraph>
+              </React.Fragment>
+            ))}
+            {declined ? (
+              <>
+                <s-divider />
+                <s-paragraph>{`${rejectedCancel ? 'Your note' : 'Your reply'}: ${declined.message}`}</s-paragraph>
+                <s-paragraph color="subdued">{`${rejectedCancel ? 'Rejected' : 'Declined'} · ${fmtDay(declined.at)}`}</s-paragraph>
+              </>
+            ) : null}
+          </s-stack>
+          {proposal === 'changes' ? (
+            <s-button
+              slot="secondary-actions"
+              tone="critical"
+              onClick={() => {
+                setNoteOpen(false);
+                setDeclining(true);
+              }}
+            >
+              Decline request
+            </s-button>
+          ) : null}
+          <s-button slot="secondary-actions" onClick={() => setNoteOpen(false)}>
+            Close
+          </s-button>
+        </Modal>
+      ) : null}
+      {/* Decline request: a reply is required; the contract stays as it is and waits. */}
+      {declining && saved ? (
+        <Modal onClose={() => setDeclining(false)} heading="Decline the buyer’s request?">
+          <s-stack gap="small">
+            <s-paragraph>
+              {waiting
+                ? `Version ${waiting.version} stays as it is. ${who}’s buyers can approve it or ask for changes again.`
+                : `${saved.number} stays as it is (version ${saved.version}). ${who}’s buyers can approve it or ask for changes again.`}
+            </s-paragraph>
+            <s-text-area
+              label="Reply to the buyer"
+              details="They see it in their B2B Portal."
+              rows={3}
+              value={reply}
+              onInput={(e) => setReply(e.currentTarget.value)}
+            />
+          </s-stack>
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            tone="critical"
+            disabled={!reply.trim()}
+            onClick={() => {
+              dispatch({ type: 'DECLINE_CHANGES', id: saved.id, message: reply });
+              setDeclining(false);
+              setReply('');
+            }}
+          >
+            Decline request
+          </s-button>
+          <s-button slot="secondary-actions" onClick={() => setDeclining(false)}>
+            Cancel
+          </s-button>
+        </Modal>
       ) : null}
       {viewing != null && saved && <ContractVersionModal ag={saved} version={viewing} onClose={() => setViewing(null)} />}
       {ending && saved && <EndContractModal ag={saved} onClose={() => setEnding(false)} onDone={close} />}
       {deleting && saved && <DeleteContractModal ag={saved} onClose={() => setDeleting(false)} />}
+      {/* Reject request (to cancel it): a note is required; it goes back to the status
+          it had before the request, at the same version. */}
+      {rejecting && saved ? (
+        <Modal onClose={() => setRejecting(false)} heading="Reject the cancellation request?">
+          <s-stack gap="small">
+            <s-paragraph>
+              {saved.status === 'Scheduled'
+                ? `${saved.number} stays scheduled to start ${fmtDay(saved.startDate)}.`
+                : `${saved.number} stays as it is (version ${saved.version}), waiting for ${who}’s buyers to approve it.`}
+            </s-paragraph>
+            <s-text-area
+              label="Note to the buyer"
+              details="They see it in their B2B Portal."
+              rows={3}
+              value={reply}
+              onInput={(e) => setReply(e.currentTarget.value)}
+            />
+          </s-stack>
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            tone="critical"
+            disabled={!reply.trim()}
+            onClick={() => {
+              dispatch({ type: 'REJECT_CANCELLATION', id: saved.id, message: reply });
+              setRejecting(false);
+              setReply('');
+            }}
+          >
+            Reject request
+          </s-button>
+          <s-button slot="secondary-actions" onClick={() => setRejecting(false)}>
+            Cancel
+          </s-button>
+        </Modal>
+      ) : null}
+      {/* Cancel contract: Cancelled right away; the editor closes. */}
+      {cancelling && saved ? (
+        <Modal onClose={() => setCancelling(false)} heading={`Cancel ${saved.number}?`}>
+          <s-paragraph>
+            {`${who}’s buyers asked to cancel it. It’s cancelled now: none of its terms apply, and it leaves their B2B Portal. You can’t undo this.`}
+          </s-paragraph>
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            tone="critical"
+            onClick={() => {
+              setCancelling(false);
+              dispatch({ type: 'CANCEL_AGREEMENT', id: saved.id });
+            }}
+          >
+            Cancel contract
+          </s-button>
+          <s-button slot="secondary-actions" onClick={() => setCancelling(false)}>
+            Keep contract
+          </s-button>
+        </Modal>
+      ) : null}
       {previewOpen && company && (
         <ContractPricePreview db={db} draft={draft} change={change} products={covered} onClose={() => setPreviewOpen(false)} />
       )}
@@ -440,7 +746,7 @@ export function AgreementEditor() {
         single
         // The same checkbox as under Applies to.
         applyLater={addsLaterLocations(draft)}
-        onApplyLaterChange={(on) => patch({ applyLater: on })}
+        onApplyLaterChange={laterShown ? (on) => patch({ applyLater: on }) : undefined}
         laterLabel="Automatically apply this contract to locations added later"
         laterDetails=""
       />
@@ -454,17 +760,17 @@ export function AgreementEditor() {
                 <s-list-item key={line}>{line}</s-list-item>
               ))}
             </s-unordered-list>
-            <s-paragraph>If you save, the contract that starts later runs where they overlap, and the other one ends or gives up those locations.</s-paragraph>
+            <s-paragraph>{`If you ${proposed ? 'activate it' : 'save'}, the contract that starts later runs where they overlap, and the other one ends or gives up those locations.`}</s-paragraph>
           </s-stack>
           <s-button
             slot="primary-action"
             variant="primary"
             onClick={() => {
               setOverlapBox(false);
-              dispatch({ type: 'SAVE_AGREEMENT' });
+              dispatch({ type: 'SAVE_AGREEMENT', sameVersion: proposalUnchanged });
             }}
           >
-            Save
+            {proposed ? 'Activate' : 'Save'}
           </s-button>
           <s-button slot="secondary-actions" onClick={() => setOverlapBox(false)}>
             Cancel
@@ -472,7 +778,7 @@ export function AgreementEditor() {
         </Modal>
       )}
       {confirm && (
-        <Modal onClose={() => setConfirm(false)} heading={live ? `Save ${draft.number} as version ${nextVersion}?` : `Save ${draft.number}?`}>
+        <Modal onClose={() => setConfirm(false)} heading={live ? `Save ${draft.number} as version ${nextVersion}?` : proposed ? `Activate ${draft.number}?` : `Save ${draft.number}?`}>
           {onlyLater ? (
             <s-paragraph>
               {addsLaterLocations(draft)
@@ -501,18 +807,59 @@ export function AgreementEditor() {
             variant="primary"
             onClick={() => {
               setConfirm(false);
-              dispatch({ type: 'SAVE_AGREEMENT' });
+              dispatch({ type: 'SAVE_AGREEMENT', sameVersion: proposalUnchanged });
             }}
           >
-            {onlyLater ? 'Save' : 'Save and apply'}
+            {onlyLater ? 'Save' : proposed ? 'Activate' : 'Save and apply'}
           </s-button>
           <s-button slot="secondary-actions" onClick={() => setConfirm(false)}>
             Cancel
           </s-button>
         </Modal>
       )}
-    </s-page>
-    </>
+      {/* Send to buyer: it goes to their B2B Portal to approve; nothing applies yet. */}
+      {sending && (
+        <Modal onClose={() => setSending(false)} heading={saved ? `Send version ${nextVersion} to the buyer?` : `Send ${draft.number} to the buyer?`}>
+          <s-stack gap="small">
+            {saved ? (
+              <s-paragraph>{`${waiting ? agreementChanges(waiting, draft, db, withStagedTerms(state.db, saved.pending.staged)) : agreementChanges(saved, draft, db, state.db)}.`}</s-paragraph>
+            ) : null}
+            {started ? (
+              <s-paragraph>{`${who}’s buyers see it in their B2B Portal and can approve it or request changes. Version ${saved.version} stays in force until they approve it; then version ${nextVersion} applies right away.`}</s-paragraph>
+            ) : (
+              <>
+                <s-paragraph>{`${who}’s buyers see it in their B2B Portal and can approve it or request changes. It’s activated once they approve it: Scheduled if it starts later, Active if it starts today.`}</s-paragraph>
+                {saved?.status === 'Scheduled' ? <s-paragraph>{`It won’t start on ${fmtDay(saved.startDate)} until then.`}</s-paragraph> : null}
+                <s-paragraph>{`If they don’t approve it by ${fmtDay(draft.startDate)}, it expires.`}</s-paragraph>
+              </>
+            )}
+            {overlapList.length ? (
+              <>
+                <s-paragraph>When they approve it, it overlaps:</s-paragraph>
+                <s-unordered-list>
+                  {overlapList.map((line) => (
+                    <s-list-item key={line}>{line}</s-list-item>
+                  ))}
+                </s-unordered-list>
+              </>
+            ) : null}
+          </s-stack>
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            onClick={() => {
+              setSending(false);
+              dispatch({ type: 'SEND_PROPOSAL' });
+            }}
+          >
+            Send to buyer
+          </s-button>
+          <s-button slot="secondary-actions" onClick={() => setSending(false)}>
+            Cancel
+          </s-button>
+        </Modal>
+      )}
+    </div>
   );
 }
 
@@ -579,7 +926,7 @@ function CopyTermsModal({ kind, candidates, optionLabel, optionBadge, onCopy, on
 // quantity pricing's.
 function contractProducts(db, ag) {
   const pricing = [...ag.terms.base, ...ag.terms.quantity].map((id) => db.policies.find((p) => p.id === id)).filter(Boolean);
-  const covers = (p, product) => (kindOf(p) === 'base' ? baseInScope(p, product.sku) : policyPriceBreakdown(p, product)?.inScope);
+  const covers = (p, product) => (kindOf(p) === 'base' ? baseInScope(p, product) : policyPriceBreakdown(p, product)?.inScope);
   return db.products.filter((product) => pricing.some((p) => covers(p, product)));
 }
 

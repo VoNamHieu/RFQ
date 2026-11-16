@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore, unitPrice } from '../store.jsx';
-import { productBySku, b2bPriceFor, productRuleForSession, orderLimitsForSession } from '../data/products.js';
+import { productBySku, b2bPriceFor, productRuleForSession, orderLimitsForSession, periodLeft } from '../data/products.js';
 import { Price } from '../components/Price.jsx';
 import { money } from '../utils.js';
 import { QuoteIcon, InfoIcon, WarningIcon } from '../components/icons.jsx';
@@ -69,6 +69,10 @@ function orderRow(limits, subtotal, units) {
     if (t && total > t) return at('review', `${money(total)} of ${whole(t)}${p === 'order' ? '' : ` this ${p}`} · the seller will review this order`, sofarDetail(p, total));
   }
   if (limits.thresholdQty && units > limits.thresholdQty) return at('review', `${units} of ${limits.thresholdQty} items · the seller will review this order`);
+  // Within the limits, under a weekly or monthly maximum: what's left of it in the
+  // period with this order in (the nearest maximum when there are several).
+  const nearest = periodLeft(limits, subtotal);
+  if (nearest) return at('info', `${money(subtotal)} · ${money(nearest.left)} left this ${nearest.period}${nearest.review ? ' before review' : ''}`, sofarDetail(nearest.period, nearest.spent + subtotal));
   return row;
 }
 

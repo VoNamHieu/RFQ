@@ -1,15 +1,16 @@
 import React from 'react';
 import { useStore } from '../store.jsx';
-import { useCartCheckout, LineLimits, OrderLimits } from '../components/CartCheckout.jsx';
+import { useCartCheckout, LineLimits, OrderLimits, QuotaBar } from '../components/CartCheckout.jsx';
 import { money } from '../utils.js';
 
 // Cart page = the theme's main-cart-items + main-cart-footer: the lines as
 // Product · Quantity · Total, then Subtotal and Check out. The order limits show as
 // soon as the page opens — a product's under its line, the order's at the top;
-// Check out works as in the cart drawer (useCartCheckout).
+// Check out works as in the cart drawer (useCartCheckout). Under a weekly or monthly
+// maximum, the top of the cart has its progress bar with the cart in (QuotaBar).
 export function Cart() {
   const { dispatch } = useStore();
-  const { lines, subtotal, blocking, orderProblems, orderReviews, lineProblems, review, keepForReview, checkoutHint, checkout, dialogs } = useCartCheckout();
+  const { lines, subtotal, blocking, orderProblems, orderReviews, lineProblems, review, keepForReview, checkoutHint, checkout, dialogs, quota } = useCartCheckout();
   const shop = () => dispatch({ type: 'NAVIGATE', view: 'home' });
 
   if (!lines.length) {
@@ -28,6 +29,7 @@ export function Cart() {
         <a className="link" onClick={shop}>Continue shopping</a>
       </div>
 
+      <QuotaBar quota={quota} subtotal={subtotal} />
       <OrderLimits problems={orderProblems} reviews={orderReviews} review={!!review} keepForReview={keepForReview} />
 
       <div className="cart-items">

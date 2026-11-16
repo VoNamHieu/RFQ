@@ -5,8 +5,7 @@ import React from 'react';
 // `image` (optional) is a bundled illustration URL — pass one to show art above
 // the heading. It renders nothing when omitted, so text-only empty states have
 // no image placeholder. `action.commandFor` lets the button open a popover menu.
-// `textMaxWidth` (optional) widens the text column for longer copy.
-export function EmptyBlock({ heading, children, action, secondaryAction, image, imageAlt, textMaxWidth = 440 }) {
+export function EmptyBlock({ heading, children, action, secondaryAction, image, imageAlt }) {
   return (
     <s-box padding="large-300">
       <s-stack gap="small-200" alignItems="center">
@@ -24,7 +23,7 @@ export function EmptyBlock({ heading, children, action, secondaryAction, image, 
           </div>
         ) : null}
         {children ? (
-          <div style={{ maxWidth: textMaxWidth, textAlign: 'center' }}>
+          <div style={{ maxWidth: 440, textAlign: 'center' }}>
             <s-text color="subdued">{children}</s-text>
           </div>
         ) : null}

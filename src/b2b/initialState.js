@@ -2,26 +2,33 @@
 // (legacy restoreRfqCompanies + receiveRfqHandoff at b2b/index.html §8190-8262).
 import { dbSeed } from './data/db.js';
 import { registrationSeed } from './data/registrations.js';
-import { DEMO_STATE_KEY, readJSON, consumeHandoff, readOrderRequests, publishedOrderLimits } from '../shared/persistence.js';
+import { DEMO_STATE_KEY, readJSON, consumeHandoff, readOrderRequests, publishedOrderLimits, readBuyerEvents } from '../shared/persistence.js';
+import { applyBuyerEvents } from './buyerEvents.js';
 import { versionFlags } from '../shared/versions.js';
 import { upgradeLimits } from './limits.js';
 import { normalizeDb, injectRfqCompany, applyQuotePricingTransfer, injectOrderRequests } from './dbHelpers.js';
 import { syncContractDates, seedSnapshots, stampContractLimits, ownContractTerms } from './agreements.js';
+import { shopifyScreenFor, shopifyScreenExists } from './shopifyRoutes.js';
 
 // Prototype: the storefront docks this app's Order limits screen (?embed=limits),
-// without the admin frame, so a limit change shows in its cart right away.
+// without the admin frame, so a limit change shows in its cart right away. Inside
+// Shopify admin (b2b/shopify.html sets QS_EMBED = 'shopify') it shows without the
+// mock admin frame too: Shopify admin is the frame, with the app's nav.
 export const EMBEDDED = (() => {
   try {
-    return new URLSearchParams(window.location.search).get('embed');
+    return new URLSearchParams(window.location.search).get('embed') || window.QS_EMBED || null;
   } catch {
     return null;
   }
 })();
+// Views Shopify admin's nav for this app opens (?view=…, b2b/shopify.html).
+const NAV_VIEWS = ['home', 'registrations', 'customers', 'pricing', 'terms', 'analytics', 'manualOrders', 'discounts', 'others'];
 
-export function makeBaseState() {
+// `db`: the store's records inside Shopify admin (live/shopifyLive.js); none, the demo's.
+export function makeBaseState(db = null) {
   return {
     view: 'home', // home | customers | company | pricing | limits | agreements | analytics | settings | quote | location | registrations | registration | form
-    selectedCompany: 'c1',
+    selectedCompany: db ? db.companies[0]?.id || null : 'c1',
     // Registrations (storefront form submissions)
     selectedRegistration: null,
     registrationFilter: 'pending', // pending | approved | declined | all
@@ -66,12 +73,19 @@ export function makeBaseState() {
     // unpublished so Home shows the "form isn't published" warning without any clicks.
     // Contracts start and expire by date (the daily job, run once on load here). Each
     // contract's pricing and limits are its own (ownContractTerms).
-    db: stampContractLimits(syncContractDates(seedSnapshots(ownContractTerms(normalizeDb({ ...dbSeed, registrations: registrationSeed, hasRegistrationForm: true, registrationFormPublished: false, rfqAppInstalled: true }))))),
+    db: db || stampContractLimits(syncContractDates(seedSnapshots(ownContractTerms(normalizeDb({ ...dbSeed, registrations: registrationSeed, hasRegistrationForm: true, registrationFormPublished: false, rfqAppInstalled: true }))))),
     toast: null,
   };
 }
 
-export function buildInitialState() {
+// Inside Shopify admin (`live`): the store's records, and the screen its link names.
+// Nothing comes from this browser's storage there: that's the demo's.
+export function buildInitialState(live = null) {
+  if (live) {
+    const s = makeBaseState(live.db);
+    openShopifyScreen(s);
+    return s;
+  }
   const s = makeBaseState();
   // 1) Rebuild every company created/synced from RFQ, persisted across reloads.
   const demo = readJSON(DEMO_STATE_KEY);
@@ -87,9 +101,15 @@ export function buildInitialState() {
   if (Array.isArray(limits) && !beforeContractLimits) {
     // Limits saved before they had a created date take the seed's.
     const created = Object.fromEntries((s.db.limits || []).map((l) => [l.id, l.createdAt]));
-    s.db = stampContractLimits({ ...s.db, limits: upgradeLimits(limits).map((l) => (l.createdAt || !created[l.id] ? l : { ...l, createdAt: created[l.id] })) });
+    // A contract's limits the saved list doesn't have (added to the sample since it was
+    // saved, as CT-301's monthly review): the seed's, so its contract finds them.
+    const saved = new Set(limits.map((l) => l.id));
+    const missing = (s.db.limits || []).filter((l) => l.contractId && !saved.has(l.id));
+    s.db = stampContractLimits({ ...s.db, limits: [...upgradeLimits(limits).map((l) => (l.createdAt || !created[l.id] ? l : { ...l, createdAt: created[l.id] })), ...missing] });
   }
   injectOrderRequests(s.db, readOrderRequests());
+  // What buyers sent from the storefront's B2B Portal (answers to upcoming contracts).
+  applyBuyerEvents(s.db, readBuyerEvents());
   if (EMBEDDED === 'limits' && versionFlags().orderLimits) s.view = 'limits';
   // 2) One-shot handoff: open the specific company just handed over from RFQ.
   const handoff = consumeHandoff();
@@ -119,8 +139,18 @@ export function buildInitialState() {
     // library) so a redirect can land on a view other than the default.
     const view = viewFromHash(typeof window !== 'undefined' ? window.location.hash : '');
     if (view) s.view = view;
+    if (EMBEDDED === 'shopify') openShopifyScreen(s);
   }
   return s;
+}
+
+// Inside Shopify admin: the screen's link (/b2b/shopify/…, shopifyRoutes.js), or ?view=….
+function openShopifyScreen(s) {
+  if (typeof window === 'undefined') return;
+  const screen = shopifyScreenFor(window.location.pathname, window.location.search);
+  if (screen && screen.view !== 'home' && shopifyScreenExists(screen, s.db)) Object.assign(s, { view: screen.view, ...screen.patch });
+  const navView = new URLSearchParams(window.location.search).get('view');
+  if (navView && NAV_VIEWS.includes(navView)) s.view = navView;
 }
 
 // Map the URL hash (kept in sync by the nav's `url`s) to an initial view.
@@ -132,6 +162,8 @@ function viewFromHash(hash) {
     '#/b2b/order-limits': 'limits',
     '#/b2b/order-limit-tests': 'limitTests',
     '#/b2b/agreements': 'agreements',
+    '#/b2b/contracts-and-limits': 'terms',
+    '#/b2b/orders-and-rules': 'terms',
     '#/b2b/company': 'customers',
     '#/b2b/analytics': 'analytics',
     '#/b2b/settings': 'settings',

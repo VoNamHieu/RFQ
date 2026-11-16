@@ -1,19 +1,24 @@
 import React from 'react';
 import { useStore } from '../store.jsx';
-import { openAgreements, canCreateAgreement } from '../agreements.js';
+import { openAgreements, proposedAgreements, canCreateAgreement, proposalState, PROPOSAL_LABEL, statusLabel, pendingNote } from '../agreements.js';
 import { SummaryHoverCard, contractSummaryItems } from './SummaryHoverCard.jsx';
 import { SideBlock, SideRow, BLOCK_HELP, backTo } from './companyLayout.jsx';
 
-// A company's Contract block in the page's side column: its Active contract and
-// the Scheduled ones set up to follow it (Active first), as chips. A chip opens the
-// contract in its editor, hovering shows its status and Overview; ⊕ creates a new one
-// for the company. The editor comes back here on save or cancel.
+// A company's Contract block in the page's side column: its Active contract, the
+// Scheduled ones set up to follow it, then the ones sent to its buyers to approve
+// (Proposed, with where their answer stands), as chips. A chip opens the contract in
+// its editor, hovering shows its status and Overview; ⊕ creates a new one for the
+// company. The editor comes back here on save or cancel.
 export function CompanyContractCard({ company }) {
   const { state, dispatch } = useStore();
-  const contracts = openAgreements(state.db, company.id);
+  const contracts = [...openAgreements(state.db, company.id), ...proposedAgreements(state.db, company.id)];
   const returnTo = { view: 'company', selectedCompany: company.id, companyTab: 'agreement' };
   const open = (a) => dispatch({ type: 'OPEN_AGREEMENT_EDITOR', agreementId: a.id, returnTo });
   const create = () => dispatch({ type: 'OPEN_AGREEMENT_EDITOR', companyId: company.id, returnTo });
+  // An Active one with a new version waiting for its buyers says so ("CT-302 · Version 2
+  // awaiting buyer", "CT-302 · Changes requested").
+  const label = (a) => (a.status === 'Active' ? (pendingNote(a) ? `${a.number} · ${pendingNote(a)}` : a.number) : a.status === 'Proposed' ? `${a.number} · ${PROPOSAL_LABEL[proposalState(a)]}` : `${a.number} · ${a.status}`);
+  // Changes requested reads as its status (agreements.js statusLabel).
 
   return (
     <SideBlock
@@ -34,7 +39,7 @@ export function CompanyContractCard({ company }) {
             <SummaryHoverCard
               key={a.id}
               title={`${a.number} · ${a.name}`}
-              status={a.status}
+              status={statusLabel(a)}
               items={() => contractSummaryItems(a, company, state.db)}
             >
               {/* As the Pricing chips: Active green; otherwise grey, with its status. */}
@@ -43,7 +48,7 @@ export function CompanyContractCard({ company }) {
                 className={`cd-chip cd-chip--${a.status === 'Active' ? 'success' : 'neutral'}`}
                 onClick={() => open(a)}
               >
-                {a.status === 'Active' ? a.number : `${a.number} · ${a.status}`}
+                {label(a)}
               </button>
             </SummaryHoverCard>
           ))}

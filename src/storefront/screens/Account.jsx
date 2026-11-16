@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { DEMO_ACCOUNTS, BUSINESS_SUMMARY, QUOTE_STATUS, REQUEST_STATUS, agreementForSession, orderRequestsForSession, productBySku } from '../data/products.js';
+import { DEMO_ACCOUNTS, BUSINESS_SUMMARY, QUOTE_STATUS, REQUEST_STATUS, contractsForSession, orderRequestsForSession, productBySku, quotaInForce } from '../data/products.js';
 import { ApplyForm } from '../components/ApplyForm.jsx';
+import { ContractCard, UpcomingContractCard, ProposalCard, Quota, TermBoxes } from '../components/PortalContracts.jsx';
+import { buyerActionText } from '../../b2b/agreements.js';
 import { readRegistrationForm } from '../../shared/registrationForm.js';
 import { addInvoiceCheckout } from '../../shared/persistence.js';
 import { money } from '../utils.js';
@@ -139,7 +141,10 @@ function AccountLogin({ dispatch }) {
 // they can turn into a quote request.
 function Portal({ session, company, application, requests, go, dispatch }) {
   const s = BUSINESS_SUMMARY;
-  const agreement = agreementForSession(session);
+  // Its Active contract, the next one scheduled at its location and one sent for it to
+  // approve (PortalContracts.jsx), and what it buys under outside its contract
+  // (`regular`, Business account).
+  const { contract, upcoming, proposal, regular } = contractsForSession(session);
   const orders = session.orders || [];
   // An order opened from the Orders panel, by its key.
   const [openKey, setOpenKey] = useState(null);
@@ -150,8 +155,30 @@ function Portal({ session, company, application, requests, go, dispatch }) {
     { label: 'Pricing', value: session.priceListName || s.priceListName },
     { label: 'Payment terms', value: s.paymentTerms },
     { label: 'Ordering', value: s.purchasingMode },
-    { label: 'Negotiated products', value: `${s.negotiatedProductCount} products` },
   ].filter((t) => t.value);
+  // The weekly or monthly maximum in force there, whatever sets it (quotaInForce): on
+  // Business account, and on the Contract card when the contract's order limit sets it
+  // (its period), as the real portal's backend attaches it.
+  const quota = company ? quotaInForce(session) : null;
+  const contractQuota = quota && (contract?.limitDetails || []).some((d) => d.quota?.period === quota.period) ? quota : null;
+  // Its contracts in one section, the one changed last first (`lastUpdate`; on the same
+  // day, the Contract, then Upcoming, then the proposal) and open. `el(open)`: the part.
+  const contractCards = [
+    contract && { key: `contract-${contract.number}`, at: contract.lastUpdate, el: (open) => <ContractCard contract={contract} quota={contractQuota} open={open} /> },
+    upcoming && {
+      key: `upcoming-${upcoming.number}`,
+      at: upcoming.lastUpdate,
+      el: (open) => <UpcomingContractCard contract={upcoming} session={session} locationName={company?.location} open={open} onAnswered={() => dispatch({ type: 'CONTRACTS_CHANGED' })} />,
+    },
+    proposal && {
+      key: `proposal-${proposal.number}-${proposal.version}`,
+      at: proposal.lastUpdate,
+      el: (open) => <ProposalCard contract={proposal} session={session} locationName={company?.location} open={open} onAnswered={() => dispatch({ type: 'CONTRACTS_CHANGED' })} />,
+    },
+  ]
+    .filter(Boolean)
+    .map((c, i) => ({ ...c, i }))
+    .sort((a, b) => (String(a.at || '') < String(b.at || '') ? 1 : String(a.at || '') > String(b.at || '') ? -1 : a.i - b.i));
 
   return (
     <>
@@ -166,6 +193,14 @@ function Portal({ session, company, application, requests, go, dispatch }) {
           </>
         }
       />
+
+      {/* What needs them: the contract waiting for their approval (agreements.js
+          buyerActionText) — Action needed, at the top of the page. */}
+      {company && proposal?.action ? (
+        <div className="acct-banner">
+          <span className="badge badge--red">Action needed</span> {buyerActionText(proposal, proposal.action)}
+        </div>
+      ) : null}
 
       {company ? (
         <section className="acct-panel">
@@ -182,63 +217,28 @@ function Portal({ session, company, application, requests, go, dispatch }) {
               </div>
             ))}
           </div>
+          {/* The weekly or monthly maximum in force, whatever sets it: its quota, as the
+              Contract card shows it. */}
+          {quota ? <Quota quota={quota} note={contractQuota ? `From contract ${contract.number}` : null} /> : null}
+          {/* What it buys under outside its contract: its own pricing and order limits. */}
+          <TermBoxes terms={regular || { pricing: [], limits: [], limitDetails: [] }} />
         </section>
       ) : (
         <BusinessRegistration application={application} go={go} />
       )}
 
-      {/* The company's agreement with the merchant (B2B app → Agreements), read-only. */}
-      {company && agreement && (
-        <section className="acct-panel acct-contract">
+      {company && contractCards.length ? (
+        <section className="acct-panel">
           <div className="acct-panel-head">
-            <h3>Contract</h3>
-            <span className="badge badge--green">Active</span>
+            <h3>Contracts</h3>
           </div>
-          <div className="acct-contract-id">
-            <strong>{agreement.name}</strong>
-            <span className="muted">{`${agreement.number} · Version ${agreement.version}`}</span>
+          <div className="pc-parts">
+            {contractCards.map((c, n) => (
+              <React.Fragment key={c.key}>{c.el(n === 0)}</React.Fragment>
+            ))}
           </div>
-          <div className="acct-contract-dates">
-            {agreement.start || agreement.end ? (
-              <>
-                <div className="acct-contract-date">
-                  <span>Start date</span>
-                  <strong>{agreement.start || '—'}</strong>
-                </div>
-                <div className="acct-contract-date">
-                  <span>End date</span>
-                  <strong>{agreement.end || 'No end date'}</strong>
-                </div>
-              </>
-            ) : (
-              <div className="acct-contract-date">
-                <span>Dates</span>
-                <strong>{agreement.dates}</strong>
-              </div>
-            )}
-          </div>
-          {(agreement.pricing.length > 0 || agreement.limits.length > 0) && (
-            <div className="acct-contract-terms">
-              {agreement.pricing.length > 0 && (
-                <div>
-                  <h4 className="acct-contract-label">Pricing</h4>
-                  <div className="acct-chips">
-                    {agreement.pricing.map((p) => <span className="acct-chip" key={p}>{p}</span>)}
-                  </div>
-                </div>
-              )}
-              {agreement.limits.length > 0 && (
-                <div>
-                  <h4 className="acct-contract-label">Order limits</h4>
-                  <ul className="acct-contract-limits">
-                    {agreement.limits.map((t) => <li key={t}>{t}</li>)}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
         </section>
-      )}
+      ) : null}
 
       <PortalOrders
         items={items}

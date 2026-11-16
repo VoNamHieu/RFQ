@@ -16,7 +16,7 @@
 //                     Agreement card (Upcoming only)
 //   - d2cOrderRequests: a D2C limit's maximum can let the customer send an order
 //                     request for review (off everywhere for now: it blocks checkout)
-//   - limitPeriods:   order limit editor's Order value — a weekly or monthly
+//   - limitPeriods:   order limit editor's Advanced section — a weekly or monthly
 //                     maximum order value, so splitting an order doesn't get
 //                     around it (Upcoming only; off: every maximum counts per order)
 // crossSyncScope: RFQ "Save quoted prices to B2B" applies at the location the
@@ -28,10 +28,13 @@ export const VERSION_FLAGS = {
   upcoming: { analytics: true, priceCrossSync: true, multiBase: true, locationPricing: true, crossSyncScope: 'location', orderLimits: true, agreements: true, d2cOrderRequests: false, limitPeriods: true },
 };
 
+// The version: the URL's ?v=, else the page's default (QS_DEFAULT_VERSION — the app
+// inside Shopify admin opens Upcoming with no ?v= in its links), else Current.
 export function activeVersion() {
   try {
     const v = new URLSearchParams(window.location.search).get('v');
-    return VERSION_FLAGS[v] ? v : DEFAULT_VERSION;
+    if (VERSION_FLAGS[v]) return v;
+    return VERSION_FLAGS[window.QS_DEFAULT_VERSION] ? window.QS_DEFAULT_VERSION : DEFAULT_VERSION;
   } catch {
     return DEFAULT_VERSION;
   }

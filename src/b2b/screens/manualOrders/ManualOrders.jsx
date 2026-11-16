@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useStore } from '../../store.jsx';
-import { IndexFiltersBar, Modal, useWcId, wcTone } from '../../../shared/wc.jsx';
+import { IndexFiltersBar, Modal, useWcId } from '../../../shared/wc.jsx';
+import { CdPageHead, StatusDot, CardFoot, rangeLabel } from '../../components/companyLayout.jsx';
+import { termsBack } from '../ContractsAndLimits.jsx';
 import { EmptyBlock } from '../../../shared/EmptyBlock.jsx';
 import {
   EMPTY_STATE_IMAGE,
@@ -70,7 +72,7 @@ function DeleteOrderModal({ open, ids, onClose, onConfirm }) {
 }
 
 export function ManualOrders() {
-  const { dispatch } = useStore();
+  const { state, dispatch } = useStore();
   const toast = (message) => dispatch({ type: 'TOAST', message });
   const uid = useWcId('mo');
 
@@ -147,19 +149,36 @@ export function ManualOrders() {
     toast(`Opens Edit order${order.draft_order_name ? ` ${order.draft_order_name}` : ''} in the full app`);
   const openDraftOrder = (order) => toast(`Opens draft order ${order.draft_order_name} in Shopify admin`);
 
-  // Empty state — no orders at all (unfiltered).
+  // Empty state — no orders at all (unfiltered). A list of Orders & rules, in the company
+  // page's look: back to it, the title (with Create order once there are orders).
+  const header = (create) => (
+    <CdPageHead
+      title="Order management"
+      back={termsBack(state, dispatch, 'manualOrders')}
+      actions={
+        create ? (
+          <s-button variant="primary" onClick={handleCreateOrder}>
+            Create order
+          </s-button>
+        ) : null
+      }
+    />
+  );
   if (orders.length === 0) {
     return (
-      <s-page heading="Order management">
-        <s-section>
-          <EmptyBlock
-            heading="Create your first order"
-            action={{ content: 'Create order', onAction: handleCreateOrder }}
-            image={EMPTY_STATE_IMAGE}
-          >
-            Build your order quickly and easily
-          </EmptyBlock>
-        </s-section>
+      <div className="cd-page">
+        {header(false)}
+        <div className="cd-card">
+          <div className="cd-card__body">
+            <EmptyBlock
+              heading="Create your first order"
+              action={{ content: 'Create order', onAction: handleCreateOrder }}
+              image={EMPTY_STATE_IMAGE}
+            >
+              Build your order quickly and easily
+            </EmptyBlock>
+          </div>
+        </div>
         <s-box paddingBlock="large">
           <div style={{ textAlign: 'center' }}>
             <s-text>Learn more about </s-text>
@@ -168,26 +187,19 @@ export function ManualOrders() {
             </s-link>
           </div>
         </s-box>
-      </s-page>
+      </div>
     );
   }
 
+  // The list in a bordered card: tabs, search and the selection's Delete on top, then a
+  // plain table (a row's click ticks it, as before) and the pages.
   return (
-    <s-page heading="Order management">
-      <s-button slot="primary-action" variant="primary" onClick={handleCreateOrder}>
-        Create order
-      </s-button>
+    <div className="cd-page">
+      {header(true)}
 
-      <s-section padding="none">
-        <s-table
-          paginate={total > 0}
-          hasPreviousPage={current > 1}
-          hasNextPage={current * PAGE_SIZE < total}
-          onPreviousPage={() => handlePageChange(Math.max(current - 1, 1))}
-          onNextPage={() => handlePageChange(Math.min(current + 1, lastPage))}
-        >
+      <div className="cd-card">
+        <div className="cd-card__filters">
           <IndexFiltersBar
-            slot="filters"
             query={querySearch}
             queryPlaceholder="Search by customer name, email"
             onQueryChange={handleQuerySearchChange}
@@ -209,114 +221,107 @@ export function ManualOrders() {
               </s-stack>
             ) : null}
           </IndexFiltersBar>
+        </div>
 
-          {/* Like IndexTable, an empty result shows only the empty search state (no column headings). */}
-          {rows.length > 0 ? (
-            <>
-              <s-table-header-row>
-                <s-table-header listSlot="inline">
-                  <s-checkbox
-                    accessibilityLabel={allSelected ? 'Deselect all orders' : 'Select all orders'}
-                    checked={allSelected}
-                    indeterminate={selectedRows.length > 0 && !allSelected}
-                    onChange={(e) => selectAll(e.currentTarget.checked)}
-                  />
-                </s-table-header>
-                <s-table-header listSlot="kicker">ID</s-table-header>
-                <s-table-header listSlot="primary">Customer</s-table-header>
-                <s-table-header listSlot="secondary">Status</s-table-header>
-                <s-table-header listSlot="labeled">Created date</s-table-header>
-                <s-table-header listSlot="inline" format="numeric">
-                  Actions
-                </s-table-header>
-              </s-table-header-row>
-
-              <s-table-body>
+        {/* Like IndexTable, an empty result shows only the empty search state (no column headings). */}
+        {rows.length > 0 ? (
+          <div className="cd-table-scroll">
+            <table className="cd-table">
+              <thead>
+                <tr>
+                  <th className="cd-check">
+                    <s-checkbox
+                      accessibilityLabel={allSelected ? 'Deselect all orders' : 'Select all orders'}
+                      checked={allSelected}
+                      indeterminate={selectedRows.length > 0 && !allSelected}
+                      onChange={(e) => selectAll(e.currentTarget.checked)}
+                    />
+                  </th>
+                  <th>ID</th>
+                  <th>Customer</th>
+                  <th>Status</th>
+                  <th>Created date</th>
+                  <th className="cd-actions cd-num">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
                 {rows.map((order) => {
                   const rowKey = `${uid}-${order.id}`;
+                  const picked = selectedIds.includes(order.id);
                   return (
-                    <s-table-row key={order.id} clickDelegate={`${rowKey}-select`}>
-                      <s-table-cell>
+                    <tr key={order.id} className="cd-row-link" onClick={() => selectRow(order.id, !picked)}>
+                      <td className="cd-check" onClick={(e) => e.stopPropagation()}>
                         <s-checkbox
-                          id={`${rowKey}-select`}
                           accessibilityLabel={`Select order ${order.draft_order_name || order.customer_name}`}
-                          checked={selectedIds.includes(order.id)}
+                          checked={picked}
                           onChange={(e) => selectRow(order.id, e.currentTarget.checked)}
                         />
-                      </s-table-cell>
-                      <s-table-cell>
+                      </td>
+                      <td className="cd-nowrap">
                         {!order.draft_order_name ? (
                           '-'
                         ) : order.draft_order_id ? (
-                          <s-link
+                          <button
+                            type="button"
+                            className="cd-text-link cd-text-link--body"
                             onClick={(e) => {
                               e.stopPropagation();
                               openDraftOrder(order);
                             }}
                           >
                             {order.draft_order_name}
-                          </s-link>
+                          </button>
                         ) : (
-                          <s-text fontWeight="semibold">{order.draft_order_name}</s-text>
+                          <span className="cd-primary">{order.draft_order_name}</span>
                         )}
-                      </s-table-cell>
-                      <s-table-cell>
-                        <s-stack gap="small-500">
-                          <s-text>{order.customer_name}</s-text>
-                          <s-text fontSize="small" color="subdued">
-                            {order.customer_email}
-                          </s-text>
-                        </s-stack>
-                      </s-table-cell>
-                      <s-table-cell>
-                        <s-badge tone={wcTone(MANUAL_ORDER_STATUS_BADGE_TONE[order.status])}>
-                          {MANUAL_ORDER_STATUS_LABEL[order.status]}
-                        </s-badge>
-                      </s-table-cell>
-                      <s-table-cell>{formatCreatedDate(order.created_at)}</s-table-cell>
-                      <s-table-cell>
-                        {/* Unstyled icon buttons (Icon tone base) with Edit / Delete tooltips. */}
-                        <s-stack direction="inline" gap="small-400" justifyContent="end" alignItems="center">
-                          <s-clickable
-                            inlineSize="20px"
+                      </td>
+                      <td>
+                        {order.customer_name}
+                        <span className="cd-sub">{order.customer_email}</span>
+                      </td>
+                      <td>
+                        <StatusDot tone={MANUAL_ORDER_STATUS_BADGE_TONE[order.status]}>{MANUAL_ORDER_STATUS_LABEL[order.status]}</StatusDot>
+                      </td>
+                      <td className="cd-nowrap">{formatCreatedDate(order.created_at)}</td>
+                      <td className="cd-actions cd-num" onClick={(e) => e.stopPropagation()}>
+                        <span className="cd-row-actions">
+                          <s-button
+                            icon="edit"
+                            variant="tertiary"
                             accessibilityLabel="Edit order"
                             interestFor={`${rowKey}-edit-tip`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEditOrder(order);
-                            }}
-                          >
-                            <s-icon type="edit" />
-                          </s-clickable>
+                            onClick={() => handleEditOrder(order)}
+                          />
                           <s-tooltip id={`${rowKey}-edit-tip`}>Edit</s-tooltip>
-                          <s-clickable
-                            inlineSize="20px"
+                          <s-button
+                            icon="delete"
+                            variant="tertiary"
+                            tone="critical"
                             accessibilityLabel="Delete order"
                             interestFor={`${rowKey}-delete-tip`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRowDeleteClick(order.id);
-                            }}
-                          >
-                            <s-icon type="delete" />
-                          </s-clickable>
+                            onClick={() => handleRowDeleteClick(order.id)}
+                          />
                           <s-tooltip id={`${rowKey}-delete-tip`}>Delete</s-tooltip>
-                        </s-stack>
-                      </s-table-cell>
-                    </s-table-row>
+                        </span>
+                      </td>
+                    </tr>
                   );
                 })}
-              </s-table-body>
-            </>
-          ) : (
-            // Keeps s-table's required header row; IndexTable shows no headings when empty.
-            <s-table-header-row />
-          )}
-        </s-table>
-        {rows.length === 0 ? <EmptySearchResult /> : null}
-      </s-section>
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptySearchResult />
+        )}
+        <CardFoot
+          current={current - 1}
+          count={lastPage}
+          label={rangeLabel((current - 1) * PAGE_SIZE, rows.length, total)}
+          onPage={(i) => handlePageChange(i + 1)}
+        />
+      </div>
 
       <DeleteOrderModal open={deleteModalOpen} ids={idsToDelete} onClose={closeDeleteModal} onConfirm={handleConfirmDelete} />
-    </s-page>
+    </div>
   );
 }

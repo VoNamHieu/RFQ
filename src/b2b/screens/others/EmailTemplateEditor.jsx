@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useStore } from '../../store.jsx';
 import { useWcId } from '../../../shared/wc.jsx';
+import { CdPageHead } from '../../components/companyLayout.jsx';
 import { RichTextEditor } from './RichTextEditor.jsx';
 import { SendTestEmailModal } from './SendTestEmailModal.jsx';
 
@@ -47,22 +48,20 @@ export function EmailTemplateEditor({
   };
 
   return (
-    <s-stack gap="base">
-      <s-stack direction="inline" justifyContent="space-between" alignItems="center" gap="small-200">
-        <s-stack direction="inline" gap="small-400" alignItems="center">
-          <s-button
-            variant="tertiary"
-            icon="chevron-left"
-            accessibilityLabel="Back to email notification settings"
-            onClick={onBack}
-          />
-          <s-heading fontSize="large-200">{template.title}</s-heading>
-        </s-stack>
-        <s-button variant="primary" disabled={isSaving || isTemplateDirty} onClick={handleOpenSendTestModal}>
-          Send test email
-        </s-button>
-      </s-stack>
+    <>
+      {/* As the editors: back (to Email notifications) with Send test email on top, then the title. */}
+      <CdPageHead
+        title={template.title}
+        back={{ label: 'Email notifications', onAction: onBack }}
+        actionsOnTop
+        actions={
+          <s-button variant="primary" disabled={isSaving || isTemplateDirty} onClick={handleOpenSendTestModal}>
+            Send test email
+          </s-button>
+        }
+      />
 
+      <s-stack gap="base">
       {/* InlineGrid columns={{ xs: '1fr', md: '310px 1fr' }} — md is the app frame's
           768px breakpoint, i.e. ~720px of page content (the `oth-page` container). */}
       <s-grid
@@ -182,6 +181,7 @@ export function EmailTemplateEditor({
         onEmailChange={setTestEmail}
         onSend={(email) => onSendTestEmail(email, () => setIsSendTestModalOpen(false))}
       />
-    </s-stack>
+      </s-stack>
+    </>
   );
 }

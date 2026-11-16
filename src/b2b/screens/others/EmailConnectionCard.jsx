@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, useWcId } from '../../../shared/wc.jsx';
 import { DEFAULT_SMTP_FORM, EMAIL_CONNECT_READ_MORE_URL, ENCRYPTION_OPTIONS } from './data.js';
+import { StatusDot } from '../../components/companyLayout.jsx';
 
 // "Sender email" card (production: features/Email/components/EmailConnectionCard).
 // The same card either way: its heading with a Connected / Not connected badge, then one
@@ -52,12 +53,14 @@ export function EmailConnectionCard({
     </s-banner>
   ) : null;
 
+  // The company page's look: the title (with its Read more icon and the status as a dot
+  // and a word) above a bordered card.
   return (
-    <s-section>
-      <s-stack gap="small">
-        <s-stack direction="inline" gap="small-200" alignItems="center">
-          <s-stack direction="inline" gap="small-400" alignItems="center">
-            <s-heading>Sender email</s-heading>
+    <section>
+      <div className="cd-section__head">
+        <span className="cd-inline">
+          <span className="cd-side-block__title">
+            <h2 className="cd-section__title">Sender email</h2>
             <s-button
               variant="tertiary"
               icon="info"
@@ -67,26 +70,28 @@ export function EmailConnectionCard({
               interestFor={tipId}
             />
             <s-tooltip id={tipId}>Read more</s-tooltip>
-          </s-stack>
-          <s-badge tone={isConnected ? 'success' : 'caution'}>{isConnected ? 'Connected' : 'Not connected'}</s-badge>
-        </s-stack>
+          </span>
+          <StatusDot tone={isConnected ? 'success' : 'attention'}>{isConnected ? 'Connected' : 'Not connected'}</StatusDot>
+        </span>
+      </div>
 
-        <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="base" alignItems="center">
+      <div className="cd-card">
+        <div className="cd-list-row">
           {isConnected ? (
-            <s-stack gap="small-500">
-              <s-text>{connectedEmail}</s-text>
-              <s-text color="subdued">Connected sender account</s-text>
-            </s-stack>
+            <div>
+              <span className="cd-primary">{connectedEmail}</span>
+              <span className="cd-sub">Connected sender account</span>
+            </div>
           ) : (
-            <s-text color="subdued">Connect an email account to send notifications.</s-text>
+            <span className="cd-muted">Connect an email account to send notifications.</span>
           )}
           {isConnected ? (
-            <s-button tone="critical" onClick={() => setIsDisconnectPopupOpen(true)}>Disconnect</s-button>
+            <s-button onClick={() => setIsDisconnectPopupOpen(true)}>Disconnect</s-button>
           ) : (
             <s-button onClick={() => setIsConnectModalOpen(true)}>Connect</s-button>
           )}
-        </s-grid>
-      </s-stack>
+        </div>
+      </div>
 
       <Modal
         open={isDisconnectPopupOpen}
@@ -179,12 +184,12 @@ export function EmailConnectionCard({
           disabled={isContinueDisabled}
           onClick={() => onConnect(smtpForm)}
         >
-          Connect
+          Continue
         </s-button>
         <s-button slot="secondary-actions" onClick={closeConnectModal}>
           Cancel
         </s-button>
       </Modal>
-    </s-section>
+    </section>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal } from '../../shared/wc.jsx';
 
 // "Who this pricing serves" — a Company-based B2B / D2C Wholesale segmented
@@ -249,8 +249,12 @@ export function companyPicks(db, companyIds, locationKeys, onChange) {
 // The D2C "Customers" box: all / logged-in / non-logged-in customers, or specific
 // customers or customer tags picked from a list. Shared by the pricing and order
 // limit editors; `onSetId(id, on)` ticks or unticks one customer or tag.
-export function CustomerTargetsBox({ db, target, ids, onTarget, onSetId, name = 'assignment-customer-target' }) {
+export function CustomerTargetsBox({ db, target, ids, onTarget, onSetId, onSetIds, name = 'assignment-customer-target' }) {
   const customers = (db.customers || []).map((cu) => ({ id: cu.id, title: cu.name, subtitle: cu.email }));
+  // Specific customers: a "Search customers" field opens the Select specific customers
+  // modal; the ones picked show as chips under it (× takes one off).
+  const [customerModal, setCustomerModal] = useState(false);
+  const picked = customers.filter((cu) => ids.includes(cu.id));
   const tags = (db.tagPricing || []).map((t) => ({ id: t.id, title: t.name }));
   return (
     <s-box border="base" borderRadius="base" padding="base">
@@ -274,14 +278,29 @@ export function CustomerTargetsBox({ db, target, ids, onTarget, onSetId, name = 
         </s-choice-list>
         {target === 'specific' ? (
           <s-box paddingInlineStart="large">
-            <InlineCheckList
-              items={customers}
-              selected={ids}
-              onSet={onSetId}
-              searchable
-              placeholder="Search customers"
-              emptyLabel="No customers match that search."
-            />
+            <s-stack gap="small-200">
+              {/* Opens on click / Enter, not on focus: closing the modal hands focus
+                  back to this field, which would reopen it. */}
+              <s-search-field
+                label="Search customers"
+                labelAccessibilityVisibility="exclusive"
+                placeholder="Search customers"
+                value=""
+                onClick={() => setCustomerModal(true)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') setCustomerModal(true);
+                }}
+              />
+              {picked.length ? (
+                <s-stack direction="inline" gap="small-300">
+                  {picked.map((cu) => (
+                    <s-clickable-chip key={cu.id} removable accessibilityLabel={`Remove ${cu.title}`} onRemove={() => onSetId(cu.id, false)}>
+                      {cu.title}
+                    </s-clickable-chip>
+                  ))}
+                </s-stack>
+              ) : null}
+            </s-stack>
           </s-box>
         ) : null}
         {target === 'tags' ? (
@@ -295,7 +314,112 @@ export function CustomerTargetsBox({ db, target, ids, onTarget, onSetId, name = 
           </s-box>
         ) : null}
       </s-stack>
+      <SelectCustomersModal
+        open={customerModal}
+        customers={customers}
+        selected={target === 'specific' ? ids : []}
+        onClose={() => setCustomerModal(false)}
+        onDone={(next) => {
+          setCustomerModal(false);
+          onSetIds(next);
+        }}
+      />
     </s-box>
+  );
+}
+
+// "Select specific customers": search, a "Selecting N customers" box that ticks the
+// page, then the customers ten a page (checkbox, avatar, "email - name") with a
+// pager. Ticks are kept in the modal until Done; Cancel drops them.
+const CUSTOMERS_PER_PAGE = 10;
+function SelectCustomersModal({ open, customers, selected, onClose, onDone }) {
+  const [draft, setDraft] = useState(selected);
+  const [q, setQ] = useState('');
+  const [page, setPage] = useState(0);
+  // Each opening starts from what's picked now.
+  useEffect(() => {
+    if (open) {
+      setDraft(selected);
+      setQ('');
+      setPage(0);
+    }
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const query = q.trim().toLowerCase();
+  const shown = query ? customers.filter((cu) => `${cu.subtitle || ''} ${cu.title}`.toLowerCase().includes(query)) : customers;
+  const count = Math.max(1, Math.ceil(shown.length / CUSTOMERS_PER_PAGE));
+  const current = Math.min(page, count - 1);
+  const rows = shown.slice(current * CUSTOMERS_PER_PAGE, (current + 1) * CUSTOMERS_PER_PAGE);
+  const allOnPage = rows.length > 0 && rows.every((cu) => draft.includes(cu.id));
+  const someOnPage = rows.some((cu) => draft.includes(cu.id));
+  const set = (list, on) =>
+    setDraft((cur) => (on ? [...new Set([...cur, ...list.map((cu) => cu.id)])] : cur.filter((id) => !list.some((cu) => cu.id === id))));
+
+  return (
+    <Modal open={open} onClose={onClose} heading="Select specific customers">
+      <s-stack gap="none">
+        <s-box padding="small" background="subdued">
+          <s-search-field
+            label="Search customers"
+            labelAccessibilityVisibility="exclusive"
+            placeholder="Search customers"
+            value={q}
+            autocomplete="off"
+            onInput={(e) => {
+              setQ(e.currentTarget.value);
+              setPage(0);
+            }}
+          />
+        </s-box>
+        <s-box paddingInline="small" paddingBlock="small-200" background="subdued">
+          <s-checkbox
+            label={`Selecting ${draft.length} customer${draft.length === 1 ? '' : 's'}`}
+            checked={allOnPage}
+            indeterminate={!allOnPage && someOnPage}
+            disabled={!rows.length}
+            onChange={(e) => set(rows, e.currentTarget.checked)}
+          />
+        </s-box>
+        <s-divider />
+        {rows.length === 0 ? (
+          <s-box padding="base">
+            <div style={{ textAlign: 'center' }}>
+              <s-text color="subdued">No customers match that search.</s-text>
+            </div>
+          </s-box>
+        ) : (
+          rows.map((cu, i) => (
+            <React.Fragment key={cu.id}>
+              {i > 0 ? <s-divider /> : null}
+              <s-box paddingInline="small" paddingBlock="small-200">
+                <s-grid gridTemplateColumns="auto auto minmax(0, 1fr)" gap="small" alignItems="center">
+                  <s-checkbox
+                    accessibilityLabel={`Select ${cu.title}`}
+                    checked={draft.includes(cu.id)}
+                    onChange={(e) => set([cu], e.currentTarget.checked)}
+                  />
+                  <s-avatar size="small" initials={initialsOf(cu.title).toUpperCase()} alt={cu.title} />
+                  <s-text>{cu.subtitle ? `${cu.subtitle} - ${cu.title}` : cu.title}</s-text>
+                </s-grid>
+              </s-box>
+            </React.Fragment>
+          ))
+        )}
+        <s-divider />
+        <s-box paddingBlockStart="small">
+          <s-button-group gap="none" accessibilityLabel="Pagination">
+            <s-button slot="secondary-actions" icon="chevron-left" accessibilityLabel="Previous page" disabled={current === 0} onClick={() => setPage(current - 1)} />
+            <s-button slot="secondary-actions" icon="chevron-right" accessibilityLabel="Next page" disabled={current >= count - 1} onClick={() => setPage(current + 1)} />
+          </s-button-group>
+        </s-box>
+      </s-stack>
+      <s-button slot="primary-action" variant="primary" onClick={() => onDone(draft)}>
+        Done
+      </s-button>
+      <s-button slot="secondary-actions" onClick={onClose}>
+        Cancel
+      </s-button>
+    </Modal>
   );
 }
 
@@ -378,6 +502,7 @@ export function AssignmentCard({ builder, patch, db, isNew, footer = null }) {
               ids={builder.assignmentTargetIds || []}
               onTarget={setTarget}
               onSetId={(id, on) => setId('assignmentTargetIds', id, on)}
+              onSetIds={(list) => patch({ assignmentTargetIds: list })}
             />
           </s-stack>
         )}

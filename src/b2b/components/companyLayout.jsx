@@ -8,12 +8,19 @@ import './companyLayout.css';
 
 // A main-column section: title (and subtitle) on the left, its controls on the right,
 // then its card.
-export function CdSection({ title, subtitle, controls, children }) {
+export function CdSection({ title, subtitle, info, controls, children }) {
   return (
     <section>
       <div className="cd-section__head">
         <div>
-          <h2 className="cd-section__title">{title}</h2>
+          <div className="cd-side-block__title">
+            <h2 className="cd-section__title">{title}</h2>
+            {info ? (
+              <Tip content={info}>
+                <s-icon type="info" color="subdued" />
+              </Tip>
+            ) : null}
+          </div>
           {subtitle ? <p className="cd-section__subtitle">{subtitle}</p> : null}
         </div>
         {controls ? <div className="cd-section__controls">{controls}</div> : null}

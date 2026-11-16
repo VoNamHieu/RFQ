@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { EmptyBlock } from '../../../shared/EmptyBlock.jsx';
 import { useStore } from '../../store.jsx';
 import { scopeLabel } from '../../pricing.js';
-import contractArt from '../../assets/contract-empty.webp';
 import {
   openAgreements,
   lastChange,
@@ -20,9 +19,10 @@ import {
   overlapLines,
   overlapsHeading,
   PAST_STATUSES,
+  canDeleteAgreement,
+  canEndAgreement,
 } from '../../agreements.js';
 import { ContractVersionModal } from '../ContractVersionModal.jsx';
-import { LocationNames } from '../LocationNames.jsx';
 import { Fact, TermGroup, VersionTimeline, ShowAllLink, SHOWN, EndContractModal, DeleteContractModal } from '../ContractParts.jsx';
 import { MenuButton, Modal, wcTone } from '../../../shared/wc.jsx';
 
@@ -58,12 +58,7 @@ function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onV
   const scope = agreementAppliesToLabel(company, ag);
   // A next contract: when it starts — "Starts Feb 1, 2027, not applied yet."
   const note = ag.status === 'Scheduled' ? `Starts ${fmtDay(ag.startDate)}, not applied yet.` : null;
-  const summary = (
-    <>
-      <LocationNames label={scope} />
-      {[agreementDatesLabel(ag), ag.version ? `Version ${ag.version}` : null].filter(Boolean).map((s) => ` · ${s}`).join('')}
-    </>
-  );
+  const summary = [scope, agreementDatesLabel(ag), ag.version ? `Version ${ag.version}` : null].filter(Boolean).join(' · ');
   const history = ag.history || [];
   const title = `${ag.number} · ${ag.name || 'Untitled contract'}`;
 
@@ -94,15 +89,17 @@ function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onV
         {open ? (
           <s-stack direction="inline" gap="small-200">
             {/* End contract, and for a Scheduled one (nothing is applied yet) Delete
-                contract too, under "…". */}
-            {live ? (
+                contract too, under "…" — not one its buyers must approve: that one isn't
+                ended before it starts (canEndAgreement), and it's cancelled at their request
+                in its editor (Cancel contract) instead of deleted. */}
+            {live && (canEndAgreement(ag) || canDeleteAgreement(ag)) ? (
               <MenuButton
                 icon="menu-horizontal"
                 variant="tertiary"
                 accessibilityLabel={`More actions for ${ag.number}`}
                 items={[
-                  { content: 'End contract', destructive: true, onAction: () => onEnd(ag) },
-                  ag.status === 'Scheduled' && { content: 'Delete contract', destructive: true, onAction: () => onDelete(ag) },
+                  canEndAgreement(ag) && { content: 'End contract', destructive: true, onAction: () => onEnd(ag) },
+                  ag.status === 'Scheduled' && canDeleteAgreement(ag) && { content: 'Delete contract', destructive: true, onAction: () => onDelete(ag) },
                 ]}
               />
             ) : null}
@@ -120,7 +117,7 @@ function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onV
           <s-query-container>
             <s-grid gridTemplateColumns="@container (inline-size > 480px) 1fr 1fr 1fr, 1fr" gap="small">
               <Fact icon="clock" label="Version" value={ag.version ? String(ag.version) : '—'} />
-              <Fact icon="location" label="Applies to" value={<LocationNames label={scope} />} />
+              <Fact icon="location" label="Applies to" value={scope} />
               <Fact icon="calendar" label="Dates" value={agreementDatesLabel(ag)}>
                 {soon ? (
                   <s-stack direction="inline" gap="small-200" alignItems="center">
@@ -210,8 +207,6 @@ export function AgreementTab({ company }) {
         <s-section>
           <EmptyBlock
             heading="No contract yet"
-            image={contractArt}
-            textMaxWidth={560}
             action={{ content: 'Create contract', onAction: () => dispatch({ type: 'OPEN_AGREEMENT_EDITOR', companyId: company.id, returnTo }) }}
           >
             {`Put ${company.name}’s pricing and order limits in one contract. Activating it applies them together, and every change is kept as a version.`}

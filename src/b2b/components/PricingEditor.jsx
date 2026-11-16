@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store.jsx';
-import { Modal, Tabs, useWcId, PageHeader } from '../../shared/wc.jsx';
+import { Modal, Tabs, useWcId } from '../../shared/wc.jsx';
+import { CdPageHead, CardBanner, StatusDot } from './companyLayout.jsx';
 import { RuleBuilderCard } from './RuleBuilderCard.jsx';
 import { VolumeRangesCard } from './VolumeRangesCard.jsx';
 import { DefaultPriceCard } from './DefaultPriceCard.jsx';
@@ -12,7 +13,7 @@ import { ActiveDatesCard, ProductScopeCard, QuantityProductsCard, VolumeBasisCar
 import { storeTimezone } from '../timezones.js';
 import { PricePreviewDialog } from './PricePreviewDialog.jsx';
 import { AssignmentCard } from './AssignmentCard.jsx';
-import { policyUsageCount, policyUsageDetail, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, locationCatalog, basePricingProductsLabel, basePricingCalculationLabel } from '../pricing.js';
+import { policyUsageCount, policyUsageDetail, slotIds, KIND_ORDER, policyPriceBreakdown, scopeLabel, kindOf, ruleTypeLabel, locationCatalog, basePricingProductsLabel, basePricingCalculationLabel, ruleIsComplete } from '../pricing.js';
 import { isContractTerm } from '../agreements.js';
 import { builderDraft } from '../builders.js';
 
@@ -195,6 +196,14 @@ export function PricingEditor({ asPage = false }) {
       setNameMissing(true);
       return;
     }
+    // A rule with nothing picked isn't saved: Save opens it (on Settings) and its
+    // editor says what's missing, instead of dropping it.
+    const incomplete = (builder.conditionalRules || []).findIndex((r) => !ruleIsComplete(r));
+    if (incomplete >= 0) {
+      if (pricingTab !== 'settings') dispatch({ type: 'SET_BUILDER_TAB', tab: 'settings' });
+      dispatch({ type: 'SET_RULE_EDIT', index: incomplete, missing: true });
+      return;
+    }
     if (sideChanged && hadAssignments) {
       setSideConfirm(true);
       return;
@@ -225,19 +234,18 @@ export function PricingEditor({ asPage = false }) {
 
   const editorTitle = isNew ? `Create ${isQuantity ? 'quantity' : 'base'} pricing` : `Edit pricing: ${builder.name}`;
   // In a contract: the contract's number by the title, and saving goes back to it.
-  const contractBadge = contract ? <s-badge>{`Contract ${contract.number}`}</s-badge> : null;
+  const contractBadge = contract ? <span className="cd-chip cd-chip--neutral">{`Contract ${contract.number}`}</span> : null;
   const saveLabel = contract ? (isNew ? 'Add to contract' : 'Done') : isNew ? 'Create pricing' : 'Save';
   const editorBody = (
     <s-stack gap="base">
           {sharedElsewhere && (
-            <s-banner tone="info">
-              {`This pricing is also assigned to ${sharedWith}. Saving will offer to fork a copy for ${scopeName} or apply to all.`}
-            </s-banner>
+            <CardBanner>{`This pricing is also assigned to ${sharedWith}. Saving will offer to fork a copy for ${scopeName} or apply to all.`}</CardBanner>
           )}
 
           {/* Two tabs, like the god file: Settings (the pricing config) and
               Appearance (how it shows on the storefront). */}
           <Tabs
+            underline
             tabs={[
               { id: 'settings', content: 'Settings' },
               { id: 'appearance', content: 'Appearance' },
@@ -430,30 +438,43 @@ export function PricingEditor({ asPage = false }) {
       {catalogPreview && targets.length > 1 && (
         <BuilderPricePreview builder={builder} products={state.db.products} targets={reach} onClose={() => setCatalogPreview(false)} />
       )}
+      {/* The company page's look: a white page (in the Pricing screen, its back arrow,
+          title and actions on top as the list pages'). The cards inside are as they were. */}
       {asPage ? (
-        <>
-          <PageHeader
-            heading={editorTitle}
-            titleMetadata={contractBadge}
-            backAction={{ content: 'Back', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }}
-            primaryAction={{ content: saveLabel, onAction: onSave, disabled: noLocationPicked }}
-            secondaryActions={[{ content: 'Cancel', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }]}
+        <div className="cd-page">
+          <CdPageHead
+            title={
+              <span className="cd-inline">
+                {editorTitle}
+                {contractBadge}
+              </span>
+            }
+            back={{ label: 'Pricing settings', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }}
+            actionsOnTop
+            actions={
+              <>
+                <s-button onClick={() => dispatch({ type: 'CLOSE_EDITOR' })}>Cancel</s-button>
+                <s-button variant="primary" onClick={onSave} disabled={noLocationPicked}>
+                  {saveLabel}
+                </s-button>
+              </>
+            }
           />
-          <s-page>{editorBody}</s-page>
-        </>
+          {editorBody}
+        </div>
       ) : (
         <div
           role="dialog"
           aria-modal="true"
           aria-label={editorTitle}
-          style={{ position: 'fixed', inset: 0, zIndex: 517, display: 'flex', flexDirection: 'column', background: 'var(--p-color-bg, #f1f1f1)' }}
+          style={{ position: 'fixed', inset: 0, zIndex: 517, display: 'flex', flexDirection: 'column', background: 'var(--p-color-bg-surface, #fff)' }}
         >
           {/* The bar spans the screen; its title and actions line up with the content
-              below, which is laid out like every other page (s-page). */}
+              below, which is laid out as the company page (.cd-page). */}
           <div style={{ background: 'var(--p-color-bg-surface, #fff)', borderBottom: '1px solid var(--p-color-border, #e3e3e3)', flex: '0 0 auto' }}>
             <div className="wc-overlay-header">
               <div className="wc-overlay-header__title">
-                <s-heading fontSize="large">{editorTitle}</s-heading>
+                <h1 className="cd-editor-title">{editorTitle}</h1>
                 {contractBadge}
               </div>
               <div className="wc-overlay-header__actions">
@@ -464,7 +485,7 @@ export function PricingEditor({ asPage = false }) {
             </div>
           </div>
           <div style={{ flex: '1 1 auto', overflowY: 'auto', paddingBottom: 64 }}>
-            <s-page>{editorBody}</s-page>
+            <div className="cd-page">{editorBody}</div>
           </div>
         </div>
       )}
@@ -481,7 +502,7 @@ function RuleStatusCard({ builder, patch }) {
         <s-grid gridTemplateColumns="minmax(0, 1fr) auto" gap="small-200" alignItems="center">
           <s-stack direction="inline" gap="small-200" alignItems="center">
             <s-heading>Rule status</s-heading>
-            <s-badge tone={on ? 'success' : undefined}>{on ? 'Active' : 'Inactive'}</s-badge>
+            <StatusDot tone={on ? 'success' : undefined}>{on ? 'Active' : 'Inactive'}</StatusDot>
           </s-stack>
           <s-button onClick={() => patch({ status: on ? 'Inactive' : 'Active' })}>
             {on ? 'Turn off' : 'Turn on'}

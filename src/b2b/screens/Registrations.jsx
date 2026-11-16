@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useStore } from '../store.jsx';
 import { EmptyBlock } from '../../shared/EmptyBlock.jsx';
-import { Modal, IndexFiltersBar, useWcId, wcTone } from '../../shared/wc.jsx';
+import { Modal, IndexFiltersBar } from '../../shared/wc.jsx';
 import registrationArt from '../assets/registration-empty.webp';
 import noRequestArt from '../assets/no-request.webp';
 import { REG_STATUS, fullName, fmtDate, registrationDuplicates, isD2CRegistration } from '../registrations.js';
+import { DevStrip } from '../../shared/DevStrip.jsx';
+import { CdPageHead, StatusDot } from '../components/companyLayout.jsx';
 
 // Wholesale B2B → Registrations: what buyers submitted through the storefront
 // registration form, waiting for the merchant to review. Opening a row leads to
@@ -45,7 +47,6 @@ const SORT_BY = {
 
 export function Registrations() {
   const { state, dispatch } = useStore();
-  const rowId = useWcId('registration');
   const [confirm, setConfirm] = useState(null); // { kind: 'approve' | 'decline' | 'delete', ids }
   const [devNoForm, setDevNoForm] = useState(false); // dev-only: preview the empty state before any form exists
   const all = devNoForm ? [] : state.db.registrations || [];
@@ -83,22 +84,35 @@ export function Registrations() {
   // A new tab / search shows different rows — don't carry a selection across.
   useEffect(() => { clearSelection(); }, [filter, q]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The page's top, in the company page's look: the title (with its grey line once there
+  // are registrations) and Edit form / Create form on the right.
+  const header = (
+    <CdPageHead
+      title="Registrations"
+      subtitle={all.length ? 'Buyers who applied through your registration form' : null}
+      actions={all.length ? <s-button onClick={formAction.onAction}>{formAction.content}</s-button> : null}
+    />
+  );
+
   if (all.length === 0) {
     return (
-      <s-page heading="Registrations">
+      <div className="cd-page">
+        {header}
         {devTools}
-        <s-section>
-          {hasForm ? (
-            <EmptyBlock heading="No registrations yet" action={formAction} image={registrationArt}>
-              When buyers apply for B2B access through your registration form, their applications show up here for you to review.
-            </EmptyBlock>
-          ) : (
-            <EmptyBlock heading="No registration forms yet" action={formAction} image={registrationArt}>
-              Create a registration form to start collecting B2B customer applications.
-            </EmptyBlock>
-          )}
-        </s-section>
-      </s-page>
+        <div className="cd-card">
+          <div className="cd-card__body">
+            {hasForm ? (
+              <EmptyBlock heading="No registrations yet" action={formAction} image={registrationArt}>
+                When buyers apply for B2B access through your registration form, their applications show up here for you to review.
+              </EmptyBlock>
+            ) : (
+              <EmptyBlock heading="No registration forms yet" action={formAction} image={registrationArt}>
+                Create a registration form to start collecting B2B customer applications.
+              </EmptyBlock>
+            )}
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -126,19 +140,36 @@ export function Registrations() {
     clearSelection();
   };
 
+  // While rows are selected the column headings give way to "N selected" and the bulk
+  // actions, as in the company list (.cd-bulk-bar), so the table doesn't move.
+  const bulk = selected.length > 0;
+  const heading = (label) => (bulk ? <span className="cd-bulk-hidden">{label}</span> : label);
+  const bulkBar = (
+    <span className="cd-bulk-bar">
+      <s-text fontWeight="semibold">{`${selected.length} selected`}</s-text>
+      {promotedBulkActions.map((a) => (
+        <s-button key={a.content} onClick={a.onAction}>
+          {a.content}
+        </s-button>
+      ))}
+      {bulkActions.map((a) => (
+        <s-button key={a.content} tone={a.destructive ? 'critical' : undefined} onClick={a.onAction}>
+          {a.content}
+        </s-button>
+      ))}
+    </span>
+  );
+  // A row's checkbox doesn't open the registration.
+  const own = (e) => e.stopPropagation();
+
+  // The list in a bordered card: tabs, search and sort on top, then a plain table.
   return (
-    <s-page heading="Registrations">
-      <s-button slot="secondary-actions" onClick={formAction.onAction}>
-        {formAction.content}
-      </s-button>
-      <s-box paddingBlockEnd="small">
-        <s-paragraph color="subdued">Buyers who applied through your registration form</s-paragraph>
-      </s-box>
+    <div className="cd-page">
+      {header}
       {devTools}
-      <s-section padding="none">
-        <s-table>
+      <div className="cd-card">
+        <div className="cd-card__filters">
           <IndexFiltersBar
-            slot="filters"
             query={state.registrationSearch}
             queryPlaceholder="Search by name, email, company or tax ID"
             onQueryChange={(v) => dispatch({ type: 'SET_REGISTRATION_SEARCH', value: v })}
@@ -148,116 +179,101 @@ export function Registrations() {
             sortOptions={SORT_OPTIONS}
             sortSelected={`${sortField} ${sortDir}`}
             onSort={(val) => dispatch({ type: 'SET_REGISTRATION_SORT', value: val || 'submitted desc' })}
-          >
-            {selected.length > 0 ? (
-              <s-stack direction="inline" gap="small-200" alignItems="center">
-                <s-text fontWeight="semibold">{`${selected.length} selected`}</s-text>
-                {promotedBulkActions.map((a) => (
-                  <s-button key={a.content} onClick={a.onAction}>
-                    {a.content}
-                  </s-button>
-                ))}
-                {bulkActions.map((a) => (
-                  <s-button key={a.content} tone={a.destructive ? 'critical' : undefined} onClick={a.onAction}>
-                    {a.content}
-                  </s-button>
-                ))}
-              </s-stack>
-            ) : null}
-          </IndexFiltersBar>
-          <s-table-header-row>
-            <s-table-header listSlot="inline">
-              <s-checkbox
-                accessibilityLabel={allSelected ? 'Deselect all registrations' : 'Select all registrations'}
-                checked={allSelected}
-                indeterminate={selected.length > 0 && !allSelected}
-                disabled={rows.length === 0}
-                onChange={(e) => selectAll(e.currentTarget.checked)}
-              />
-            </s-table-header>
-            <s-table-header listSlot="primary">Applicant</s-table-header>
-            <s-table-header listSlot="labeled">Company</s-table-header>
-            <s-table-header listSlot="labeled">Country</s-table-header>
-            <s-table-header listSlot="labeled">Submitted from</s-table-header>
-            <s-table-header listSlot="labeled">Submitted</s-table-header>
-            <s-table-header listSlot="labeled">Company match</s-table-header>
-            <s-table-header listSlot="secondary">Status</s-table-header>
-          </s-table-header-row>
-          <s-table-body>
-            {rows.map((r) => {
-              const status = REG_STATUS[r.status];
-              const linked = r.companyId && companies.find((c) => c.id === r.companyId);
-              const linkId = `${rowId}-${r.id}`;
-              return (
-                <s-table-row key={r.id} clickDelegate={linkId}>
-                  <s-table-cell>
+          />
+        </div>
+        {rows.length ? (
+          <div className="cd-table-scroll">
+            <table className="cd-table">
+              <thead>
+                <tr>
+                  <th className="cd-check">
                     <s-checkbox
-                      accessibilityLabel={`Select ${fullName(r)}`}
-                      checked={selectedIds.includes(r.id)}
-                      onChange={(e) => selectRow(r.id, e.currentTarget.checked)}
+                      accessibilityLabel={allSelected ? 'Deselect all registrations' : 'Select all registrations'}
+                      checked={allSelected}
+                      indeterminate={bulk && !allSelected}
+                      onChange={(e) => selectAll(e.currentTarget.checked)}
                     />
-                  </s-table-cell>
-                  <s-table-cell>
-                    <s-stack gap="small-500">
-                      <s-link id={linkId} onClick={() => open(r.id)}>
-                        {fullName(r)}
-                      </s-link>
-                      <s-text fontSize="small" color="subdued">{r.email}</s-text>
-                    </s-stack>
-                  </s-table-cell>
-                  <s-table-cell>
-                    {/* Pending matches: an existing contact (same or other company) or a same-name company — the merchant decides.
-                        Info tone — it's something the app found, not an error, and yellow would blur
-                        into the Pending review status badge on the same row. */}
-                    <s-stack direction="inline" gap="small-300" alignItems="center">
-                      {isD2CRegistration(r) ? <s-text color="subdued">No company · D2C</s-text> : <s-text>{r.company}</s-text>}
-                      {dupOf(r)?.kind === 'company' ? <s-badge tone="info">Duplicate</s-badge> : null}
-                      {dupOf(r)?.kind === 'contact' || dupOf(r)?.kind === 'same' ? <s-badge tone="info">Existing contact</s-badge> : null}
-                      {isD2CRegistration(r) && dupOf(r)?.kind === 'customer' ? <s-badge tone="info">Existing customer</s-badge> : null}
-                    </s-stack>
-                  </s-table-cell>
-                  <s-table-cell>{r.country || '—'}</s-table-cell>
-                  <s-table-cell>
-                    <s-text fontSize="small">{r.source}</s-text>
-                  </s-table-cell>
-                  <s-table-cell>
-                    <s-text fontSize="small">{fmtDate(r.submittedAt)}</s-text>
-                  </s-table-cell>
-                  <s-table-cell>
-                    {linked ? (
-                      <s-text fontSize="small">{linked.name}</s-text>
-                    ) : (
-                      <s-text fontSize="small" color="subdued">
-                        {r.status !== 'pending'
-                          ? r.customerId ? 'D2C customer' : '—'
-                          : dupOf(r)?.kind === 'company'
-                            ? `Matches ${dupOf(r).company.name}`
-                            : dupOf(r)?.kind === 'contact' || dupOf(r)?.kind === 'same'
-                              ? `Contact at ${dupOf(r).contactOf.name}`
-                              : isD2CRegistration(r)
-                                ? dupOf(r)?.customer ? 'Existing customer' : 'New customer'
-                                : 'New company'}
-                      </s-text>
-                    )}
-                  </s-table-cell>
-                  <s-table-cell>
-                    <s-badge tone={wcTone(status.tone)}>{status.label}</s-badge>
-                  </s-table-cell>
-                </s-table-row>
-              );
-            })}
-          </s-table-body>
-        </s-table>
-        {rows.length === 0 ? (
-          q ? (
-            <EmptyBlock image={noRequestArt} imageAlt="" heading="No registrations match your search" />
-          ) : (
-            <EmptyBlock heading={hasForm ? EMPTY_TAB[filter] : 'No registration forms yet'} action={formAction}>
-              {hasForm ? 'Applications from your registration form show up here.' : 'Create a registration form to start collecting B2B customer applications.'}
-            </EmptyBlock>
-          )
-        ) : null}
-      </s-section>
+                  </th>
+                  <th>{bulk ? bulkBar : 'Applicant'}</th>
+                  <th>{heading('Company')}</th>
+                  <th>{heading('Country')}</th>
+                  <th>{heading('Submitted from')}</th>
+                  <th>{heading('Submitted')}</th>
+                  <th>{heading('Company match')}</th>
+                  <th>{heading('Status')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* The row opens the registration; the applicant's name is the keyboard target (the click bubbles up). */}
+                {rows.map((r) => {
+                  const status = REG_STATUS[r.status];
+                  const linked = r.companyId && companies.find((c) => c.id === r.companyId);
+                  return (
+                    <tr key={r.id} className="cd-row-link" onClick={() => open(r.id)}>
+                      <td className="cd-check" onClick={own}>
+                        <s-checkbox
+                          accessibilityLabel={`Select ${fullName(r)}`}
+                          checked={selectedIds.includes(r.id)}
+                          onChange={(e) => selectRow(r.id, e.currentTarget.checked)}
+                        />
+                      </td>
+                      <td>
+                        <button type="button" className="cd-link-button">
+                          {fullName(r)}
+                        </button>
+                        <span className="cd-sub">{r.email}</span>
+                      </td>
+                      <td>
+                        {/* Pending matches: an existing contact (same or other company) or a same-name company — the merchant decides.
+                            Info tone — it's something the app found, not an error. */}
+                        <span className="cd-inline">
+                          {isD2CRegistration(r) ? <span className="cd-muted">No company · D2C</span> : <span>{r.company}</span>}
+                          {dupOf(r)?.kind === 'company' ? <s-badge tone="info">Duplicate</s-badge> : null}
+                          {dupOf(r)?.kind === 'contact' || dupOf(r)?.kind === 'same' ? <s-badge tone="info">Existing contact</s-badge> : null}
+                          {isD2CRegistration(r) && dupOf(r)?.kind === 'customer' ? <s-badge tone="info">Existing customer</s-badge> : null}
+                        </span>
+                      </td>
+                      <td>{r.country || '—'}</td>
+                      <td className="cd-nowrap">{r.source}</td>
+                      <td className="cd-nowrap">{fmtDate(r.submittedAt)}</td>
+                      <td>
+                        {linked ? (
+                          linked.name
+                        ) : (
+                          <span className="cd-muted">
+                            {r.status !== 'pending'
+                              ? r.customerId ? 'D2C customer' : '—'
+                              : dupOf(r)?.kind === 'company'
+                                ? `Matches ${dupOf(r).company.name}`
+                                : dupOf(r)?.kind === 'contact' || dupOf(r)?.kind === 'same'
+                                  ? `Contact at ${dupOf(r).contactOf.name}`
+                                  : isD2CRegistration(r)
+                                    ? dupOf(r)?.customer ? 'Existing customer' : 'New customer'
+                                    : 'New company'}
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        <StatusDot tone={status.tone}>{status.label}</StatusDot>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="cd-card__body">
+            {q ? (
+              <EmptyBlock image={noRequestArt} imageAlt="" heading="No registrations match your search" />
+            ) : (
+              <EmptyBlock heading={hasForm ? EMPTY_TAB[filter] : 'No registration forms yet'} action={formAction}>
+                {hasForm ? 'Applications from your registration form show up here.' : 'Create a registration form to start collecting B2B customer applications.'}
+              </EmptyBlock>
+            )}
+          </div>
+        )}
+      </div>
 
       {confirm && (
         <ConfirmBulk
@@ -268,7 +284,7 @@ export function Registrations() {
           onClose={() => setConfirm(null)}
         />
       )}
-    </s-page>
+    </div>
   );
 }
 
@@ -329,22 +345,20 @@ function ConfirmBulk({ kind, regs, duplicates = 0, onConfirm, onClose }) {
 // no requests" case needs no toggle — delete the registrations to see it.
 function DevTools({ disabled, on, onToggle }) {
   return (
-    <s-box paddingBlockEnd="base">
-      <s-box background="subdued" border="base" borderRadius="base" padding="small-200">
-        <s-stack direction="inline" gap="small-200" alignItems="center">
-          <s-badge tone="info">Dev</s-badge>
-          <s-text fontSize="small" color="subdued">
-            {disabled
-              ? 'No registration form exists, so the empty state already offers Create form.'
-              : on
-              ? 'Previewing the empty state with no registration form — it offers Create form.'
-              : 'Preview the empty state before a registration form exists.'}
-          </s-text>
-          <s-press-button pressed={on} disabled={disabled} onClick={onToggle}>
-            {on ? 'Show data' : 'Preview no form'}
-          </s-press-button>
-        </s-stack>
-      </s-box>
-    </s-box>
+    <DevStrip id="registrations" spaced>
+      <s-stack direction="inline" gap="small-200" alignItems="center">
+        <s-badge tone="info">Dev</s-badge>
+        <s-text fontSize="small" color="subdued">
+          {disabled
+            ? 'No registration form exists, so the empty state already offers Create form.'
+            : on
+            ? 'Previewing the empty state with no registration form — it offers Create form.'
+            : 'Preview the empty state before a registration form exists.'}
+        </s-text>
+        <s-press-button pressed={on} disabled={disabled} onClick={onToggle}>
+          {on ? 'Show data' : 'Preview no form'}
+        </s-press-button>
+      </s-stack>
+    </DevStrip>
   );
 }

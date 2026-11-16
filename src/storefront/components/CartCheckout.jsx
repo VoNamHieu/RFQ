@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useStore, unitPrice } from '../store.jsx';
-import { productBySku, productRuleForSession, cartProblemsForSession } from '../data/products.js';
+import { productBySku, productRuleForSession, cartProblemsForSession, quotaInForce } from '../data/products.js';
 import { addOrderRequest } from '../../shared/persistence.js';
 import { CloseIcon, InfoIcon, WarningIcon } from './icons.jsx';
+import { money } from '../utils.js';
 
 // A product's order limits under its cart line (lineProblems): red when it blocks
 // checkout, blue when the order can go as an order request.
@@ -42,6 +43,32 @@ export function OrderLimits({ problems, reviews = [], review, keepForReview = fa
           <ul>{reviews.map((p, i) => <li key={i}>{p.message}</li>)}</ul>
         </div>
       )}
+    </div>
+  );
+}
+
+// At the top of the cart, as the real cart's (qs-b2b-limits.js): a progress bar of what
+// was ordered this week or month plus this cart against the maximum in force
+// (useCartCheckout's `quota`) — over it too — with what's left, "Limit reached" or
+// "Needs review" (a maximum sent for review). Amber once a maximum that blocks is passed.
+const whole = (n) => money(n).replace(/\.00$/, '');
+export function QuotaBar({ quota: q, subtotal }) {
+  if (!q) return null;
+  const total = q.spent + subtotal;
+  const over = total > q.cap;
+  return (
+    <div className={`quota-bar${over && !q.review ? ' is-over' : ''}`}>
+      <p>
+        <span>{`This ${q.period}${q.review ? ' · before review' : ''}`}</span>
+        <b>{`${money(total)} of ${whole(q.cap)}`}</b>
+      </p>
+      <span className="quota-bar__track">
+        <i style={{ width: `${Math.min(100, (total / q.cap) * 100)}%` }} />
+      </span>
+      <p>
+        <span>{`${q.spent ? `${money(q.spent)} ordered + ` : ''}${money(subtotal)} this cart`}</span>
+        <span>{over ? (q.review ? 'Needs review' : 'Limit reached') : `${money(q.cap - total)} left`}</span>
+      </p>
     </div>
   );
 }
@@ -180,5 +207,9 @@ export function useCartCheckout() {
     </>
   );
 
-  return { lines, subtotal, blocking, orderProblems, orderReviews, lineProblems, review, keepForReview, checkoutHint, checkout, dialogs };
+  // Under a weekly or monthly maximum: the top of the cart's progress bar (QuotaBar),
+  // over the limit too — unless the limit turned its counting badge off (quotaInForce).
+  const quota = quotaInForce(state.session);
+
+  return { lines, subtotal, blocking, orderProblems, orderReviews, lineProblems, review, keepForReview, checkoutHint, checkout, dialogs, quota };
 }
