@@ -230,7 +230,7 @@ export function Email({ activeNotificationEditor = null, onOpenEditor, onCloseEd
           template={activeTemplate}
         />
       ) : (
-        <s-stack gap="base">
+        <div className="cd-stack">
           <EmailConnectionCard
             isConnected={isConnected}
             connectedEmail={connectedEmail}
@@ -249,7 +249,7 @@ export function Email({ activeNotificationEditor = null, onOpenEditor, onCloseEd
             onToggleNotification={handleToggleNotification}
             onEditNotification={handleEditNotification}
           />
-        </s-stack>
+        </div>
       )}
     </>
   );

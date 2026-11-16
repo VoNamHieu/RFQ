@@ -50,7 +50,7 @@ export const publishOrderLimits = (limits) => writeJSON(ORDER_LIMITS_KEY, limits
 export const publishedOrderLimits = () => readJSON(ORDER_LIMITS_KEY);
 export const readOrderRequests = () => readJSON(ORDER_REQUESTS_KEY) || [];
 // Contracts ↔ storefront: the B2B app publishes the B2B Portal's contract cards for
-// each company location (b2b/portalContracts.js, { v: 2, at }) for the buyer's
+// each company location (b2b/portalContracts.js, { v: 3, at }) for the buyer's
 // account page. Going the other way, what buyers send from it — an answer to an
 // upcoming contract — waits here as buyer events, as the real store keeps them
 // (b2b/buyerEvents.js): the B2B app applies them when it loads and as they come.

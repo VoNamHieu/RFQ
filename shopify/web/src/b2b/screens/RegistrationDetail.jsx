@@ -4,7 +4,8 @@ import { companyNeedsPrice } from '../pricing.js';
 import { REG_STATUS, fullName, fmtDate, registrationDuplicates, isD2CRegistration, registrationLabel } from '../registrations.js';
 import { readRegistrationForm, BUILTIN_FIELDS, withoutOptionalNote } from '../../shared/registrationForm.js';
 import { ROLE_OPTIONS } from '../components/LocationModals.jsx';
-import { Modal, wcTone, PageHeader } from '../../shared/wc.jsx';
+import { Modal } from '../../shared/wc.jsx';
+import { CdPageHead, CdSection, StatusDot, SideBlock, SideRow, CardBanner } from '../components/companyLayout.jsx';
 
 // Reviewing one registration: registration → identify buyer → approve (activate)
 // → configure pricing. The application is shown in the form's own sections; the
@@ -30,14 +31,12 @@ export function RegistrationDetail() {
   const back = () => dispatch({ type: 'NAVIGATE', view: 'registrations' });
   if (!reg) {
     return (
-      <>
-      <PageHeader heading="Registration" backAction={{ content: 'Registrations', onAction: back }} />
-      <s-page>
-        <s-section>
-          <s-paragraph color="subdued">This registration no longer exists.</s-paragraph>
-        </s-section>
-      </s-page>
-      </>
+      <div className="cd-page">
+        <CdPageHead title="Registration" back={{ label: 'Registrations', onAction: back }} />
+        <div className="cd-card">
+          <div className="cd-card__empty">This registration no longer exists.</div>
+        </div>
+      </div>
     );
   }
 
@@ -76,42 +75,59 @@ export function RegistrationDetail() {
           ? { content: d2c ? 'Create D2C customer' : `Create ${reg.company}`, onAction: () => dispatch({ type: 'APPROVE_REGISTRATION', id: reg.id, createNew: true }) }
           : { content: 'Merge', onAction: doMerge };
 
+  // The order page's layout: back (to Registrations) and Delete on top, then two columns
+  // — the application on the left, titled above a bordered card; the decision on the side.
   return (
-    <>
-    <PageHeader
-      heading={label}
-      titleMetadata={<s-badge tone={wcTone(status.tone)}>{status.label}</s-badge>}
-      subtitle={`${d2c ? 'D2C · no company' : name} · submitted ${fmtDate(reg.submittedAt)} from the ${reg.source.toLowerCase()}`}
-      backAction={{ content: 'Registrations', onAction: back }}
-      secondaryActions={[{ content: 'Delete', destructive: true, onAction: () => setConfirm('delete') }]}
-    />
-    <s-page>
-      <s-query-container>
-        <s-grid gridTemplateColumns='@container (inline-size > 640px) "minmax(0, 2fr) minmax(0, 1fr)", "minmax(0, 1fr)"' gap="base" alignItems="start">
-          <s-section heading="Application">
-            <s-stack gap="base">
-              {applicationSections(reg).map((sec, i) => (
-                <React.Fragment key={sec.key}>
-                  {i > 0 && <s-divider />}
-                  <Section title={sec.title}>
-                    {sec.fields.map((f) => (f.id === 'marketing' ? (
-                      <Row key={f.id} label="Email marketing">
-                        <s-badge tone="success" icon="email">Subscribed</s-badge>
-                      </Row>
-                    ) : f.kind === 'textarea' ? (
-                      <s-stack key={f.id} gap="small-400">
-                        {sec.fields.length > 1 && <s-text color="subdued">{f.label}</s-text>}
-                        <s-paragraph color={answerOf(reg, f) ? undefined : 'subdued'}>{answerOf(reg, f) || 'No answer'}</s-paragraph>
-                      </s-stack>
-                    ) : (
-                      <Row key={f.id} label={f.label} value={answerOf(reg, f)} />
-                    )))}
-                  </Section>
-                </React.Fragment>
-              ))}
-            </s-stack>
-          </s-section>
+    <div className="cd-page">
+      <div className="cd-topbar">
+        <button type="button" className="cd-back" onClick={back}>
+          <span className="cd-back__circle">
+            <s-icon type="chevron-left" />
+          </span>
+          Registrations
+        </button>
+        <div className="cd-list-head__actions">
+          <s-button tone="critical" onClick={() => setConfirm('delete')}>
+            Delete
+          </s-button>
+        </div>
+      </div>
 
+      <div className="cd-layout">
+        <div className="cd-main">
+          <div className="cd-intro">
+            <div>
+              <div className="cd-inline">
+                <h1 className="cd-title">{label}</h1>
+                <StatusDot tone={status.tone}>{status.label}</StatusDot>
+              </div>
+              <p className="cd-subtitle">{`${d2c ? 'D2C · no company' : name} · submitted ${fmtDate(reg.submittedAt)} from the ${reg.source.toLowerCase()}`}</p>
+            </div>
+          </div>
+
+          <CdSection title="Application">
+            <div className="cd-card">
+              {applicationSections(reg).map((sec) => (
+                <Section key={sec.key} title={sec.title}>
+                  {sec.fields.map((f) => (f.id === 'marketing' ? (
+                    <Row key={f.id} label="Email marketing">
+                      <s-badge tone="success" icon="email">Subscribed</s-badge>
+                    </Row>
+                  ) : f.kind === 'textarea' ? (
+                    <div key={f.id}>
+                      {sec.fields.length > 1 && <span className="cd-row__label">{f.label}</span>}
+                      <p className={`cd-answer__text${answerOf(reg, f) ? '' : ' cd-muted'}`}>{answerOf(reg, f) || 'No answer'}</p>
+                    </div>
+                  ) : (
+                    <Row key={f.id} label={f.label} value={answerOf(reg, f)} />
+                  )))}
+                </Section>
+              ))}
+            </div>
+          </CdSection>
+        </div>
+
+        <div className="cd-side">
           {pending && dup.blocking ? (
             <MatchCard
               reg={reg}
@@ -125,50 +141,44 @@ export function RegistrationDetail() {
               actions={<DecisionActions primary={primary} onDecline={() => setConfirm('decline')} />}
             />
           ) : pending && d2c ? (
-            <s-section heading="Customer">
-              <s-stack gap="small">
-                <s-paragraph color="subdued">{`No company name, so approving makes ${reg.firstName} a D2C customer in Shopify. No company is created.`}</s-paragraph>
-                <s-stack gap="small-500">
-                  <s-paragraph fontWeight="medium">{name}</s-paragraph>
-                  <s-paragraph fontSize="small" color="subdued">{reg.email}</s-paragraph>
-                </s-stack>
+            <SideBlock title="Customer">
+              <div className="cd-decision">
+                <p className="cd-muted">{`No company name, so approving makes ${reg.firstName} a D2C customer in Shopify. No company is created.`}</p>
+                <div>
+                  <span className="cd-primary">{name}</span>
+                  <span className="cd-sub">{reg.email}</span>
+                </div>
                 {dup.customer ? (
-                  <s-banner tone="info">
-                    {`Uses the existing Shopify customer ${dup.customer.name} (${reg.email}). Their order history is kept.`}
-                  </s-banner>
+                  <CardBanner>{`Uses the existing Shopify customer ${dup.customer.name} (${reg.email}). Their order history is kept.`}</CardBanner>
                 ) : null}
                 <DecisionActions primary={primary} onDecline={() => setConfirm('decline')} />
-              </s-stack>
-            </s-section>
+              </div>
+            </SideBlock>
           ) : pending ? (
-            <s-section heading="Company">
-              <s-stack gap="small">
-                <s-paragraph color="subdued">Approving gives {reg.firstName} B2B access through a new company.</s-paragraph>
-                <s-stack gap="small-500">
-                  <s-paragraph fontWeight="medium">{reg.company}</s-paragraph>
-                  <s-paragraph fontSize="small" color="subdued">{`${name} as the main contact.`}</s-paragraph>
-                </s-stack>
+            <SideBlock title="Company">
+              <div className="cd-decision">
+                <p className="cd-muted">Approving gives {reg.firstName} B2B access through a new company.</p>
+                <div>
+                  <span className="cd-primary">{reg.company}</span>
+                  <span className="cd-sub">{`${name} as the main contact.`}</span>
+                </div>
                 {dup.customer ? (
-                  <s-banner tone="info">
-                    {`Uses the existing Shopify customer ${dup.customer.name} (${reg.email}). Their order history is kept.`}
-                  </s-banner>
+                  <CardBanner>{`Uses the existing Shopify customer ${dup.customer.name} (${reg.email}). Their order history is kept.`}</CardBanner>
                 ) : null}
-                <s-paragraph fontSize="small" color="subdued">You’ll set up the company’s pricing after approving.</s-paragraph>
+                <p className="cd-note">You’ll set up the company’s pricing after approving.</p>
                 <DecisionActions primary={primary} onDecline={() => setConfirm('decline')} />
-              </s-stack>
-            </s-section>
+              </div>
+            </SideBlock>
           ) : reg.status === 'approved' ? (
             <ApprovedCard reg={reg} />
           ) : (
-            <s-section heading="Decision">
-              <s-stack gap="small-200">
-                <s-paragraph>Declined on {fmtDate(reg.decidedAt)}.</s-paragraph>
-                <s-paragraph color="subdued">{reg.firstName} doesn’t get B2B access or pricing.</s-paragraph>
-              </s-stack>
-            </s-section>
+            <SideBlock title="Decision">
+              <SideRow label="Declined">{fmtDate(reg.decidedAt)}</SideRow>
+              <p className="cd-side-block__note cd-decision__after">{`${reg.firstName} doesn’t get B2B access or pricing.`}</p>
+            </SideBlock>
           )}
-        </s-grid>
-      </s-query-container>
+        </div>
+      </div>
 
       {confirm && (
         <Modal
@@ -196,8 +206,7 @@ export function RegistrationDetail() {
           </s-button>
         </Modal>
       )}
-    </s-page>
-    </>
+    </div>
   );
 }
 
@@ -254,9 +263,7 @@ function MatchCard({ reg, dup, choice, onChoice, merge, onCompany, onLocation, o
         </s-select>
       ) : null}
       {dup.contactOf && dup.contactOf.id !== merge.company.id ? (
-        <s-banner tone="warning">
-          {`${name} is removed from ${dup.contactOf.name}. An email can only belong to one company.`}
-        </s-banner>
+        <CardBanner tone="warning">{`${name} is removed from ${dup.contactOf.name}. An email can only belong to one company.`}</CardBanner>
       ) : null}
     </s-stack>
   );
@@ -273,9 +280,9 @@ function MatchCard({ reg, dup, choice, onChoice, merge, onCompany, onLocation, o
         value: 'create',
         renderChildren: (on) =>
           on ? (
-            <s-banner tone="warning">
+            <CardBanner tone="warning">
               {`${name} is removed from ${dup.contactOf.name} and becomes a D2C customer in Shopify, in no company. An email can only belong to one company.`}
-            </s-banner>
+            </CardBanner>
           ) : null,
       }
     : dup.kind === 'contact'
@@ -284,9 +291,9 @@ function MatchCard({ reg, dup, choice, onChoice, merge, onCompany, onLocation, o
             value: 'create',
             renderChildren: (on) =>
               on ? (
-                <s-banner tone="warning">
+                <CardBanner tone="warning">
                   {`${name} is removed from ${dup.contactOf.name} and becomes the main contact of ${reg.company}. An email can only belong to one company.`}
-                </s-banner>
+                </CardBanner>
               ) : null,
           }
         : {
@@ -304,15 +311,16 @@ function MatchCard({ reg, dup, choice, onChoice, merge, onCompany, onLocation, o
     other,
   ];
   return (
-    <s-section heading="Company">
-      <s-stack gap="small">
-        <s-banner tone="warning" heading={title}>
-          <s-paragraph>{single ? 'Merge it into their company, or decline it.' : 'Choose how to handle this registration.'}</s-paragraph>
-        </s-banner>
+    <SideBlock title="Company">
+      <div className="cd-decision">
+        <CardBanner tone="warning">
+          <span className="cd-primary">{title}</span>
+          {single ? 'Merge it into their company, or decline it.' : 'Choose how to handle this registration.'}
+        </CardBanner>
         {single ? (
           // One path: merge (or Decline, below).
           <s-stack gap="small-200">
-            <s-paragraph>{mergeHelp}</s-paragraph>
+            <p>{mergeHelp}</p>
             {showMergeFields ? mergeFields : null}
           </s-stack>
         ) : (
@@ -342,8 +350,8 @@ function MatchCard({ reg, dup, choice, onChoice, merge, onCompany, onLocation, o
           </s-choice-list>
         )}
         {actions}
-      </s-stack>
-    </s-section>
+      </div>
+    </SideBlock>
   );
 }
 
@@ -351,17 +359,14 @@ function MatchCard({ reg, dup, choice, onChoice, merge, onCompany, onLocation, o
 // primary action (Approve / Merge / Create …).
 function DecisionActions({ primary, onDecline }) {
   return (
-    <s-stack gap="small">
-      <s-divider />
-      <s-stack direction="inline" justifyContent="end" gap="small-200">
-        <s-button tone="critical" onClick={onDecline}>
-          Decline
-        </s-button>
-        <s-button variant="primary" onClick={primary.onAction}>
-          {primary.content}
-        </s-button>
-      </s-stack>
-    </s-stack>
+    <div className="cd-decision__actions">
+      <s-button tone="critical" onClick={onDecline}>
+        Decline
+      </s-button>
+      <s-button variant="primary" onClick={primary.onAction}>
+        {primary.content}
+      </s-button>
+    </div>
   );
 }
 
@@ -372,46 +377,48 @@ function ApprovedCard({ reg }) {
   if (reg.customerId) {
     const customer = (state.db.customers || []).find((c) => c.id === reg.customerId);
     return (
-      <s-section heading="Customer">
-        <s-stack gap="small-500">
-          <s-paragraph fontWeight="medium">{customer ? customer.name : fullName(reg)}</s-paragraph>
-          <s-text fontSize="small" color="subdued">
-            {customer ? `D2C customer in Shopify, in no company · approved ${fmtDate(reg.decidedAt)}` : `Approved ${fmtDate(reg.decidedAt)}. The customer has since been removed.`}
-          </s-text>
-        </s-stack>
-      </s-section>
+      <SideBlock title="Customer">
+        <SideRow label="Customer">{customer ? customer.name : fullName(reg)}</SideRow>
+        <SideRow label="Approved">{fmtDate(reg.decidedAt)}</SideRow>
+        <p className="cd-side-block__note cd-decision__after">
+          {customer ? 'D2C customer in Shopify, in no company.' : 'The customer has since been removed.'}
+        </p>
+      </SideBlock>
     );
   }
   const company = state.db.companies.find((c) => c.id === reg.companyId);
   const openCompany = (tab) => dispatch({ type: 'OPEN_COMPANY', id: company.id, tab });
   const needsPrice = company && companyNeedsPrice(company, state.db.policies, state.db.defaults);
   return (
-    <s-section heading="Company">
-      <s-stack gap="small">
-        {company ? (
-          <>
-            <s-stack gap="small-500">
-              <s-link onClick={() => openCompany('contacts')}>{company.name}</s-link>
-              <s-text fontSize="small" color="subdued">Approved {fmtDate(reg.decidedAt)}</s-text>
-            </s-stack>
+    <SideBlock title="Company">
+      {company ? (
+        <>
+          <SideRow label="Company">
+            <button type="button" className="cd-text-link cd-text-link--body" onClick={() => openCompany('contacts')}>
+              {company.name}
+            </button>
+          </SideRow>
+          <SideRow label="Approved">{fmtDate(reg.decidedAt)}</SideRow>
+          <div className="cd-decision">
             {needsPrice ? (
-              <s-banner tone="warning" heading="No pricing yet">
-                <s-paragraph>{reg.firstName} can sign in, but pays storefront prices until this company has pricing.</s-paragraph>
-                <s-button slot="secondary-actions" onClick={() => openCompany('pricing')}>
-                  Set up pricing
-                </s-button>
-              </s-banner>
+              <CardBanner tone="warning" textAction action={{ label: 'Set up pricing', onAction: () => openCompany('pricing') }}>
+                <span className="cd-primary">No pricing yet</span>
+                {`${reg.firstName} can sign in, but pays storefront prices until this company has pricing.`}
+              </CardBanner>
             ) : (
               <s-stack direction="inline">
                 <s-button onClick={() => openCompany('pricing')}>Open company</s-button>
               </s-stack>
             )}
-          </>
-        ) : (
-          <s-paragraph color="subdued">Approved {fmtDate(reg.decidedAt)}. The company has since been removed.</s-paragraph>
-        )}
-      </s-stack>
-    </s-section>
+          </div>
+        </>
+      ) : (
+        <>
+          <SideRow label="Approved">{fmtDate(reg.decidedAt)}</SideRow>
+          <p className="cd-side-block__note cd-decision__after">The company has since been removed.</p>
+        </>
+      )}
+    </SideBlock>
   );
 }
 
@@ -453,26 +460,22 @@ function answerOf(reg, f) {
   return v == null ? '' : String(v);
 }
 
+// One of the form's sections in the application's card, split from the next by a hairline.
 function Section({ title, children }) {
   return (
-    <s-stack gap="small-200">
-      {title && (
-        <s-heading fontSize="small">
-          <s-text color="subdued">{title}</s-text>
-        </s-heading>
-      )}
+    <div className="cd-answers">
+      {title && <h3 className="cd-answers__title">{title}</h3>}
       {children}
-    </s-stack>
+    </div>
   );
 }
 
+// An answer: its label in grey on the left, the answer on the right.
 function Row({ label, value, children }) {
   return (
-    <s-grid gridTemplateColumns="160px minmax(0, 1fr)" gap="small-200">
-      <s-text color="subdued">{label}</s-text>
-      <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-        {children || <s-text color={value ? undefined : 'subdued'}>{value || '—'}</s-text>}
-      </div>
-    </s-grid>
+    <div className="cd-answer">
+      <span className="cd-muted">{label}</span>
+      <div className="cd-answer__value">{children || <span className={value ? undefined : 'cd-muted'}>{value || '—'}</span>}</div>
+    </div>
   );
 }

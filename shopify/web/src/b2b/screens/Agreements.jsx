@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { canCreateAgreement, agreementAppliesToLabel, agreementTermCount, agreementDatesLabel, expiringSoon, daysUntil, PAST_STATUSES, proposalState, PROPOSAL_LABEL, statusLabel, canDeleteAgreement } from '../agreements.js';
+import { canCreateAgreement, agreementAppliesToLabel, agreementTermCount, agreementDatesLabel, expiringSoon, daysUntil, PAST_STATUSES, proposalState, PROPOSAL_LABEL, statusLabel, canDeleteAgreement, pendingNote } from '../agreements.js';
 import { AgreementEditor } from '../components/AgreementEditor.jsx';
 import { ContractVersionModal } from '../components/ContractVersionModal.jsx';
 import { EndContractModal, DeleteContractModal } from '../components/ContractParts.jsx';
@@ -17,15 +17,17 @@ const STATUS_TABS = [
   { id: 'Proposed', label: 'Proposed' },
   { id: 'Expired', label: 'Expired' },
   { id: 'Ended', label: 'Ended' },
+  { id: 'Cancelled', label: 'Cancelled' },
 ];
-const STATUS_TONE = { Active: 'success', Scheduled: 'info', Proposed: 'attention', 'Changes requested': 'warning', 'Cancellation requested': 'warning', Expired: undefined, Ended: undefined };
+const STATUS_TONE = { Active: 'success', Scheduled: 'info', Proposed: 'attention', 'Changes requested': 'warning', 'Cancellation requested': 'warning', Expired: undefined, Ended: undefined, Cancelled: undefined };
 // Prototype: show the dev toggles in production too (flip to import.meta.env.DEV to hide in prod).
 const SHOW_DEV_TOOLS = true;
 
 // Every company's agreement in one list. A row opens it in the editor, as a page here
 // (OPEN_AGREEMENT_EDITOR) — a past one opens as it was, read-only. An Active one can
-// be ended and a Scheduled or Proposed one deleted from its row; a Proposed one shows
-// where its buyer's answer stands.
+// be ended and a Scheduled or Proposed one deleted from its row (canDeleteAgreement:
+// never one its buyers must approve); a Proposed one shows where its buyer's answer
+// stands. One cancelled at its buyers' request is Cancelled, read-only as other past ones.
 export function Agreements() {
   const { state, dispatch } = useStore();
   const [status, setStatus] = useState('all');
@@ -93,6 +95,9 @@ export function Agreements() {
           <td className="cd-nowrap">{a.version ? `v${a.version}` : '—'}</td>
           <td>
             <StatusDot tone={STATUS_TONE[statusLabel(a)]}>{statusLabel(a)}</StatusDot>
+            {/* An Active one with a new version waiting for its buyers says so under its
+                status, in full: "Version 2 awaiting buyer", "Changes requested". */}
+            {pendingNote(a) ? <span className="cd-sub">{pendingNote(a)}</span> : null}
             {/* Sent to the buyer: where their answer stands (Changes requested and
                 Cancellation requested are its status). */}
             {proposalState(a) && proposalState(a) !== 'changes' && proposalState(a) !== 'cancel' ? <span className="cd-sub">{PROPOSAL_LABEL[proposalState(a)]}</span> : null}

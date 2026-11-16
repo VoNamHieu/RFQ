@@ -14,6 +14,10 @@ body:has(.cd-page) {
   margin-inline: auto;
   padding-block: 16px 48px;
 }
+/* A wider one (a company's Quotes and Orders on a page of their own). */
+.cd-page--wide {
+  width: min(100% - 32px, 1200px);
+}
 
 /* Back to Companies on the left, More actions on the right. */
 .cd-topbar {
@@ -952,4 +956,77 @@ body:has(.cd-page) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A registration's application: the form's sections in one card, split by hairlines;
+   each answer a grey label on the left and the answer on the right (one column on a
+   narrow page). */
+.cd-answers {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  font-size: 13px;
+  line-height: 20px;
+}
+.cd-answers + .cd-answers {
+  border-top: 1px solid #ebebeb;
+}
+.cd-answers__title {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 650;
+  color: var(--wc-text-subdued);
+}
+.cd-answer {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 8px;
+}
+@container (max-width: 520px) {
+  .cd-answer {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}
+.cd-answer__value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.cd-answer__text {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+/* A registration's decision in the side column: what approving does, its notes and
+   choices, then Decline and the primary action on the right, set off by a hairline. */
+.cd-decision {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+  font-size: 13px;
+  line-height: 20px;
+}
+.cd-decision p {
+  margin: 0;
+}
+.cd-decision .cd-banner {
+  margin: 0;
+}
+.cd-decision__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #ebebeb;
+}
+.cd-decision__after {
+  margin-top: 12px;
+}
+/* A status by a page's title (the registration form's Live / Draft / Off): the body's size. */
+.cd-title .cd-status {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 450;
+  letter-spacing: normal;
 }

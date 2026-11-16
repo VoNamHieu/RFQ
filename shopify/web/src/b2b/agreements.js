@@ -10,13 +10,21 @@
 //               again, it goes back to them as a new version. Its start date passing
 //               first, it expires. A Scheduled one changed at such a company goes
 //               back to Proposed too.
-//   Scheduled — saved with a start date still to come; applied on that date.
+//   Scheduled — saved with a start date still to come; applied on that date —
+//               unless its buyers' request to cancel it is still open then: it
+//               expires instead.
 //   Active    — its pricing and limits are assigned to the company. Saving an
-//               active contract applies the change right away as a new version.
+//               active contract applies the change right away as a new version —
+//               or, one saved with Buyer must approve, sends it to the buyers first
+//               (pendingVersionOf): it applies once they approve it.
 //   Expired   — the end date passed: its terms came off and the company is back
 //               on the pricing and limits outside the contract.
 //   Ended     — ended by hand, or replaced by the next contract; its terms came
-//               off. Expired and Ended stay as history.
+//               off.
+//   Cancelled — its buyers asked to cancel it before it started (Proposed or
+//               Scheduled) and the merchant cancelled it (Cancel contract): none of its
+//               terms apply, and it leaves their B2B Portal. Expired, Ended and
+//               Cancelled stay as history.
 // A company can have several contracts, each for all its locations or some. A
 // location is in one contract at a time: one saved, or saved as a version, over Active
 // or Scheduled ones there in time (clashesAt) is allowed — where they overlap, the one
@@ -99,38 +107,195 @@ export function agreementDatesLabel(ag, between = ' – ') {
   return ag.endDate ? `${fmtDay(ag.startDate)}${between}${fmtDay(ag.endDate)}` : `From ${fmtDay(ag.startDate)}, no end date`;
 }
 
-export const PAST_STATUSES = ['Expired', 'Ended'];
+export const PAST_STATUSES = ['Expired', 'Ended', 'Cancelled'];
 // Activated: Scheduled or Active.
 export const isLive = (ag) => ag?.status === 'Active' || ag?.status === 'Scheduled';
 // A buyer answer by what it says — its version, day, kind, note and who — so a decline
 // can name the request it declines (answers carry no id of their own).
-export const responseKey = (r) => (r ? [r.version, r.at, r.kind, r.message || '', r.email || r.buyer || ''].join('|') : '');
-// The merchant's decline of the buyer's latest request for changes (Decline request,
-// with a reply the buyer sees): { responseKey, version, at, message }, or null — kept
-// on the contract in `declines`. Declined, the contract waits for the buyer again.
+// (Its revision only when it has one, so answers from before revisions keep their key.)
+export const responseKey = (r) => (r ? [r.version, ...(r.revision ? [`r${r.revision}`] : []), r.at, r.kind, r.message || '', r.email || r.buyer || ''].join('|') : '');
+// The merchant's decline of the buyer's latest request — for changes (Decline request,
+// with a reply the buyer sees) or to cancel it (Reject request, with a note they see):
+// { responseKey, version, at, message }, or null — kept on the contract in `declines`.
+// Declined, the contract is as it was before the request: a proposal waits for the
+// buyer again, a Scheduled one stays scheduled.
 export function declineOf(ag) {
   const r = latestBuyerResponse(ag);
-  if (!r || r.kind !== 'changes') return null;
+  if (!r || (r.kind !== 'changes' && r.kind !== 'cancel')) return null;
   return [...(ag.declines || [])].reverse().find((d) => d.responseKey === responseKey(r)) || null;
 }
-// The buyers' request to cancel a contract (Request cancellation in their B2B Portal,
-// with why): their latest answer to its version, when it's that — or null.
-export function cancelRequestOf(ag) {
-  const r = latestBuyerResponse(ag);
-  return r?.kind === 'cancel' ? r : null;
+// The buyers' requests for changes to its version sent one after another with no
+// answer from the seller in between — while one waits, they can send more — oldest
+// first: the seller sees them all and answers them together (Decline request, or
+// sending it again). Their latest answer's run: [] when that isn't a request for changes.
+export function changeRequestBatch(ag) {
+  const mine = (ag?.buyerResponses || []).filter((r) => r.version === ag.version && (r.revision || 0) === (ag.revision || 0));
+  const latest = mine[mine.length - 1];
+  if (!latest || latest.kind !== 'changes') return [];
+  // Declined together, a run shares its decline (same reply, same time).
+  const tag = (r) => {
+    const d = (ag.declines || []).find((x) => x.responseKey === responseKey(r));
+    return d ? `${d.time || ''}|${d.at}|${d.message}` : '';
+  };
+  const run = [];
+  for (let i = mine.length - 1; i >= 0 && mine[i].kind === 'changes' && tag(mine[i]) === tag(latest); i -= 1) run.unshift(mine[i]);
+  return run;
 }
-// Delete contract, while it hasn't started (Scheduled or Proposed). One saved with
-// Buyer must approve can't be deleted until its buyers ask to cancel it.
-export const canDeleteAgreement = (ag) => (ag?.status === 'Scheduled' || ag?.status === 'Proposed') && (!ag.approval || !!cancelRequestOf(ag));
+// The ones still waiting for the seller (none once they declined them).
+export const openChangeRequests = (ag) => (declineOf(ag) ? [] : changeRequestBatch(ag));
+// The buyers' open request to cancel a contract that hasn't started (Proposed or
+// Scheduled; Request cancellation in their B2B Portal, with why): their latest answer
+// to its version, when it's that and the merchant hasn't rejected it — or null. While
+// it's open, the merchant cancels the contract (Cancel contract) or rejects the request
+// (Reject request); nothing else.
+export function cancelRequestOf(ag) {
+  if (ag?.status !== 'Proposed' && ag?.status !== 'Scheduled') return null;
+  const r = latestBuyerResponse(ag);
+  return r?.kind === 'cancel' && !declineOf(ag) ? r : null;
+}
+// Delete contract, while it hasn't started (Scheduled or Proposed). Never one saved
+// with Buyer must approve, before or after it's cancelled.
+export const canDeleteAgreement = (ag) => (ag?.status === 'Scheduled' || ag?.status === 'Proposed') && !ag.approval;
+// Cancel contract: only while its buyers' request to cancel it is open — it's
+// Cancelled right away (kept as history) and leaves their B2B Portal.
+export const canCancelAgreement = (ag) => !!cancelRequestOf(ag);
+// End contract: an Active one, or a Scheduled one its buyers didn't have to approve.
+// One they approved can't be ended before it starts (it's cancelled at their request:
+// Cancel contract).
+export const canEndAgreement = (ag) => ag?.status === 'Active' || (ag?.status === 'Scheduled' && !ag.approval);
+
+// ── A new version waiting for the buyers (Active, Buyer must approve) ─────────
+// The time now on the app's day (TODAY: the demo's in the prototype), as the B2B Portal
+// stamps the buyers' answers (storefront answerContract) — so the seller's changes and
+// the buyers' answers read in order in its Activities log.
+const nowOnToday = () => `${TODAY}T${new Date().toISOString().slice(11)}`;
+
+// Changing an Active contract saved with Buyer must approve sends the change to its
+// buyers as its next version (`pending`: { draft, staged, revision }) — the version in
+// force stays until they approve it, then the new one applies right away
+// (activateApproved). `draft`: the version's own fields (PENDING_FIELDS); `staged`: its
+// pricing and limits as edited, kept out of the lists until then. Sent again, it keeps
+// its version number and gets a new revision, as a proposal does.
+const PENDING_FIELDS = ['name', 'startDate', 'endDate', 'locationIds', 'applyLater', 'timezone', 'terms'];
+const pickPending = (x) => Object.fromEntries(PENDING_FIELDS.filter((k) => k in x).map((k) => [k, copyOf(x[k])]));
+// The version waiting for its buyers, read as a proposal (status Proposed, its version
+// and revision) — the buyers' answers, declines and seller updates are the contract's.
+// Null when there's none.
+export const pendingVersionOf = (ag) =>
+  ag?.status === 'Active' && ag.pending ? { ...ag, ...ag.pending.draft, status: 'Proposed', version: (ag.version || 0) + 1, revision: ag.pending.revision || 0 } : null;
+// The contract editor opened on it: the waiting version, as last sent.
+export const pendingDraft = (ag) => (ag?.pending ? { ...copyOf(ag), ...copyOf(ag.pending.draft) } : copyOf(ag));
+// Send to buyer on an Active contract (mutates `ag`): `draft` and `staged` become the
+// version waiting for its buyers. Sent again, the change goes in its Activities log
+// (`sellerUpdates`) as a new revision; their answers so far no longer count. `before`:
+// the db as it was, `db` with `staged` in place.
+export function sendPendingVersion(ag, draft, staged, db, before) {
+  const was = pendingVersionOf(ag);
+  const at = new Date().toISOString();
+  if (was) {
+    const revision = (ag.pending.revision || 0) + 1;
+    const note = agreementChanges(was, draft, db, withStagedTerms(before, ag.pending.staged));
+    ag.sellerUpdates = [...(ag.sellerUpdates || []), { version: was.version, revision, at: nowOnToday(), note }];
+    ag.pending = { draft: pickPending(draft), staged: copyOf(staged || noStagedTerms()), revision, sentAt: ag.pending.sentAt };
+  } else {
+    // `sentAt`: when it went to the buyers (the B2B Portal lists the newest first).
+    ag.pending = { draft: pickPending(draft), staged: copyOf(staged || noStagedTerms()), revision: 0, sentAt: at };
+  }
+  ag.updatedAt = at;
+}
+// New pricing and limits of the waiting version whose ids something else took since
+// it was sent get new ones (mutates `terms` and `staged`).
+function freshPendingIds(db, ag, terms, staged) {
+  ['base', 'quantity', 'limits'].forEach((key) => {
+    const isLimit = key === 'limits';
+    const map = staged[isLimit ? 'limits' : 'policies'];
+    terms[key] = terms[key].map((id) => {
+      const taken = ((isLimit ? db.limits : db.policies) || []).some((x) => x.id === id && x.contractId !== ag.id);
+      if (!taken || !map[id]) return id;
+      const all = withStagedTerms(db, staged);
+      const fresh = isLimit ? newLimitId(all) : demoPolicyId(all);
+      map[fresh] = { ...map[id], id: fresh };
+      delete map[id];
+      return fresh;
+    });
+  });
+}
+// Buyers approved the waiting version (`r`): it applies right away as the contract's
+// next version, as Save as version does — the version in force comes off, the new one
+// goes on (mutates `db`).
+function applyPendingVersion(db, ag, r) {
+  const staged = copyOf(ag.pending.staged || noStagedTerms());
+  const fields = copyOf(ag.pending.draft);
+  freshPendingIds(db, ag, fields.terms, staged);
+  // The lists as they were (saveStagedTerms replaces their entries), for what changed.
+  const was = { ...db, policies: [...(db.policies || [])], limits: [...(db.limits || [])] };
+  const draft = { ...copyOf(ag), ...fields, status: 'Active', revision: ag.pending.revision || 0 };
+  delete draft.pending;
+  db.agreements = db.agreements.map((a) => (a.id === ag.id ? draft : a));
+  saveStagedTerms(db, draft, staged);
+  const changes = agreementChanges(ag, draft, db, was);
+  unapplyAgreement(db, ag);
+  handOver(db, draft, true);
+  applyAgreement(db, draft);
+  addVersion(db, draft, `Approved by buyer${changes === 'No changes to terms' ? '' : ` · ${changes}`}`, r.at || TODAY);
+  dropOwnTerms(db, draft);
+}
 // A Proposed contract's state, from the buyer's latest answer to its version:
-// 'waiting' (none yet, or their request for changes was declined), 'approved',
-// 'changes' or 'cancel' (they asked to cancel it); null for any other.
+// 'waiting' (none yet, or their request for changes or to cancel it was declined),
+// 'approved', 'changes' or 'cancel' (they asked to cancel it); null for any other.
 export function proposalState(ag) {
   if (ag?.status !== 'Proposed') return null;
   const r = latestBuyerResponse(ag);
   return !r || declineOf(ag) ? 'waiting' : r.kind === 'approve' ? 'approved' : r.kind === 'cancel' ? 'cancel' : 'changes';
 }
 export const PROPOSAL_LABEL = { waiting: 'Awaiting buyer', approved: 'Buyer approved', changes: 'Changes requested', cancel: 'Cancellation requested' };
+// What a contract sent for its buyers' approval (Proposed, or an Active one's version
+// waiting for them: pendingVersionOf) needs from them — the B2B Portal's Action needed:
+// 'approve' (not answered yet: a new one, or sent again since they asked for changes),
+// 'declined' (the seller declined their request for changes) or 'rejected' (the seller
+// rejected their request to cancel it) — either way it's theirs to answer again; null
+// when it needs nothing from them.
+export function buyerActionOf(ag) {
+  if (proposalState(ag) !== 'waiting') return null;
+  const d = declineOf(ag);
+  return !d ? 'approve' : latestBuyerResponse(ag)?.kind === 'cancel' ? 'rejected' : 'declined';
+}
+// Its line where the buyers see what needs them (the B2B Portal link block): "CT-1000 ·
+// Version 2 is waiting for your approval", "CT-1000 · The seller declined your request
+// for changes" or "CT-1000 · The seller rejected your cancellation request"; '' when
+// nothing does. `action`: buyerActionOf's.
+export const buyerActionText = (ag, action = buyerActionOf(ag)) =>
+  !action
+    ? ''
+    : action === 'declined'
+      ? `${ag.number} · The seller declined your request for changes`
+      : action === 'rejected'
+        ? `${ag.number} · The seller rejected your cancellation request`
+        : `${ag.number} · Version ${ag.version || 1} is waiting for your approval`;
+// When a contract — or its version waiting for its buyers (pendingVersionOf) — last
+// changed, for the B2B Portal to list the newest first: the latest of when the seller
+// last saved or sent it (`updatedAt`; a waiting version: when it was sent), its Version
+// history and its Activities log (the seller's changes and declines, the buyers'
+// answers) for its versions — by the time each has (`time`), else its day. An ISO time
+// or a date; '' for none.
+// (A day alone reads as that day's start, before any time on it: the precise times
+// decide between changes made the same day.)
+export function lastUpdateOf(ag) {
+  if (!ag) return '';
+  const waiting = ag.status === 'Proposed' && !!ag.pending;
+  const its = (x) => (waiting ? x.version === ag.version : (x.version || 1) <= (ag.version || 1));
+  return (
+    [
+      // An Active one's `updatedAt` is its waiting version's once one was sent.
+      ...(waiting ? [ag.pending.sentAt || ag.updatedAt] : [ag.pending ? null : ag.updatedAt, ...(ag.history || []).map((h) => h.date)]),
+      ...[...(ag.sellerUpdates || []), ...(ag.declines || []), ...(ag.buyerResponses || [])].filter(its).map((x) => x.time || x.at),
+    ]
+      .filter(Boolean)
+      .map(String)
+      .sort()
+      .pop() || ''
+  );
+}
 // Buyers approved a proposal (their latest answer to its version, on or before its
 // start date): it's activated as the version they approved — Scheduled when it starts
 // later, Active when it starts today or has started — as Activate in its editor does.
@@ -151,13 +316,30 @@ export function activateApproved(db) {
       ag.history = [{ version: ag.version, date: r.at || TODAY, note: later ? `Approved by buyer, starts ${fmtDay(ag.startDate)}` : 'Approved by buyer, activated' }, ...(ag.history || [])];
       any = true;
     });
+  // A new version of an Active one, approved: it applies right away.
+  (db.agreements || [])
+    .filter((ag) => pendingVersionOf(ag))
+    .forEach((ag) => {
+      const r = latestBuyerResponse(pendingVersionOf(ag));
+      if (r?.kind !== 'approve') return;
+      applyPendingVersion(db, ag, r);
+      any = true;
+    });
   return any;
 }
+// An Active contract's new version waiting for its buyers (pendingVersionOf), as the
+// Contracts list and the company page's chip note it: "Version 2 awaiting buyer", or
+// "Changes requested" once they asked for changes to it; '' for any other.
+export function pendingNote(ag) {
+  const v = pendingVersionOf(ag);
+  if (!v) return '';
+  return proposalState(v) === 'changes' ? 'Changes requested' : `Version ${v.version} awaiting buyer`;
+}
 // Its status as it reads: a Proposed one the buyer asked to change reads "Changes
-// requested", and one its buyers asked to cancel (Proposed or Scheduled)
-// "Cancellation requested" (its status underneath doesn't change).
-export const statusLabel = (ag) =>
-  (ag?.status === 'Proposed' || ag?.status === 'Scheduled') && cancelRequestOf(ag) ? 'Cancellation requested' : proposalState(ag) === 'changes' ? 'Changes requested' : ag?.status;
+// requested", and one its buyers asked to cancel (Proposed or Scheduled) reads
+// "Cancellation requested" while the request is open (its status underneath doesn't
+// change).
+export const statusLabel = (ag) => (cancelRequestOf(ag) ? 'Cancellation requested' : proposalState(ag) === 'changes' ? 'Changes requested' : ag?.status);
 // The company's contracts sent to its buyers that aren't activated yet.
 export const proposedAgreements = (db, companyId) =>
   (db.agreements || []).filter((a) => a.companyId === companyId && a.status === 'Proposed').sort((a, b) => String(a.number).localeCompare(String(b.number)));
@@ -592,10 +774,16 @@ export function joinLaterLocations(db, c, locations) {
     .sort((a, b) => rank[a.status] - rank[b.status] || String(a.startDate).localeCompare(String(b.startDate)))
     .forEach((a) => {
       const joins = !!c.autoAddLocations && addsLaterLocations(a) && !joined.some((x) => meet(a, x));
+      // A version waiting for its buyers (pendingVersionOf) gets the same locations.
+      const waiting = a.pending?.draft;
       if (joins) {
         if (a.locationIds) a.locationIds = [...a.locationIds, ...locations.map((l) => l.id)];
+        if (waiting?.locationIds) waiting.locationIds = [...waiting.locationIds, ...locations.map((l) => l.id)];
         joined.push(a);
-      } else if (!a.locationIds) a.locationIds = had;
+      } else {
+        if (!a.locationIds) a.locationIds = had;
+        if (waiting && !waiting.locationIds) waiting.locationIds = had;
+      }
     });
   active.forEach((a) => applyAgreement(db, a));
   joined.filter(isLive).forEach((a) => addVersion(db, a, `Added ${joinAnd(locations.map((l) => l.name))}`));
@@ -812,6 +1000,19 @@ export function addVersion(db, ag, note, date = TODAY) {
   ag.updatedAt = new Date().toISOString();
   ag.history = [{ version: ag.version, date, note, snapshot: snapshotTerms(db, ag) }, ...(ag.history || [])];
 }
+// A change to a contract not activated yet (Proposed) — sent to its buyers again, or
+// activated with new terms: no new version. Its version takes the new terms (its
+// snapshot is taken again), the change goes in its Activities log (`sellerUpdates`
+// { version, revision, at, note } — the buyers see it in their B2B Portal), and it
+// gets a new revision: the buyers' answers so far no longer count
+// (latestBuyerResponse). Mutates `ag`.
+export function logProposalUpdate(db, ag, note) {
+  ag.revision = (ag.revision || 0) + 1;
+  ag.updatedAt = new Date().toISOString();
+  ag.sellerUpdates = [...(ag.sellerUpdates || []), { version: ag.version, revision: ag.revision, at: nowOnToday(), note }];
+  const snapshot = snapshotTerms(db, ag);
+  ag.history = (ag.history || []).map((h) => (h.version === ag.version && h.snapshot ? { ...h, snapshot } : h));
+}
 // The snapshot a version was saved with (the entry that made it; later ones of the
 // same version — started, expired, ended — don't carry one).
 export const versionSnapshot = (ag, version) => [...(ag.history || [])].reverse().find((h) => h.version === version && h.snapshot)?.snapshot || null;
@@ -831,6 +1032,8 @@ export function seedSnapshots(db) {
 // Take a contract's terms off and close it (mutates `db`).
 export function closeAgreement(db, ag, status, note, date = TODAY) {
   if (ag.status === 'Active') unapplyAgreement(db, ag);
+  // A version still waiting for its buyers goes with it.
+  delete ag.pending;
   ag.status = status;
   ag.history = [{ version: ag.version, date, note }, ...(ag.history || [])];
 }
@@ -871,7 +1074,7 @@ export function takeEffect(db, ag, date = TODAY) {
 }
 
 // The daily job: start Scheduled contracts whose start date has come (replacing the
-// Active one), expire Active ones whose end date has passed (their terms come off),
+// Active one) — or expire them, when their buyers' request to cancel is still open — expire Active ones whose end date has passed (their terms come off),
 // and Proposed ones whose start date passed before they were activated. Mutates `db`.
 export function syncContractDates(db) {
   // By start date; on the same day, the ones saved over others first (takesOver).
@@ -880,6 +1083,9 @@ export function syncContractDates(db) {
     .sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)) || (b.takesOver?.length ? 1 : 0) - (a.takesOver?.length ? 1 : 0))
     .forEach((ag) => {
       if (ag.status !== 'Scheduled') return; // ended before it started, by one that took over
+      // Its buyers' request to cancel it still open on its start date: it doesn't start —
+      // it expires (nothing of it applied) and leaves their B2B Portal.
+      if (cancelRequestOf(ag)) return closeAgreement(db, ag, 'Expired', 'Expired before it started', ag.startDate);
       takeEffect(db, ag, ag.startDate);
       ag.history = [{ version: ag.version, date: ag.startDate, note: 'Started' }, ...(ag.history || [])];
     });

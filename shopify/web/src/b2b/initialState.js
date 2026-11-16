@@ -101,7 +101,11 @@ export function buildInitialState(live = null) {
   if (Array.isArray(limits) && !beforeContractLimits) {
     // Limits saved before they had a created date take the seed's.
     const created = Object.fromEntries((s.db.limits || []).map((l) => [l.id, l.createdAt]));
-    s.db = stampContractLimits({ ...s.db, limits: upgradeLimits(limits).map((l) => (l.createdAt || !created[l.id] ? l : { ...l, createdAt: created[l.id] })) });
+    // A contract's limits the saved list doesn't have (added to the sample since it was
+    // saved, as CT-301's monthly review): the seed's, so its contract finds them.
+    const saved = new Set(limits.map((l) => l.id));
+    const missing = (s.db.limits || []).filter((l) => l.contractId && !saved.has(l.id));
+    s.db = stampContractLimits({ ...s.db, limits: [...upgradeLimits(limits).map((l) => (l.createdAt || !created[l.id] ? l : { ...l, createdAt: created[l.id] })), ...missing] });
   }
   injectOrderRequests(s.db, readOrderRequests());
   // What buyers sent from the storefront's B2B Portal (answers to upcoming contracts).

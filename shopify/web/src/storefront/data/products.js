@@ -71,9 +71,19 @@ export const B2B_PRICE_LISTS = { abc: TIER2, c1: TIER2 };
 
 // ── Order limits ────────────────────────────────────────────────────────────
 // The B2B app's order limits, as it last published them (its sample limits until
-// it has), checked against this store's catalog — the same checks the validation
-// function runs (b2b/limits.js). The B2B buyer is ABC Construction · Hanoi.
-const limitsDb = () => ({ products: PRODUCTS, limits: upgradeLimits(publishedOrderLimits() || dbSeed.limits) });
+// it has, with their contracts applied as the app applies them), checked against this
+// store's catalog — the same checks the validation function runs (b2b/limits.js). The
+// B2B buyer is ABC Construction · Hanoi.
+const seedLimits = () => contractsSeedDb().limits;
+// The published list with the contracts' limits it doesn't have yet (added to the
+// sample since the B2B app published it, as CT-301's monthly review — the app adds
+// them on its next load), or null when nothing's published.
+const withSeedContractLimits = (list) => {
+  if (!Array.isArray(list)) return null;
+  const ids = new Set(list.map((l) => l.id));
+  return [...list, ...seedLimits().filter((l) => l.contractId && !ids.has(l.id))];
+};
+const limitsDb = () => ({ products: PRODUCTS, limits: upgradeLimits(withSeedContractLimits(publishedOrderLimits()) || seedLimits()) });
 
 // A buyer signed in to a company location gets its B2B limits; anyone else the D2C
 // ones (a guest as a non-logged-in customer) — only in the version that has order
@@ -133,14 +143,16 @@ let seedContractsDb = null;
 const contractsSeedDb = () =>
   (seedContractsDb ||= stampContractLimits(syncContractDates(seedSnapshots(ownContractTerms(normalizeDb(dbSeed))))));
 export function contractsForSession(session) {
-  const none = { contract: null, upcoming: null, proposal: null };
+  const none = { contract: null, upcoming: null, proposal: null, regular: null };
   if (!versionFlags().agreements || !atLocation(session)) return none;
   const published = publishedContracts();
   const cards =
-    published?.v === 2
+    published?.v === 4
       ? published.at?.[`${session.companyKey}:${session.locationId}`] || none
       : portalContracts(contractsSeedDb(), session.companyKey, session.locationId);
-  let contract = withAnswers(cards.contract, session);
+  // Business account's terms outside its contract (portalContracts.js regularCard).
+  const regular = withoutOff(cards.regular || null);
+  let contract = withAnswers(withoutOff(cards.contract), session);
   let upcoming = withAnswers(cards.upcoming, session);
   let proposal = withAnswers(cards.proposal, session);
   if (proposal?.approvedOn && (!proposal.startDate || proposal.approvedOn <= proposal.startDate)) {
@@ -149,22 +161,37 @@ export function contractsForSession(session) {
     } else contract = proposal;
     proposal = null;
   }
-  return { contract, upcoming, proposal };
+  // What the proposal needs from them (agreements.js buyerActionOf): 'approve' — not
+  // answered yet — 'declined' — the seller declined their request for changes — or
+  // 'rejected' — the seller rejected their request to cancel it.
+  if (proposal) proposal = { ...proposal, action: proposal.declined ? (proposal.response?.kind === 'cancel' ? 'rejected' : 'declined') : proposal.response ? null : 'approve' };
+  return { contract, upcoming, proposal, regular };
 }
+// The Contract card (or Business account's terms) without the limits turned off since
+// the B2B app published it (a cart Demo case turns CT-301's monthly review off and on).
+function withoutOff(card) {
+  const off = new Set((publishedOrderLimits() || []).filter((l) => l.status !== 'Active').map((l) => l.id));
+  if (!card || !(card.limitDetails || []).some((d) => off.has(d.id))) return card;
+  const limitDetails = card.limitDetails.filter((d) => !off.has(d.id));
+  return { ...card, limitDetails, limits: limitDetails.map((d) => d.text) };
+}
+
 // A card as it shows, with what the buyer sent from here added to the answers the B2B
 // app published: `response`, the latest answer to its version — { kind, message, by,
 // at ("Jul 28, 2026"), mine } or null; `declined`, the seller's decline of that very
-// request for changes — { message, at } or null (one they sent since isn't declined);
+// request — for changes, or to cancel it — { message, at } or null (one they sent
+// since isn't declined);
 // `activities`, its Activities log (portalContracts.js activitiesOf) as `response`
-// reads, with `status` and `reply`; `approvedOn`, the day its latest answer approved it.
+// reads, with `status` and `reply`; `approvedOn`, the day its latest answer approved it;
+// `lastUpdate`, with what they sent since.
 function withAnswers(card, session) {
   if (!card) return null;
   const known = new Set((card.buyerResponses || []).map(responseKey));
   const sent = readBuyerEvents()
     .filter((e) => e.type === 'contract-response' && e.data?.number === card.number)
-    .map((e) => ({ ...e.data, at: String(e.at).slice(0, 10) }))
+    .map((e) => ({ ...e.data, at: String(e.at).slice(0, 10), time: e.at }))
     .filter((r) => !known.has(responseKey(r)));
-  const ag = { version: card.version, buyerResponses: [...(card.buyerResponses || []), ...sent], declines: card.declines || [] };
+  const ag = { version: card.version, revision: card.revision || 0, buyerResponses: [...(card.buyerResponses || []), ...sent], declines: card.declines || [], sellerUpdates: card.sellerUpdates || [] };
   const r = latestBuyerResponse(ag);
   const d = declineOf(ag);
   const view = (x) => ({ kind: x.kind, message: x.message || '', by: x.buyer || x.email || '', at: x.at ? fmtDay(x.at) : null, mine: !!x.email && x.email === session.email });
@@ -172,8 +199,9 @@ function withAnswers(card, session) {
     ...card,
     response: r ? view(r) : null,
     declined: d ? { message: d.message, at: fmtDay(d.at) } : null,
-    activities: activitiesOf(ag).map((a) => ({ ...view(a), version: a.version, status: a.status, reply: a.reply ? { message: a.reply.message, at: fmtDay(a.reply.at) } : null })),
+    activities: activitiesOf(ag).map((a) => ({ ...view(a), version: a.version, status: a.status, note: a.note || '', reply: a.reply ? { message: a.reply.message, at: fmtDay(a.reply.at) } : null })),
     approvedOn: r?.kind === 'approve' ? r.at : null,
+    lastUpdate: [card.lastUpdate, ...sent.map((x) => x.time || x.at)].filter(Boolean).sort().pop() || '',
   };
 }
 // Approve, Request changes with what should change, or Request cancellation with why:
@@ -181,7 +209,7 @@ function withAnswers(card, session) {
 // (api/customer/contract-response).
 export function answerContract(session, card, kind, message = '') {
   const at = `${TODAY}T${new Date().toISOString().slice(11)}`;
-  addBuyerEvent('contract-response', { number: card.number, version: card.version, kind, message: kind === 'approve' ? '' : message, buyer: session.contact || '', email: session.email || '' }, at);
+  addBuyerEvent('contract-response', { number: card.number, version: card.version, revision: card.revision || 0, kind, message: kind === 'approve' ? '' : message, buyer: session.contact || '', email: session.email || '' }, at);
 }
 
 // An account order's date ("Aug 28, 2026") as YYYY-MM-DD.
@@ -200,21 +228,67 @@ function spentForSession(session) {
   return spentSoFar([...orders, ...requests]);
 }
 
+// The weekly or monthly maximum in force for the buyer, whatever sets it (a contract's
+// order limit or one outside it) — the nearest one when there are several — with what
+// they ordered so far in its period and what's left of it, as the real portal's
+// backend works it out (lib/quota.js quotaFrom): { period, cap, review (a maximum sent
+// for review), spent, left }. Null without one, or when the order limit in force turned
+// its counting badge off. The B2B Portal's Business account and Contract card, and the
+// cart's progress bar (with the cart on top), show it.
+export function quotaInForce(session) {
+  const limits = orderLimitsForSession(session);
+  if (!limits || !periodBadgeForSession(session)) return null;
+  const caps = ['week', 'month']
+    .flatMap((period) => [
+      limits[`maxValue@${period}`] && { period, cap: limits[`maxValue@${period}`], review: false },
+      limits[`threshold@${period}`] && { period, cap: limits[`threshold@${period}`], review: true },
+    ])
+    .filter(Boolean);
+  if (!caps.length) return null;
+  const nearest = caps.map((c) => ({ ...c, spent: Number(limits.spent?.[c.period]) || 0 })).sort((a, b) => a.cap - a.spent - (b.cap - b.spent))[0];
+  return { ...nearest, left: Math.max(0, nearest.cap - nearest.spent) };
+}
+
 // The buyer's order limits, for the product page to show and count the order
 // against: each setting in force as a number, by its key — minValue, maxValue,
 // threshold and thresholdQty (the maximums sent for review), minQty, maxQty, and the weekly and
 // monthly maximums ('maxValue@week', 'threshold@month', …) — with what the buyer
 // ordered so far this week and month (`spent`, see spentSoFar). Null when none applies.
-export function orderLimitsForSession(session) {
-  if (!versionFlags().orderLimits) return null;
-  const rec = atLocation(session)
+const rulesForSession = (session) =>
+  atLocation(session)
     ? effectiveRules(limitsDb(), session.companyKey, session.locationId)
     : effectiveRulesForCustomer(limitsDb(), asCustomer(session));
+export function orderLimitsForSession(session) {
+  if (!versionFlags().orderLimits) return null;
+  const rec = rulesForSession(session);
   const out = {};
   Object.entries(rec.settings).forEach(([key, s]) => {
     if (s.mode === 'set' && Number(s.value) > 0) out[key] = Number(s.value);
   });
   return Object.keys(out).length ? { ...out, spent: spentForSession(session) } : null;
+}
+
+// Whether the order limit in force shows its weekly or monthly maximum's counting
+// badge in the cart and on the account page (its `periodBadge`, on unless turned off).
+export function periodBadgeForSession(session) {
+  if (!versionFlags().orderLimits) return false;
+  return rulesForSession(session).order?.limit?.periodBadge !== false;
+}
+
+// What's left of a weekly or monthly maximum in the period, with an order of
+// `subtotal` in — the nearest maximum when there are several: { period, left,
+// review (a maximum sent for review), spent (ordered so far in the period) }, or
+// null without one. `limits`: orderLimitsForSession's.
+export function periodLeft(limits, subtotal) {
+  if (!limits) return null;
+  const all = ['week', 'month'].flatMap((period) => {
+    const spent = Number(limits.spent?.[period]) || 0;
+    return [
+      limits[`maxValue@${period}`] && { period, left: limits[`maxValue@${period}`] - spent - subtotal, review: false, spent },
+      limits[`threshold@${period}`] && { period, left: limits[`threshold@${period}`] - spent - subtotal, review: true, spent },
+    ];
+  });
+  return all.filter(Boolean).sort((a, b) => a.left - b.left)[0] || null;
 }
 
 // What's wrong with the cart for the buyer (see cartProblems).
@@ -231,18 +305,26 @@ const cartLine = (sku, qty) => ({ sku, variantId: productBySku(sku)?.variants[0]
 
 // Prototype-only: the B2B demo account's cart cases (the cart drawer's Demo case).
 // Each sets the cart and turns ABC Hanoi's order maximum ($800, Block checkout —
-// ol7) on or off, saved like an edit in the B2B app so the app shows it too.
+// ol7), monthly maximum ($30,000 a month — ol8) and CT-301's monthly review ($10,000
+// a month — olc4, which outranks both) on or off, saved like an edit in the B2B app
+// so the app shows it too.
 export const CART_CASES = [
-  { id: 'product', label: 'Product blocks + product review', lines: [['701242784-HAALAND', 6], ['701242784-FODEN', 6]], orderMaximum: false },
-  { id: 'order', label: 'Order blocks + product review', lines: [['701242784-HAALAND', 5], ['701242784-FODEN', 6]], orderMaximum: true },
-  // Over ABC Hanoi review's $10,000 order maximum, with a jersey no product limit covers.
-  { id: 'order-review', label: 'Order review (over $10,000)', lines: [['701242808-HAALAND', 120]], orderMaximum: false },
+  { id: 'product', label: 'Product blocks + product review', lines: [['701242784-HAALAND', 6], ['701242784-FODEN', 6]], orderMaximum: false, monthlyMaximum: false, contractReview: true },
+  { id: 'order', label: 'Order blocks + product review', lines: [['701242784-HAALAND', 5], ['701242784-FODEN', 6]], orderMaximum: true, monthlyMaximum: false, contractReview: false },
+  // Over CT-301's $10,000 a month sent for review, with a jersey no product limit covers.
+  { id: 'order-review', label: 'Order review (over $10,000)', lines: [['701242808-HAALAND', 120]], orderMaximum: false, monthlyMaximum: false, contractReview: true },
+  // Within every limit, under the monthly maximum: the cart page says what's left this month.
+  { id: 'monthly', label: 'Within the monthly maximum ($30,000)', lines: [['701242808-HAALAND', 30]], orderMaximum: false, monthlyMaximum: true, contractReview: false },
 ];
+const CASE_LIMITS = { ol7: 'orderMaximum', ol8: 'monthlyMaximum', olc4: 'contractReview' };
 export function applyCartCase(c) {
-  const limits = publishedOrderLimits() || dbSeed.limits;
-  const max = limits.find((l) => l.id === 'ol7');
-  if (c.orderMaximum) publishOrderLimits(turnLimitOn(limits, max || dbSeed.limits.find((l) => l.id === 'ol7')));
-  else if (max) publishOrderLimits(limits.map((l) => (l.id === 'ol7' ? { ...l, status: 'Inactive' } : l)));
+  let limits = withSeedContractLimits(publishedOrderLimits()) || seedLimits();
+  Object.entries(CASE_LIMITS).forEach(([id, on]) => {
+    const limit = limits.find((l) => l.id === id);
+    if (c[on]) limits = turnLimitOn(limits, limit || seedLimits().find((l) => l.id === id));
+    else if (limit) limits = limits.map((l) => (l.id === id ? { ...l, status: 'Inactive' } : l));
+  });
+  publishOrderLimits(limits);
   return c.lines.map(([sku, qty]) => cartLine(sku, qty));
 }
 

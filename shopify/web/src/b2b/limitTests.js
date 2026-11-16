@@ -14,10 +14,12 @@ import { heldReason } from './components/HeldOrders.jsx';
 import { quantityProblem } from '../storefront/quantityProblem.js';
 
 // ── Set-up ──────────────────────────────────────────────────────────────────
-// The sample data exactly as the app starts with it (live contracts applied).
+// The sample data exactly as the app starts with it (live contracts applied), less
+// CT-301's monthly review (olc4): as a contract's order limit it outranks every order
+// limit at ABC, and the cases here are about the limits around it.
 const fresh = () => {
   const db = makeBaseState().db;
-  db.limits = upgradeLimits(db.limits);
+  db.limits = upgradeLimits(db.limits).filter((l) => l.id !== 'olc4');
   return withCatalog(db);
 };
 const draftOf = (d) => ({ ...newLimit(d.kind || 'order'), ...d });

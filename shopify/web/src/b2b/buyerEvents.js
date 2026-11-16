@@ -34,7 +34,8 @@ function applyBuyerEvent(db, e) {
   }
   if (e.type === 'contract-response') {
     const ag = (db.agreements || []).find((a) => a.number === d.number);
-    if (ag) ag.buyerResponses = [...(ag.buyerResponses || []), { ...d, at: day(e.at) }];
+    // `time`: when it was sent (the B2B Portal lists the contract changed last first).
+    if (ag) ag.buyerResponses = [...(ag.buyerResponses || []), { ...d, at: day(e.at), time: e.at }];
     return;
   }
   db.quotes = db.quotes || [];
@@ -60,8 +61,10 @@ function applyBuyerEvent(db, e) {
 
 // A contract's latest buyer response for the version it's on (Approve or Request
 // changes from its Upcoming contract card), or null — an answer to an earlier version
-// no longer counts once the contract was saved again.
-export const latestBuyerResponse = (ag) => [...(ag?.buyerResponses || [])].reverse().find((r) => r.version === ag.version) || null;
+// no longer counts once the contract was saved again, nor one to an earlier revision
+// (a proposal sent again without a new version, agreements.js logProposalUpdate).
+export const latestBuyerResponse = (ag) =>
+  [...(ag?.buyerResponses || [])].reverse().find((r) => r.version === ag.version && (r.revision || 0) === (ag.revision || 0)) || null;
 
 // Applies the events `db` hasn't applied yet, oldest first, then activates the
 // proposals buyers approved — those approved before too, while still Proposed

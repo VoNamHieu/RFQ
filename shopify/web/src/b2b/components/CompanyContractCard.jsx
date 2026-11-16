@@ -1,6 +1,6 @@
 import React from 'react';
 import { useStore } from '../store.jsx';
-import { openAgreements, proposedAgreements, canCreateAgreement, proposalState, PROPOSAL_LABEL, statusLabel } from '../agreements.js';
+import { openAgreements, proposedAgreements, canCreateAgreement, proposalState, PROPOSAL_LABEL, statusLabel, pendingNote } from '../agreements.js';
 import { SummaryHoverCard, contractSummaryItems } from './SummaryHoverCard.jsx';
 import { SideBlock, SideRow, BLOCK_HELP, backTo } from './companyLayout.jsx';
 
@@ -15,7 +15,9 @@ export function CompanyContractCard({ company }) {
   const returnTo = { view: 'company', selectedCompany: company.id, companyTab: 'agreement' };
   const open = (a) => dispatch({ type: 'OPEN_AGREEMENT_EDITOR', agreementId: a.id, returnTo });
   const create = () => dispatch({ type: 'OPEN_AGREEMENT_EDITOR', companyId: company.id, returnTo });
-  const label = (a) => (a.status === 'Active' ? a.number : a.status === 'Proposed' ? `${a.number} · ${PROPOSAL_LABEL[proposalState(a)]}` : `${a.number} · ${a.status}`);
+  // An Active one with a new version waiting for its buyers says so ("CT-302 · Version 2
+  // awaiting buyer", "CT-302 · Changes requested").
+  const label = (a) => (a.status === 'Active' ? (pendingNote(a) ? `${a.number} · ${pendingNote(a)}` : a.number) : a.status === 'Proposed' ? `${a.number} · ${PROPOSAL_LABEL[proposalState(a)]}` : `${a.number} · ${a.status}`);
   // Changes requested reads as its status (agreements.js statusLabel).
 
   return (

@@ -478,6 +478,11 @@ const limits = [
   // it on (CART_CASES): newer, it replaces ABC Hanoi review there.
   { id: 'ol7', createdAt: '2026-07-20', name: 'ABC Hanoi order maximum', kind: 'order', status: 'Inactive', maxAction: 'block', settings: orderSettings({ maxValue: set(800) }),
     storeWide: false, companyIds: [], locationKeys: ['c1::l1'], message: '' },
+  // Off until the storefront cart's demo case "Within the monthly maximum" turns it on
+  // (CART_CASES): ABC Hanoi's orders in a month can't go over $30,000, so the cart says
+  // what's left of it this month.
+  { id: 'ol8', createdAt: '2026-07-20', name: 'ABC Hanoi monthly maximum', kind: 'order', status: 'Inactive', maxAction: 'block', period: 'month', settings: orderSettings({ maxValue: set(30000) }),
+    storeWide: false, companyIds: [], locationKeys: ['c1::l1'], message: '' },
 ];
 // The contract copies of limits also assigned outside contracts (SPLIT), each right
 // after its regular one: CT-301 gives ABC its Filter case packs; CT-305's are for
@@ -485,11 +490,19 @@ const limits = [
 if (CONTRACTS) {
   const copies = { ol2: { ...contractCopy(limits, 'ol2'), companyIds: [] }, ol3: { ...contractCopy(limits, 'ol3'), companyIds: ['c1'] } };
   limits.splice(0, limits.length, ...limits.flatMap((l) => (copies[l.id] ? [l, copies[l.id]] : [l])));
+  // CT-301's own order limit (contracts only): ABC's $500 minimum, and orders over
+  // $10,000 in a month sent for review. As a contract's, it outranks ABC Hanoi review;
+  // the B2B Portal's Contract card shows what's left of it this month.
+  limits.push({ id: 'olc4', createdAt: '2026-01-03', name: 'ABC monthly review', kind: 'order', status: 'Active', maxAction: 'review', period: 'month',
+    settings: orderSettings({ minValue: set(500), maxValue: set(10000) }), storeWide: false, companyIds: ['c1'], locationKeys: [], message: '', forContracts: true });
 }
+// CT-301's limits: Filter case packs, and in Upcoming its monthly review (olc4).
+const ct301Limits = CONTRACTS ? ['ol3', 'olc4'] : ['ol3'];
 
 // Agreements (see agreements.js). ABC's CT-301 is live and its terms are the ones
 // assigned above (Distributor Tier 2, p8, p30, p6, Filter case packs — in Upcoming
-// the contract copies) — the rest of ABC's pricing is outside it.
+// the contract copies — and in Upcoming ABC monthly review) — the rest of ABC's
+// pricing is outside it.
 // It ends Aug 20, 2026 — within the renewal reminder. Vinh Phat's CT-305 is
 // scheduled for 2027; Song Hong's CT-274 expired (see its activity). Phu Thanh has a
 // contract per location: CT-302 (Ho Chi Minh City, Can Tho) and CT-303 (Vung Tau)
@@ -500,10 +513,10 @@ if (CONTRACTS) {
 // (seedSnapshots).
 const agreements = [
   { id: 'ag1', number: 'CT-301', name: '2026 annual terms', companyId: 'c1', locationIds: null, status: 'Active', version: 2, startDate: '2026-01-03', endDate: '2026-08-20',
-    terms: { base: ['p1', 'p8', 'p30'], quantity: ['p6'], limits: ['ol3'] },
+    terms: { base: ['p1', 'p8', 'p30'], quantity: ['p6'], limits: [...ct301Limits] },
     history: [
-      { version: 2, date: '2026-07-12', note: 'Added VLV-40 Contract Price', terms: { base: ['p1', 'p8', 'p30'], quantity: ['p6'], limits: ['ol3'] } },
-      { version: 1, date: '2026-01-03', note: 'Activated', terms: { base: ['p1', 'p8'], quantity: ['p6'], limits: ['ol3'] } },
+      { version: 2, date: '2026-07-12', note: 'Added VLV-40 Contract Price', terms: { base: ['p1', 'p8', 'p30'], quantity: ['p6'], limits: [...ct301Limits] } },
+      { version: 1, date: '2026-01-03', note: 'Activated', terms: { base: ['p1', 'p8'], quantity: ['p6'], limits: [...ct301Limits] } },
     ] },
   { id: 'ag2', number: 'CT-305', name: '2027 distributor terms', companyId: 'c2', locationIds: null, status: 'Scheduled', version: 1, startDate: '2027-01-01', endDate: '2027-12-31',
     terms: { base: ['p1'], quantity: [], limits: ['ol2', 'ol3'] },

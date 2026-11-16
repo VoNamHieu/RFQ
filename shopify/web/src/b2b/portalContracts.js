@@ -3,21 +3,23 @@
 // here from the B2B app's own data. The B2B app publishes them (persistence.js
 // CONTRACTS_KEY) and the storefront falls back to the seed's.
 //
-// For a company location: { contract, upcoming, proposal }, each null when there's none.
+// For a company location: { contract, upcoming, proposal, regular }, each null when
+// there's none.
 //   contract: the Active contract it buys under — { number, name, version, start, end,
-//     pricing (names), rules + details (contractRules), limits (each limit's line),
-//     limitDetails (contractLimits), prices (Preview prices), history (Version
-//     history: contractHistory) }.
+//     pricing (names), rules + details + basePricing + quantityPricing (contractRules),
+//     limits (each limit's line), limitDetails (contractLimits), prices (Preview
+//     prices), history (Version history: contractHistory) }.
 //   upcoming: the next Scheduled contract there, the one starting soonest, read-only —
-//     { number, name, version, start, end, pricing, rules, limits, limitDetails, prices }.
+//     as `contract`, without its history.
 //   proposal: a contract sent to its buyers to approve (Proposed) there, not expired —
 //     the one starting soonest — as `upcoming`.
+//   regular: what it buys under outside its contract, for Business account (regularCard).
 // Each also carries `startDate`, `approval`, and its buyers' answers and the seller's
 // declines, raw (`buyerResponses`, `declines`), for the storefront to work out its
 // answer and Activities log (activitiesOf).
-import { activeAt, appliesAt, agreementDatesLabel, termSummary, termSettings, liveContractPricing, companyAfterAgreement, contractPricingAfter, fmtDay, responseKey } from './agreements.js';
-import { kindOf, baseInScope, policyPriceBreakdown, productVariants, resolveDetail, withContractPricing, TODAY } from './pricing.js';
-import { limitRules } from './limits.js';
+import { activeAt, appliesAt, agreementDatesLabel, termSummary, termSettings, liveContractPricing, companyAfterAgreement, contractPricingAfter, fmtDay, responseKey, pendingVersionOf, withStagedTerms, lastUpdateOf, isContractTerm, openChangeRequests } from './agreements.js';
+import { kindOf, baseInScope, policyPriceBreakdown, productVariants, resolveDetail, withContractPricing, companyBaseEntries, companyQuantityEntries, hasOwnSlot, basePriceableNow, TODAY } from './pricing.js';
+import { limitRules, locationLimits, limitKey } from './limits.js';
 import { money } from './format.js';
 import { latestBuyerResponse } from './buyerEvents.js';
 
@@ -90,21 +92,26 @@ function pricingReader(db) {
   };
 }
 
-// Each of its pricings' rule on the card, by pricing name — a quantity pricing's
-// ranges ("10–49 units: 5% off · 50+ units: 10% off"), a base pricing's adjustment
-// then how many rules ("All products: 15% off · 3 rules") — and every rule, for its
-// View details, in `details` (portal.js contractRules).
-function contractRules(db, ag) {
+// Each pricing's rule on the card, by pricing name — a quantity pricing's ranges
+// ("10–49 units: 5% off · 50+ units: 10% off"), a base pricing's adjustment then how
+// many rules ("All products: 15% off · 3 rules") — and every rule, for its View
+// details, in `details`: a quantity pricing's also in full as the admin's version
+// view words it (`sections`: termSettings — its products, its quantity ranges, the
+// price the discount comes off). `basePricing`, `quantityPricing`: which are which (the
+// card shows each kind as one line, listed in its View details). `base`, `quantity`:
+// the pricings' configs — a contract's terms, or what a location buys under outside
+// it (Business account). As portal.js pricingRules.
+function pricingRules(db, base, quantity) {
   const read = pricingReader(db);
   const rules = {};
   const details = {};
-  ag.terms.quantity.map((id) => policyOf(db, id)).filter(Boolean).forEach((p) => {
+  quantity.forEach((p) => {
     const { rows } = read(p);
     if (!rows.length) return;
     rules[p.name] = rows.map((r) => `${r.on}: ${r.adjust}`).join(' · ');
-    details[p.name] = { rows, own: [] };
+    details[p.name] = { rows, own: [], sections: termSettings(db, { ...p, priceKind: 'quantity' }, false) };
   });
-  ag.terms.base.map((id) => policyOf(db, id)).filter(Boolean).forEach((p) => {
+  base.forEach((p) => {
     const { rows, own, all } = read(p);
     const parts = [];
     if (all) parts.push(`${rows[0].on}: ${rows[0].adjust}`);
@@ -114,12 +121,28 @@ function contractRules(db, ag) {
     rules[p.name] = parts.join(' · ');
     details[p.name] = { rows, own };
   });
-  return { rules, details };
+  return { rules, details, basePricing: base.map((p) => p.name), quantityPricing: quantity.map((p) => p.name) };
 }
+const contractRules = (db, ag) =>
+  pricingRules(
+    db,
+    ag.terms.base.map((id) => policyOf(db, id)).filter(Boolean),
+    ag.terms.quantity.map((id) => policyOf(db, id)).filter(Boolean),
+  );
 
-// Its order limits in full, for their View details (portal.js contractLimits):
-// [{text, name, rows [{on, note, limit}]}], `text` the limit's line on the card.
-function contractLimits(db, ag) {
+// Its order limits in full, for their View details (portal.js contractLimits).
+const contractLimits = (db, ag) =>
+  limitCards(
+    db,
+    ag.terms.limits.map((id) => (db.limits || []).find((l) => l.id === id)).filter((l) => l && l.status === 'Active'),
+  );
+
+// Any limits (their configs) in full — a contract's, or the ones a location buys under
+// outside it (Business account) — as portal.js limitCards: [{id, text, name, kind,
+// rows [{on, note, limit}], quota}], `text` the limit's line; `quota`, an order limit's
+// maximum counted per week or month — { period, cap, review (sent for review) } — for
+// the Contract card to show what's left of it.
+function limitCards(db, limits) {
   const words = (r) =>
     r.key === 'thresholdQty' && r.value != null
       ? `Orders over ${r.value} units are sent for approval`
@@ -147,17 +170,17 @@ function contractLimits(db, ag) {
       .join(', ');
     return text ? text[0].toUpperCase() + text.slice(1) : '';
   };
-  return ag.terms.limits
-    .map((id) => (db.limits || []).find((l) => l.id === id))
-    .filter((l) => l && l.status === 'Active')
-    .map((l) => {
-      const rules = limitRules(l, db);
-      const rows =
-        l.kind === 'order'
-          ? rules.map((r) => ({ on: PER[r.key?.split('@')[1]] || 'Each order', note: null, limit: words(r) }))
-          : rules.map((r) => ({ ...appliesTo(r.rule), limit: quantities(r.rule, l.maxAction === 'review') }));
-      return { text: rules.map(words).join(' · '), name: l.name, rows };
-    });
+  return limits.map((l) => {
+    const rules = limitRules(l, db);
+    const rows =
+      l.kind === 'order'
+        ? rules.map((r) => ({ on: PER[r.key?.split('@')[1]] || 'Each order', note: null, limit: words(r) }))
+        : rules.map((r) => ({ ...appliesTo(r.rule), limit: quantities(r.rule, l.maxAction === 'review') }));
+    // Not when the limit turned its counting badge off (periodBadge).
+    const per = l.kind === 'order' && l.periodBadge !== false ? rules.find((r) => r.key?.includes('@') && r.value != null) : null;
+    const quota = per ? { period: per.key.split('@')[1], cap: per.value, review: per.key.startsWith('threshold') } : null;
+    return { id: l.id, text: rules.map(words).join(' · '), name: l.name, kind: l.kind, rows, ...(quota ? { quota } : {}) };
+  });
 }
 
 // Its Version history, newest first (portal.js contractHistory): [{version, date,
@@ -245,16 +268,22 @@ function contractHistory(db, ag, company) {
 // covers, with its store price, what the buyer pays and the pricing that decides it —
 // [{id, title, sku, image, store, pays, pricing, off}]. An Active contract lists the
 // ones its own pricing decides; an upcoming or proposed one, what the buyer will pay
-// once it starts.
-function contractPrices(db, ag, company, locationId, upcoming) {
-  const change = upcoming ? { start: ag } : null;
+// once it starts — or, a new version of an Active one (`change` { off, on }), once
+// it applies.
+function contractPrices(db, ag, company, locationId, upcoming, change = upcoming ? { start: ag } : null) {
   const c = upcoming ? companyAfterAgreement(db, change, ag.companyId) : company;
-  const location = (c?.locations || []).find((l) => l.id === locationId) || null;
   const pricing = pricingOf(db, ag);
   const names = new Set(pricing.map((p) => p.name));
+  const entries = pricedEntries(db, c, locationId, pricing, upcoming ? contractPricingAfter(db, change, ag) : liveContractPricing(db));
+  return entries.filter((e) => e.pays != null && (upcoming || names.has(e.pricing)));
+}
+// Each variant of the products `pricing` (configs) covers, priced for company `c` at
+// `locationId` with the contracts' pricing `contractPricing` in force.
+function pricedEntries(db, c, locationId, pricing, contractPricing) {
+  const location = (c?.locations || []).find((l) => l.id === locationId) || null;
   const covers = (p, product) => (kindOf(p) === 'base' ? baseInScope(p, product) : policyPriceBreakdown(p, product)?.inScope);
   const products = (db.products || []).filter((product) => pricing.some((p) => covers(p, product)));
-  const entries = withContractPricing(upcoming ? contractPricingAfter(db, change, ag) : liveContractPricing(db), () =>
+  return withContractPricing(contractPricing, () =>
     products.flatMap((p) =>
       productVariants(p).map((v) => {
         const d = resolveDetail(c, p, db.policies, v, location);
@@ -272,26 +301,87 @@ function contractPrices(db, ag, company, locationId, upcoming) {
       }),
     ),
   );
-  return entries.filter((e) => e.pays != null && (upcoming || names.has(e.pricing)));
 }
 
-// `kind`: 'contract' (Active), 'upcoming' (Scheduled) or 'proposal' (Proposed).
-function cardOf(db, ag, company, locationId, kind) {
+// A company location's own pricing and limits — what it buys under outside its
+// contract — as the admin's Location page reads them (CompanyPricingCard,
+// LocationLimitsCard), for the B2B Portal's Business account (the real portal's
+// backend regularTermsAt):
+//   base, quantity: the base and quantity pricings in force there (the location's own
+//     list, else its company's), leaving out what a contract gives it;
+//   limits [{ limit, replacedBy }]: the order and product limits in force there that no
+//     contract gives; `replacedBy` the number of the contract whose limit applies
+//     instead (a contract's order limit replaces the location's), else null. One a
+//     limit outside any contract replaces doesn't apply, so it isn't listed.
+export function regularTermsAt(db, companyId, locationId) {
+  const none = { base: [], quantity: [], limits: [] };
+  const company = (db.companies || []).find((c) => c.id === companyId);
+  const location = (company?.locations || []).find((l) => l.id === locationId);
+  if (!company || !location) return none;
+  const holder = (kind) => (hasOwnSlot(location, kind) ? location : company);
+  const own = (e) => !e.byContract && !isContractTerm(e.policy);
+  // With the live contracts' pricing in (restored after), so what they give is known.
+  const { base, quantity } = withContractPricing(liveContractPricing(db), () => ({
+    base: companyBaseEntries(holder('base'), db.policies)
+      .filter((e) => own(e) && basePriceableNow(e.policy, holder('base')))
+      .map((e) => e.policy),
+    quantity: companyQuantityEntries(holder('quantity'), db.policies)
+      .filter((e) => own(e) && e.policy.status !== 'Inactive')
+      .map((e) => e.policy),
+  }));
+  const contractOfLimit = (l) => {
+    const at = l?.contractAt || {};
+    return at[limitKey(companyId, locationId)] || at[`${companyId}::*`] || null;
+  };
+  const limits = locationLimits(db, companyId, locationId)
+    .filter((x) => !x.contract)
+    .map((x) => {
+      const by = x.rules.length && x.rules.every((r) => r.replacedBy) ? x.rules[0].replacedBy : null;
+      return { limit: x.limit, by, replacedBy: by ? contractOfLimit(by) : null };
+    })
+    .filter((x) => !x.by || x.replacedBy)
+    .map(({ limit, replacedBy }) => ({ limit, replacedBy }));
+  return { base, quantity, limits };
+}
+
+// Business account's terms outside its contract, shaped as a contract card (portal.js
+// business.regular): { pricing (names), rules, details, basePricing, quantityPricing,
+// prices (what its own base pricings price there), limits, limitDetails (each with
+// `replacedBy`) } — or null when it has none.
+function regularCard(db, company, locationId) {
+  const own = regularTermsAt(db, company.id, locationId);
+  const cards = limitCards(db, own.limits.map((x) => x.limit)).map((c, i) => ({ ...c, replacedBy: own.limits[i].replacedBy }));
+  if (!own.base.length && !own.quantity.length && !cards.length) return null;
+  const names = new Set(own.base.map((p) => p.name));
+  return {
+    pricing: [...own.base, ...own.quantity].map((p) => p.name),
+    ...pricingRules(db, own.base, own.quantity),
+    prices: pricedEntries(db, company, locationId, own.base, liveContractPricing(db)).filter((e) => e.pays != null && names.has(e.pricing)),
+    limits: cards.map((c) => c.text),
+    limitDetails: cards,
+  };
+}
+
+// `kind`: 'contract' (Active), 'upcoming' (Scheduled) or 'proposal' (Proposed). `change`:
+// for a new version of an Active one, what approving it does ({ off, on }).
+function cardOf(db, ag, company, locationId, kind, change) {
   const upcoming = kind !== 'contract';
   const limitDetails = contractLimits(db, ag);
-  const { rules, details } = contractRules(db, ag);
   return {
     number: ag.number,
     name: ag.name,
     version: ag.version || 1,
+    // Sent again without a new version (agreements.js logProposalUpdate): answers go to it.
+    revision: ag.revision || 0,
     start: day(ag.startDate),
     end: day(ag.endDate),
     pricing: pricingOf(db, ag).map((p) => p.name),
-    rules,
-    ...(upcoming ? {} : { details }),
+    // Its pricings' rules, in full, and which are base or quantity pricings — every card
+    // lists each kind in its View details.
+    ...contractRules(db, ag),
     limits: limitDetails.map((l) => l.text),
     limitDetails,
-    prices: contractPrices(db, ag, company, locationId, upcoming),
+    prices: contractPrices(db, ag, company, locationId, upcoming, change),
     ...(kind === 'contract' ? { history: contractHistory(db, ag, company) } : {}),
     startDate: ag.startDate || null,
     // Saved with Buyer must approve: an upcoming one can be asked to cancel.
@@ -301,32 +391,56 @@ function cardOf(db, ag, company, locationId, kind) {
     // from them (storefront/data/products.js contractsForSession, activitiesOf).
     buyerResponses: ag.buyerResponses || [],
     declines: ag.declines || [],
+    // What the seller changed before activating it, for its Activities log.
+    sellerUpdates: ag.sellerUpdates || [],
+    // When it last changed: the B2B Portal lists the newest first (lastUpdateOf).
+    lastUpdate: lastUpdateOf(ag),
   };
 }
 
 // A contract's Activities log, as the real portal's backend's (portal.js
-// activitiesOf): every answer its buyers sent, newest first — Approve, Request changes,
-// Request cancellation — raw ({ kind, message, buyer, email, at, version }) with
-// `status` for a request (Awaiting review: the latest answer to its version;
-// Rejected: the seller declined it, `reply` { message, at }; New version sent; Closed:
-// they answered again on that version) and none for an approval. `ag`: { version,
-// buyerResponses, declines }.
+// activitiesOf): every answer its buyers sent — Approve, Request changes, Request
+// cancellation — raw ({ kind, message, buyer, email, at, version }) with `status` for
+// a request (Awaiting review: the latest answer to its version; Rejected: the seller
+// declined it, `reply` { message, at }; New version sent; Updated by seller: sent
+// again without a new version; Closed: they answered again on it) and none for an
+// approval — and each change the seller made before activating it ({ kind: 'updated',
+// note, at, version }), newest first. `ag`: { version, revision, buyerResponses,
+// declines, sellerUpdates }.
 export function activitiesOf(ag) {
   const latest = latestBuyerResponse(ag);
-  return (ag.buyerResponses || [])
-    .map((r) => {
-      if (r.kind === 'approve') return { ...r, status: null, reply: null };
-      const d = (ag.declines || []).find((x) => x.responseKey === responseKey(r));
-      const status = d ? 'Rejected' : r === latest ? 'Awaiting review' : r.version < (ag.version || 1) ? 'New version sent' : 'Closed';
-      return { ...r, status, reply: d ? { message: d.message, at: d.at } : null };
-    })
+  // Requests for changes sent one after another, none answered yet: all waiting.
+  const open = new Set(openChangeRequests(ag));
+  const answers = (ag.buyerResponses || []).map((r) => {
+    if (r.kind === 'approve') return { ...r, status: null, reply: null };
+    const d = (ag.declines || []).find((x) => x.responseKey === responseKey(r));
+    const status = d
+      ? 'Rejected'
+      : r === latest || open.has(r)
+        ? 'Awaiting review'
+        : r.version < (ag.version || 1)
+          ? 'New version sent'
+          : (r.revision || 0) < (ag.revision || 0)
+            ? 'Updated by seller'
+            : 'Closed';
+    return { ...r, status, reply: d ? { message: d.message, at: d.at } : null };
+  });
+  const updates = (ag.sellerUpdates || []).map((u) => ({ kind: 'updated', note: u.note || '', at: String(u.at || '').slice(0, 10), version: u.version, revision: u.revision, status: null, reply: null }));
+  // In order: by version, then revision — the seller's change opens its revision, the
+  // answers to it follow — then as they came.
+  const key = (x, i) => [x.version || 1, x.revision || 0, x.kind === 'updated' ? 0 : 1, i];
+  return [...updates, ...answers]
+    .map((x, i) => ({ x, k: key(x, i) }))
+    .sort((a, b) => a.k.reduce((d, v, j) => d || v - b.k[j], 0))
+    .map(({ x }) => x)
     .reverse();
 }
 
-// The cards for one company location: { contract, upcoming, proposal }.
+// The cards for one company location: { contract, upcoming, proposal, regular }
+// (`regular`: Business account's terms outside its contract, regularCard).
 export function portalContracts(db, companyId, locationId) {
   const company = (db.companies || []).find((c) => c.id === companyId);
-  if (!company || !(company.locations || []).some((l) => l.id === locationId)) return { contract: null, upcoming: null, proposal: null };
+  if (!company || !(company.locations || []).some((l) => l.id === locationId)) return { contract: null, upcoming: null, proposal: null, regular: null };
   const active = activeAt(db, company, locationId);
   // The company's contracts there with this status, the one starting soonest.
   const soonest = (status, ok = () => true) =>
@@ -336,23 +450,37 @@ export function portalContracts(db, companyId, locationId) {
   const next = soonest('Scheduled');
   // Its start date passed, a proposal has expired (the B2B app closes it when it loads).
   const proposed = soonest('Proposed', (a) => !a.startDate || a.startDate >= TODAY);
+  // A new version of an Active one there (or one it would apply at) waiting for its
+  // buyers: the proposal before any other — approved, it applies right away
+  // (`startDate` null), and it can't be asked to cancel (`update`).
+  const updating = (db.agreements || [])
+    .map(pendingVersionOf)
+    .find((v) => v && v.companyId === companyId && (appliesAt(company, v, locationId) || appliesAt(company, (db.agreements || []).find((a) => a.id === v.id), locationId)));
+  const update = updating
+    ? {
+        ...cardOf(withStagedTerms(db, updating.pending.staged), updating, company, locationId, 'proposal', { off: (db.agreements || []).find((a) => a.id === updating.id), on: updating }),
+        startDate: null,
+        update: true,
+      }
+    : null;
   return {
     contract: active ? cardOf(db, active, company, locationId, 'contract') : null,
     upcoming: next ? cardOf(db, next, company, locationId, 'upcoming') : null,
-    proposal: proposed ? cardOf(db, proposed, company, locationId, 'proposal') : null,
+    proposal: update || (proposed ? cardOf(db, proposed, company, locationId, 'proposal') : null),
+    regular: regularCard(db, company, locationId),
   };
 }
 
-// Every company location with a card, keyed "<companyId>:<locationId>", as the B2B
-// app publishes them: { v: 2, at }.
+// Every company location with a card or terms of its own, keyed
+// "<companyId>:<locationId>", as the B2B app publishes them: { v: 4, at } (4: base and
+// quantity pricing kinds, every card's pricing details, a limit's `kind`, `regular`).
 export function publishablePortalContracts(db) {
   const at = {};
   (db.companies || []).forEach((c) => {
-    if (!(db.agreements || []).some((a) => a.companyId === c.id && ['Active', 'Scheduled', 'Proposed'].includes(a.status))) return;
     (c.locations || []).forEach((l) => {
       const cards = portalContracts(db, c.id, l.id);
-      if (cards.contract || cards.upcoming || cards.proposal) at[`${c.id}:${l.id}`] = cards;
+      if (cards.contract || cards.upcoming || cards.proposal || cards.regular) at[`${c.id}:${l.id}`] = cards;
     });
   });
-  return { v: 2, at };
+  return { v: 4, at };
 }

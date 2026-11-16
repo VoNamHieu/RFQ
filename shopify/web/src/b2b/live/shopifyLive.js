@@ -169,6 +169,23 @@ const APP_DATA_QUERY = `#graphql
     }
   }`;
 
+// What buyers sent (buyerEvents.js), on its own: the app picks it up while it's open
+// (store.jsx StoreProvider), so an answer to a contract reaches it without reopening.
+const BUYER_EVENTS_QUERY = `#graphql
+  query QsBuyerEvents {
+    currentAppInstallation {
+      buyerEvents: metafield(namespace: "${NAMESPACE}", key: "${BUYER_EVENTS_KEY}") { value }
+    }
+  }`;
+export async function fetchBuyerEvents() {
+  const data = await graphql(BUYER_EVENTS_QUERY);
+  try {
+    return JSON.parse(data.currentAppInstallation.buyerEvents?.value || '{}').events || [];
+  } catch {
+    return [];
+  }
+}
+
 const SAVE_MUTATION = `#graphql
   mutation QsSave($metafields: [MetafieldsSetInput!]!) {
     metafieldsSet(metafields: $metafields) {
@@ -670,7 +687,10 @@ export function storefrontOf(db, currency = 'USD') {
         products[p.gid] = message ? { ...r, message } : r;
       });
       const contract = contractOf(db, contracts, c, l);
-      locations[locationGid(l.id)] = { company: c.name, location: l.name, pricings, prices, tiers, order, messages, products, ...(contract ? { contract } : {}) };
+      // `periodBadge: false`: the order limit in force turned its counting badge off (the
+      // cart and the B2B Portal don't show what's left this week or month).
+      const badge = rec.order?.limit?.periodBadge === false ? { periodBadge: false } : {};
+      locations[locationGid(l.id)] = { company: c.name, location: l.name, pricings, prices, tiers, order, messages, products, ...badge, ...(contract ? { contract } : {}) };
     });
   });
   return { v: 1, currency, locations };

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Tabs, useWcId } from '../../../shared/wc.jsx';
+import { CdSection } from '../../components/companyLayout.jsx';
 
 // "Notification templates" card: every notification email in one list, a tab per
 // group (Registrations, and in the version with order limits and contracts, Order
@@ -20,26 +21,26 @@ export function NotificationTemplatesCard({
   const items = groups[groupIndex].items;
   const isToggleDisabled = !isConnected;
 
+  // The company page's look: the title above a bordered card — the tabs on top, then a
+  // row per notification, split by hairlines.
   return (
-    <s-section padding="none">
-      <s-box padding="base" paddingBlockEnd="none">
-        <s-heading>Notification templates</s-heading>
-      </s-box>
+    <CdSection title="Notification templates">
+      <div className="cd-card">
       <Tabs
         tabs={groups.map((g) => ({ id: g.id, content: g.label, badge: String(g.items.length) }))}
         selected={groupIndex}
         onSelect={(i) => setGroupId(groups[i].id)}
       />
-      <s-divider />
+      <div className="oth-divider" />
 
-      {items.map((item, i) => {
+      {items.map((item) => {
         const isEnabled = notifications[item.key];
         const to = recipientOf(item);
         const editTip = `${uid}-${item.key}-edit`;
 
         return (
-          <div key={item.key}>
-            <s-box padding="base">
+          <div key={item.key} className="oth-notif-row">
+            <div>
               {/* Three columns once the section column (beside the settings menu)
                   is wider than 520px, stacked below it. Values with commas are
                   quoted, or the comma in minmax() reads as the fallback's. */}
@@ -75,11 +76,11 @@ export function NotificationTemplatesCard({
                   <s-tooltip id={editTip}>Click to edit</s-tooltip>
                 </s-stack>
               </s-grid>
-            </s-box>
-            {i < items.length - 1 ? <s-divider /> : null}
+            </div>
           </div>
         );
       })}
-    </s-section>
+      </div>
+    </CdSection>
   );
 }
