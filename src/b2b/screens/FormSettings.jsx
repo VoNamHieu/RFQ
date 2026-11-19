@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../store.jsx';
-import { SaveBar, Tabs, Modal, useWcId } from '../../shared/wc.jsx';
+import { SaveBar, Tabs, Modal, useWcId, leaveWithConfirmation } from '../../shared/wc.jsx';
 import { CdPageHead, StatusDot } from '../components/companyLayout.jsx';
 import {
   BUILTIN_FIELDS, BUILTIN_ORDER, TEMPLATE_FIELDS, DEFAULT_FORM, writeRegistrationForm, readRegistrationForm, deleteRegistrationForm,
@@ -307,16 +307,18 @@ function EditorStep({ toast, backLabel, onBack, isNew = false, title: pageTitle 
               {badge}
             </span>
           }
-          back={{ label: backLabel, onAction: onBack }}
+          // Going back with unsaved changes asks first inside Shopify admin.
+          back={{ label: backLabel, onAction: () => leaveWithConfirmation(onBack) }}
           actionsOnTop
+          // They wait while there are unsaved changes (the save bar): saved, they're on.
           actions={
             <>
               {isNew ? null : (
-                <s-button tone="critical" onClick={() => setConfirmDelete(true)}>
+                <s-button tone="critical" disabled={dirty} onClick={() => setConfirmDelete(true)}>
                   Delete form
                 </s-button>
               )}
-              <s-button onClick={() => dispatch({ type: 'SET_REGISTRATION_FORM_OFF', off: !off })}>{off ? 'Turn form on' : 'Turn form off'}</s-button>
+              <s-button disabled={dirty} onClick={() => dispatch({ type: 'SET_REGISTRATION_FORM_OFF', off: !off })}>{off ? 'Turn form on' : 'Turn form off'}</s-button>
             </>
           }
         />

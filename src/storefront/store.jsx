@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useReducer } from 'react';
-import { accountForEmail, productBySku, b2bPriceFor } from './data/products.js';
+import { accountForEmail, productBySku, b2bPriceFor, startContractCase, DEMO_ACCOUNT } from './data/products.js';
 import { ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, HELD_ORDERS_KEY, CONTRACTS_KEY, BUYER_EVENTS_KEY } from '../shared/persistence.js';
 
 // Storefront state machine. Deliberately small — three pages (home / product /
@@ -147,7 +147,10 @@ export function unitPrice(sku, session) {
 const StoreContext = createContext(null);
 
 export function StoreProvider({ children }) {
-  const [state, dispatch] = useReducer(reducer, initialState);
+  // The contract demo case (?case=version-waiting) opens signed in, on the B2B Portal.
+  const [state, dispatch] = useReducer(reducer, initialState, (s) =>
+    startContractCase() ? { ...s, view: 'account', accountSection: 'portal', session: DEMO_ACCOUNT, quotes: DEMO_ACCOUNT.quotes || [], cart: DEMO_ACCOUNT.cart || s.cart } : s,
+  );
   useEffect(() => {
     const onStorage = (e) => {
       if (e.key === ORDER_LIMITS_KEY) dispatch({ type: 'LIMITS_CHANGED' });

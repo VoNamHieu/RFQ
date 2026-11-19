@@ -15,10 +15,15 @@ export function CompanyContractCard({ company }) {
   const returnTo = { view: 'company', selectedCompany: company.id, companyTab: 'agreement' };
   const open = (a) => dispatch({ type: 'OPEN_AGREEMENT_EDITOR', agreementId: a.id, returnTo });
   const create = () => dispatch({ type: 'OPEN_AGREEMENT_EDITOR', companyId: company.id, returnTo });
-  // An Active one with a new version waiting for its buyers says so ("CT-302 · Version 2
-  // awaiting buyer", "CT-302 · Changes requested").
-  const label = (a) => (a.status === 'Active' ? (pendingNote(a) ? `${a.number} · ${pendingNote(a)}` : a.number) : a.status === 'Proposed' ? `${a.number} · ${PROPOSAL_LABEL[proposalState(a)]}` : `${a.number} · ${a.status}`);
-  // Changes requested reads as its status (agreements.js statusLabel).
+  // A Scheduled or Active one with a request waiting says so (pendingNote: "CT-302 ·
+  // Version 2 awaiting buyer", "CT-302 · Changes requested", "CT-305 · Scheduled ·
+  // Changes requested").
+  const label = (a) =>
+    a.status === 'Active'
+      ? [a.number, pendingNote(a)].filter(Boolean).join(' · ')
+      : a.status === 'Proposed'
+        ? `${a.number} · ${PROPOSAL_LABEL[proposalState(a)]}`
+        : [a.number, a.status, pendingNote(a)].filter(Boolean).join(' · ');
 
   return (
     <SideBlock

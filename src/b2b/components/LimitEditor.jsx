@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { useStore } from '../store.jsx';
+import { useStore, limitEdited } from '../store.jsx';
 import { LIMIT_KINDS, limitErrors, normalizeLimit, limitOverlaps, productRules, ruleSkus, canReview, isLimitAssigned, limitTargetsLabel, isD2CLimit } from '../limits.js';
 import { money } from '../format.js';
 import { LimitOverlapMessage } from './LimitOverlapList.jsx';
 import { LimitRulesCard } from './LimitRulesCard.jsx';
 import { SelectCompaniesModal, CustomerTargetsBox, companyPicks } from './AssignmentCard.jsx';
-import { Modal, useWcId } from '../../shared/wc.jsx';
+import { Modal, useWcId, SaveBar, leaveWithConfirmation } from '../../shared/wc.jsx';
 import { CdPageHead, editorBackLabel } from './companyLayout.jsx';
 import { limitCatalog, withCatalog } from '../limitCatalog.js';
 import { isContractTerm } from '../agreements.js';
@@ -51,7 +51,10 @@ export function LimitEditor() {
   const scopeName = useWcId('limit-scope');
   const tipId = useWcId('limit-tip');
   const patch = (p) => dispatch({ type: 'LIMIT_EDITOR_PATCH', patch: p });
-  const close = () => dispatch({ type: 'CLOSE_LIMIT_EDITOR' });
+  // Edited since it opened: the save bar shows (Save / Discard) and Delete waits until
+  // it's saved or discarded; going back asks first inside Shopify admin.
+  const edited = limitEdited(state);
+  const close = () => leaveWithConfirmation(() => dispatch({ type: 'CLOSE_LIMIT_EDITOR' }));
 
   const isNew = !draft.id;
   const kind = LIMIT_KINDS[draft.kind];
@@ -188,6 +191,13 @@ export function LimitEditor() {
   // main column and Status side by side.
   return (
     <div className="cd-page">
+    {edited && (
+      <SaveBar
+        onSave={save}
+        onDiscard={() => dispatch({ type: 'DISCARD_LIMIT_EDITOR' })}
+        saveLabel={contract ? (isNew ? 'Add to contract' : 'Done') : isNew ? 'Create limit' : 'Save'}
+      />
+    )}
     <CdPageHead
       title={
         <span className="cd-inline">
@@ -199,18 +209,13 @@ export function LimitEditor() {
       back={{ label: contract ? contract.number : editorBackLabel(state, state.limitEditor.returnTo, 'Order limits'), onAction: close }}
       actionsOnTop
       actions={
-        <>
-          {/* A contract's own limit comes out of it in the contract editor. */}
-          {isNew || contract ? null : (
-            <s-button tone="critical" onClick={() => setConfirmDelete(true)}>
-              Delete
-            </s-button>
-          )}
-          <s-button onClick={close}>Cancel</s-button>
-          <s-button variant="primary" onClick={save}>
-            {contract ? (isNew ? 'Add to contract' : 'Done') : isNew ? 'Create limit' : 'Save'}
+        // A contract's own limit comes out of it in the contract editor. Save and Discard
+        // are on the save bar.
+        isNew || contract ? null : (
+          <s-button tone="critical" disabled={edited} onClick={() => setConfirmDelete(true)}>
+            Delete
           </s-button>
-        </>
+        )
       }
     />
     <s-query-container>

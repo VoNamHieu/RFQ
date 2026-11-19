@@ -511,9 +511,52 @@ function HeaderButton({ action }) {
   );
 }
 
-// Contextual save bar (App Bridge's save bar inside the admin): covers the top
-// bar while there are unsaved changes.
+// Inside Shopify admin (b2b/shopify.html: QS_EMBED 'shopify', App Bridge loaded) the
+// admin's own save bar is used; the prototype draws its look-alike.
+const adminSaveBar = () => typeof window !== 'undefined' && window.QS_EMBED === 'shopify' && !!window.shopify?.saveBar;
+const quietly = (fn) => {
+  try {
+    Promise.resolve(fn()).catch(() => {});
+  } catch {
+    /* not there */
+  }
+};
+// Leaving a page with unsaved changes: inside Shopify admin, the admin asks first
+// (App Bridge leaveConfirmation) and `go` runs once the merchant leaves; in the
+// prototype it goes right away.
+export function leaveWithConfirmation(go) {
+  if (!adminSaveBar()) return go();
+  try {
+    Promise.resolve(window.shopify.saveBar.leaveConfirmation()).then(go, () => {});
+  } catch {
+    go();
+  }
+  return undefined;
+}
+// The admin's save bar (App Bridge <ui-save-bar>), shown while it's mounted: Save is its
+// primary button, Discard the other.
+function AdminSaveBar({ onSave, onDiscard, saveLabel, discardLabel, saveDisabled }) {
+  const id = `qs-save-bar-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  useLayoutEffect(() => {
+    quietly(() => window.shopify.saveBar.show(id));
+    return () => quietly(() => window.shopify.saveBar.hide(id));
+  }, [id]);
+  return (
+    <ui-save-bar id={id}>
+      <button variant="primary" onClick={onSave} disabled={saveDisabled || !onSave}>
+        {saveLabel}
+      </button>
+      <button onClick={onDiscard} disabled={!onDiscard}>
+        {discardLabel}
+      </button>
+    </ui-save-bar>
+  );
+}
+
+// Contextual save bar: shown (mounted) while there are unsaved changes — the admin's own
+// inside Shopify admin, else a look-alike covering the top bar.
 export function SaveBar({ message = 'Unsaved changes', onSave, onDiscard, saveLabel = 'Save', discardLabel = 'Discard', saveDisabled }) {
+  if (adminSaveBar()) return <AdminSaveBar onSave={onSave} onDiscard={onDiscard} saveLabel={saveLabel} discardLabel={discardLabel} saveDisabled={saveDisabled} />;
   return (
     <div className="wc-savebar" role="region" aria-label={message}>
       <span>{message}</span>

@@ -81,7 +81,9 @@ export function Quota({ quota: q, note = null }) {
 // A contract in Contracts, framed: its header — title, where it stands (a badge), its
 // number and dates, and a chevron — opens and closes the rest. `open`: open at first.
 // `flag`: a second badge (red) — Action needed on a proposal that needs the buyer.
-function ContractPart({ title, status, flag = null, meta, open = false, children }) {
+// `tag`: beside the status, plain — a request of theirs waiting for the seller, the
+// status staying as it is.
+function ContractPart({ title, status, tag = null, flag = null, meta, open = false, children }) {
   const [isOpen, setOpen] = useState(open);
   return (
     <div className="pc-part">
@@ -89,7 +91,8 @@ function ContractPart({ title, status, flag = null, meta, open = false, children
         <span className="pc-stack">
           <span className="pc-title">
             <strong className="pc-part__title">{title}</strong>
-            <span className="badge">{status}</span>
+            <span className={`badge${status === 'Active' ? ' badge--blue' : ''}`}>{status}</span>
+            {tag ? <span className="badge">{tag}</span> : null}
             {flag ? <span className="badge badge--red">{flag}</span> : null}
           </span>
           <span className="muted">{meta}</span>
@@ -387,66 +390,47 @@ function SettingsTable({ sections }) {
 }
 
 // ── Contract ──────────────────────────────────────────────────────────────────
-// The company's Active contract at the buyer's location, read-only: its name as the
+// The company's Active contract at the buyer's location: its name as the
 // title, Activities log (once its buyers answered it) and Version history as links, its
 // number, version and dates, the weekly or monthly maximum its order limit sets with
 // what's ordered (`quota`), then Pricing beside Order limits (TermBoxes).
-export function ContractCard({ contract, quota = null, open = false }) {
-  const [modal, setModal] = useState(null); // 'history' | 'activities'
-  const close = () => setModal(null);
-  return (
-    <ContractPart title={contract.name || 'Contract'} status="Active" meta={`${contract.start || '—'} – ${contract.end || 'No end date'}`} open={open}>
-      <ContractName
-        name={null}
-        onLog={contract.activities?.length ? () => setModal('activities') : null}
-        onHistory={contract.history?.length ? () => setModal('history') : null}
-      />
-      <Facts contract={contract} />
-      {quota ? <Quota quota={quota} /> : null}
-      <TermBoxes terms={contract} number={contract.number} />
-
-      {modal === 'history' ? <ContractHistory contract={contract} onClose={close} /> : null}
-      {modal === 'activities' ? <ActivityLog number={contract.number} activities={contract.activities} onClose={close} /> : null}
-    </ContractPart>
-  );
-}
-
-// ── Upcoming contract and Contract proposal ──────────────────────────────────
-// A contract that hasn't started at the location, as its own part: its name (with
-// Activities log once its buyers answered it), its number, version and dates, then
-// Pricing beside Order limits (TermBoxes), and its actions at the bottom, right-aligned.
-//   Upcoming contract (Scheduled): it's agreed and starts on its date. Preview prices
-//     shows what the buyer pays once it starts; one that needs their approval can be
-//     asked to cancel (Request cancellation, with why).
-//   Contract proposal (Proposed): the seller sent it for the buyer to approve. They
-//     answer it — Approve, or under Request adjustment Request changes (what should
-//     change) or Request cancellation (why) — for the version they see. Approved, it's
-//     activated straight away: Scheduled when it starts later, Active when it has started.
-// As the real portal's (qs-b2b-portal FullPageExtension.jsx UpcomingContract).
-function NotStartedCard({ contract, session, locationName, proposal = false, onAnswered, open = false }) {
-  const [modal, setModal] = useState(null); // 'prices' | 'activities' | 'changes' | 'cancel'
+// One saved with Buyer must approve can be asked to change (Request changes, with what
+// should change) — not while a new version waits for them (`newVersion`: they answer
+// that one on its own card). It stays Active all along: while the seller hasn't answered
+// (they can send more meanwhile), "Change request awaiting review" beside it and its
+// terms applying; declined, as before — the seller's reply is in its Activities log. A
+// new version sent closes it.
+// They can also ask to cancel it (Request cancellation, with why) — both under Request
+// adjustment, as on an Upcoming contract: one kind at a time, no Request changes while a
+// new version waits for them. Asked to cancel it, it stays Active ("Cancellation request
+// awaiting review") until the seller answers: ended at their request, it leaves the B2B
+// Portal; declined, it stays — their reply in its Activities log.
+// The seller asked to end it (`endAsked`, saved with Buyer must approve — they can't end
+// it on their own): "End requested by seller" and Action needed, with their reason, until
+// they answer — Approve ending (it ends right away, with a version waiting for them) or
+// Decline (with why, if they want; it stays in force). Meanwhile no requests.
+export function ContractCard({ contract, session = null, onAnswered = () => {}, quota = null, open = false, waiting = null }) {
+  // A new version of it waiting for them (`waiting`): picked in its Version dropdown —
+  // shown first — or the version in force.
+  const [shown, setShown] = useState('new');
+  const [modal, setModal] = useState(null); // 'history' | 'activities' | 'changes' | 'cancel' | 'end-approve' | 'end-decline'
   const close = () => setModal(null);
   const [menu, setMenu] = useState(false); // Request adjustment's menu
   const [message, setMessage] = useState('');
   const [reason, setReason] = useState(''); // why they want to cancel it
+  const [why, setWhy] = useState(''); // why they decline ending it
+  const endAsked = !!session && contract.endAsked ? contract.endAsked : null;
+  // A new version waits for their answer (`newVersion`): they answer that one first —
+  // Request adjustment here is disabled (one thing at a time).
+  const versionWaits = !!session && !!contract.approval && !!contract.newVersion && !endAsked;
+  const requestable = !!session && !!contract.approval && !endAsked && !versionWaits;
   const response = contract.response;
-  // The seller declined their request, with a note: Changes declined, or Cancellation
-  // rejected — the buttons come back as before.
-  const declined = contract.declined;
-  // Their request for changes is with the seller: Awaiting review, and no Approve.
-  const awaiting = proposal && response?.kind === 'changes' && !declined;
-  // They asked to cancel it: Cancellation requested, and no Approve. Cancelled by the
-  // seller, it leaves the B2B Portal.
-  const cancelRequested = response?.kind === 'cancel' && !declined;
-  // Not a new version of the contract in force (`update`): that one isn't cancelled from here.
-  const canCancel = (proposal || contract.approval) && !cancelRequested && !contract.update;
-  // While they asked to cancel it, no other request; while a request for changes waits,
-  // more requests for changes but not one to cancel it — until the seller answers
-  // (declines or rejects it, or sends it again).
-  const canAskChanges = proposal && !cancelRequested;
-  const canAskCancel = canCancel && !awaiting;
+  const cancelRequested = requestable && response?.kind === 'cancel' && !contract.declined;
+  const awaiting = requestable && response?.kind === 'changes' && !contract.declined;
+  const canAskChanges = requestable && !cancelRequested;
+  const canAskCancel = requestable && !cancelRequested && !awaiting;
   const send = (kind) => {
-    answerContract(session, contract, kind, kind === 'changes' ? message.trim() : kind === 'cancel' ? reason.trim() : '');
+    answerContract(session, contract, kind, kind === 'changes' ? message.trim() : reason.trim());
     setMessage('');
     setReason('');
     close();
@@ -456,38 +440,328 @@ function NotStartedCard({ contract, session, locationName, proposal = false, onA
     setMenu(false);
     setModal(m);
   };
-  const status = cancelRequested
-    ? 'Cancellation requested'
-    : declined && response?.kind === 'cancel'
-      ? 'Cancellation rejected'
-      : !proposal
-        ? 'Scheduled'
-        : awaiting
-          ? 'Awaiting review'
-          : declined
-            ? 'Changes declined'
-            : 'Proposed';
+  const answerEnd = (kind) => {
+    answerContract(session, contract, kind, kind === 'end-decline' ? why.trim() : '');
+    setWhy('');
+    close();
+    onAnswered();
+  };
   return (
     <ContractPart
-      title={proposal ? 'Contract proposal' : 'Upcoming contract'}
-      status={status}
-      // Action needed: not answered yet, or the seller declined their request.
-      flag={proposal && (!response || declined) ? 'Action needed' : null}
-      meta={`${contract.number} · ${contract.start || '—'} – ${contract.end || 'No end date'}`}
+      title={contract.name || 'Contract'}
+      // Over (the B2B Portal keeps one they approved, or that was in force): how it ended.
+      status={contract.status || 'Active'}
+      tag={
+        waiting
+          ? `Version ${waiting.version} waiting for your approval`
+          : endAsked
+            ? 'End requested by seller'
+            : cancelRequested
+              ? 'Cancellation request awaiting review'
+              : awaiting
+                ? 'Change request awaiting review'
+                : null
+      }
+      flag={endAsked || waiting?.action ? 'Action needed' : null}
+      // Elsewhere in the company (`appliesTo`): where it applies.
+      // Over: when ("Ended Aug 21, 2026").
+      meta={[`${contract.start || '—'} – ${contract.end || 'No end date'}`, contract.appliesTo, contract.status && contract.closedOn ? `${contract.status} ${contract.closedOn}` : null].filter(Boolean).join(' · ')}
       open={open}
     >
+      {waiting ? <VersionPicker current={contract} waiting={waiting} running shown={shown} onChange={setShown} /> : null}
+      {waiting && shown === 'new' ? (
+        <NotStartedCard bare proposal contract={waiting} session={session} onAnswered={onAnswered} />
+      ) : (
+      <>
+      {/* The seller declined their request: a box with their reply, on top, which they can close. */}
+      {contract.sellerMessage?.kind?.startsWith('declined') && session ? <DeclinedBanner number={contract.number} m={contract.sellerMessage} /> : null}
+      <ContractName
+        name={null}
+        onLog={contract.activities?.length ? () => setModal('activities') : null}
+        onHistory={contract.history?.length ? () => setModal('history') : null}
+      />
+      <Facts contract={contract} />
+      {quota ? <Quota quota={quota} /> : null}
+      <TermBoxes terms={contract} number={contract.number} />
+      {awaiting || cancelRequested ? <p className="muted">Your current terms still apply until the seller replies.</p> : null}
+      {versionWaits ? <p className="muted">{`Version ${contract.newVersion} is waiting for your answer.`}</p> : null}
+      {/* The seller's message sent with it (not a decline: that's the box on top), said so, opened on its own. */}
+      {contract.sellerMessage?.kind === 'sent' && !endAsked && session ? (
+        <p className="muted">
+          {`The seller sent a message with this version on ${contract.sellerMessage.at}. `}
+          <a className="link pc-link" onClick={() => setModal('seller-message')}>
+            Seller’s message
+          </a>
+        </p>
+      ) : null}
+      {endAsked ? (
+        <div className="pc-stack">
+          <span className="muted">
+            {`The seller asked to end this contract on ${endAsked.at}. It stays in force until you answer.`}
+            {/* Their reason, in its own modal. */}
+            {endAsked.message ? (
+              <>
+                {' '}
+                <a className="link pc-link" onClick={() => setModal('end-message')}>
+                  Seller’s message
+                </a>
+              </>
+            ) : null}
+          </span>
+        </div>
+      ) : null}
+      {endAsked ? (
+        <div className="pc-foot">
+          <button className="acct-btn" onClick={() => setModal('end-decline')}>
+            Decline
+          </button>
+          <button className="button button--b2b button--sm" onClick={() => setModal('end-approve')}>
+            Approve ending
+          </button>
+        </div>
+      ) : canAskChanges || canAskCancel ? (
+        <div className="pc-foot">
+          <span className="pc-menu-wrap">
+            <button className="acct-btn" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>
+              Request adjustment
+            </button>
+            {menu ? (
+              <>
+                <span className="pc-menu-scrim" onClick={() => setMenu(false)} />
+                <span className="pc-menu" role="menu" aria-label="Contract requests">
+                  {canAskChanges ? (
+                    <button role="menuitem" onClick={() => pick('changes')}>
+                      Request changes
+                    </button>
+                  ) : null}
+                  {canAskCancel ? (
+                    <button role="menuitem" className="pc-menu--critical" onClick={() => pick('cancel')}>
+                      Request cancellation
+                    </button>
+                  ) : null}
+                </span>
+              </>
+            ) : null}
+          </span>
+        </div>
+      ) : versionWaits ? (
+        <div className="pc-foot">
+          <button className="acct-btn" disabled aria-disabled="true">
+            Request adjustment
+          </button>
+        </div>
+      ) : null}
+
+      {modal === 'history' ? <ContractHistory contract={contract} onClose={close} /> : null}
+      {modal === 'activities' ? <ActivityLog number={contract.number} activities={contract.activities} onClose={close} /> : null}
+      {modal === 'changes' ? <RequestChangesModal number={contract.number} message={message} setMessage={setMessage} onClose={close} onSend={() => send('changes')} /> : null}
+      {modal === 'cancel' ? <RequestCancellationModal number={contract.number} reason={reason} setReason={setReason} onClose={close} onSend={() => send('cancel')} /> : null}
+      {modal === 'end-message' && endAsked ? <SellerMessage number={contract.number} at={endAsked.at} message={endAsked.message} onClose={close} /> : null}
+      {modal === 'seller-message' && contract.sellerMessage ? <SellerMessage number={contract.number} at={contract.sellerMessage.at} message={contract.sellerMessage.message} onClose={close} /> : null}
+      {modal === 'end-approve' ? (
+        <Modal
+          title={`Approve ending ${contract.number}?`}
+          onClose={close}
+          footer={
+            <>
+              <button className="acct-btn" onClick={close}>
+                Cancel
+              </button>
+              <button className="button button--b2b button--sm" onClick={() => answerEnd('end-approve')}>
+                Approve ending
+              </button>
+            </>
+          }
+        >
+          <p>Its prices and order limits stop applying right away.</p>
+        </Modal>
+      ) : null}
+      {modal === 'end-decline' ? (
+        <Modal
+          title={`Decline ending ${contract.number}?`}
+          onClose={close}
+          footer={
+            <>
+              <button className="acct-btn" onClick={close}>
+                Cancel
+              </button>
+              <button className="button button--b2b button--sm" onClick={() => answerEnd('end-decline')}>
+                Decline
+              </button>
+            </>
+          }
+        >
+          <p>The contract stays in force.</p>
+          <div className="form-row">
+            <label className="field-label">Message to the seller (optional)</label>
+            <textarea className="textarea" rows="3" value={why} onChange={(e) => setWhy(e.target.value)} />
+          </div>
+        </Modal>
+      ) : null}
+      </>
+      )}
+    </ContractPart>
+  );
+}
+
+// A contract's Version dropdown, while a new version of it waits for them: that one
+// (to answer — shown first) or the version they approved (in force, or still starting
+// on its date). One card per contract.
+// Small, at the right: each option names its version.
+function VersionPicker({ current, waiting, shown, onChange, running = false }) {
+  return (
+    <select className="select pc-version-pick" aria-label="Version" value={shown} onChange={(e) => onChange(e.target.value)}>
+      <option value="new">{`Version ${waiting.version} · Waiting for your approval`}</option>
+      <option value="current">{`Version ${current.version} · ${running ? 'In force' : `Starts ${current.start || 'on its date'}`}`}</option>
+    </select>
+  );
+}
+
+// ── Upcoming contract and Contract proposal ──────────────────────────────────
+// A contract that hasn't started at the location, as its own part: its name (with
+// Activities log once its buyers answered it), its number, version and dates, then
+// Pricing beside Order limits (TermBoxes), and its actions at the bottom, right-aligned.
+//   Upcoming contract (Scheduled): it's agreed and starts on its date (what the buyer
+//     pays once it starts: Base pricing's View details → Preview prices); one that needs their approval can be
+//     asked, under Request adjustment, to change (Request changes — not while a new
+//     version waits for them, `newVersion`: they answer that one, on its own card) or
+//     to cancel (Request cancellation, with why). Asked to change, it stays Scheduled,
+//     with "Change request awaiting review" beside it until the seller answers; the
+//     version they approved still starts on its date.
+//   Contract proposal (Proposed): the seller sent it for the buyer to approve. They
+//     answer it — Approve, or under Request adjustment Request changes (what should
+//     change) or Request cancellation (why) — for the version they see. Approved, it's
+//     activated straight away: Scheduled when it starts later, Active when it has started.
+//     A new version of a contract they approved (`update`) is approved or declined
+//     (under Request adjustment, Decline only, with a message to the seller if they
+//     want): it closes and they keep the version they approved. While it waits, that
+//     contract's Request adjustment is disabled ("Version 2 is waiting for your answer"):
+//     one thing at a time — declined, the contract's comes back.
+// As the real portal's (qs-b2b-portal FullPageExtension.jsx UpcomingContract).
+function NotStartedCard({ contract, session, locationName, proposal = false, onAnswered, open = false, bare = false, waiting = null }) {
+  // A new version of it waiting for them (`waiting`): picked in its Version dropdown —
+  // shown first — or the version they approved.
+  const [shown, setShown] = useState('new');
+  const [modal, setModal] = useState(null); // 'activities' | 'changes' | 'cancel' | 'decline' | 'end-approve' | 'end-decline'
+  const close = () => setModal(null);
+  const [menu, setMenu] = useState(false); // Request adjustment's menu
+  const [message, setMessage] = useState('');
+  const [reason, setReason] = useState(''); // why they want to cancel it
+  const [note, setNote] = useState(''); // their message to the seller when they decline a new version
+  const [why, setWhy] = useState(''); // why they decline cancelling it (the seller asked)
+  const response = contract.response;
+  // The seller asked to cancel this Upcoming contract (`endAsked`, as an Active one's
+  // request to end it): "Cancellation requested by seller" and Action needed, with their
+  // reason, until they answer — Approve cancellation (it won't start) or Decline (with
+  // why, if they want; it still starts on its date). Meanwhile no requests.
+  const endAsked = !proposal && !!session && contract.endAsked ? contract.endAsked : null;
+  // The seller declined their request, with a note: Changes declined, or Cancellation
+  // declined — the buttons come back as before.
+  const declined = contract.declined;
+  // A new version of this Upcoming contract waits for their answer (`newVersion`): they
+  // answer that one first — Request adjustment here is disabled (one thing at a time).
+  const versionWaits = !proposal && !!contract.approval && !!contract.newVersion && !endAsked;
+  // A new version of a contract they approved (`update`): Approve, or Decline — its
+  // Request adjustment has Decline only.
+  const versionCard = proposal && !!contract.update;
+  // Can they ask for changes: a proposal, or an Upcoming contract they approved.
+  const changeable = proposal || (!!contract.approval && !versionWaits && !endAsked);
+  // Their request for changes is with the seller: a proposal reads Awaiting review, with
+  // no Approve; an Upcoming contract stays Scheduled, the request noted beside it.
+  const awaiting = changeable && response?.kind === 'changes' && !declined;
+  // They asked to cancel it: Cancellation requested, and no Approve. Cancelled by the
+  // seller, it leaves the B2B Portal.
+  const cancelRequested = response?.kind === 'cancel' && !declined;
+  // Not a new version of the contract in force (`update`): that one isn't cancelled from here.
+  const canCancel = (proposal || contract.approval) && !cancelRequested && !contract.update && !versionWaits && !endAsked;
+  // While they asked to cancel it, no other request; while a request for changes waits,
+  // more requests for changes but not one to cancel it — until the seller answers
+  // (declines or rejects it, or sends it again).
+  const canAskChanges = changeable && !cancelRequested && !versionCard;
+  const canAskCancel = canCancel && !awaiting;
+  // Answering a proposal: Approve — or, a new version of one they approved, Decline it.
+  const answerable = proposal && response?.kind !== 'approve' && !awaiting && !cancelRequested;
+  const canDecline = answerable && versionCard;
+  const send = (kind) => {
+    answerContract(session, contract, kind, kind === 'changes' ? message.trim() : kind === 'cancel' ? reason.trim() : kind === 'decline' ? note.trim() : '');
+    setMessage('');
+    setReason('');
+    setNote('');
+    close();
+    onAnswered();
+  };
+  const pick = (m) => {
+    setMenu(false);
+    setModal(m);
+  };
+  const answerEnd = (kind) => {
+    answerContract(session, contract, kind, kind === 'end-decline' ? why.trim() : '');
+    setWhy('');
+    close();
+    onAnswered();
+  };
+  // Its status stays (Proposed, or Scheduled) whatever they asked; their request is the
+  // tag beside it, in the same words as on an Active one — and on a proposal, the
+  // seller's decline of it (they answer it again).
+  const tag = endAsked
+    ? 'Cancellation requested by seller'
+    : cancelRequested
+      ? 'Cancellation request awaiting review'
+      : awaiting
+        ? 'Change request awaiting review'
+        : proposal && declined
+          ? response?.kind === 'cancel'
+            ? 'Cancellation request declined'
+            : 'Change request declined'
+          : null;
+  const body = (
+    <>
+      {/* The seller declined their request: a box with their reply, on top, which they can close. */}
+      {contract.sellerMessage?.kind?.startsWith('declined') ? <DeclinedBanner number={contract.number} m={contract.sellerMessage} /> : null}
       <ContractName name={contract.name} onLog={contract.activities?.length ? () => setModal('activities') : null} />
       <Facts contract={contract} />
       <TermBoxes terms={contract} number={contract.number} />
+      {!proposal && awaiting ? <p className="muted">{`The version you approved still starts on ${contract.start || 'its start date'}.`}</p> : null}
+      {versionWaits ? <p className="muted">{`Version ${contract.newVersion} is waiting for your answer.`}</p> : null}
+      {/* The seller's message sent with it (not a decline: that's the box on top), said so, opened on its own. */}
+      {contract.sellerMessage?.kind === 'sent' && !endAsked ? (
+        <p className="muted">
+          {`The seller sent a message with this version on ${contract.sellerMessage.at}. `}
+          <a className="link pc-link" onClick={() => setModal('seller-message')}>
+            Seller’s message
+          </a>
+        </p>
+      ) : null}
+      {endAsked ? (
+        <div className="pc-stack">
+          <span className="muted">
+            {`The seller asked to cancel this contract on ${endAsked.at}. It still starts on ${contract.start || 'its start date'} unless you approve.`}
+            {/* Their reason, in its own modal. */}
+            {endAsked.message ? (
+              <>
+                {' '}
+                <a className="link pc-link" onClick={() => setModal('end-message')}>
+                  Seller’s message
+                </a>
+              </>
+            ) : null}
+          </span>
+        </div>
+      ) : null}
       {/* Its actions at the bottom, right-aligned, under what they answer. */}
       <div className="pc-foot">
-        {!proposal ? (
-          <button className="acct-btn" onClick={() => setModal('prices')}>
-            Preview prices
-          </button>
+        {endAsked ? (
+          <>
+            <button className="acct-btn" onClick={() => setModal('end-decline')}>
+              Decline
+            </button>
+            <button className="button button--b2b button--sm" onClick={() => setModal('end-approve')}>
+              Approve cancellation
+            </button>
+          </>
         ) : null}
-        {/* Request changes and Request cancellation in one menu. */}
-        {canAskChanges || canAskCancel ? (
+        {/* Request changes and Request cancellation in one menu — a new version's Decline. */}
+        {canAskChanges || canAskCancel || canDecline ? (
           <span className="pc-menu-wrap">
             <button className="acct-btn" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>
               Request adjustment
@@ -506,68 +780,230 @@ function NotStartedCard({ contract, session, locationName, proposal = false, onA
                       Request cancellation
                     </button>
                   ) : null}
+                  {canDecline ? (
+                    <button role="menuitem" onClick={() => pick('decline')}>
+                      Decline
+                    </button>
+                  ) : null}
                 </span>
               </>
             ) : null}
           </span>
+        ) : (versionWaits || versionCard) && !endAsked ? (
+          <button className="acct-btn" disabled aria-disabled="true">
+            Request adjustment
+          </button>
         ) : null}
-        {proposal && response?.kind !== 'approve' && !awaiting && !cancelRequested ? (
+        {answerable ? (
           <button className="button button--b2b button--sm" onClick={() => send('approve')}>
             Approve
           </button>
         ) : null}
       </div>
 
-      {modal === 'prices' ? <ContractPrices contract={contract} locationName={locationName} onClose={close} /> : null}
       {modal === 'activities' ? <ActivityLog number={contract.number} activities={contract.activities} onClose={close} /> : null}
-      {modal === 'changes' ? (
+      {modal === 'changes' ? <RequestChangesModal number={contract.number} message={message} setMessage={setMessage} onClose={close} onSend={() => send('changes')} /> : null}
+      {modal === 'cancel' ? <RequestCancellationModal number={contract.number} reason={reason} setReason={setReason} onClose={close} onSend={() => send('cancel')} /> : null}
+      {modal === 'decline' ? (
         <Modal
-          title={`Request changes · ${contract.number}`}
+          title={`Decline version ${contract.version} · ${contract.number}?`}
           onClose={close}
           footer={
             <>
               <button className="acct-btn" onClick={close}>
                 Cancel
               </button>
-              <button className="button button--b2b button--sm" disabled={!message.trim()} onClick={() => send('changes')}>
-                Send
+              <button className="button button--b2b button--sm" onClick={() => send('decline')}>
+                Decline
               </button>
             </>
           }
         >
+          <p>{`You keep version ${contract.inForce || contract.version - 1}, the one you approved${contract.startDate ? `: it still starts on its date` : ': it stays in force'}. The seller sees your message.`}</p>
           <div className="form-row">
-            <label className="field-label">What should change?</label>
-            <textarea className="textarea" rows="4" value={message} onChange={(e) => setMessage(e.target.value)} />
+            <label className="field-label">Message to the seller (optional)</label>
+            <textarea className="textarea" rows="3" value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
         </Modal>
       ) : null}
-      {modal === 'cancel' ? (
+      {modal === 'end-message' && endAsked ? <SellerMessage number={contract.number} at={endAsked.at} message={endAsked.message} onClose={close} /> : null}
+      {modal === 'seller-message' && contract.sellerMessage ? <SellerMessage number={contract.number} at={contract.sellerMessage.at} message={contract.sellerMessage.message} onClose={close} /> : null}
+      {modal === 'end-approve' ? (
         <Modal
-          title={`Request cancellation · ${contract.number}`}
+          title={`Approve cancelling ${contract.number}?`}
           onClose={close}
           footer={
             <>
               <button className="acct-btn" onClick={close}>
-                Close
+                Cancel
               </button>
-              <button className="button button--b2b button--sm" disabled={!reason.trim()} onClick={() => send('cancel')}>
-                Send
+              <button className="button button--b2b button--sm" onClick={() => answerEnd('end-approve')}>
+                Approve cancellation
               </button>
             </>
           }
         >
+          <p>It won’t start, and none of its prices or order limits will apply.</p>
+        </Modal>
+      ) : null}
+      {modal === 'end-decline' ? (
+        <Modal
+          title={`Decline cancelling ${contract.number}?`}
+          onClose={close}
+          footer={
+            <>
+              <button className="acct-btn" onClick={close}>
+                Cancel
+              </button>
+              <button className="button button--b2b button--sm" onClick={() => answerEnd('end-decline')}>
+                Decline
+              </button>
+            </>
+          }
+        >
+          <p>{`It still starts on ${contract.start || 'its start date'}.`}</p>
           <div className="form-row">
-            <label className="field-label">Why do you want to cancel it?</label>
-            <textarea className="textarea" rows="4" value={reason} onChange={(e) => setReason(e.target.value)} />
+            <label className="field-label">Message to the seller (optional)</label>
+            <textarea className="textarea" rows="3" value={why} onChange={(e) => setWhy(e.target.value)} />
           </div>
         </Modal>
       ) : null}
+    </>
+  );
+  // Inside its contract's card (a new version picked there): its content alone.
+  if (bare) return body;
+  return (
+    <ContractPart
+      title={proposal ? 'Contract proposal' : 'Upcoming contract'}
+      status={proposal ? 'Proposed' : 'Scheduled'}
+      tag={waiting ? `Version ${waiting.version} waiting for your approval` : tag}
+      // Action needed: not answered yet, the seller declined their request, or the seller
+      // asked to cancel it — or a new version of it waits for them.
+      flag={endAsked || (proposal && (!response || declined)) || waiting?.action ? 'Action needed' : null}
+      meta={[contract.number, `${contract.start || '—'} – ${contract.end || 'No end date'}`, contract.appliesTo].filter(Boolean).join(' · ')}
+      open={open}
+    >
+      {waiting ? <VersionPicker current={contract} waiting={waiting} shown={shown} onChange={setShown} /> : null}
+      {waiting && shown === 'new' ? (
+        <NotStartedCard bare proposal contract={waiting} session={session} locationName={locationName} onAnswered={onAnswered} />
+      ) : (
+        body
+      )}
     </ContractPart>
   );
 }
 
-export function UpcomingContractCard({ contract, session, locationName, onAnswered, open = false }) {
-  return <NotStartedCard contract={contract} session={session} locationName={locationName} onAnswered={onAnswered} open={open} />;
+// The seller declined their request (for changes, or to cancel it): a box on top of the
+// card saying so, with the seller's reply. They can close it (✕); closed, it isn't shown
+// again for that decline — on this browser (as the real portal's shopify.storage).
+const DISMISSED_KEY = 'qsDismissedDeclines';
+const dismissedDeclines = () => {
+  try {
+    return JSON.parse(localStorage.getItem(DISMISSED_KEY)) || [];
+  } catch {
+    return [];
+  }
+};
+function DeclinedBanner({ number, m }) {
+  const key = `${number}@${m.time || m.at}`;
+  const [hidden, setHidden] = useState(() => dismissedDeclines().includes(key));
+  if (hidden) return null;
+  const close = () => {
+    setHidden(true);
+    try {
+      localStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissedDeclines(), key]));
+    } catch {
+      /* not kept */
+    }
+  };
+  return (
+    <div className="pc-banner" role="status">
+      <div className="pc-stack">
+        <strong>{`${m.kind === 'declined-cancel' ? 'The seller declined your cancellation request' : 'The seller declined your request for changes'} · ${m.at}`}</strong>
+        <p>{`“${m.message}”`}</p>
+      </div>
+      <button className="pc-banner__close" aria-label="Dismiss" onClick={close}>
+        ✕
+      </button>
+    </div>
+  );
+}
+
+// The seller's message with their request to end (or cancel) a contract: its reason, on
+// its own (Seller's message on the card).
+function SellerMessage({ number, at, message, onClose }) {
+  return (
+    <Modal
+      title={`Seller’s message · ${number}`}
+      onClose={onClose}
+      footer={
+        <button className="acct-btn" onClick={onClose}>
+          Close
+        </button>
+      }
+    >
+      <div className="pc-stack">
+        <span className="muted">{at ? `Message from the seller · ${at}` : 'Message from the seller'}</span>
+        <p>{message}</p>
+      </div>
+    </Modal>
+  );
+}
+
+// Request changes: what should change, sent as their answer to the version they see
+// (the Contract card, or a proposal's Request adjustment).
+function RequestChangesModal({ number, message, setMessage, onClose, onSend }) {
+  return (
+    <Modal
+      title={`Request changes · ${number}`}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="acct-btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="button button--b2b button--sm" disabled={!message.trim()} onClick={onSend}>
+            Send
+          </button>
+        </>
+      }
+    >
+      <div className="form-row">
+        <label className="field-label">What should change?</label>
+        <textarea className="textarea" rows="4" value={message} onChange={(e) => setMessage(e.target.value)} />
+      </div>
+    </Modal>
+  );
+}
+
+// Request cancellation: why they want to cancel it (a proposal, an Upcoming contract or
+// the Contract).
+function RequestCancellationModal({ number, reason, setReason, onClose, onSend }) {
+  return (
+    <Modal
+      title={`Request cancellation · ${number}`}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="acct-btn" onClick={onClose}>
+            Close
+          </button>
+          <button className="button button--b2b button--sm" disabled={!reason.trim()} onClick={onSend}>
+            Send
+          </button>
+        </>
+      }
+    >
+      <div className="form-row">
+        <label className="field-label">Why do you want to cancel it?</label>
+        <textarea className="textarea" rows="4" value={reason} onChange={(e) => setReason(e.target.value)} />
+      </div>
+    </Modal>
+  );
+}
+
+export function UpcomingContractCard({ contract, session, locationName, onAnswered, open = false, waiting = null }) {
+  return <NotStartedCard contract={contract} session={session} locationName={locationName} onAnswered={onAnswered} open={open} waiting={waiting} />;
 }
 
 export function ProposalCard({ contract, session, locationName, onAnswered, open = false }) {
@@ -577,7 +1013,30 @@ export function ProposalCard({ contract, session, locationName, onAnswered, open
 // ── Activities log ────────────────────────────────────────────────────────────
 // What each answer reads as in the log.
 // `updated`: the seller changed it before activating it (agreements.js logProposalUpdate).
-const ACTIVITY_TITLE = { approve: 'Approved', changes: 'Changes requested', cancel: 'Cancellation requested', updated: 'Updated by seller' };
+// The seller's request to end it, and their answer to it.
+const ACTIVITY_TITLE = {
+  approve: 'Approved',
+  changes: 'Changes requested',
+  cancel: 'Cancellation requested',
+  updated: 'Updated by seller',
+  decline: 'Declined',
+  'end-request': 'End requested by seller',
+  'end-approve': 'Ending approved',
+  'end-decline': 'Ending declined',
+  'end-withdrawn': 'End request withdrawn',
+  'end-lapsed': 'Request lapsed',
+};
+// The same for the seller's request to cancel one that hadn't started (`cancel`).
+const CANCEL_ASK_TITLE = {
+  'end-request': 'Cancellation requested by seller',
+  'end-approve': 'Cancellation approved',
+  'end-decline': 'Cancellation declined',
+  'end-withdrawn': 'Cancellation request withdrawn',
+  'end-lapsed': 'Cancellation request lapsed: it started',
+};
+const titleOf = (a) => (a.cancel && CANCEL_ASK_TITLE[a.kind]) || ACTIVITY_TITLE[a.kind] || 'Request';
+// A request opens on its own screen, and their reason for declining to end it.
+const opensOwn = (a) => a.kind === 'changes' || a.kind === 'cancel' || ((a.kind === 'end-decline' || a.kind === 'decline') && !!a.message);
 
 // A contract's Activities log (its link beside the name on its card): every answer
 // its buyers sent, newest first — Approved, Changes requested, Cancellation requested —
@@ -588,10 +1047,10 @@ function ActivityLog({ number, activities, onClose }) {
   const [shown, setShown] = useState(null); // the activity open, by number
   // Numbered from the first one, so a new one doesn't renumber the rest.
   const numbered = activities.map((a, i) => ({ ...a, n: activities.length - i }));
-  const q = numbered.find((a) => a.n === shown && a.kind !== 'approve' && a.kind !== 'updated');
+  const q = numbered.find((a) => a.n === shown && opensOwn(a));
   return (
     <Modal
-      title={q ? `${ACTIVITY_TITLE[q.kind] || 'Request'} · ${number}` : `Activities log · ${number}`}
+      title={q ? `${titleOf(q)} · ${number}` : `Activities log · ${number}`}
       onClose={onClose}
       footer={
         <>
@@ -612,13 +1071,13 @@ function ActivityLog({ number, activities, onClose }) {
         <div className="pc-list">
           {numbered.map((a) => {
             // A request opens on its own screen; an approval or a seller's change doesn't.
-            const opens = a.kind !== 'approve' && a.kind !== 'updated';
+            const opens = opensOwn(a);
             const head = (
               <>
                 <div className="pc-stack">
-                  <strong>{ACTIVITY_TITLE[a.kind] || 'Request'}</strong>
+                  <strong>{titleOf(a)}</strong>
                   <span className="muted">
-                    {a.kind === 'updated'
+                    {a.kind === 'updated' || a.kind === 'end-request'
                       ? [a.version ? `Version ${a.version}` : null, a.note || 'Sent again'].filter(Boolean).join(' · ')
                       : [a.version ? `Version ${a.version}` : null, a.mine ? 'By you' : a.by ? `By ${a.by}` : null].filter(Boolean).join(' · ')}
                   </span>
@@ -628,7 +1087,7 @@ function ActivityLog({ number, activities, onClose }) {
               </>
             );
             return opens ? (
-              <button key={a.n} className="pc-version pc-version--open" onClick={() => setShown(a.n)} aria-label={`Open ${(ACTIVITY_TITLE[a.kind] || 'request').toLowerCase()} from ${a.at || ''}`}>
+              <button key={a.n} className="pc-version pc-version--open" onClick={() => setShown(a.n)} aria-label={`Open ${titleOf(a).toLowerCase()} from ${a.at || ''}`}>
                 {head}
               </button>
             ) : (
@@ -649,10 +1108,12 @@ function RequestScreen({ request: q }) {
   const from = q.mine ? 'Your message' : `Message from ${q.by || 'your team'}`;
   return (
     <div className="pc-stack pc-stack--gap">
-      <div className="pc-title">
-        <span className="muted">Status</span>
-        <span className="badge">{q.status}</span>
-      </div>
+      {q.status ? (
+        <div className="pc-title">
+          <span className="muted">Status</span>
+          <span className="badge">{q.status}</span>
+        </div>
+      ) : null}
       <div className="pc-stack">
         <span className="muted">{q.at ? `${from} · ${q.at}` : from}</span>
         <p>{q.message}</p>
@@ -997,29 +1458,5 @@ function PriceList({ entries, empty }) {
         <p className="muted">{entries.length ? `No products match “${query.trim()}”.` : empty}</p>
       )}
     </div>
-  );
-}
-
-// The Upcoming contract's Preview prices for the buyer's location: what they'll pay
-// once it starts.
-function ContractPrices({ contract, locationName, onClose }) {
-  return (
-    <Modal
-      large
-      title={`Preview prices · ${contract.number}`}
-      onClose={onClose}
-      footer={
-        <button className="acct-btn" onClick={onClose}>
-          Close
-        </button>
-      }
-    >
-      <div className="pc-stack pc-stack--gap">
-        <p className="muted">
-          {`What you will pay${locationName ? ` at ${locationName}` : ''} for each product in this contract once it starts.`}
-        </p>
-        <PriceList entries={contract.prices || []} empty="The contract’s pricing covers no products." />
-      </div>
-    </Modal>
   );
 }

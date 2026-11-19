@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../store.jsx';
-import { SaveBar } from '../../../shared/wc.jsx';
+import { SaveBar, leaveWithConfirmation } from '../../../shared/wc.jsx';
 import { EmailConnectionCard } from './EmailConnectionCard.jsx';
 import { EmailTemplateEditor } from './EmailTemplateEditor.jsx';
 import { NotificationTemplatesCard } from './NotificationTemplatesCard.jsx';
@@ -221,10 +221,13 @@ export function Email({ activeNotificationEditor = null, onOpenEditor, onCloseEd
           fieldErrors={templateFieldErrors}
           isTemplateDirty={isTemplateDirty}
           isSendingTestEmail={isSendingTestEmail}
-          onBack={() => {
-            setTemplateFieldErrors({});
-            onCloseEditor?.();
-          }}
+          // With unsaved changes, inside Shopify admin the admin asks first.
+          onBack={() =>
+            leaveWithConfirmation(() => {
+              setTemplateFieldErrors({});
+              onCloseEditor?.();
+            })
+          }
           onFormFieldChange={(field, value) => handleTemplateFieldChange(activeNotificationEditor, field, value)}
           onSendTestEmail={handleSendTestEmail}
           template={activeTemplate}

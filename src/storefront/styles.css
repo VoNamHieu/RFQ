@@ -767,6 +767,11 @@ h3 { font-size: 1.8rem; }
 .pc-part__title { font-size: 1.7rem; font-weight: 700; }
 .pc-part__body { display: flex; flex-direction: column; gap: 1.6rem; margin-top: 1.6rem; padding-top: 1.6rem; border-top: 0.1rem solid #e5e5e5; }
 .pc-part__body p { margin: 0; }
+/* The seller declined their request: a box they can close (DeclinedBanner). */
+.pc-banner { display: flex; gap: 1.2rem; justify-content: space-between; align-items: flex-start; padding: 1.2rem 1.4rem; border-radius: 0.8rem; background: #eef4ff; border: 0.1rem solid #c9dbff; }
+.pc-banner__close { background: none; border: 0; cursor: pointer; font-size: 1.4rem; line-height: 1; color: #555; padding: 0.2rem; }
+/* A contract's Version dropdown (a new version waiting): small, at the right. */
+.pc-version-pick { width: auto; align-self: flex-end; padding: 0.5rem 0.8rem; font-size: 1.3rem; }
 .pc-part__body > .pc-facts { margin: 0; }
 .pc-links { display: inline-flex; gap: 1.6rem; }
 .pc-foot { display: flex; gap: 0.8rem; flex-wrap: wrap; justify-content: flex-end; align-items: center; }

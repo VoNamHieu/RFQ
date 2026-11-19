@@ -16,11 +16,15 @@ import {
   extendedEndDate,
   isLive,
   fmtDay,
+  pendingVersionOf,
+  sellerBusyOf,
   overlapLines,
   overlapsHeading,
   PAST_STATUSES,
   canDeleteAgreement,
   canEndAgreement,
+  entryKey,
+  nextVersionNumber,
 } from '../../agreements.js';
 import { ContractVersionModal } from '../ContractVersionModal.jsx';
 import { Fact, TermGroup, VersionTimeline, ShowAllLink, SHOWN, EndContractModal, DeleteContractModal } from '../ContractParts.jsx';
@@ -98,7 +102,8 @@ function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onV
                 variant="tertiary"
                 accessibilityLabel={`More actions for ${ag.number}`}
                 items={[
-                  canEndAgreement(ag) && { content: 'End contract', destructive: true, onAction: () => onEnd(ag) },
+                  // One that hasn't started: Cancel contract (one its buyers approved: it asks them).
+                  canEndAgreement(ag) && { content: ag.status === 'Scheduled' ? 'Cancel contract' : 'End contract', destructive: true, onAction: () => onEnd(ag) },
                   ag.status === 'Scheduled' && canDeleteAgreement(ag) && { content: 'Delete contract', destructive: true, onAction: () => onDelete(ag) },
                 ]}
               />
@@ -149,7 +154,7 @@ function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onV
                   rows={terms.limits.map(({ limit, summary: s }) => ({ key: limit.id, name: limit.name, detail: s }))}
                 />
               </s-stack>
-              {history.length ? <VersionTimeline history={history} onView={(version) => onView(ag, version)} /> : null}
+              {history.length ? <VersionTimeline history={history} onView={(version, h) => onView(ag, h?.unapproved ? entryKey(h) : version)} /> : null}
             </s-grid>
           </s-query-container>
         </s-stack>
@@ -227,6 +232,9 @@ export function AgreementTab({ company }) {
         .map((a) => ({ old: a, shared: sharedLocations(company, a, renewing.ag) }))
     : [];
   const renewError = renewing && !(renewing.endDate > renewing.ag.endDate) ? 'Must be after the current end date' : undefined;
+  // One thing at a time: not while its buyers' request, or your request to end it, waits.
+  const renewBusy = renewing ? sellerBusyOf(renewing.ag) : null;
+  const renewBlocked = !!renewBusy;
 
   return (
     <s-stack gap="base">
@@ -264,13 +272,41 @@ export function AgreementTab({ company }) {
       {renewing && (
         <Modal onClose={() => setRenewing(null)} heading={`Extend ${renewing.ag.number}`}>
           <s-stack gap="base">
+            {/* Saved with Buyer must approve: the new end date goes to its buyers as its next
+                version; not approved by its end date, it expires then. */}
             <s-date-field
               label="New end date"
               value={renewing.endDate}
               onChange={(e) => setRenewing({ ...renewing, endDate: e.currentTarget.value })}
               error={renewError}
-              details={`The terms stay the same. Saved as version ${renewing.ag.version + 1}.`}
+              details={
+                renewing.ag.approval
+                  ? `The terms stay the same. Sent to ${company.name}’s buyers to approve as version ${nextVersionNumber(renewing.ag)}.`
+                  : `The terms stay the same. Saved as version ${renewing.ag.version + 1}.`
+              }
             />
+            {renewing.ag.approval ? (
+              <>
+                <s-paragraph>{`If they don’t approve it by ${fmtDay(renewing.ag.endDate)}, ${renewing.ag.number} expires then.`}</s-paragraph>
+                {/* As Send to buyer on the contract page: their Seller's message. */}
+                <s-text-area
+                  label="Message to the buyer"
+                  details="Optional. They see it with this version in their B2B Portal."
+                  rows={3}
+                  value={renewing.message || ''}
+                  onInput={(e) => setRenewing({ ...renewing, message: e.currentTarget.value })}
+                />
+              </>
+            ) : null}
+            {renewBlocked ? (
+              <s-banner tone="warning">
+                {renewBusy === 'request'
+                  ? `${company.name}’s buyers sent a request on ${renewing.ag.number}. Answer it on the contract page first.`
+                  : renewBusy === 'version'
+                    ? `Version ${pendingVersionOf(renewing.ag).version} of ${renewing.ag.number} is waiting for ${company.name}’s buyers. Wait for their answer first.`
+                    : `You asked ${company.name}’s buyers to end ${renewing.ag.number}. Wait for their answer first.`}
+              </s-banner>
+            ) : null}
             {renewOverlaps.length ? (
               <s-banner tone="warning" heading={overlapsHeading(renewOverlaps.length)}>
                 <s-stack gap="small-200">
@@ -288,13 +324,13 @@ export function AgreementTab({ company }) {
           <s-button
             slot="primary-action"
             variant="primary"
-            disabled={!!renewError || !renewing.endDate}
+            disabled={!!renewError || !renewing.endDate || renewBlocked}
             onClick={() => {
-              dispatch({ type: 'RENEW_AGREEMENT', id: renewing.ag.id, endDate: renewing.endDate });
+              dispatch({ type: 'RENEW_AGREEMENT', id: renewing.ag.id, endDate: renewing.endDate, message: renewing.message || '' });
               setRenewing(null);
             }}
           >
-            Extend
+            {renewing.ag.approval ? 'Send to buyer' : 'Extend'}
           </s-button>
           <s-button slot="secondary-actions" onClick={() => setRenewing(null)}>
             Cancel

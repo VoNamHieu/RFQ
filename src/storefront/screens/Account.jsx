@@ -144,7 +144,10 @@ function Portal({ session, company, application, requests, go, dispatch }) {
   // Its Active contract, the next one scheduled at its location and one sent for it to
   // approve (PortalContracts.jsx), and what it buys under outside its contract
   // (`regular`, Business account).
-  const { contract, upcoming, proposal, regular } = contractsForSession(session);
+  const { contract, upcoming, proposal, regular, past } = contractsForSession(session);
+  // What needs them first: their location's proposal, else one elsewhere in the company,
+  // else a contract the seller asked to end.
+  const needs = [proposal, contract, upcoming].find((p) => p?.action) || null;
   const orders = session.orders || [];
   // An order opened from the Orders panel, by its key.
   const [openKey, setOpenKey] = useState(null);
@@ -161,16 +164,37 @@ function Portal({ session, company, application, requests, go, dispatch }) {
   // (its period), as the real portal's backend attaches it.
   const quota = company ? quotaInForce(session) : null;
   const contractQuota = quota && (contract?.limitDetails || []).some((d) => d.quota?.period === quota.period) ? quota : null;
+  // A new version of one of their contracts waiting for them goes on that contract's card
+  // (its Version dropdown): one card per contract.
+  const updates = [proposal].filter((p) => p?.update);
+  const waitingFor = (c) => (c ? updates.find((u) => u.number === c.number) || null : null);
+  const merged = new Set([contract, upcoming].map(waitingFor).filter(Boolean));
+  const latest = (c) => [c?.lastUpdate, waitingFor(c)?.lastUpdate].filter(Boolean).sort().pop() || '';
   // Its contracts in one section, the one changed last first (`lastUpdate`; on the same
   // day, the Contract, then Upcoming, then the proposal) and open. `el(open)`: the part.
   const contractCards = [
-    contract && { key: `contract-${contract.number}`, at: contract.lastUpdate, el: (open) => <ContractCard contract={contract} quota={contractQuota} open={open} /> },
+    contract && {
+      key: `contract-${contract.number}`,
+      at: latest(contract),
+      el: (open) => (
+        <ContractCard contract={contract} waiting={waitingFor(contract)} session={session} quota={contractQuota} open={open} onAnswered={() => dispatch({ type: 'CONTRACTS_CHANGED' })} />
+      ),
+    },
     upcoming && {
       key: `upcoming-${upcoming.number}`,
-      at: upcoming.lastUpdate,
-      el: (open) => <UpcomingContractCard contract={upcoming} session={session} locationName={company?.location} open={open} onAnswered={() => dispatch({ type: 'CONTRACTS_CHANGED' })} />,
+      at: latest(upcoming),
+      el: (open) => (
+        <UpcomingContractCard
+          contract={upcoming}
+          waiting={waitingFor(upcoming)}
+          session={session}
+          locationName={company?.location}
+          open={open}
+          onAnswered={() => dispatch({ type: 'CONTRACTS_CHANGED' })}
+        />
+      ),
     },
-    proposal && {
+    proposal && !merged.has(proposal) && {
       key: `proposal-${proposal.number}-${proposal.version}`,
       at: proposal.lastUpdate,
       el: (open) => <ProposalCard contract={proposal} session={session} locationName={company?.location} open={open} onAnswered={() => dispatch({ type: 'CONTRACTS_CHANGED' })} />,
@@ -178,7 +202,10 @@ function Portal({ session, company, application, requests, go, dispatch }) {
   ]
     .filter(Boolean)
     .map((c, i) => ({ ...c, i }))
-    .sort((a, b) => (String(a.at || '') < String(b.at || '') ? 1 : String(a.at || '') > String(b.at || '') ? -1 : a.i - b.i));
+    .sort((a, b) => (String(a.at || '') < String(b.at || '') ? 1 : String(a.at || '') > String(b.at || '') ? -1 : a.i - b.i))
+    // Then the ones that are over but stay (one they approved, or that was in force),
+    // the one that ended last first: read-only (no session: nothing to answer).
+    .concat(past.map((c) => ({ key: `past-${c.number}`, el: (open) => <ContractCard contract={c} open={open} /> })));
 
   return (
     <>
@@ -196,9 +223,9 @@ function Portal({ session, company, application, requests, go, dispatch }) {
 
       {/* What needs them: the contract waiting for their approval (agreements.js
           buyerActionText) — Action needed, at the top of the page. */}
-      {company && proposal?.action ? (
+      {company && needs ? (
         <div className="acct-banner">
-          <span className="badge badge--red">Action needed</span> {buyerActionText(proposal, proposal.action)}
+          <span className="badge badge--red">Action needed</span> {buyerActionText(needs, needs.action)}
         </div>
       ) : null}
 

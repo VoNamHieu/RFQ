@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useStore } from '../store.jsx';
-import { Modal, Tabs, useWcId } from '../../shared/wc.jsx';
+import { useStore, pricingEdited } from '../store.jsx';
+import { Modal, Tabs, useWcId, SaveBar, leaveWithConfirmation } from '../../shared/wc.jsx';
 import { CdPageHead, CardBanner, StatusDot } from './companyLayout.jsx';
 import { RuleBuilderCard } from './RuleBuilderCard.jsx';
 import { VolumeRangesCard } from './VolumeRangesCard.jsx';
@@ -49,7 +49,7 @@ export function PricingEditor({ asPage = false }) {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKey = (e) => {
-      if (e.key === 'Escape') dispatch({ type: 'CLOSE_EDITOR' });
+      if (e.key === 'Escape') leaveWithConfirmation(() => dispatch({ type: 'CLOSE_EDITOR' }));
     };
     window.addEventListener('keydown', onKey);
     return () => {
@@ -61,6 +61,10 @@ export function PricingEditor({ asPage = false }) {
 
   const isNew = !builder.id;
   const isQuantity = builder.priceKind === 'quantity';
+  // Edited since it opened: the save bar shows (Save / Discard); going back asks first
+  // inside Shopify admin.
+  const edited = pricingEdited(state);
+  const closeEditor = () => leaveWithConfirmation(() => dispatch({ type: 'CLOSE_EDITOR' }));
   // A contract's own pricing (opened from its contract editor): no dates, status or
   // who it serves — the contract decides. Saving keeps it in the contract editor,
   // which applies it when the contract is saved.
@@ -438,6 +442,8 @@ export function PricingEditor({ asPage = false }) {
       {catalogPreview && targets.length > 1 && (
         <BuilderPricePreview builder={builder} products={state.db.products} targets={reach} onClose={() => setCatalogPreview(false)} />
       )}
+      {/* Save and Discard are on the save bar, shown while it's edited. */}
+      {edited && <SaveBar onSave={onSave} onDiscard={() => dispatch({ type: 'DISCARD_EDITOR' })} saveLabel={saveLabel} saveDisabled={noLocationPicked} />}
       {/* The company page's look: a white page (in the Pricing screen, its back arrow,
           title and actions on top as the list pages'). The cards inside are as they were. */}
       {asPage ? (
@@ -449,16 +455,7 @@ export function PricingEditor({ asPage = false }) {
                 {contractBadge}
               </span>
             }
-            back={{ label: 'Pricing settings', onAction: () => dispatch({ type: 'CLOSE_EDITOR' }) }}
-            actionsOnTop
-            actions={
-              <>
-                <s-button onClick={() => dispatch({ type: 'CLOSE_EDITOR' })}>Cancel</s-button>
-                <s-button variant="primary" onClick={onSave} disabled={noLocationPicked}>
-                  {saveLabel}
-                </s-button>
-              </>
-            }
+            back={{ label: 'Pricing settings', onAction: closeEditor }}
           />
           {editorBody}
         </div>
@@ -478,9 +475,7 @@ export function PricingEditor({ asPage = false }) {
                 {contractBadge}
               </div>
               <div className="wc-overlay-header__actions">
-                <s-button onClick={() => dispatch({ type: 'CLOSE_EDITOR' })}>Cancel</s-button>
-                <s-button variant="primary" onClick={onSave} disabled={noLocationPicked}>{saveLabel}</s-button>
-                <s-button variant="tertiary" icon="x" accessibilityLabel="Close" onClick={() => dispatch({ type: 'CLOSE_EDITOR' })} />
+                <s-button variant="tertiary" icon="x" accessibilityLabel="Close" onClick={closeEditor} />
               </div>
             </div>
           </div>

@@ -41,14 +41,33 @@ let runner = async (query, variables) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query, variables }),
   });
-  return res.json();
+  const out = await res.json().catch(() => ({}));
+  // Refused outright (signed out, too large, throttled, down): with its HTTP status.
+  return res.ok ? out : { ...out, status: res.status };
 };
 export const setGraphqlRunner = (fn) => {
   runner = fn;
 };
+// Shopify's errors, read: a list (the query's own), or — when it refused the request
+// itself — a message, or an object of them ({ query: '…' }, { message, networkStatusCode }).
+const errorText = (e) =>
+  Array.isArray(e)
+    ? e.map((x) => x?.message || String(x)).join(' · ')
+    : typeof e === 'string'
+      ? e
+      : e?.message ||
+        Object.entries(e || {})
+          .filter(([, v]) => v !== null && typeof v !== 'object')
+          .map(([k, v]) => `${k}: ${v}`)
+          .join(' · ');
 export async function graphql(query, variables = {}) {
   const out = await runner(query, variables);
-  if (out?.errors?.length) throw new Error(out.errors.map((e) => e.message).join(' · '));
+  const errs = out?.errors;
+  const said = errs && (!Array.isArray(errs) || errs.length) ? errorText(errs) : '';
+  if (said || !out?.data) {
+    const status = out?.status ? `Shopify answered ${out.status}` : '';
+    throw new Error([status, said || (status ? '' : 'Shopify sent nothing back')].filter(Boolean).join(': '));
+  }
   return out.data;
 }
 

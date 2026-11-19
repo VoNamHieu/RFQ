@@ -1,6 +1,7 @@
 // Raw demo seed extracted verbatim from rfq-x-b2b/b2b/index.html.
 // Do NOT apply normalize/migrate transforms here — the store applies those.
 import { versionFlags } from '../../shared/versions.js';
+import { demoCase } from '../../shared/persistence.js';
 
 const defaults = { b2bPolicyId: null, wholesalePolicyId: null };
 
@@ -536,12 +537,141 @@ const agreements = [
   { id: 'ag6', number: 'CT-304', name: 'Can Tho 2027–28 terms', companyId: 'c7', locationIds: ['l12'], status: 'Scheduled', version: 1, startDate: '2027-02-01', endDate: '2028-01-31',
     terms: { base: ['p22'], quantity: [], limits: [] },
     history: [{ version: 1, date: '2026-07-20', note: 'Activated, starts Feb 1, 2027', terms: { base: ['p22'], quantity: [], limits: [] } }] },
+  ct306(),
+  ...(ct307Case(demoCase()) ? [ct307(demoCase())] : []),
 ];
+
+// Delta Mechanical's CT-306: saved with Buyer must approve, with its buyers' answers
+// back and forth — its Activities log and Version history have something to show.
+// Version 1 went to them; they asked for a better rate (declined, with a reply), then
+// for a lower minimum (sent again with it, and a message); they approved it. Changed
+// before it started, version 2 went to them; they asked to change Pallet Breaks (sent
+// again, with a message), and Nguyen Hoa approved it. Seeded Scheduled with a past start date, it
+// starts on load (syncContractDates: Started, Mar 1). Hoa's request to extend it, sent
+// since, waits for the merchant too (Changes requested).
+function ct306() {
+  const buyer = 'Nguyen Hoa';
+  const email = 'hoa@deltamechanical.vn';
+  const ask = (version, revision, at, kind, message = '', who = { buyer, email }) => ({ number: 'CT-306', version, revision, kind, message, ...who, at, time: `${at}T03:15:00.000Z` });
+  // A request's key, as agreements.js responseKey: what a decline or a reply names.
+  const keyOf = (r) => [r.version, ...(r.revision ? [`r${r.revision}`] : []), r.at, r.kind, r.message || '', r.email || r.buyer || ''].join('|');
+  const rate = ask(1, 0, '2026-02-04', 'changes', 'Could Volume Tier A go to 12% off instead of 10%?');
+  const minimum = ask(1, 0, '2026-02-06', 'changes', 'Then please lower the wholesale minimum. Our site orders are smaller.');
+  const breaks = ask(2, 0, '2026-02-23', 'changes', 'Pallet Breaks should start at 8 pallets, not 10.');
+  // Each its own copy: loading maps them to the contract's own pricing and limits.
+  const v1 = () => ({ base: ['p20'], quantity: [], limits: ['ol1'] });
+  const v2 = () => ({ base: ['p20'], quantity: ['p6'], limits: ['ol1'] });
+  return {
+    id: 'ag7', number: 'CT-306', name: 'Delta 2026 supply terms', companyId: 'c3', locationIds: null, status: 'Scheduled', version: 2, revision: 1, approval: true,
+    startDate: '2026-03-01', endDate: '2026-12-31', updatedAt: '2026-02-25T03:00:00.000Z',
+    terms: v2(),
+    buyerResponses: [
+      rate,
+      minimum,
+      ask(1, 1, '2026-02-10', 'approve'),
+      breaks,
+      ask(2, 1, '2026-02-26', 'approve'),
+      ask(2, 1, '2026-07-24', 'changes', 'Can we extend to Dec 31, 2027 on the same terms?'),
+    ],
+    declines: [{ responseKey: keyOf(rate), version: 1, at: '2026-02-05', time: '2026-02-05T02:40:00.000Z', message: '10% is our best rate at this volume. We can look at it again at renewal.' }],
+    replies: [
+      { responseKey: keyOf(minimum), version: 1, at: '2026-02-09', time: '2026-02-09T04:00:00.000Z', message: 'Lowered the minimum order for your sites.' },
+      { responseKey: keyOf(breaks), version: 2, at: '2026-02-25', time: '2026-02-25T03:00:00.000Z', message: 'Done. Breaks now start at 8 pallets.' },
+    ],
+    sellerUpdates: [
+      { version: 1, revision: 1, at: '2026-02-09T04:00:00.000Z', note: 'Changed Wholesale minimum' },
+      { version: 2, revision: 1, at: '2026-02-25T03:00:00.000Z', note: 'Changed Pallet Breaks' },
+    ],
+    history: [
+      { version: 2, date: '2026-02-26', note: 'Approved by buyer, starts Mar 1, 2026' },
+      { version: 2, date: '2026-02-20', note: 'Sent to buyer again · Added Pallet Breaks', terms: v2() },
+      { version: 1, date: '2026-02-10', note: 'Approved by buyer, starts Mar 1, 2026' },
+      { version: 1, date: '2026-02-02', note: 'Sent to buyer', terms: v1() },
+    ],
+  };
+}
+
+// The contract demo cases — seeded only when the storefront was opened on one
+// (?case=…, storefront data/products.js startContractCase); the B2B app seeds the same
+// one. ABC Construction (the storefront's buyer, John Nguyen at Hanoi):
+//   version-waiting  CT-307, saved with Buyer must approve: version 1 approved (starts
+//                    Sep 1, 2026), version 2 (a later end date) waiting for the buyers.
+//   version-declined CT-307: the buyers declined version 2, with a message.
+//   seller-message   CT-307: they asked for changes to version 1; the seller declined
+//                    the request, with a reply.
+//   cancel-request   CT-307: the seller asked them to cancel it (it hasn't started).
+//   contract-over    CT-307: cancelled, the buyers approving the seller's request — it
+//                    stays in their B2B Portal, read-only.
+//   end-request      CT-301 (Active), saved with Buyer must approve: the seller asked them
+//                    to end it.
+export const CONTRACT_CASES = ['version-waiting', 'version-declined', 'seller-message', 'cancel-request', 'contract-over', 'end-request'];
+// (A function: the contracts above are built before this file's constants are.)
+function ct307Case(name) {
+  return ['version-waiting', 'version-declined', 'seller-message', 'cancel-request', 'contract-over'].includes(name);
+}
+function ct307(name) {
+  const terms = () => ({ base: ['p1', 'p8', 'p30'], quantity: ['p6'], limits: [] });
+  const john = { buyer: 'John Nguyen', email: 'john@abcconstruction.com' };
+  const say = (version, at, time, kind, message = '', extra = {}) => ({ number: 'CT-307', version, revision: 0, kind, message, ...john, at, time, ...extra });
+  // A request's key, as agreements.js responseKey: what a decline names.
+  const keyOf = (r) => [r.version, r.at, r.kind, r.message || '', r.email || r.buyer || ''].join('|');
+  const approved = say(1, '2026-07-16', '2026-07-16T03:15:00.000Z', 'approve');
+  const v1 = [
+    { version: 1, date: '2026-07-16', note: 'Approved by buyer, starts Sep 1, 2026' },
+    { version: 1, date: '2026-07-14', note: 'Sent to buyer', terms: terms() },
+  ];
+  const v2sent = { version: 2, date: '2026-07-26', note: 'Sent to buyer · Now ends Dec 31, 2027', unapproved: 'sent', sentAt: '2026-07-26T03:00:00.000Z', terms: terms(), fields: { endDate: '2027-12-31' } };
+  const base = {
+    id: 'ag8', number: 'CT-307', name: '2026–27 annual terms', companyId: 'c1', locationIds: null, status: 'Scheduled', version: 1, approval: true,
+    startDate: '2026-09-01', endDate: '2027-08-31', updatedAt: '2026-07-26T03:00:00.000Z',
+    terms: terms(),
+    buyerResponses: [approved],
+    history: v1,
+  };
+  if (name === 'version-waiting')
+    return {
+      ...base,
+      pending: { draft: { name: base.name, startDate: base.startDate, endDate: '2027-12-31', locationIds: null, terms: terms() }, staged: { policies: {}, limits: {} }, version: 2, revision: 0, sentAt: v2sent.sentAt },
+      history: [v2sent, ...v1],
+    };
+  if (name === 'version-declined')
+    return {
+      ...base,
+      buyerResponses: [approved, say(2, '2026-07-27', '2026-07-27T02:00:00.000Z', 'decline', 'Please keep the end date at Aug 31, 2027. We review our suppliers every summer.')],
+      history: [{ version: 2, date: '2026-07-27', note: 'Declined by buyer', unapproved: 'declined' }, v2sent, ...v1],
+    };
+  if (name === 'seller-message') {
+    const asked = say(1, '2026-07-25', '2026-07-25T03:15:00.000Z', 'changes', 'Can the wholesale minimum go down to 10 units for Hanoi?');
+    return {
+      ...base,
+      buyerResponses: [approved, asked],
+      declines: [{ responseKey: keyOf(asked), version: 1, at: '2026-07-26', time: '2026-07-26T02:00:00.000Z', message: 'The minimum stays at 20 units at this price. We can look at it again at renewal.' }],
+    };
+  }
+  const askedToCancel = { version: 1, revision: 0, at: '2026-07-27', time: '2026-07-27T03:00:00.000Z', message: 'We won’t run the 2026–27 terms: Hanoi moves to the national price list from Sep 1.', cancel: true };
+  if (name === 'cancel-request') return { ...base, endRequests: [askedToCancel] };
+  // contract-over
+  return {
+    ...base,
+    status: 'Cancelled',
+    endRequests: [askedToCancel],
+    endResponses: [{ number: 'CT-307', version: 1, revision: 0, kind: 'end-approve', message: '', ...john, requestAt: askedToCancel.time, at: '2026-07-27', time: '2026-07-27T05:00:00.000Z' }],
+    history: [{ version: 1, date: '2026-07-27', note: 'Cancelled · approved by buyer' }, ...v1],
+  };
+}
+// end-request: CT-301 saved with Buyer must approve (approved, version 2), the seller's
+// request to end it waiting for them.
+if (demoCase() === 'end-request')
+  Object.assign(agreements[0], {
+    approval: true,
+    buyerResponses: [{ number: 'CT-301', version: 2, revision: 0, kind: 'approve', message: '', buyer: 'John Nguyen', email: 'john@abcconstruction.com', at: '2026-07-12', time: '2026-07-12T03:15:00.000Z' }],
+    endRequests: [{ version: 2, revision: 0, at: '2026-07-27', time: '2026-07-27T03:00:00.000Z', message: 'We are moving Hanoi to the national price list from Sep 1.' }],
+  });
 
 // The contracts use the contract copies (SPLIT), in their versions too.
 if (CONTRACTS) {
   agreements.forEach((a) =>
-    [a.terms, ...(a.history || []).map((h) => h.terms).filter(Boolean)].forEach((t) =>
+    [a.terms, a.pending?.draft?.terms, ...(a.history || []).map((h) => h.terms)].filter(Boolean).forEach((t) =>
       ['base', 'quantity', 'limits'].forEach((k) => {
         t[k] = t[k].map((id) => SPLIT[id] || id);
       }),

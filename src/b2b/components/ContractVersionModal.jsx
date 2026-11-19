@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { versionSnapshot, agreementDatesLabel, fmtDay, termSettings, termSummary, PAST_STATUSES } from '../agreements.js';
+import { versionEntry, entryKey, unapprovedState, agreementDatesLabel, fmtDay, termSettings, termSummary, PAST_STATUSES } from '../agreements.js';
 import { TermGroup, VersionTimeline, PriorityNumber } from './ContractParts.jsx';
 import { Modal, wcTone } from '../../shared/wc.jsx';
 
@@ -15,12 +15,17 @@ const STATUS_TONE = { Active: 'success', Scheduled: 'info', Expired: undefined, 
 // one version. Opened from a company's Contract tab (version history, past contracts),
 // the Contracts list and the contract editor. A contract that's over can be
 // duplicated from here (`onDuplicate`) into a new one with its terms; open ones are
-// duplicated from their row.
+// duplicated from their row. A version sent to its buyers they didn't approve
+// (`version`: its entry's key, entryKey) reads the same, as it was sent — its Status
+// where it got to (Waiting for buyer, Declined…).
 export function ContractVersionModal({ ag, version, onClose, onDuplicate }) {
   const { state } = useStore();
   const [shown, setShown] = useState(version ?? ag.version);
   const [opened, setOpened] = useState([]); // `${version}-${term id}` showing their settings
-  const snap = versionSnapshot(ag, shown);
+  const entry = typeof shown === 'string' ? (ag.history || []).find((h) => entryKey(h) === shown) || null : versionEntry(ag, shown);
+  const shownVersion = entry?.version ?? shown;
+  const snap = entry?.snapshot || null;
+  const unapproved = unapprovedState(ag, entry);
   const over = PAST_STATUSES.includes(ag.status) ? ag.history?.[0] : null;
   const toggle = (key) => setOpened((keys) => (keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key]));
   const withHistory = (ag.version || 0) > 1;
@@ -86,7 +91,11 @@ export function ContractVersionModal({ ag, version, onClose, onDuplicate }) {
             <s-grid gridTemplateColumns="@container (inline-size > 480px) 3fr 2fr, 1fr" gap="base" alignItems="start">
               <Info label="Status">
                 <div>
-                  <s-badge tone={wcTone(STATUS_TONE[ag.status])}>{over ? `${ag.status} ${fmtDay(over.date)}` : ag.status}</s-badge>
+                  {unapproved ? (
+                    <s-badge>{unapproved}</s-badge>
+                  ) : (
+                    <s-badge tone={wcTone(STATUS_TONE[ag.status])}>{over ? `${ag.status} ${fmtDay(over.date)}` : ag.status}</s-badge>
+                  )}
                 </div>
               </Info>
               <Info label="Dates">
@@ -98,7 +107,7 @@ export function ContractVersionModal({ ag, version, onClose, onDuplicate }) {
               <Info label="Version">
                 {versions.length ? (
                   <div style={{ width: 200, maxWidth: '100%' }}>
-                    <s-select label="Version" labelAccessibilityVisibility="exclusive" value={String(shown)} onChange={(e) => setShown(Number(e.currentTarget.value))}>
+                    <s-select label="Version" labelAccessibilityVisibility="exclusive" value={String(shownVersion)} onChange={(e) => setShown(Number(e.currentTarget.value))}>
                       {versions.map((v) => (
                         <s-option key={v} value={String(v)}>
                           {`Version ${v}${v === ag.version ? ' (latest)' : ''}`}
@@ -107,7 +116,7 @@ export function ContractVersionModal({ ag, version, onClose, onDuplicate }) {
                     </s-select>
                   </div>
                 ) : (
-                  <s-text fontWeight="semibold">{`Version ${shown}`}</s-text>
+                  <s-text fontWeight="semibold">{`Version ${shownVersion}`}</s-text>
                 )}
               </Info>
             </s-grid>
@@ -117,7 +126,7 @@ export function ContractVersionModal({ ag, version, onClose, onDuplicate }) {
           <s-query-container>
             <s-grid gridTemplateColumns="@container (inline-size > 640px) 2fr 1fr, 1fr" gap="large">
               {terms}
-              <VersionTimeline history={ag.history || []} current={shown} onView={setShown} />
+              <VersionTimeline history={ag.history || []} current={shown} onView={(v, h) => setShown(h?.unapproved ? entryKey(h) : v)} />
             </s-grid>
           </s-query-container>
         ) : (

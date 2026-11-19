@@ -28,17 +28,30 @@ import {
   declineOf,
   changeRequestBatch,
   cancelRequestOf,
-  canDeleteAgreement,
+  openRequestOf,
+  liveChangeRequestOf,
+  endRequestOf,
+  endDeclinedOf,
+  versionDeclinedOf,
   canEndAgreement,
+  canDeleteAgreement,
   pendingVersionOf,
+  nextVersionNumber,
+  entryKey,
+  editedOf,
+  versionEntry,
+  unapprovedState,
+  approvedTakeovers,
+  joinAnd,
+  pendingNote,
 } from '../agreements.js';
 import { TODAY } from '../pricing.js';
 import { PricingCombobox } from './PricingCombobox.jsx';
 import { PricePreviewDialog } from './PricePreviewDialog.jsx';
 import { SelectCompaniesModal, companyPicks } from './AssignmentCard.jsx';
-import { TermGroup, VersionTimeline, EndContractModal, DeleteContractModal } from './ContractParts.jsx';
-import { ContractVersionModal } from './ContractVersionModal.jsx';
-import { MenuButton, Modal, Tip, useWcId } from '../../shared/wc.jsx';
+import { TermGroup, VersionTimeline, EndContractModal, DeleteContractModal, ActivitiesLogModal } from './ContractParts.jsx';
+import { activitiesOf } from '../portalContracts.js';
+import { MenuButton, Modal, Tip, useWcId, SaveBar, leaveWithConfirmation } from '../../shared/wc.jsx';
 import { CdPageHead, editorBackLabel } from './companyLayout.jsx';
 import { TIMEZONES, storeTimezone } from '../timezones.js';
 import { latestBuyerResponse } from '../buyerEvents.js';
@@ -69,13 +82,18 @@ export function AgreementEditor() {
   const company = state.db.companies.find((c) => c.id === draft.companyId);
   // The name used in the help text before a company is picked.
   const who = company?.name || 'the company';
-  const saved = (state.db.agreements || []).find((a) => a.id === draft.id);
+  const record = (state.db.agreements || []).find((a) => a.id === draft.id);
+  // A Draft (saved here with the save bar, never activated or sent) is still a new one.
+  const draftRecord = record?.status === 'Draft' ? record : null;
+  const saved = draftRecord ? undefined : record;
   // An Active one saved with Buyer must approve: the new version waiting for its buyers
   // (sent from here; the editor opens on it), read as a proposal — the version in force
   // stays until they approve it.
   const waiting = pendingVersionOf(saved);
-  // The buyer's answer to this version (Approve / Request changes on their Upcoming contract card).
-  const buyerResponse = latestBuyerResponse(waiting || saved);
+  // The buyer's answer to this version (Approve / Request changes on their Upcoming contract card)
+  // — their open request to cancel it first, a new version waiting or not (it's on hold).
+  // An open request before an approval (it answers none).
+  const buyerResponse = cancelRequestOf(saved) || openRequestOf(waiting || saved) || latestBuyerResponse(waiting || saved);
   // Who answered and when: "Vo Hieu · Nov 9, 2026".
   const answeredBy = buyerResponse ? [buyerResponse.buyer || buyerResponse.email, fmtDay(buyerResponse.at)].filter(Boolean).join(' · ') : '';
   // The buyer's note (sent with Request changes or Request cancellation), opened from
@@ -83,6 +101,9 @@ export function AgreementEditor() {
   // request in the header, with a reply they see): the contract then waits for them
   // again.
   const [noteOpen, setNoteOpen] = useState(false);
+  // Their message with a decline (of a new version, or of your request to end it),
+  // opened from the Status (Buyer's message): the answer it came with.
+  const [buyerMessage, setBuyerMessage] = useState(null);
   const [declining, setDeclining] = useState(false);
   const [reply, setReply] = useState('');
   const declined = declineOf(waiting || saved);
@@ -91,11 +112,9 @@ export function AgreementEditor() {
   const notes = buyerResponse?.kind === 'changes' ? changeRequestBatch(waiting || saved) : buyerResponse ? [buyerResponse] : [];
   const byLine = (r) => [r.buyer || r.email, fmtDay(r.at)].filter(Boolean).join(' · ');
   // Its buyers asked to cancel it (Proposed or Scheduled) and the request is open: the
-  // only actions are Reject request (with a note they see) and Cancel contract. To
+  // only actions are Decline request (with a reply they see) and Cancel contract. To
   // change its terms, the merchant rejects the request first.
   const cancelRequest = cancelRequestOf(saved);
-  // A declined request to cancel it reads "rejected"; one for changes "declined".
-  const rejectedCancel = !!declined && buyerResponse?.kind === 'cancel';
   // Live = saved (Scheduled or Active); started = Active, so its start date is fixed.
   const live = isLive(saved);
   const started = saved?.status === 'Active';
@@ -109,7 +128,40 @@ export function AgreementEditor() {
   const approvalChanged = !!saved && !!saved.approval !== approval;
   const proposed = saved?.status === 'Proposed';
   const proposal = proposalState(waiting || saved); // 'waiting' | 'approved' | 'changes' | null
+  // A Scheduled or Active one's buyers asked for changes to the version they approved
+  // (Request changes on their Upcoming contract or Contract card): it stays — still
+  // starts on its date, or stays in force; the merchant sends a new version or declines.
+  const liveRequest = liveChangeRequestOf(saved);
+  // A request for changes waiting for the merchant: Decline request is offered.
+  const changesAsked = proposal === 'changes' || !!liveRequest;
+  // Your request to end it (an Active one saved with Buyer must approve: End contract asks
+  // its buyers), waiting for them — or their decline of the latest one.
+  const endAsked = endRequestOf(saved);
+  const endDeclined = !endAsked && isLive(saved) ? endDeclinedOf(saved) : null;
+  // Their decline of the new version you sent (Decline in their B2B Portal): the version
+  // they approved stays.
+  const versionDeclined = versionDeclinedOf(saved);
+  // One thing at a time: End contract waits while a new version, their request for
+  // changes or your request to end it waits (disabled, the Status says why).
+  const endWaits = live && !!saved?.approval && !cancelRequest && !canEndAgreement(saved);
   const [sending, setSending] = useState(false);
+  // A version picked in its Version history while something here is edited and not sent
+  // or saved: asked first, since going to it drops those changes.
+  const [switching, setSwitching] = useState(null);
+  const edited = !!state.agreementEditor.pristine && editedOf(state.agreementEditor) !== state.agreementEditor.pristine;
+  const loadVersion = (h) => dispatch({ type: 'LOAD_AGREEMENT_VERSION', key: entryKey(h) });
+  // Activities log (beside Version history): everything between the merchant and its
+  // buyers on it, as their B2B Portal lists it — for the version waiting for them, when
+  // there's one. Its link shows once there's something in it.
+  const activities = saved ? activitiesOf(waiting || saved) : [];
+  const [logOpen, setLogOpen] = useState(false);
+  // Send to buyer in answer to their requests for changes: an optional message they
+  // read with their requests in their B2B Portal (the seller's reply).
+  const [sendNote, setSendNote] = useState('');
+  const closeSending = () => {
+    setSending(false);
+    setSendNote('');
+  };
   // How the company's pricing and limits change when it goes live: a started one's
   // live version comes off and the new one goes on; otherwise it takes effect.
   const change = started ? { off: saved, on: draft } : { start: draft };
@@ -121,13 +173,11 @@ export function AgreementEditor() {
   const [previewOpen, setPreviewOpen] = useState(false);
   // Copy existing: the terms' key (base, quantity or limits) being copied into it.
   const [copying, setCopying] = useState(null);
-  // A version from its history, read as it was.
-  const [viewing, setViewing] = useState(null);
   // End contract (a live one) or Delete contract (a Scheduled one), from the header,
   // as on the company's Contract tab. Ended, the editor closes.
   const [ending, setEnding] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  // Reject request / Cancel contract, while its buyers' request to cancel it is open.
+  // Decline request / Cancel contract, while its buyers' request to cancel it is open.
   const [rejecting, setRejecting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const scopeTipId = useWcId('scope-tip');
@@ -206,7 +256,10 @@ export function AgreementEditor() {
   if (draft.endDate && draft.startDate && draft.endDate < draft.startDate) errors.endDate = 'Must be after the start date';
   else if (draft.endDate && draft.endDate < TODAY) errors.endDate = 'This date has passed';
   const valid = !Object.keys(errors).length;
-  const shown = (k) => (tried ? errors[k] : undefined);
+  // Save on the save bar ('save'): a new one needs its company and name only.
+  const shown = (k) => (tried === 'save' ? (k === 'company' || k === 'name' ? errors[k] : undefined) : tried ? errors[k] : undefined);
+  // Save (save bar): what's edited is kept, not applied or sent (SAVE_AGREEMENT_DRAFT).
+  const saveDraft = () => (!saved && (errors.company || errors.name) ? setTried('save') : dispatch({ type: 'SAVE_AGREEMENT_DRAFT' }));
 
   // A location is in one contract at a time (clashesAt): going live over Active or
   // Scheduled contracts there moves those locations to this one (overlapHandover).
@@ -220,6 +273,17 @@ export function AgreementEditor() {
   });
   // One line per contract, two at most (overlapLines). The box says what saving does.
   const overlapList = company ? overlapLines(company, overlapsNow) : [];
+  // Over a contract its buyers approved, it can't be saved or sent (approvedTakeovers):
+  // ending or changing that one needs their approval. Said at the top, Save/Send off.
+  const approvedTaken = company ? approvedTakeovers(state.db, draft, saved, started) : [];
+  const takenLine = approvedTaken.length
+    ? `${joinAnd(approvedTaken.map((h) => h.old.number))} ${approvedTaken.length === 1 ? 'was' : 'were'} approved by ${who}’s buyers. This contract would take over ${joinAnd(
+        [...new Set(approvedTaken.flatMap((h) => h.shared.map((l) => l.name)))],
+      )}, which needs their approval. Send them a new version of ${approvedTaken.length === 1 ? approvedTaken[0].old.number : 'those contracts'} first${
+        // Only an Active one can be asked to end (End contract).
+        approvedTaken.every((h) => h.old.status === 'Active') ? `, or ask them to end ${approvedTaken.length === 1 ? 'it' : 'them'}` : ''
+      }.`
+    : null;
 
   // Saving changes what the company gets (a new one goes in force: Active, or Scheduled
   // until its start date) — once everything it needs is there (name, company, a pricing
@@ -227,12 +291,24 @@ export function AgreementEditor() {
   // Overlaps box when it overlaps other contracts.
   const goLive = () => (!valid ? setTried(true) : overlapsNow.length ? setOverlapBox(true) : setConfirm(true));
   // Not Scheduled or Active yet (Proposed): sending it again keeps its version.
-  const nextVersion = waiting ? waiting.version : proposed ? saved.version : (saved?.version || 0) + 1;
+  // Every version sent or saved has its own number (nextVersionNumber): after one its
+  // buyers declined, the next is a new one.
+  const nextVersion = waiting ? waiting.version : proposed ? saved.version : saved ? nextVersionNumber(saved) : 1;
   // Saving a live contract unchanged would only add an empty version.
   const unchanged = live && !approvalChanged && sameAgreement(saved, draft, db, state.db);
   const proposalUnchanged = proposed && sameAgreement(saved, draft, db, state.db);
   // The version waiting for its buyers, as sent.
   const waitingUnchanged = !!waiting && sameAgreement(waiting, draft, db, withStagedTerms(state.db, saved.pending.staged));
+  // One thing at a time: while its buyers haven't answered it, it can't be changed and
+  // sent again — Send to buyer waits for their answer.
+  const waitingUnanswered = !!waiting && proposal === 'waiting';
+  // Meanwhile it's locked: its fields, terms and locations read as they are (Preview
+  // prices and Version history still open). So it is while your request to end it (or
+  // to cancel it) waits for them: nothing can be sent until they answer or you withdraw it.
+  // A proposal sent to its buyers is the same (one thing at a time): locked until they
+  // answer — Request changes opens it again (sent again, it keeps its version).
+  const proposalWaits = proposed && proposal === 'waiting';
+  const locked = waitingUnanswered || !!endAsked || proposalWaits;
   // Who approved it last and when (Approve in their B2B Portal), for its Status once it's
   // Scheduled or Active and unchanged: "Approved by John Nguyen on Jul 28, 2026. "; ''
   // without a record of it.
@@ -240,6 +316,10 @@ export function AgreementEditor() {
   const approvedLine = approvedBy ? `Approved by ${approvedBy.buyer || approvedBy.email || 'the buyer'} on ${fmtDay(approvedBy.at)}. ` : '';
   // An Active one saved with Buyer must approve goes to its buyers too, as its next version.
   const sends = approval && (!saved || proposed || saved.status === 'Scheduled' || (started && !!saved.approval));
+  // Scheduled or Active, saved with Buyer must approve: the version they approved stays
+  // (still starts on its date, or stays in force) while a new one waits for them.
+  const keeps = live && !!saved.approval;
+  const startsOn = saved ? fmtDay(saved.startDate) : '';
   const canActivate = proposalUnchanged && (proposal === 'approved' || !approval);
   const goSend = () => (!valid ? setTried(true) : setSending(true));
   // Only "Automatically apply this contract to locations added later" changed: the
@@ -251,6 +331,17 @@ export function AgreementEditor() {
   const when = startsLater ? `on ${fmtDay(draft.startDate)}` : 'right away';
   // The Save / Save as version box: "ABC gets these terms right away, until Oct 31, 2026."
   const getsTerms = `${company?.name || 'The company'} gets these terms ${when}${draft.endDate ? `, until ${fmtDay(draft.endDate)}` : ''}.`;
+  // On a version other than the one in force (picked in its Version history, or the one
+  // its buyers declined, which it opens on): the Overview says which, and which is in
+  // force — "Showing version 2 (declined). Version 1 is in force."
+  const loadedEntry = saved && state.agreementEditor.loaded ? (saved.history || []).find((h) => entryKey(h) === state.agreementEditor.loaded) || null : null;
+  const shownState = loadedEntry ? unapprovedState(saved, loadedEntry) : null;
+  const showingLine =
+    loadedEntry && loadedEntry !== versionEntry(saved, saved.version)
+      ? `Showing version ${loadedEntry.version}${shownState ? ` (${shownState.toLowerCase()})` : ''}. ${
+          saved.status === 'Active' ? `Version ${saved.version} is in force.` : saved.status === 'Scheduled' ? `Version ${saved.version} starts ${fmtDay(saved.startDate)}.` : ''
+        }`.trim()
+      : null;
   // Overview: the contract at a glance, from the draft, so unsaved edits count.
   const count = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
   const covered = contractProducts(db, draft);
@@ -263,24 +354,39 @@ export function AgreementEditor() {
     ['product', 'Products', count(covered.length, 'product')],
   ];
 
+  // Your request to end it (or to cancel it) waiting for them: Withdraw is the only action.
+  const withdrawing = endAsked ? { content: endAsked.cancel ? 'Withdraw cancel request' : 'Withdraw end request', onAction: () => dispatch({ type: 'WITHDRAW_END_REQUEST', id: saved.id }), disabled: edited } : null;
+  // While something here is edited and not saved (the save bar), the actions wait: saved,
+  // they go on from what was saved. A new one is saved first (Save, a Draft).
+  const unsaved = edited || !record;
   const primary = cancelRequest
-    ? { content: 'Reject request', onAction: () => setRejecting(true) }
+    ? { content: 'Decline request', onAction: () => setRejecting(true), disabled: edited }
+    : withdrawing
+    ? withdrawing
     : canActivate
-    ? { content: 'Activate', onAction: goLive }
+    ? { content: 'Activate', onAction: goLive, disabled: !!takenLine || edited }
     : sends
-      ? { content: 'Send to buyer', onAction: goSend, disabled: proposed ? proposalUnchanged && !approvalChanged : waiting ? waitingUnchanged : unchanged }
-      : { content: proposed ? 'Activate' : live ? `Save as version ${nextVersion}` : 'Save', onAction: goLive, disabled: unchanged };
+      ? { content: 'Send to buyer', onAction: goSend, disabled: unsaved || !!takenLine || !!endAsked || proposalWaits || (proposed ? proposalUnchanged && !approvalChanged : waiting ? waitingUnchanged || waitingUnanswered : unchanged) }
+      : { content: proposed || !live ? 'Activate' : `Save as version ${nextVersion}`, onAction: goLive, disabled: unsaved || !!takenLine || unchanged };
   // Its buyers' request to cancel it open: Cancel contract only, in place of End
   // contract (no End contract or Delete contract until it's rejected).
   const secondary = (
     cancelRequest
-      ? [{ content: 'Cancel contract', destructive: true, onAction: () => setCancelling(true) }]
+      ? [{ content: started ? 'End contract' : 'Cancel contract', destructive: true, disabled: edited, onAction: () => setCancelling(true) }]
+      : withdrawing
+      ? []
       : [
-          canEndAgreement(saved) && { content: 'End contract', destructive: true, onAction: () => setEnding(true) },
-          // Where Delete contract is: Decline request while the buyer's request for
-          // changes waits; Delete contract only when it can be (canDeleteAgreement).
-          proposal === 'changes' && { content: 'Decline request', destructive: true, onAction: () => setDeclining(true) },
-          canDeleteAgreement(saved) && { content: 'Delete contract', destructive: true, onAction: () => setDeleting(true) },
+          // One that hasn't started: Cancel contract (one its buyers approved: it asks them to
+          // cancel it). While their request for changes is open it can't be used: not shown then.
+          (canEndAgreement(saved) || (endWaits && !liveRequest)) && {
+            content: started ? 'End contract' : 'Cancel contract',
+            destructive: true,
+            disabled: endWaits || edited,
+            onAction: () => setEnding(true),
+          },
+          // Decline request while the buyer's request for changes waits. Delete contract,
+          // when it can be (canDeleteAgreement), is under More actions.
+          changesAsked && { content: 'Decline request', destructive: true, disabled: edited, onAction: () => setDeclining(true) },
         ]
   ).filter(Boolean);
 
@@ -290,15 +396,23 @@ export function AgreementEditor() {
   // versions) side by side.
   return (
     <div className="cd-page">
+    {/* Edited and not saved: Save keeps it (not applied or sent), Discard goes back. Not
+        while its pricing editor is open on top (that one's save bar shows). */}
+    {edited && !state.builder ? <SaveBar onSave={saveDraft} onDiscard={() => dispatch({ type: 'AGREEMENT_EDITOR_DISCARD' })} /> : null}
     <CdPageHead
-      title={saved ? `${draft.number} · ${saved.name}` : `New contract ${draft.number}`}
+      title={record ? `${draft.number} · ${record.name}` : `New contract ${draft.number}`}
       subtitle={company?.name}
-      back={{ label: editorBackLabel(state, state.agreementEditor.returnTo, 'Contracts'), onAction: close }}
+      // With unsaved changes, inside Shopify admin the admin asks first.
+      back={{ label: editorBackLabel(state, state.agreementEditor.returnTo, 'Contracts'), onAction: () => leaveWithConfirmation(close) }}
       actionsOnTop
       actions={
         <>
+          {/* As the company and location pages: More actions, with Delete contract. */}
+          {(draftRecord || canDeleteAgreement(saved)) && !cancelRequest ? (
+            <MenuButton disabled={edited} items={[{ content: 'Delete contract', destructive: true, onAction: () => setDeleting(true) }]}>More actions</MenuButton>
+          ) : null}
           {secondary.map((a) => (
-            <s-button key={a.content} tone={a.destructive ? 'critical' : undefined} onClick={a.onAction}>
+            <s-button key={a.content} tone={a.destructive ? 'critical' : undefined} disabled={a.disabled} onClick={a.onAction}>
               {a.content}
             </s-button>
           ))}
@@ -311,12 +425,14 @@ export function AgreementEditor() {
     <s-query-container>
     <s-grid gridTemplateColumns={MAIN_ASIDE} gap="base" alignItems="start">
       <s-stack gap="base">
+        {takenLine ? <s-banner tone="critical">{takenLine}</s-banner> : null}
         <s-section>
           <s-text-field
             label="Contract name"
             required
             value={draft.name}
             onInput={(e) => patch({ name: e.currentTarget.value })}
+            disabled={locked}
             error={shown('name')}
             placeholder="e.g. 2027 distributor terms"
             details="Buyers see this name in their account."
@@ -327,7 +443,7 @@ export function AgreementEditor() {
         <s-section heading="Dates">
           <s-stack gap="small">
             {/* Timezone: the store's until one is picked. */}
-            <s-select label="Timezone" value={draft.timezone || storeTimezone(state.db)} onChange={(e) => patch({ timezone: e.currentTarget.value })}>
+            <s-select label="Timezone" value={draft.timezone || storeTimezone(state.db)} disabled={locked} onChange={(e) => patch({ timezone: e.currentTarget.value })}>
               {TIMEZONES.map((tz) => (
                 <s-option key={tz} value={tz}>
                   {tz}
@@ -340,7 +456,7 @@ export function AgreementEditor() {
                 <s-date-field
                   label="Start date"
                   value={draft.startDate || ''}
-                  disabled={started}
+                  disabled={started || locked}
                   onChange={(e) => patch({ startDate: e.currentTarget.value })}
                   error={shown('startDate')}
                   details={started ? 'It has started, so this can’t change.' : undefined}
@@ -348,6 +464,7 @@ export function AgreementEditor() {
                 <s-date-field
                   label="End date"
                   value={draft.endDate || ''}
+                  disabled={locked}
                   onChange={(e) => patch({ endDate: e.currentTarget.value })}
                   error={errors.endDate}
                   details="Leave empty for no end date."
@@ -373,7 +490,7 @@ export function AgreementEditor() {
             <TermGroup
               icon="receipt-dollar"
               title="Base pricing"
-              action={<AddTerm onCreate={() => createPricing('base')} onCopy={() => setCopying('base')} />}
+              action={locked ? null : <AddTerm onCreate={() => createPricing('base')} onCopy={() => setCopying('base')} />}
               rows={pickedOf(draft.terms.base, db.policies).map((p) => ({
                 key: p.id,
                 name: p.name,
@@ -381,32 +498,32 @@ export function AgreementEditor() {
                 // Calculation): "Vendor: Manchester City FC · 20% off Shopify price".
                 detail: `${basePricingProductsLabel(p, db.products || [])} · ${basePricingCalculationLabel(p, db.products || [])}`,
                 side: `Priority ${p.priority ?? 0}`,
-                onOpen: () => editPricing(p),
-                actions: <TermActions name={p.name} onEdit={() => editPricing(p)} onRemove={() => remove('base', p.id)} />,
+                onOpen: locked ? undefined : () => editPricing(p),
+                actions: locked ? null : <TermActions name={p.name} onEdit={() => editPricing(p)} onRemove={() => remove('base', p.id)} />,
               }))}
             />
             <TermGroup
               icon="discount"
               title="Quantity pricing"
-              action={<AddTerm onCreate={() => createPricing('quantity')} onCopy={() => setCopying('quantity')} />}
+              action={locked ? null : <AddTerm onCreate={() => createPricing('quantity')} onCopy={() => setCopying('quantity')} />}
               rows={pickedOf(draft.terms.quantity, db.policies).map((p) => ({
                 key: p.id,
                 name: p.name,
                 detail: scopeLabel(p),
-                onOpen: () => editPricing(p),
-                actions: <TermActions name={p.name} onEdit={() => editPricing(p)} onRemove={() => remove('quantity', p.id)} />,
+                onOpen: locked ? undefined : () => editPricing(p),
+                actions: locked ? null : <TermActions name={p.name} onEdit={() => editPricing(p)} onRemove={() => remove('quantity', p.id)} />,
               }))}
             />
             <TermGroup
               icon="order"
               title="Order limits"
-              action={<AddTerm onCreate={createLimit} onCopy={() => setCopying('limits')} />}
+              action={locked ? null : <AddTerm onCreate={createLimit} onCopy={() => setCopying('limits')} />}
               rows={pickedOf(draft.terms.limits, db.limits).map((l) => ({
                 key: l.id,
                 name: l.name,
                 detail: limitSummary(l, db),
-                onOpen: () => editLimit(l),
-                actions: <TermActions name={l.name} onEdit={() => editLimit(l)} onRemove={() => remove('limits', l.id)} />,
+                onOpen: locked ? undefined : () => editLimit(l),
+                actions: locked ? null : <TermActions name={l.name} onEdit={() => editLimit(l)} onRemove={() => remove('limits', l.id)} />,
               }))}
             />
             {limitConflicts.length ? (
@@ -467,9 +584,10 @@ export function AgreementEditor() {
               labelAccessibilityVisibility="exclusive"
               placeholder="Search companies"
               value=""
-              onClick={() => setCompanyModal(true)}
+              disabled={locked}
+              onClick={() => !locked && setCompanyModal(true)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') setCompanyModal(true);
+                if (e.key === 'Enter' && !locked) setCompanyModal(true);
               }}
             />
             {picks.selectedCompanies.length ? (
@@ -491,6 +609,7 @@ export function AgreementEditor() {
               <s-checkbox
                 label="Automatically apply this contract to locations added later"
                 checked={addsLaterLocations(draft)}
+                disabled={locked}
                 onChange={(e) => patch({ applyLater: e.currentTarget.checked })}
               />
             )}
@@ -508,14 +627,25 @@ export function AgreementEditor() {
         <s-stack gap="small-200">
           {live || proposed ? (
             <div>
-              <s-badge tone={started ? 'success' : proposal === 'changes' || cancelRequest ? 'warning' : proposed ? 'attention' : 'info'}>{statusLabel(saved)}</s-badge>
+              <s-stack direction="inline" gap="small-200">
+                <s-badge tone={started ? 'success' : proposed ? 'attention' : 'info'}>{statusLabel(saved)}</s-badge>
+                {/* A request waiting beside its status, which stays (pendingNote) — as in
+                    the Contracts list and their B2B Portal. */}
+                {pendingNote(saved) ? <s-badge>{pendingNote(saved)}</s-badge> : null}
+              </s-stack>
             </div>
           ) : null}
-          {/* A request for changes is its status, above, and in Buyer note, below; an
-              approval is in the sentence below ("Approved by … on …"). */}
+          {/* Its status stays whatever its buyers asked; the request is beside it and in
+              the sentence below. Each is in Buyer note, below; an approval is in the
+              sentence ("Approved by … on …"). */}
           <s-paragraph color="subdued" fontSize="small">
             {cancelRequest
-              ? `${who}’s buyers asked to cancel it. Cancel the contract, or reject the request with a note they see in their B2B Portal.`
+              ? `${who}’s buyers asked to cancel it. ${
+                  started ? 'End the contract' : 'Cancel the contract'
+                }, or decline the request with a reply they see in their B2B Portal.${
+                  // Not answered by its start date, one that hasn't started expires (syncContractDates).
+                  started ? ' It stays in force until you answer.' : saved.startDate ? ` It expires on ${fmtDay(saved.startDate)} if you don’t answer.` : ''
+                }`
               : proposed
               ? !proposalUnchanged
                 ? `Sending gives ${who}’s buyers your changes to approve. It stays version ${saved.version}; the changes go in its Activities log.`
@@ -523,15 +653,27 @@ export function AgreementEditor() {
                   ? `Activating gives ${who} these terms ${when}${proposal === 'approved' ? '' : '. Its buyers haven’t approved it'}.`
                   : proposal === 'changes'
                     ? `Change it and send it again. Nothing applies until they approve it.`
-                    : `Waiting for ${who}’s buyers to approve it. It’s activated once they do. It expires if they don’t approve it by ${fmtDay(saved.startDate)}.`
-              : started && sends
-                ? waiting && waitingUnchanged
+                    : `Waiting for ${who}’s buyers to approve it. It’s activated once they do. It expires if they don’t approve it by ${fmtDay(saved.startDate)}. You can change it once they answer.`
+              : keeps && sends
+                ? waiting && (waitingUnchanged || waitingUnanswered)
                   ? proposal === 'changes'
-                    ? `${who}’s buyers asked for changes to version ${waiting.version}. Change it and send it again, or decline their request. Version ${saved.version} stays in force.`
-                    : `Version ${waiting.version} is waiting for ${who}’s buyers to approve it. Version ${saved.version} stays in force until they do.`
+                    ? `${who}’s buyers asked for changes to version ${waiting.version}. Change it and send it again, or decline their request. ${
+                        started ? `Version ${saved.version} stays in force.` : `Version ${saved.version} still starts ${startsOn} until they approve version ${waiting.version}.`
+                      }`
+                    : started
+                      ? `Version ${waiting.version} is waiting for ${who}’s buyers to approve it. Version ${saved.version} stays in force until they do. You can change it once they answer.`
+                      : `Version ${waiting.version} is waiting for ${who}’s buyers to approve it. Version ${saved.version} starts ${startsOn} as it is if they haven’t by then; version ${waiting.version} keeps waiting and applies once they approve it. You can change it once they answer.`
                   : !waiting && unchanged
-                    ? `${approvedLine}Version ${saved.version} is in force.`
-                    : `Sending gives ${who}’s buyers your changes as version ${nextVersion} to approve. Version ${saved.version} stays in force until they do.`
+                    ? liveRequest
+                      ? `${who}’s buyers asked for changes to version ${saved.version}. Change it and send it to them, or decline their request. ${
+                          started ? `Version ${saved.version} stays in force.` : `It still starts ${startsOn}.`
+                        }`
+                      : started
+                        ? `${approvedLine}Version ${saved.version} is in force.`
+                        : `${approvedLine}It starts ${startsOn}.`
+                    : started
+                      ? `Sending gives ${who}’s buyers your changes as version ${nextVersion} to approve. Version ${saved.version} stays in force until they do.`
+                      : `Sending gives ${who}’s buyers your changes as version ${nextVersion} to approve. Version ${saved.version} still starts ${startsOn} until they approve it.`
               : sends
                 ? saved
                   ? unchanged
@@ -540,8 +682,40 @@ export function AgreementEditor() {
                   : `Nothing is applied yet. ${who}’s buyers approve it first in their B2B Portal, and it’s activated once they do.`
                 : live
                   ? `Saving gives ${company?.name} your changes ${when}, as version ${nextVersion}.`
-                  : `Nothing is applied yet. Saving gives ${who} these terms${draft.startDate ? ` from ${fmtDay(draft.startDate)}` : ''}.`}
+                  : `Nothing is applied yet. Activating gives ${who} these terms${draft.startDate ? ` from ${fmtDay(draft.startDate)}` : ''}.`}
           </s-paragraph>
+          {endAsked ? (
+            <s-paragraph color="subdued" fontSize="small">
+              {endAsked.cancel
+                ? `You asked ${who}’s buyers to cancel it on ${fmtDay(endAsked.at)}. It still starts ${startsOn} unless they approve before then. You can’t send changes until they answer or you withdraw it.`
+                : `You asked ${who}’s buyers to end it on ${fmtDay(endAsked.at)}. It stays in force until they approve. You can’t send changes until they answer or you withdraw it.`}
+            </s-paragraph>
+          ) : versionDeclined ? (
+            <s-stack gap="small-300">
+              <s-paragraph color="subdued" fontSize="small">
+                {`${who}’s buyers declined version ${versionDeclined.version} on ${fmtDay(versionDeclined.at)}. Version ${saved.version} ${
+                  started ? 'stays in force' : `still starts ${startsOn}`
+                }.`}
+              </s-paragraph>
+              {/* Their message with it, in its own modal (Buyer's message). */}
+              {versionDeclined.message ? (
+                <div>
+                  <s-link onClick={() => setBuyerMessage(versionDeclined)}>Buyer’s message</s-link>
+                </div>
+              ) : null}
+            </s-stack>
+          ) : endDeclined ? (
+            <s-stack gap="small-300">
+              <s-paragraph color="subdued" fontSize="small">
+                {`${who}’s buyers declined ${endDeclined.req.cancel ? 'cancelling' : 'ending'} it on ${fmtDay(endDeclined.answer.at)}.`}
+              </s-paragraph>
+              {endDeclined.answer.message ? (
+                <div>
+                  <s-link onClick={() => setBuyerMessage(endDeclined.answer)}>Buyer’s message</s-link>
+                </div>
+              ) : null}
+            </s-stack>
+          ) : null}
         </s-stack>
       </s-section>
       {/* What the buyer wrote with Request changes or Request cancellation: who and
@@ -555,7 +729,7 @@ export function AgreementEditor() {
             </s-paragraph>
             {declined ? (
               <s-paragraph color="subdued" fontSize="small">
-                {`You ${rejectedCancel ? 'rejected' : 'declined'} it · ${fmtDay(declined.at)}`}
+                {`You declined it · ${fmtDay(declined.at)}`}
               </s-paragraph>
             ) : null}
           </s-stack>
@@ -563,6 +737,7 @@ export function AgreementEditor() {
       ) : null}
       <s-section heading="Overview">
         <s-stack gap="small">
+          {showingLine ? <s-banner tone="info">{showingLine}</s-banner> : null}
           <s-stack gap="small-300">
             {overview.map(([icon, label, value]) => (
               <s-grid key={label} gridTemplateColumns="auto 88px minmax(0, 1fr)" gap="small-200" alignItems="start">
@@ -582,12 +757,30 @@ export function AgreementEditor() {
       {/* A saved one's version history, like on the company's Contract tab. */}
       {saved?.history?.length ? (
         <s-section>
-          <VersionTimeline history={saved.history} onView={setViewing} />
+          {/* A version picked there: the editor goes on from it (LOAD_AGREEMENT_VERSION) —
+              the one waiting for its buyers, one they declined, the one in force… */}
+          <VersionTimeline
+            history={saved.history}
+            current={state.agreementEditor.loaded || saved.version}
+            onView={(version, h) => (edited ? setSwitching(h) : loadVersion(h))}
+            aside={activities.length ? <s-link onClick={() => setLogOpen(true)}>Activities log</s-link> : null}
+          />
         </s-section>
       ) : null}
       </s-stack>
     </s-grid>
     </s-query-container>
+      {buyerMessage ? (
+        <Modal onClose={() => setBuyerMessage(null)} heading="Buyer’s message">
+          <s-stack gap="small">
+            <s-paragraph>{buyerMessage.message}</s-paragraph>
+            <s-paragraph color="subdued">{byLine(buyerMessage)}</s-paragraph>
+          </s-stack>
+          <s-button slot="secondary-actions" onClick={() => setBuyerMessage(null)}>
+            Close
+          </s-button>
+        </Modal>
+      ) : null}
       {noteOpen && buyerResponse?.message ? (
         <Modal onClose={() => setNoteOpen(false)} heading={notes.length > 1 ? 'Buyer notes' : 'Buyer note'}>
           <s-stack gap="small">
@@ -601,12 +794,12 @@ export function AgreementEditor() {
             {declined ? (
               <>
                 <s-divider />
-                <s-paragraph>{`${rejectedCancel ? 'Your note' : 'Your reply'}: ${declined.message}`}</s-paragraph>
-                <s-paragraph color="subdued">{`${rejectedCancel ? 'Rejected' : 'Declined'} · ${fmtDay(declined.at)}`}</s-paragraph>
+                <s-paragraph>{`Your reply: ${declined.message}`}</s-paragraph>
+                <s-paragraph color="subdued">{`Declined · ${fmtDay(declined.at)}`}</s-paragraph>
               </>
             ) : null}
           </s-stack>
-          {proposal === 'changes' ? (
+          {changesAsked ? (
             <s-button
               slot="secondary-actions"
               tone="critical"
@@ -630,7 +823,9 @@ export function AgreementEditor() {
             <s-paragraph>
               {waiting
                 ? `Version ${waiting.version} stays as it is. ${who}’s buyers can approve it or ask for changes again.`
-                : `${saved.number} stays as it is (version ${saved.version}). ${who}’s buyers can approve it or ask for changes again.`}
+                : liveRequest
+                  ? `${started ? `Version ${saved.version} stays in force.` : `Version ${saved.version} still starts ${startsOn}.`} ${who}’s buyers can ask for changes again.`
+                  : `${saved.number} stays as it is (version ${saved.version}). ${who}’s buyers can approve it or ask for changes again.`}
             </s-paragraph>
             <s-text-area
               label="Reply to the buyer"
@@ -658,21 +853,42 @@ export function AgreementEditor() {
           </s-button>
         </Modal>
       ) : null}
-      {viewing != null && saved && <ContractVersionModal ag={saved} version={viewing} onClose={() => setViewing(null)} />}
+      {logOpen && saved ? <ActivitiesLogModal number={saved.number} activities={activities} onClose={() => setLogOpen(false)} /> : null}
+      {deleting && record && <DeleteContractModal ag={record} onClose={() => setDeleting(false)} />}
       {ending && saved && <EndContractModal ag={saved} onClose={() => setEnding(false)} onDone={close} />}
-      {deleting && saved && <DeleteContractModal ag={saved} onClose={() => setDeleting(false)} />}
-      {/* Reject request (to cancel it): a note is required; it goes back to the status
+      {/* Decline request (to cancel it): a reply is required; it goes back to the status
           it had before the request, at the same version. */}
+      {switching ? (
+        <Modal onClose={() => setSwitching(null)} heading={`Open version ${switching.version}?`}>
+          <s-paragraph>Changes you haven’t sent or saved will be lost.</s-paragraph>
+          <s-button
+            slot="primary-action"
+            variant="primary"
+            tone="critical"
+            onClick={() => {
+              loadVersion(switching);
+              setSwitching(null);
+            }}
+          >
+            {`Open version ${switching.version}`}
+          </s-button>
+          <s-button slot="secondary-actions" onClick={() => setSwitching(null)}>
+            Cancel
+          </s-button>
+        </Modal>
+      ) : null}
       {rejecting && saved ? (
-        <Modal onClose={() => setRejecting(false)} heading="Reject the cancellation request?">
+        <Modal onClose={() => setRejecting(false)} heading="Decline the cancellation request?">
           <s-stack gap="small">
             <s-paragraph>
-              {saved.status === 'Scheduled'
-                ? `${saved.number} stays scheduled to start ${fmtDay(saved.startDate)}.`
+              {saved.status === 'Scheduled' || started
+                ? `${saved.number} ${started ? 'stays in force' : `stays scheduled to start ${fmtDay(saved.startDate)}`}.${
+                    waiting ? ` Version ${waiting.version} waits for ${who}’s buyers to approve it again.` : ''
+                  }`
                 : `${saved.number} stays as it is (version ${saved.version}), waiting for ${who}’s buyers to approve it.`}
             </s-paragraph>
             <s-text-area
-              label="Note to the buyer"
+              label="Reply to the buyer"
               details="They see it in their B2B Portal."
               rows={3}
               value={reply}
@@ -690,7 +906,7 @@ export function AgreementEditor() {
               setReply('');
             }}
           >
-            Reject request
+            Decline request
           </s-button>
           <s-button slot="secondary-actions" onClick={() => setRejecting(false)}>
             Cancel
@@ -699,9 +915,11 @@ export function AgreementEditor() {
       ) : null}
       {/* Cancel contract: Cancelled right away; the editor closes. */}
       {cancelling && saved ? (
-        <Modal onClose={() => setCancelling(false)} heading={`Cancel ${saved.number}?`}>
+        <Modal onClose={() => setCancelling(false)} heading={`${started ? 'End' : 'Cancel'} ${saved.number}?`}>
           <s-paragraph>
-            {`${who}’s buyers asked to cancel it. It’s cancelled now: none of its terms apply, and it leaves their B2B Portal. You can’t undo this.`}
+            {`${who}’s buyers asked to cancel it. ${
+              started ? 'It ends now, at their request: its pricing and order limits come off right away' : 'It’s cancelled now: none of its terms apply'
+            }, and it leaves their B2B Portal. You can’t undo this.`}
           </s-paragraph>
           <s-button
             slot="primary-action"
@@ -712,7 +930,7 @@ export function AgreementEditor() {
               dispatch({ type: 'CANCEL_AGREEMENT', id: saved.id });
             }}
           >
-            Cancel contract
+            {started ? 'End contract' : 'Cancel contract'}
           </s-button>
           <s-button slot="secondary-actions" onClick={() => setCancelling(false)}>
             Keep contract
@@ -760,7 +978,7 @@ export function AgreementEditor() {
                 <s-list-item key={line}>{line}</s-list-item>
               ))}
             </s-unordered-list>
-            <s-paragraph>{`If you ${proposed ? 'activate it' : 'save'}, the contract that starts later runs where they overlap, and the other one ends or gives up those locations.`}</s-paragraph>
+            <s-paragraph>{`If you ${proposed || !live ? 'activate it' : 'save'}, the contract that starts later runs where they overlap, and the other one ends or gives up those locations.`}</s-paragraph>
           </s-stack>
           <s-button
             slot="primary-action"
@@ -770,7 +988,7 @@ export function AgreementEditor() {
               dispatch({ type: 'SAVE_AGREEMENT', sameVersion: proposalUnchanged });
             }}
           >
-            {proposed ? 'Activate' : 'Save'}
+            {proposed || !live ? 'Activate' : 'Save'}
           </s-button>
           <s-button slot="secondary-actions" onClick={() => setOverlapBox(false)}>
             Cancel
@@ -778,7 +996,7 @@ export function AgreementEditor() {
         </Modal>
       )}
       {confirm && (
-        <Modal onClose={() => setConfirm(false)} heading={live ? `Save ${draft.number} as version ${nextVersion}?` : proposed ? `Activate ${draft.number}?` : `Save ${draft.number}?`}>
+        <Modal onClose={() => setConfirm(false)} heading={live ? `Save ${draft.number} as version ${nextVersion}?` : `Activate ${draft.number}?`}>
           {onlyLater ? (
             <s-paragraph>
               {addsLaterLocations(draft)
@@ -810,7 +1028,7 @@ export function AgreementEditor() {
               dispatch({ type: 'SAVE_AGREEMENT', sameVersion: proposalUnchanged });
             }}
           >
-            {onlyLater ? 'Save' : proposed ? 'Activate' : 'Save and apply'}
+            {onlyLater ? 'Save' : proposed || !live ? 'Activate' : 'Save and apply'}
           </s-button>
           <s-button slot="secondary-actions" onClick={() => setConfirm(false)}>
             Cancel
@@ -819,13 +1037,20 @@ export function AgreementEditor() {
       )}
       {/* Send to buyer: it goes to their B2B Portal to approve; nothing applies yet. */}
       {sending && (
-        <Modal onClose={() => setSending(false)} heading={saved ? `Send version ${nextVersion} to the buyer?` : `Send ${draft.number} to the buyer?`}>
+        <Modal onClose={closeSending} heading={saved ? `Send version ${nextVersion} to the buyer?` : `Send ${draft.number} to the buyer?`}>
           <s-stack gap="small">
             {saved ? (
               <s-paragraph>{`${waiting ? agreementChanges(waiting, draft, db, withStagedTerms(state.db, saved.pending.staged)) : agreementChanges(saved, draft, db, state.db)}.`}</s-paragraph>
             ) : null}
             {started ? (
-              <s-paragraph>{`${who}’s buyers see it in their B2B Portal and can approve it or request changes. Version ${saved.version} stays in force until they approve it; then version ${nextVersion} applies right away.`}</s-paragraph>
+              <s-paragraph>{`${who}’s buyers see it in their B2B Portal and can approve or decline it. Version ${saved.version} stays in force until they approve it; then version ${nextVersion} applies right away.`}</s-paragraph>
+            ) : keeps ? (
+              <>
+                <s-paragraph>{`${who}’s buyers see it in their B2B Portal and can approve or decline it. Version ${saved.version} stays scheduled until they approve it; then version ${nextVersion} takes its place${
+                  draft.startDate !== saved.startDate ? `, starting ${fmtDay(draft.startDate)}` : ''
+                }.`}</s-paragraph>
+                <s-paragraph>{`If they haven’t approved it by ${startsOn}, version ${saved.version} starts as it is; version ${nextVersion} keeps waiting and applies once they approve it.`}</s-paragraph>
+              </>
             ) : (
               <>
                 <s-paragraph>{`${who}’s buyers see it in their B2B Portal and can approve it or request changes. It’s activated once they approve it: Scheduled if it starts later, Active if it starts today.`}</s-paragraph>
@@ -843,18 +1068,27 @@ export function AgreementEditor() {
                 </s-unordered-list>
               </>
             ) : null}
+            {/* Always (optional): with their request when it answers one, else with what's
+                sent — their Seller's message in their B2B Portal. */}
+            <s-text-area
+              label="Message to the buyer"
+              details={changesAsked ? 'Optional. They see it with their request in their B2B Portal.' : 'Optional. They see it with this version in their B2B Portal.'}
+              rows={3}
+              value={sendNote}
+              onInput={(e) => setSendNote(e.currentTarget.value)}
+            />
           </s-stack>
           <s-button
             slot="primary-action"
             variant="primary"
             onClick={() => {
-              setSending(false);
-              dispatch({ type: 'SEND_PROPOSAL' });
+              dispatch({ type: 'SEND_PROPOSAL', message: sendNote });
+              closeSending();
             }}
           >
             Send to buyer
           </s-button>
-          <s-button slot="secondary-actions" onClick={() => setSending(false)}>
+          <s-button slot="secondary-actions" onClick={closeSending}>
             Cancel
           </s-button>
         </Modal>

@@ -530,7 +530,8 @@ body {
 .wc-savebar {
   position: fixed;
   inset: 0 0 auto 0;
-  z-index: 450;
+  /* Above the full-screen pricing editor (517), whose edits it saves too. */
+  z-index: 518;
   display: flex;
   align-items: center;
   justify-content: space-between;
