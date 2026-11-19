@@ -3,6 +3,7 @@ import { useStore } from '../store.jsx';
 import { resetDemo } from '../../shared/persistence.js';
 import { isContractTerm } from '../agreements.js';
 import { CdPageHead, CdSection, StatusDot } from '../components/companyLayout.jsx';
+import { SaveBar } from '../../shared/wc.jsx';
 
 const APPROVED_APP = [
   { label: 'Assign the standard wholesale pricing', value: 'standard' },
@@ -37,7 +38,14 @@ function Options({ options }) {
 export function Settings() {
   const { state, dispatch } = useStore();
   const toast = (m) => dispatch({ type: 'TOAST', message: m });
-  const [behaviors, setBehaviors] = useState({ approvedApp: 'standard', expiredPrice: 'shopify', acceptedQuote: 'order' });
+  // Default behaviors: changed, the save bar shows (Save / Discard) until saved.
+  const [savedBehaviors, setSavedBehaviors] = useState({ approvedApp: 'standard', expiredPrice: 'shopify', acceptedQuote: 'order' });
+  const [behaviors, setBehaviors] = useState(savedBehaviors);
+  const edited = JSON.stringify(behaviors) !== JSON.stringify(savedBehaviors);
+  const save = () => {
+    setSavedBehaviors(behaviors);
+    toast('Settings saved');
+  };
   const setB = (k) => (e) => {
     const v = e.currentTarget.value;
     setBehaviors((p) => ({ ...p, [k]: v }));
@@ -49,19 +57,17 @@ export function Settings() {
     { name: 'ERP import', status: 'Available', tone: undefined },
   ];
 
-  // The company page's look: a white page, the title with Reset and Save, then sections
-  // titled above bordered cards.
+  // The company page's look: a white page, the title with Reset (it waits while there are
+  // unsaved changes; Save is on the save bar), then sections titled above bordered cards.
   return (
     <div className="cd-page">
+      {edited && <SaveBar onSave={save} onDiscard={() => setBehaviors(savedBehaviors)} />}
       <CdPageHead
         title="Settings"
         actions={
-          <>
-            <s-button onClick={resetDemo}>Reset sample data</s-button>
-            <s-button variant="primary" onClick={() => toast('Settings saved')}>
-              Save
-            </s-button>
-          </>
+          <s-button disabled={edited} onClick={resetDemo}>
+            Reset sample data
+          </s-button>
         }
       />
 

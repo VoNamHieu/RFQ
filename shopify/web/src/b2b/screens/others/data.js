@@ -28,6 +28,13 @@ export const DEFAULT_NOTIFICATION_STATE = {
   allow_contract_ended_email: false,
   allow_contract_renewed_email: false,
   allow_contract_reminder_email: false,
+  allow_contract_approval_request_email: false,
+  allow_contract_request_declined_email: false,
+  allow_contract_request_received_email: false,
+  allow_contract_approved_email: false,
+  allow_contract_end_request_email: false,
+  allow_contract_end_answered_email: false,
+  allow_contract_version_declined_email: false,
 };
 
 // Registration form notification emails (features/Email/constants/email.constant.ts):
@@ -73,7 +80,15 @@ const ADMIN_PREHEADER_FIELDS = [
   { key: 'replyTo', label: 'Reply to', autoComplete: 'off', placeholder: 'Enter value', helpText: RECIPIENTS_HELP_TEXT },
 ];
 // Templates with an admin recipient (validated as email addresses on save).
-export const ADMIN_EMAIL_KEYS = ['allow_admin_notification_email', 'allow_order_request_received_email', 'allow_contract_reminder_email'];
+export const ADMIN_EMAIL_KEYS = [
+  'allow_admin_notification_email',
+  'allow_order_request_received_email',
+  'allow_contract_reminder_email',
+  'allow_contract_request_received_email',
+  'allow_contract_approved_email',
+  'allow_contract_end_answered_email',
+  'allow_contract_version_declined_email',
+];
 
 const P = (html) => `<p style="margin:0;padding:0">${html}</p>`;
 const body = (...paragraphs) => paragraphs.map(P).join('');
@@ -155,7 +170,10 @@ const ORDER_REQUEST_EMAIL_TEMPLATES = {
 // Contract emails (Upcoming version): to the buyers at the locations a contract
 // applies to when it starts, when its renewal reminder starts (reminderDays in
 // agreements.js), when it ends and when it's extended; and to you when the reminder
-// starts.
+// starts. Then the approval ones (a contract saved with Buyer must approve): to the
+// company's buyers — any of them can respond for it — when one waits for their
+// approval, and to the buyer whose request you declined; to you when a buyer sends a
+// request or approves one.
 const CONTRACT_EMAIL_TEMPLATES = {
   allow_contract_started_email: {
     title: 'Contract started',
@@ -195,6 +213,93 @@ const CONTRACT_EMAIL_TEMPLATES = {
     recipient: { type: 'admin' },
     detail: 'Contract extension reminder email is sent automatically to admin 30 days before a contract’s end date, or halfway through a contract shorter than 60 days, unless a next contract is set to take over. A contract shorter than 7 days gets none',
     dynamicValues: CONTRACT_DYNAMIC_VALUES,
+    preheaderFields: ADMIN_PREHEADER_FIELDS,
+  },
+  allow_contract_approval_request_email: {
+    title: 'Contract waiting for approval',
+    description: 'Sent when a contract, a new version or an extension needs the buyer’s approval',
+    recipient: { type: 'buyer' },
+    detail: 'Contract waiting for approval email is sent automatically to the company’s buyers at the locations the contract applies to, when you send them a contract to approve, a new version of one or an extension, with your message if you add one',
+    dynamicValues: [
+      ...CONTRACT_DYNAMIC_VALUES,
+      { description: 'Contract version', value: '{contract_version}' },
+      { description: 'Date to approve it by', value: '{approve_by}' },
+      { description: 'Your message to the buyer, when you add one', value: '{seller_message}' },
+    ],
+    preheaderFields: BUYER_PREHEADER_FIELDS,
+  },
+  allow_contract_request_declined_email: {
+    title: 'Contract request declined',
+    description: 'Sent when you decline a buyer’s request for changes or cancellation',
+    recipient: { type: 'buyer' },
+    detail: 'Contract request declined email is sent automatically to the buyer who asked to change or cancel a contract, when you decline their request, with your reply',
+    dynamicValues: [
+      ...CONTRACT_DYNAMIC_VALUES,
+      { description: 'What they asked for: changes or cancellation', value: '{request_type}' },
+      { description: 'Buyer’s message', value: '{buyer_message}' },
+      { description: 'Your reply to the buyer', value: '{seller_reply}' },
+    ],
+    preheaderFields: BUYER_PREHEADER_FIELDS,
+  },
+  allow_contract_request_received_email: {
+    title: 'Contract request received',
+    description: 'Alerts your team when a buyer asks to change or cancel a contract',
+    recipient: { type: 'admin' },
+    detail: 'Contract request received email is sent automatically to admin when a buyer sends Request changes or Request cancellation from their B2B Portal, for you to answer it on the contract page',
+    dynamicValues: [
+      ...CONTRACT_DYNAMIC_VALUES,
+      { description: 'Contract version', value: '{contract_version}' },
+      { description: 'What they asked for: changes or cancellation', value: '{request_type}' },
+      { description: 'Buyer’s message', value: '{buyer_message}' },
+    ],
+    preheaderFields: ADMIN_PREHEADER_FIELDS,
+  },
+  allow_contract_approved_email: {
+    title: 'Contract approved by buyer',
+    description: 'Alerts your team when a buyer approves a contract, a new version or an extension',
+    recipient: { type: 'admin' },
+    detail: 'Contract approved by buyer email is sent automatically to admin when a buyer approves a contract, a new version or an extension in their B2B Portal',
+    dynamicValues: [
+      ...CONTRACT_DYNAMIC_VALUES,
+      { description: 'Contract version', value: '{contract_version}' },
+    ],
+    preheaderFields: ADMIN_PREHEADER_FIELDS,
+  },
+  allow_contract_end_request_email: {
+    title: 'Contract end requested',
+    description: 'Sent when you ask a company’s buyers to approve ending or cancelling a contract',
+    recipient: { type: 'buyer' },
+    detail: 'Contract end requested email is sent automatically to the company’s buyers at the locations the contract applies to, when you ask them to end a contract saved with Buyer must approve — or to cancel one that hasn’t started — with your reason',
+    dynamicValues: [
+      ...CONTRACT_DYNAMIC_VALUES,
+      { description: 'What you asked: end (it has started) or cancel (it hasn’t)', value: '{request_type}' },
+      { description: 'Your reason', value: '{seller_message}' },
+    ],
+    preheaderFields: BUYER_PREHEADER_FIELDS,
+  },
+  allow_contract_end_answered_email: {
+    title: 'Contract end answered',
+    description: 'Alerts your team when a buyer approves or declines ending or cancelling a contract',
+    recipient: { type: 'admin' },
+    detail: 'Contract end answered email is sent automatically to admin when a buyer approves or declines your request to end or cancel a contract in their B2B Portal, with their message',
+    dynamicValues: [
+      ...CONTRACT_DYNAMIC_VALUES,
+      { description: 'What you asked: end or cancel', value: '{request_type}' },
+      { description: 'Their answer: approved or declined', value: '{end_answer}' },
+      { description: 'Buyer’s message', value: '{buyer_message}' },
+    ],
+    preheaderFields: ADMIN_PREHEADER_FIELDS,
+  },
+  allow_contract_version_declined_email: {
+    title: 'Contract version declined',
+    description: 'Alerts your team when a buyer declines a new version or an extension',
+    recipient: { type: 'admin' },
+    detail: 'Contract version declined email is sent automatically to admin when a buyer declines a new version or an extension you sent them, with their message. The version they approved stays as it is',
+    dynamicValues: [
+      ...CONTRACT_DYNAMIC_VALUES,
+      { description: 'The version they declined', value: '{contract_version}' },
+      { description: 'Buyer’s message', value: '{buyer_message}' },
+    ],
     preheaderFields: ADMIN_PREHEADER_FIELDS,
   },
 };
@@ -388,6 +493,114 @@ export const DEMO_EMAIL_TEMPLATES = {
     bcc: '',
     replyTo: '',
   },
+  allow_contract_approval_request_email: {
+    subject: 'Contract {contract_number} is waiting for your approval',
+    emailBody: body(
+      'Dear {first_name},',
+      '<br>',
+      '{store_name} sent {company_name} version {contract_version} of contract {contract_number} · {contract_name} to approve.',
+      '<br>',
+      '{seller_message}',
+      '<br>',
+      'Review it in your B2B Portal at <a href="{store_url}">our store</a> and answer it by {approve_by}.',
+      '<br>',
+      'If you have any questions, contact us at {store_email}.',
+      '<br>',
+      'Best regards,<br>{store_name}',
+    ),
+    senderName: '221 Baker',
+    recipientName: '{customer_name}',
+  },
+  allow_contract_request_declined_email: {
+    subject: 'About your request on contract {contract_number}',
+    emailBody: body(
+      'Dear {first_name},',
+      '<br>',
+      '{store_name} declined your request for {request_type} on contract {contract_number} · {contract_name}. The contract stays as it is.',
+      '<br>',
+      '{seller_reply}',
+      '<br>',
+      'You can see it, and answer again, in your B2B Portal at <a href="{store_url}">our store</a>.',
+      '<br>',
+      'If you have any questions, contact us at {store_email}.',
+      '<br>',
+      'Best regards,<br>{store_name}',
+    ),
+    senderName: '221 Baker',
+    recipientName: '{customer_name}',
+  },
+  allow_contract_request_received_email: {
+    subject: '{company_name} sent a request for {request_type} on contract {contract_number}',
+    emailBody: body(
+      '{customer_name} ({email}) at {company_name} sent a request for {request_type} on contract {contract_number} · {contract_name}, version {contract_version}.',
+      '<br>',
+      '{buyer_message}',
+      '<br>',
+      'Go to B2B Quote Snap to answer it on the contract page.',
+    ),
+    adminRecipient: 'contracts@221baker.com',
+    cc: '',
+    bcc: '',
+    replyTo: '',
+  },
+  allow_contract_approved_email: {
+    subject: '{company_name} approved contract {contract_number}',
+    emailBody: body(
+      '{customer_name} ({email}) at {company_name} approved version {contract_version} of contract {contract_number} · {contract_name}.',
+      '<br>',
+      'It runs from {start_date} to {end_date}. See it in B2B Quote Snap.',
+    ),
+    adminRecipient: 'contracts@221baker.com',
+    cc: '',
+    bcc: '',
+    replyTo: '',
+  },
+  allow_contract_end_request_email: {
+    subject: '{store_name} asked to {request_type} contract {contract_number}',
+    emailBody: body(
+      'Dear {first_name},',
+      '<br>',
+      '{store_name} asked {company_name} to {request_type} contract {contract_number} · {contract_name}.',
+      '<br>',
+      '{seller_message}',
+      '<br>',
+      'Approve or decline it in your B2B Portal at <a href="{store_url}">our store</a>. Nothing changes until you answer.',
+      '<br>',
+      'If you have any questions, contact us at {store_email}.',
+      '<br>',
+      'Best regards,<br>{store_name}',
+    ),
+    senderName: '221 Baker',
+    recipientName: '{customer_name}',
+  },
+  allow_contract_end_answered_email: {
+    subject: '{company_name} {end_answer} your request to {request_type} contract {contract_number}',
+    emailBody: body(
+      '{customer_name} ({email}) at {company_name} {end_answer} your request to {request_type} contract {contract_number} · {contract_name}.',
+      '<br>',
+      '{buyer_message}',
+      '<br>',
+      'Approved, it has ended (or won’t start) and its prices and limits don’t apply. Declined, it stays as it is. See it in B2B Quote Snap.',
+    ),
+    adminRecipient: 'contracts@221baker.com',
+    cc: '',
+    bcc: '',
+    replyTo: '',
+  },
+  allow_contract_version_declined_email: {
+    subject: '{company_name} declined version {contract_version} of contract {contract_number}',
+    emailBody: body(
+      '{customer_name} ({email}) at {company_name} declined version {contract_version} of contract {contract_number} · {contract_name}.',
+      '<br>',
+      '{buyer_message}',
+      '<br>',
+      'The version they approved stays as it is. Open the contract in B2B Quote Snap to change it and send a new version.',
+    ),
+    adminRecipient: 'contracts@221baker.com',
+    cc: '',
+    bcc: '',
+    replyTo: '',
+  },
 };
 
 // Demo: what GET /email/settings returns for this shop — a connected sender
@@ -407,4 +620,11 @@ export const DEMO_EMAIL_SETTINGS = {
   allow_contract_ended_email: true,
   allow_contract_renewed_email: true,
   allow_contract_reminder_email: true,
+  allow_contract_approval_request_email: true,
+  allow_contract_request_declined_email: true,
+  allow_contract_request_received_email: true,
+  allow_contract_approved_email: true,
+  allow_contract_end_request_email: true,
+  allow_contract_end_answered_email: true,
+  allow_contract_version_declined_email: true,
 };

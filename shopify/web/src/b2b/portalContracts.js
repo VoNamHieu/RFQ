@@ -4,7 +4,9 @@
 // CONTRACTS_KEY) and the storefront falls back to the seed's.
 //
 // For a company location: { contract, upcoming, proposal, regular }, each null when
-// there's none.
+// there's none, and `past`: its contracts that are over but stay. Only what applies at
+// the location: a buyer sees (and answers for) the locations they buy for, as Shopify
+// gives them.
 //   contract: the Active contract it buys under — { number, name, version, start, end,
 //     pricing (names), rules + details + basePricing + quantityPricing (contractRules),
 //     limits (each limit's line), limitDetails (contractLimits), prices (Preview
@@ -17,11 +19,10 @@
 // Each also carries `startDate`, `approval`, and its buyers' answers and the seller's
 // declines, raw (`buyerResponses`, `declines`), for the storefront to work out its
 // answer and Activities log (activitiesOf).
-import { activeAt, appliesAt, agreementDatesLabel, termSummary, termSettings, liveContractPricing, companyAfterAgreement, contractPricingAfter, fmtDay, responseKey, pendingVersionOf, withStagedTerms, lastUpdateOf, isContractTerm, openChangeRequests } from './agreements.js';
+import { activeAt, appliesAt, agreementScopeLabel, isLive, PAST_STATUSES, shownWhenOver, agreementDatesLabel, termSummary, termSettings, liveContractPricing, companyAfterAgreement, contractPricingAfter, fmtDay, responseKey, pendingVersionOf, withStagedTerms, lastUpdateOf, isContractTerm, openChangeRequests, latestRequestOf } from './agreements.js';
 import { kindOf, baseInScope, policyPriceBreakdown, productVariants, resolveDetail, withContractPricing, companyBaseEntries, companyQuantityEntries, hasOwnSlot, basePriceableNow, TODAY } from './pricing.js';
 import { limitRules, locationLimits, limitKey } from './limits.js';
 import { money } from './format.js';
-import { latestBuyerResponse } from './buyerEvents.js';
 
 const policyOf = (db, id) => (db.policies || []).find((p) => p.id === id) || null;
 const pricingOf = (db, ag) => [...ag.terms.base, ...ag.terms.quantity].map((id) => policyOf(db, id)).filter(Boolean);
@@ -256,7 +257,9 @@ function contractHistory(db, ag, company) {
     groups: groupsOf(snap),
     changed: prev ? changedOf(snap, prev) : null,
   });
-  const history = ag.history || [];
+  // Versions its buyers didn't approve (sent, declined…: agreements.js logSentVersion)
+  // are the admin's only.
+  const history = (ag.history || []).filter((h) => !h.unapproved);
   return history.map((h, i) => {
     const prev = history.slice(i + 1).find((x) => x.snapshot && x.version < h.version);
     return { version: h.version, date: day(h.date) || '', note: h.note || '', view: h.snapshot ? viewOf(h.snapshot, h.version, prev?.snapshot) : null };
@@ -383,14 +386,29 @@ function cardOf(db, ag, company, locationId, kind, change) {
     limitDetails,
     prices: contractPrices(db, ag, company, locationId, upcoming, change),
     ...(kind === 'contract' ? { history: contractHistory(db, ag, company) } : {}),
+    // The Contract and Upcoming contract cards: the version sent to its buyers since
+    // (pendingVersionOf), waiting for them on its own card — they answer that one, not
+    // the version they approved.
+    ...(kind !== 'proposal' ? { newVersion: pendingVersionOf(ag)?.version || null } : {}),
     startDate: ag.startDate || null,
-    // Saved with Buyer must approve: an upcoming one can be asked to cancel.
+    // Saved with Buyer must approve: an upcoming one can be asked to cancel, and an
+    // Active one's buyers can ask for changes to it (agreements.js activeChangeRequestOf).
     approval: !!ag.approval,
     // The buyers' answers and the seller's declines, raw: the storefront adds what it
     // sent since and works out the card's answer, its decline and its Activities log
     // from them (storefront/data/products.js contractsForSession, activitiesOf).
     buyerResponses: ag.buyerResponses || [],
     declines: ag.declines || [],
+    // The merchant's message sent with the contract in answer to their requests for
+    // changes (agreements.js changesToAnswer).
+    replies: ag.replies || [],
+    // The merchant's message sent with it on its own (no request to answer).
+    sentMessages: ag.sentMessages || [],
+    // When its version waiting for them was sent (a decline before it is over: sellerMessageOf).
+    pendingSentAt: ag.pending?.sentAt || null,
+    // The merchant's requests to end it and their answers (agreements.js endRequestOf).
+    endRequests: ag.endRequests || [],
+    endResponses: ag.endResponses || [],
     // What the seller changed before activating it, for its Activities log.
     sellerUpdates: ag.sellerUpdates || [],
     // When it last changed: the B2B Portal lists the newest first (lastUpdateOf).
@@ -401,37 +419,60 @@ function cardOf(db, ag, company, locationId, kind, change) {
 // A contract's Activities log, as the real portal's backend's (portal.js
 // activitiesOf): every answer its buyers sent — Approve, Request changes, Request
 // cancellation — raw ({ kind, message, buyer, email, at, version }) with `status` for
-// a request (Awaiting review: the latest answer to its version; Rejected: the seller
+// a request (Awaiting review: the latest answer to its version; Declined: the seller
 // declined it, `reply` { message, at }; New version sent; Updated by seller: sent
-// again without a new version; Closed: they answered again on it) and none for an
+// again without a new version — either with the seller's message as `reply` when they
+// added one (`replies`); Closed: they answered again on it) and none for an
 // approval — and each change the seller made before activating it ({ kind: 'updated',
 // note, at, version }), newest first. `ag`: { version, revision, buyerResponses,
-// declines, sellerUpdates }.
+// declines, replies, sellerUpdates, endRequests, endResponses, newVersion } (`newVersion`: an Active one's version sent to its
+// buyers since — a request to the version in force reads New version sent).
 export function activitiesOf(ag) {
-  const latest = latestBuyerResponse(ag);
-  // Requests for changes sent one after another, none answered yet: all waiting.
+  // Their latest request (an approval answers none: approvalOf).
+  const latest = latestRequestOf(ag);
+  // Requests for changes sent one after another, none answered yet: all waiting — none
+  // once the contract is over (Closed).
   const open = new Set(openChangeRequests(ag));
+  const over = PAST_STATUSES.includes(ag.status);
   const answers = (ag.buyerResponses || []).map((r) => {
-    if (r.kind === 'approve') return { ...r, status: null, reply: null };
-    const d = (ag.declines || []).find((x) => x.responseKey === responseKey(r));
+    // An approval, or a new version declined (Decline): a final answer, no status.
+    if (r.kind === 'approve' || r.kind === 'decline') return { ...r, status: null, reply: null };
+    const d = (ag.declines || []).find((x) => x.responseKey === responseKey(r)) || null;
+    // The seller's message sent with the contract in answer to it.
+    const sent = !d ? (ag.replies || []).find((x) => x.responseKey === responseKey(r)) : null;
     const status = d
-      ? 'Rejected'
-      : r === latest || open.has(r)
-        ? 'Awaiting review'
+      ? 'Declined'
+      : (r === latest || open.has(r)) && !over
+        ? ag.newVersion
+          ? 'New version sent'
+          : 'Awaiting review'
         : r.version < (ag.version || 1)
           ? 'New version sent'
           : (r.revision || 0) < (ag.revision || 0)
             ? 'Updated by seller'
             : 'Closed';
-    return { ...r, status, reply: d ? { message: d.message, at: d.at } : null };
+    const reply = d || sent;
+    return { ...r, status, reply: reply ? { message: reply.message, at: reply.at } : null };
   });
-  const updates = (ag.sellerUpdates || []).map((u) => ({ kind: 'updated', note: u.note || '', at: String(u.at || '').slice(0, 10), version: u.version, revision: u.revision, status: null, reply: null }));
-  // In order: by version, then revision — the seller's change opens its revision, the
-  // answers to it follow — then as they came.
-  const key = (x, i) => [x.version || 1, x.revision || 0, x.kind === 'updated' ? 0 : 1, i];
-  return [...updates, ...answers]
-    .map((x, i) => ({ x, k: key(x, i) }))
-    .sort((a, b) => a.k.reduce((d, v, j) => d || v - b.k[j], 0))
+  const updates = (ag.sellerUpdates || []).map((u) => ({ kind: 'updated', note: u.note || '', at: String(u.at || '').slice(0, 10), time: String(u.at || '').length > 10 ? u.at : null, version: u.version, revision: u.revision, status: null, reply: null }));
+  // The seller's requests to end it (End requested by seller, with why: `note`) and their
+  // answer to each (Ending approved, Ending declined, with why) — or its withdrawal.
+  const ends = (ag.endRequests || []).flatMap((q) => {
+    const answer = (ag.endResponses || []).find((r) => r.requestAt === q.time);
+    const at = { version: q.version, revision: q.revision || 0, status: null, reply: null };
+    // Withdrawn by the seller before they answered (End request withdrawn), or — a
+    // Scheduled one's request to cancel it — not answered by its start date (lapsed).
+    // `cancel`: a request to cancel one that hadn't started, worded so.
+    const closed = !answer && (q.withdrawnAt || q.lapsedAt) ? [{ kind: q.withdrawnAt ? 'end-withdrawn' : 'end-lapsed', note: '', at: String(q.withdrawnAt || q.lapsedAt).slice(0, 10), time: q.withdrawnAt || `${q.lapsedAt}T00:00:00.000Z`, ...at }] : [];
+    const cancel = q.cancel ? { cancel: true } : {};
+    return [{ kind: 'end-request', note: q.message || '', at: String(q.at || '').slice(0, 10), time: q.time, ...at }, ...(answer ? [{ ...answer, ...at }] : []), ...closed].map((x) => ({ ...x, ...cancel }));
+  });
+  // In the order they happened (when each was sent; a day alone counts as its start) —
+  // the seller's change before the answers to it — newest first.
+  const timeOf = (x) => String(x.time || `${String(x.at || '').slice(0, 10)}T00:00:00.000Z`);
+  return [...updates, ...answers, ...ends]
+    .map((x, i) => ({ x, i }))
+    .sort((a, b) => timeOf(a.x).localeCompare(timeOf(b.x)) || a.i - b.i)
     .map(({ x }) => x)
     .reverse();
 }
@@ -440,7 +481,7 @@ export function activitiesOf(ag) {
 // (`regular`: Business account's terms outside its contract, regularCard).
 export function portalContracts(db, companyId, locationId) {
   const company = (db.companies || []).find((c) => c.id === companyId);
-  if (!company || !(company.locations || []).some((l) => l.id === locationId)) return { contract: null, upcoming: null, proposal: null, regular: null };
+  if (!company || !(company.locations || []).some((l) => l.id === locationId)) return { contract: null, upcoming: null, proposal: null, regular: null, past: [] };
   const active = activeAt(db, company, locationId);
   // The company's contracts there with this status, the one starting soonest.
   const soonest = (status, ok = () => true) =>
@@ -452,22 +493,38 @@ export function portalContracts(db, companyId, locationId) {
   const proposed = soonest('Proposed', (a) => !a.startDate || a.startDate >= TODAY);
   // A new version of an Active one there (or one it would apply at) waiting for its
   // buyers: the proposal before any other — approved, it applies right away
-  // (`startDate` null), and it can't be asked to cancel (`update`).
+  // (`startDate` null), and it can't be asked to cancel (`update`). A Scheduled one's
+  // the same, but approved it starts on its own date (`startDate`), its prices as when
+  // it starts; its start date passed — or an Active one's end date — it expired (the B2B
+  // app drops it when it loads).
+  const original = (v) => (db.agreements || []).find((a) => a.id === v.id);
+  // (Until its end date: a Scheduled one's starts meanwhile, the new version still waiting.)
+  const waitingStill = (a) => !a.endDate || a.endDate >= TODAY;
+  const updateCard = (v, at) => {
+    const running = original(v).status === 'Active';
+    return {
+      ...cardOf(withStagedTerms(db, v.pending.staged), v, company, at, 'proposal', running ? { off: original(v), on: v } : undefined),
+      startDate: running ? null : v.startDate || null,
+      update: true,
+      // The version they approved, which they keep if they decline this one.
+      inForce: original(v).version || 1,
+    };
+  };
   const updating = (db.agreements || [])
     .map(pendingVersionOf)
-    .find((v) => v && v.companyId === companyId && (appliesAt(company, v, locationId) || appliesAt(company, (db.agreements || []).find((a) => a.id === v.id), locationId)));
-  const update = updating
-    ? {
-        ...cardOf(withStagedTerms(db, updating.pending.staged), updating, company, locationId, 'proposal', { off: (db.agreements || []).find((a) => a.id === updating.id), on: updating }),
-        startDate: null,
-        update: true,
-      }
-    : null;
+    .find((v) => v && v.companyId === companyId && (appliesAt(company, v, locationId) || appliesAt(company, original(v), locationId)) && waitingStill(original(v)));
+  const update = updating ? updateCard(updating, locationId) : null;
   return {
     contract: active ? cardOf(db, active, company, locationId, 'contract') : null,
     upcoming: next ? cardOf(db, next, company, locationId, 'upcoming') : null,
     proposal: update || (proposed ? cardOf(db, proposed, company, locationId, 'proposal') : null),
     regular: regularCard(db, company, locationId),
+    // Its contracts there that are over but stay (shownWhenOver), the one that ended last
+    // first: read-only, with how it ended (`status`, and when: `closedOn`).
+    past: (db.agreements || [])
+      .filter((a) => a.companyId === companyId && appliesAt(company, a, locationId) && shownWhenOver(a))
+      .sort((a, b) => String(b.history?.[0]?.date || '').localeCompare(String(a.history?.[0]?.date || '')))
+      .map((a) => ({ ...cardOf(db, a, company, locationId, 'contract'), status: a.status, closedOn: day(a.history?.[0]?.date) })),
   };
 }
 
@@ -479,7 +536,7 @@ export function publishablePortalContracts(db) {
   (db.companies || []).forEach((c) => {
     (c.locations || []).forEach((l) => {
       const cards = portalContracts(db, c.id, l.id);
-      if (cards.contract || cards.upcoming || cards.proposal || cards.regular) at[`${c.id}:${l.id}`] = cards;
+      if (cards.contract || cards.upcoming || cards.proposal || cards.regular || cards.past.length) at[`${c.id}:${l.id}`] = cards;
     });
   });
   return { v: 4, at };

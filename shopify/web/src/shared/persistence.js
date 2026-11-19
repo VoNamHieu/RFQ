@@ -87,6 +87,17 @@ export function removeInvoiceCheckouts(ids) {
   if (left.length !== readInvoiceCheckouts().length) writeJSON(INVOICE_CHECKOUTS_KEY, left);
 }
 
+// Prototype-only: the demo case the storefront was opened on (?case=…, see storefront
+// data/products.js startContractCase), kept so the B2B app seeds it too (b2b/data/db.js).
+export const DEMO_CASE_KEY = 'qsDemoCase';
+export function demoCase() {
+  try {
+    return new URLSearchParams(window.location.search).get('case') || localStorage.getItem(DEMO_CASE_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
 // One-shot read of the RFQ→B2B handoff. Cached at module scope so it is safe to
 // call more than once (React StrictMode double-invokes lazy initializers, and a
 // dev remount would otherwise lose the payload once the key is removed).
@@ -103,7 +114,7 @@ export function consumeHandoff() {
 // "Reset sample data" — clear the shared demo state + any pending handoff and
 // reload back to seed (legacy resetDemoData / the top-bar "Reset data" button).
 export function resetDemo() {
-  removeKeys(DEMO_STATE_KEY, HANDOFF_KEY, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, CONTRACTS_KEY, BUYER_EVENTS_KEY, HELD_ORDERS_KEY, INVOICE_CHECKOUTS_KEY);
+  removeKeys(DEMO_STATE_KEY, HANDOFF_KEY, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, CONTRACTS_KEY, BUYER_EVENTS_KEY, HELD_ORDERS_KEY, INVOICE_CHECKOUTS_KEY, DEMO_CASE_KEY);
   try {
     window.location.reload();
   } catch {

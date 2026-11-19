@@ -43,10 +43,24 @@ import {
   canDeleteAgreement,
   canCancelAgreement,
   cancelRequestOf,
+  latestRequestOf,
+  liveChangeRequestOf,
+  sellerBusyOf,
+  changesToAnswer,
   canEndAgreement,
+  endRequestOf,
   pendingVersionOf,
   pendingDraft,
   sendPendingVersion,
+  editorStartOf,
+  draftFromEntry,
+  entryKey,
+  editedOf,
+  editedFields,
+  editorBaseOf,
+  newContractPricingId,
+  proposalState,
+  approvedTakeovers,
 } from './agreements.js';
 import { todayISO, registrationDuplicates, isD2CRegistration } from './registrations.js';
 import {
@@ -64,7 +78,7 @@ import {
 } from './dbHelpers.js';
 import { publishOrderLimits, publishedOrderLimits, publishContracts, publishHeldOrders, readOrderRequests, removeOrderRequests, readInvoiceCheckouts, removeInvoiceCheckouts, readBuyerEvents, ORDER_LIMITS_KEY, ORDER_REQUESTS_KEY, INVOICE_CHECKOUTS_KEY, BUYER_EVENTS_KEY } from '../shared/persistence.js';
 import { publishablePortalContracts } from './portalContracts.js';
-import { applyBuyerEvents, latestBuyerResponse } from './buyerEvents.js';
+import { applyBuyerEvents } from './buyerEvents.js';
 
 // The B2B god file rebuilt #app from a single `state` on every action. Here that
 // is a reducer over a view state machine + the mutable demo db. The db helpers,
@@ -312,13 +326,31 @@ function approveAsCustomer(db, reg, customer) {
   Object.assign(reg, { status: 'approved', decidedAt: todayISO(), customerId: cu.id, linkedCustomerId: customer ? customer.id : null });
 }
 
-// The contract editor on `ag` (a copy, nothing staged yet) — on the version waiting for
-// its buyers, when it has one (pendingVersionOf), with that version's pricing and limits
-// staged. `returnTo`: where closing it goes — by default the page it was opened from.
+// The contract editor on `ag` (a copy, nothing staged yet) — on the latest version in its
+// version history (editorStartOf): the version waiting for its buyers, when it has one
+// (pendingVersionOf), with that version's pricing and limits staged, or one they
+// declined since the version in force. `loaded`: the version history entry it's on.
+// `returnTo`: where closing it goes — by default the page it was opened from.
+// A Draft (saved, never activated or sent) is still new: its company can be picked.
 function openContractEditor(state, ag, returnTo = { view: state.view, selectedCompany: state.selectedCompany, companyTab: state.companyTab, selectedLocation: state.selectedLocation }) {
-  const staged = ag.pending ? clone(ag.pending.staged || noStagedTerms()) : noStagedTerms();
-  return { ...state, view: 'agreements', agreementEditor: { draft: pendingDraft(ag), staged, returnTo } };
+  const start = editorStartOf(ag);
+  return { ...state, view: 'agreements', agreementEditor: withEditorStart({ ...start, returnTo, ...(ag.status === 'Draft' ? { pickCompany: true } : {}) }) };
 }
+// The contract editor as it opened or was last saved: `pristine` (editedOf) tells
+// unsaved edits apart — the save bar shows while there are some — and `base` is what
+// Discard goes back to.
+function withEditorStart(ed) {
+  return { ...ed, pristine: editedOf(ed), base: { draft: clone(ed.draft), staged: clone(ed.staged || null), loaded: ed.loaded ?? null } };
+}
+
+// The pricing editor's edits (its pricing, and the company's locations picked for it),
+// to tell unsaved ones apart: as it opened (`builderStart`) and as it is now.
+function pricingEdits(builder, ctx) {
+  return { builder: clone(builder), locationIds: clone(ctx?.locationIds ?? null), applyLater: ctx?.applyLater ?? null };
+}
+export const pricingEdited = (state) =>
+  !!state.builder && !!state.builderStart && JSON.stringify(pricingEdits(state.builder, state.editorContext)) !== JSON.stringify(state.builderStart);
+export const limitEdited = (state) => !!state.limitEditor?.start && JSON.stringify(state.limitEditor.draft) !== JSON.stringify(state.limitEditor.start);
 
 function reducer(state, action) {
   switch (action.type) {
@@ -894,10 +926,25 @@ function reducer(state, action) {
       return {
         ...state,
         builder,
+        // As it opened: what Discard goes back to, and what tells unsaved edits apart
+        // (pricingEdited) — the save bar shows while there are some.
+        builderStart: pricingEdits(builder, editorContext),
         pricingBuilderTab: 'settings', // always land on Settings when the editor opens
         ruleEdit: null,
         addRuleMenu: false,
         editorContext,
+      };
+    }
+    // Discard (save bar): back to the pricing as it opened.
+    case 'DISCARD_EDITOR': {
+      const start = state.builderStart;
+      if (!start || !state.builder) return state;
+      return {
+        ...state,
+        builder: clone(start.builder),
+        ruleEdit: null,
+        addRuleMenu: false,
+        editorContext: state.editorContext ? { ...state.editorContext, locationIds: clone(start.locationIds), applyLater: start.applyLater } : state.editorContext,
       };
     }
     case 'SET_BUILDER_TAB':
@@ -962,7 +1009,7 @@ function reducer(state, action) {
         // that location, as Cancel does. A change stays in the contract editor, to be saved there.
         const back = state.editorContext.fromLocation ? { ...(ed.returnTo || {}), agreementEditor: null } : {};
         if (before && sameTerm(start, draft)) return { ...state, ...back, ...closed };
-        const term = { ...asContractPricing({ ...newBaseBuilder(), ...(before || {}), ...draft }), id: before ? before.id : demoPolicyId(all) };
+        const term = { ...asContractPricing({ ...newBaseBuilder(), ...(before || {}), ...draft }), id: before ? before.id : newContractPricingId(all) };
         const key = term.priceKind === 'quantity' ? 'quantity' : 'base';
         const staged = { ...ed.staged, policies: { ...ed.staged.policies, [term.id]: term } };
         const terms = before ? ed.draft.terms : { ...ed.draft.terms, [key]: [...ed.draft.terms[key], term.id] };
@@ -1203,12 +1250,12 @@ function reducer(state, action) {
       if (source) {
         if (!state.db.companies.some((c) => c.id === source.companyId)) return state;
         const { draft, staged } = duplicateAgreement(state.db, source);
-        return { ...state, view: 'agreements', agreementEditor: { draft, staged, returnTo: action.returnTo || null } };
+        return { ...state, view: 'agreements', agreementEditor: withEditorStart({ draft, staged, returnTo: action.returnTo || null }) };
       }
       const found = action.agreementId && (state.db.agreements || []).find((a) => a.id === action.agreementId);
       if (found) return openContractEditor(state, found, action.returnTo || null);
       if (!action.companyId) {
-        return { ...state, view: 'agreements', agreementEditor: { draft: newAgreement(state.db, null), staged: noStagedTerms(), returnTo: action.returnTo || null, pickCompany: true } };
+        return { ...state, view: 'agreements', agreementEditor: withEditorStart({ draft: newAgreement(state.db, null), staged: noStagedTerms(), returnTo: action.returnTo || null, pickCompany: true }) };
       }
       const company = state.db.companies.find((c) => c.id === action.companyId);
       if (!company) return state;
@@ -1220,7 +1267,56 @@ function reducer(state, action) {
         fresh.applyLater = false;
         fresh.startDate = defaultStartDate(state.db, company.id, fresh.locationIds);
       }
-      return { ...state, view: 'agreements', agreementEditor: { draft: fresh, staged: noStagedTerms(), returnTo: action.returnTo || null } };
+      return { ...state, view: 'agreements', agreementEditor: withEditorStart({ draft: fresh, staged: noStagedTerms(), returnTo: action.returnTo || null }) };
+    }
+    // A version picked in the contract editor's Version history: the editor goes on from
+    // it (draftFromEntry) — what was edited and not saved goes (the editor asks first).
+    // Going on from it is an edit: saved (the save bar), it's the contract's saved changes.
+    case 'LOAD_AGREEMENT_VERSION': {
+      const ed = state.agreementEditor;
+      const ag = ed && (state.db.agreements || []).find((a) => a.id === ed.draft.id);
+      const h = ag && (ag.history || []).find((x) => x.snapshot && entryKey(x) === action.key);
+      if (!h) return state;
+      const loaded = draftFromEntry(ag, h);
+      delete loaded.draft.unsent;
+      return { ...state, agreementEditor: { ...ed, ...loaded } };
+    }
+    // Discard (save bar): back to the contract as it opened or was last saved.
+    case 'AGREEMENT_EDITOR_DISCARD': {
+      const ed = state.agreementEditor;
+      if (!ed?.base) return state;
+      return { ...state, agreementEditor: { ...ed, draft: clone(ed.base.draft), staged: clone(ed.base.staged), loaded: ed.base.loaded } };
+    }
+    // Save (save bar): what's edited is kept as the contract's saved changes (`unsent`,
+    // see agreements.js editorStartOf) — nothing applies and its buyers don't see it. A
+    // new one is kept as a Draft. The editor stays, now as saved: Activate, Save as
+    // version or Send to buyer go on from it.
+    case 'SAVE_AGREEMENT_DRAFT': {
+      const ed = state.agreementEditor;
+      if (!ed) return state;
+      const db = clone(state.db);
+      const draft = clone(ed.draft);
+      delete draft.unsent;
+      const staged = clone(ed.staged || noStagedTerms());
+      const at = new Date().toISOString();
+      const unsent = { fields: editedFields(draft), staged, at };
+      let ag = draft.id ? (db.agreements || []).find((a) => a.id === draft.id) : null;
+      if (!ag) {
+        draft.id = `ag${Date.now()}`;
+        while ((db.agreements || []).some((a) => a.id === draft.id)) draft.id += 'x';
+        ag = { ...draft, status: 'Draft', updatedAt: at, unsent };
+        db.agreements = [...(db.agreements || []), ag];
+        // Its number is given out for good, even if it's deleted later.
+        recordContractNumber(db, ag);
+      } else if (ag.status === 'Draft') {
+        // The list reads a Draft as it was last saved.
+        Object.assign(ag, clone(unsent.fields), { updatedAt: at, unsent });
+      } else if (editedOf({ draft, staged }) === editedOf(editorBaseOf(ag))) {
+        // Back as it is: nothing unsent.
+        delete ag.unsent;
+      } else ag.unsent = unsent;
+      const now = { ...ed, draft: { ...ed.draft, id: ag.id }, staged: ed.staged || noStagedTerms() };
+      return { ...state, db, agreementEditor: withEditorStart(now), toast: `${ag.number} saved` };
     }
     case 'AGREEMENT_EDITOR_PATCH':
       return { ...state, agreementEditor: { ...state.agreementEditor, draft: { ...state.agreementEditor.draft, ...action.patch } } };
@@ -1249,9 +1345,18 @@ function reducer(state, action) {
       const staged = action.draft ? null : state.agreementEditor?.staged;
       draft.name = (draft.name || '').trim();
       draft.updatedAt = new Date().toISOString();
-      const prev = draft.id ? (db.agreements || []).find((a) => a.id === draft.id) : null;
+      // What was saved and not activated goes with it (it's activated now).
+      delete draft.unsent;
+      let prev = draft.id ? (db.agreements || []).find((a) => a.id === draft.id) : null;
+      // A Draft (saved, never activated or sent) goes in as a new one, in its place.
+      if (prev?.status === 'Draft') {
+        db.agreements = db.agreements.filter((a) => a.id !== prev.id);
+        prev = null;
+      }
       // One its buyers must approve goes to them instead (SEND_PROPOSAL).
-      if (prev?.status === 'Active' && prev.approval) return state;
+      if (isLive(prev) && prev.approval) return state;
+      // Not over a contract its buyers approved (approvedTakeovers): they'd have to approve that.
+      if (approvedTakeovers(withStagedTerms(state.db, staged), draft, prev, prev?.status === 'Active').length) return state;
       const wasLive = isLive(prev);
       // A proposal the buyer approved is activated as the version they saw: no new
       // version unless its terms changed.
@@ -1293,23 +1398,55 @@ function reducer(state, action) {
     // Send to buyer (Buyer must approve this contract ticked in its editor): the contract
     // goes to its buyers to approve as a new version, Proposed — nothing of it applies.
     // A new one gets its number; a Proposed one goes again (their answer to the last
-    // version no longer counts); a Scheduled one goes back to them and won't start
-    // until they approve it and it's activated.
+    // version no longer counts); a Scheduled one they didn't have to approve goes back to
+    // them and won't start until they approve it and it's activated.
     case 'SEND_PROPOSAL': {
       const db = clone(state.db);
       const draft = clone(state.agreementEditor.draft);
       const staged = state.agreementEditor?.staged;
       draft.name = (draft.name || '').trim();
       draft.updatedAt = new Date().toISOString();
-      const prev = draft.id ? (db.agreements || []).find((a) => a.id === draft.id) : null;
-      // An Active one saved with Buyer must approve: the change waits for its buyers as
-      // its next version; the version in force stays until they approve it.
-      if (prev?.status === 'Active' && prev.approval) {
+      // What was saved and not sent goes with it (it's sent now).
+      delete draft.unsent;
+      let prev = draft.id ? (db.agreements || []).find((a) => a.id === draft.id) : null;
+      // A Draft (saved, never activated or sent) goes as a new one, in its place.
+      if (prev?.status === 'Draft') {
+        db.agreements = db.agreements.filter((a) => a.id !== prev.id);
+        prev = null;
+      }
+      // Not over a contract its buyers approved (approvedTakeovers): they'd have to approve that.
+      if (approvedTakeovers(withStagedTerms(state.db, staged), draft, prev, prev?.status === 'Active').length) return state;
+      // Sent in answer to their requests for changes (changesToAnswer): the merchant's
+      // message, when they add one, goes with each — the seller's reply the buyers read in
+      // their B2B Portal (Activities log).
+      const message = String(action.message || '').trim();
+      const time = `${TODAY}T${new Date().toISOString().slice(11)}`;
+      const replies = prev && message ? changesToAnswer(prev).map((x) => ({ responseKey: responseKey(x), version: x.version, at: TODAY, time, message })) : [];
+      // No request of theirs to answer: the message goes with what's sent (`sentMessages`),
+      // their Seller's message on its card.
+      const sent = (version) => (message && !replies.length ? [{ version, at: TODAY, time, message }] : []);
+      // A Scheduled or Active one saved with Buyer must approve: the change waits for its
+      // buyers as its next version; the version they approved stays (scheduled, or in
+      // force) until they approve the new one.
+      if (isLive(prev) && prev.approval) {
+        // One thing at a time: not while your request to end it, or theirs to cancel it, waits
+        // — nor while the version sent waits for their answer (sent again only in answer
+        // to their request for changes).
+        if (endRequestOf(prev) || cancelRequestOf(prev) || (prev.pending && proposalState(pendingVersionOf(prev)) === 'waiting')) return state;
+        if (replies.length) prev.replies = [...(prev.replies || []), ...replies];
         sendPendingVersion(prev, draft, staged, withStagedTerms(state.db, staged), state.db);
+        // What was saved and not sent is sent now.
+        if (prev.pending) delete prev.unsent;
+        if (prev.pending) prev.sentMessages = [...(prev.sentMessages || []), ...sent(pendingVersionOf(prev).version)];
         return { ...state, db, ...(state.agreementEditor?.returnTo || {}), agreementEditor: null, toast: `Version ${pendingVersionOf(prev).version} sent to buyer` };
       }
       if (prev && prev.status !== 'Proposed' && prev.status !== 'Scheduled') return state;
+      // A proposal waiting for their answer isn't sent again until they answer (one thing at
+      // a time): their request for changes opens it again.
+      if (prev?.status === 'Proposed' && proposalState(prev) === 'waiting') return state;
       draft.approval = true;
+      if (replies.length) draft.replies = [...(prev.replies || []), ...replies];
+      draft.sentMessages = [...(prev?.sentMessages || []), ...sent(prev?.status === 'Proposed' ? prev.version || 1 : (prev?.version || 0) + 1)];
       if (!draft.id) {
         draft.id = `ag${Date.now()}`;
         while ((db.agreements || []).some((a) => a.id === draft.id)) draft.id += 'x';
@@ -1331,18 +1468,20 @@ function reducer(state, action) {
     }
     // Decline request: the merchant turns down the buyer's latest request for changes
     // to a Proposed contract, with a reply they see in their B2B Portal. The contract
-    // stays as it is (same version) and waits for the buyer to answer again.
+    // stays as it is (same version) and waits for the buyer to answer again. A Scheduled
+    // or Active one's request (liveChangeRequestOf): the version they approved stays.
     case 'DECLINE_CHANGES': {
       const db = clone(state.db);
       const ag = (db.agreements || []).find((a) => a.id === action.id);
       // Or their request for changes to an Active one's version waiting for them.
       const asked = pendingVersionOf(ag) || ag;
-      const r = latestBuyerResponse(asked);
+      const r = latestRequestOf(asked);
       const message = String(action.message || '').trim();
-      if (asked?.status !== 'Proposed' || r?.kind !== 'changes' || declineOf(asked) || !message) return state;
+      const open = asked?.status === 'Proposed' ? r?.kind === 'changes' && !declineOf(asked) : !!liveChangeRequestOf(asked);
+      if (!open || !message) return state;
       // Every request for changes still waiting (they can send several), with the same
       // reply. `time`: when (the B2B Portal lists the contract changed last first).
-      const time = new Date().toISOString();
+      const time = `${TODAY}T${new Date().toISOString().slice(11)}`;
       ag.declines = [...(ag.declines || []), ...openChangeRequests(asked).map((x) => ({ responseKey: responseKey(x), version: asked.version, at: TODAY, time, message }))];
       // The editor open on it keeps its declines, so saving from it doesn't drop them.
       const editor = state.agreementEditor?.draft.id === ag.id ? { ...state.agreementEditor, draft: { ...state.agreementEditor.draft, declines: ag.declines } } : state.agreementEditor;
@@ -1354,20 +1493,66 @@ function reducer(state, action) {
     case 'END_AGREEMENT': {
       const db = clone(state.db);
       const ag = (db.agreements || []).find((a) => a.id === action.id);
-      if (!canEndAgreement(ag)) return state;
-      closeAgreement(db, ag, 'Ended', ag.status === 'Scheduled' ? 'Cancelled before it started' : 'Ended');
-      return { ...state, db, toast: `${ag.number} ended` };
+      // One saved with Buyer must approve isn't ended by hand: its buyers approve ending it
+      // (REQUEST_END).
+      // A Scheduled one they approved is asked to be cancelled the same way.
+      if (!canEndAgreement(ag) || ag.approval) return state;
+      // One that hasn't started is cancelled (Cancel contract): it never starts.
+      const scheduled = ag.status === 'Scheduled';
+      closeAgreement(db, ag, scheduled ? 'Cancelled' : 'Ended', scheduled ? 'Cancelled before it started' : 'Ended');
+      return { ...state, db, toast: `${ag.number} ${scheduled ? 'cancelled' : 'ended'}` };
     }
-    // Extend: a new end date, same terms, as the next version.
+    // End contract on an Active one saved with Buyer must approve: the merchant asks its
+    // buyers to end it, with why (they see it in their B2B Portal). It stays in force until
+    // they answer: approved, it ends right away; declined, it stays (agreements.js
+    // endRequestOf).
+    case 'REQUEST_END': {
+      const db = clone(state.db);
+      const ag = (db.agreements || []).find((a) => a.id === action.id);
+      const message = String(action.message || '').trim();
+      // One thing at a time: not while a request of theirs or a new version waits. A
+      // Scheduled one they approved is asked to be cancelled the same way (`cancel`).
+      if (!isLive(ag) || !ag.approval || sellerBusyOf(ag) || !message) return state;
+      const cancel = ag.status === 'Scheduled';
+      // `time` on the app's day, as the buyers' answers are stamped (their Activities log).
+      ag.endRequests = [...(ag.endRequests || []), { version: ag.version, revision: ag.revision || 0, at: TODAY, time: `${TODAY}T${new Date().toISOString().slice(11)}`, message, ...(cancel ? { cancel: true } : {}) }];
+      return { ...state, db, toast: cancel ? 'Cancel request sent to buyer' : 'End request sent to buyer' };
+    }
+    // Withdraw end request: the merchant takes back their request to end it while its
+    // buyers haven't answered (agreements.js endRequestOf) — it stays in force, and their
+    // B2B Portal no longer asks them.
+    case 'WITHDRAW_END_REQUEST': {
+      const db = clone(state.db);
+      const ag = (db.agreements || []).find((a) => a.id === action.id);
+      const req = endRequestOf(ag);
+      if (!req) return state;
+      req.withdrawnAt = `${TODAY}T${new Date().toISOString().slice(11)}`;
+      return { ...state, db, toast: req.cancel ? 'Cancel request withdrawn' : 'End request withdrawn' };
+    }
+    // Extend: a new end date, same terms, as the next version. One saved with Buyer must
+    // approve goes to its buyers first, as its next version: the version they approved
+    // stays until they approve it — not approved by its end date, it expires then
+    // (syncContractDates).
     case 'RENEW_AGREEMENT': {
       const db = clone(state.db);
       const ag = (db.agreements || []).find((a) => a.id === action.id);
       if (!isLive(ag) || !action.endDate) return state;
+      if (ag.approval) {
+        // Not while their request, a version sent to them or your request to end it waits
+        // (one thing at a time).
+        if (sellerBusyOf(ag)) return state;
+        const staged = ag.pending ? ag.pending.staged : null;
+        sendPendingVersion(ag, { ...pendingDraft(ag), endDate: action.endDate }, staged, withStagedTerms(db, staged), db);
+        // Sent with a message (optional): their Seller's message on its card.
+        const message = String(action.message || '').trim();
+        if (message && ag.pending) ag.sentMessages = [...(ag.sentMessages || []), { version: pendingVersionOf(ag).version, at: TODAY, time: `${TODAY}T${new Date().toISOString().slice(11)}`, message }];
+        return { ...state, db, toast: `Version ${pendingVersionOf(ag).version} sent to buyer` };
+      }
       ag.endDate = action.endDate;
       addVersion(db, ag, `Extended until ${fmtDay(action.endDate)}`);
       return { ...state, db, toast: `${ag.number} extended` };
     }
-    // Reject request: the merchant turns down its buyers' request to cancel a contract
+    // Decline request (to cancel it): the merchant turns down its buyers' request to cancel a contract
     // that hasn't started (Proposed or Scheduled), with a note they see in their B2B
     // Portal. It goes back to the status it had before the request (Awaiting buyer or
     // Scheduled), at the same version.
@@ -1378,25 +1563,28 @@ function reducer(state, action) {
       const message = String(action.message || '').trim();
       if (!r || !message) return state;
       // `time`: when (the B2B Portal lists the contract changed last first).
-      ag.declines = [...(ag.declines || []), { responseKey: responseKey(r), version: ag.version, at: TODAY, time: new Date().toISOString(), message }];
+      ag.declines = [...(ag.declines || []), { responseKey: responseKey(r), version: ag.version, at: TODAY, time: `${TODAY}T${new Date().toISOString().slice(11)}`, message }];
       // The editor open on it keeps its declines, so saving from it doesn't drop them.
       const editor = state.agreementEditor?.draft.id === ag.id ? { ...state.agreementEditor, draft: { ...state.agreementEditor.draft, declines: ag.declines } } : state.agreementEditor;
-      return { ...state, db, agreementEditor: editor, toast: 'Request rejected' };
+      return { ...state, db, agreementEditor: editor, toast: 'Request declined' };
     }
     // Cancel contract: its buyers asked to cancel a contract that hasn't started — it's
     // Cancelled right away (kept as history; none of its terms apply), and it leaves
-    // their B2B Portal. Only while their request is open (canCancelAgreement).
+    // their B2B Portal. Only while their request is open (canCancelAgreement). An Active
+    // one (End contract, at their request) is Ended right away.
     case 'CANCEL_AGREEMENT': {
       const db = clone(state.db);
       const ag = (db.agreements || []).find((a) => a.id === action.id);
       if (!canCancelAgreement(ag)) return state;
-      closeAgreement(db, ag, 'Cancelled', 'Cancelled at the buyer’s request');
+      // An Active one has started: it ends, at their request (End contract), right away.
+      const started = ag.status === 'Active';
+      closeAgreement(db, ag, started ? 'Ended' : 'Cancelled', started ? 'Ended at the buyer’s request' : 'Cancelled at the buyer’s request');
       return {
         ...state,
         db,
         // Cancelled from its editor: the editor closes, back where it was opened from.
         ...(state.agreementEditor?.draft.id === action.id ? { ...(state.agreementEditor.returnTo || {}), agreementEditor: null } : {}),
-        toast: `${ag.number} cancelled`,
+        toast: `${ag.number} ${started ? 'ended' : 'cancelled'}`,
       };
     }
     // Its own pricing and limits go with it. Never one its buyers must approve
@@ -1427,8 +1615,11 @@ function reducer(state, action) {
         return reducer(openContractEditor(state, ag), { type: 'OPEN_LIMIT_EDITOR', limit: action.limit, returnTo: { view: 'agreements' }, contractTerm: true });
       }
       const draft = action.limit ? toDraft(action.limit) : { ...newLimit(action.kind), ...(action.preset || {}) };
-      return { ...state, view: 'limits', limitChooser: null, limitEditor: { draft, returnTo: action.returnTo || null, contractTerm: !!action.contractTerm } };
+      // `start`: as it opened — what Discard goes back to (the save bar shows while it differs).
+      return { ...state, view: 'limits', limitChooser: null, limitEditor: { draft, start: clone(draft), returnTo: action.returnTo || null, contractTerm: !!action.contractTerm } };
     }
+    case 'DISCARD_LIMIT_EDITOR':
+      return state.limitEditor?.start ? { ...state, limitEditor: { ...state.limitEditor, draft: clone(state.limitEditor.start) } } : state;
     case 'LIMIT_EDITOR_PATCH':
       return { ...state, limitEditor: { ...state.limitEditor, draft: { ...state.limitEditor.draft, ...action.patch } } };
     case 'CLOSE_LIMIT_EDITOR':
@@ -1491,7 +1682,7 @@ function reducer(state, action) {
 // A live contract's pricing and limits change only through it: any other action
 // that would take one off where it applies, turn it off or delete it is turned
 // down (the screens lock those actions first; this catches every other way).
-const CONTRACT_ACTIONS = new Set(['SAVE_AGREEMENT', 'SEND_PROPOSAL', 'DECLINE_CHANGES', 'REJECT_CANCELLATION', 'CANCEL_AGREEMENT', 'SYNC_BUYER_EVENTS', 'END_AGREEMENT', 'RENEW_AGREEMENT', 'DELETE_AGREEMENT', 'DELETE_COMPANY', 'DELETE_LOCATIONS', 'SET_EMPTY_MODE', 'SYNC_LIMITS']);
+const CONTRACT_ACTIONS = new Set(['SAVE_AGREEMENT', 'SEND_PROPOSAL', 'DECLINE_CHANGES', 'REJECT_CANCELLATION', 'CANCEL_AGREEMENT', 'SYNC_BUYER_EVENTS', 'END_AGREEMENT', 'REQUEST_END', 'WITHDRAW_END_REQUEST', 'RENEW_AGREEMENT', 'DELETE_AGREEMENT', 'DELETE_COMPANY', 'DELETE_LOCATIONS', 'SET_EMPTY_MODE', 'SYNC_LIMITS']);
 function checkedReducer(state, action) {
   const next = reducer(state, action);
   if (next.db === state.db || CONTRACT_ACTIONS.has(action.type) || !versionFlags().agreements) return next;

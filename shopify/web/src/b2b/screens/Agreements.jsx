@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { canCreateAgreement, agreementAppliesToLabel, agreementTermCount, agreementDatesLabel, expiringSoon, daysUntil, PAST_STATUSES, proposalState, PROPOSAL_LABEL, statusLabel, canDeleteAgreement, pendingNote } from '../agreements.js';
+import { canCreateAgreement, agreementAppliesToLabel, agreementTermCount, agreementDatesLabel, expiringSoon, daysUntil, PAST_STATUSES, proposalState, PROPOSAL_LABEL, statusLabel, canDeleteAgreement, canEndAgreement, pendingNote } from '../agreements.js';
 import { AgreementEditor } from '../components/AgreementEditor.jsx';
 import { ContractVersionModal } from '../components/ContractVersionModal.jsx';
 import { EndContractModal, DeleteContractModal } from '../components/ContractParts.jsx';
@@ -95,16 +95,17 @@ export function Agreements() {
           <td className="cd-nowrap">{a.version ? `v${a.version}` : '—'}</td>
           <td>
             <StatusDot tone={STATUS_TONE[statusLabel(a)]}>{statusLabel(a)}</StatusDot>
-            {/* An Active one with a new version waiting for its buyers says so under its
-                status, in full: "Version 2 awaiting buyer", "Changes requested". */}
+            {/* A request waiting says so under its status, which stays: "Version 2
+                awaiting buyer", "Changes requested", "Cancellation requested" (pendingNote). */}
             {pendingNote(a) ? <span className="cd-sub">{pendingNote(a)}</span> : null}
-            {/* Sent to the buyer: where their answer stands (Changes requested and
-                Cancellation requested are its status). */}
+            {/* Sent to the buyer: where their answer stands (a request of theirs is in
+                pendingNote, above). */}
             {proposalState(a) && proposalState(a) !== 'changes' && proposalState(a) !== 'cancel' ? <span className="cd-sub">{PROPOSAL_LABEL[proposalState(a)]}</span> : null}
           </td>
           <td className="cd-actions cd-num" onClick={(e) => e.stopPropagation()}>
             <span className="cd-row-actions">
-              {a.status === 'Active' ? (
+              {/* Not while its buyers haven't answered your request to end it. */}
+              {a.status === 'Active' && canEndAgreement(a) ? (
                 <>
                   <s-button
                     icon="stop-circle"

@@ -17,8 +17,11 @@
 //                  for their approval (its Contract proposal or Upcoming contract card),
 //                  kept on the contract in `buyerResponses`, latest last; the contract
 //                  page shows the latest for its version. An approval activates the
-//                  proposal (agreements.js activateApproved).
-import { activateApproved } from './agreements.js';
+//                  proposal (agreements.js activateApproved). Or their answer to the
+//                  seller's request to end it — kind 'end-approve' | 'end-decline', with
+//                  `requestAt` (that request's time) — kept apart, in `endResponses`
+//                  (agreements.js endRequestOf): approved, it ends.
+import { activateApproved, contractAnswer } from './agreements.js';
 
 export const BUYER_EVENTS_KEY = 'buyer_events';
 
@@ -34,8 +37,14 @@ function applyBuyerEvent(db, e) {
   }
   if (e.type === 'contract-response') {
     const ag = (db.agreements || []).find((a) => a.number === d.number);
+    // One that couldn't have been sent then (agreements.js contractAnswer: an out-of-date
+    // page — answered already, a request open, a new version sent…) is dropped, as the
+    // real B2B Portal's backend turns it down.
+    if (!ag || contractAnswer(ag, d.kind, d, day(e.at)).error) return;
     // `time`: when it was sent (the B2B Portal lists the contract changed last first).
-    if (ag) ag.buyerResponses = [...(ag.buyerResponses || []), { ...d, at: day(e.at), time: e.at }];
+    const answer = { ...d, at: day(e.at), time: e.at };
+    if (ag && String(d.kind).startsWith('end-')) ag.endResponses = [...(ag.endResponses || []), answer];
+    else if (ag) ag.buyerResponses = [...(ag.buyerResponses || []), answer];
     return;
   }
   db.quotes = db.quotes || [];
@@ -72,11 +81,14 @@ export const latestBuyerResponse = (ag) =>
 export function applyBuyerEvents(db, events) {
   const done = new Set(db.appliedBuyerEvents || []);
   const fresh = (events || []).filter((e) => e && e.id && !done.has(e.id)).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  // Each in turn, what it settles applied before the next is checked (contractAnswer).
+  let activated = false;
   fresh.forEach((e) => {
     applyBuyerEvent(db, e);
     done.add(e.id);
+    if (e.type === 'contract-response') activated = activateApproved(db) || activated;
   });
   db.appliedBuyerEvents = [...done];
-  const activated = activateApproved(db);
+  activated = activateApproved(db) || activated;
   return fresh.length > 0 || activated;
 }

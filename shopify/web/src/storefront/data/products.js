@@ -6,10 +6,10 @@
 import storeCatalog from './shopifyProducts.json';
 import { productRuleFor, productRuleForCustomer, cartProblems, cartProblemsForCustomer, effectiveRules, effectiveRulesForCustomer, upgradeLimits, spentSoFar, turnLimitOn } from '../../b2b/limits.js';
 import { TODAY } from '../../b2b/pricing.js';
-import { dbSeed } from '../../b2b/data/db.js';
+import { dbSeed, CONTRACT_CASES } from '../../b2b/data/db.js';
 import { versionFlags } from '../../shared/versions.js';
-import { publishOrderLimits, publishedOrderLimits, publishedContracts, publishedHeldOrders, readOrderRequests, readInvoiceCheckouts, readBuyerEvents, addBuyerEvent } from '../../shared/persistence.js';
-import { fmtDay, syncContractDates, seedSnapshots, stampContractLimits, ownContractTerms, responseKey, declineOf } from '../../b2b/agreements.js';
+import { publishOrderLimits, publishedOrderLimits, publishedContracts, publishedHeldOrders, readOrderRequests, readInvoiceCheckouts, readBuyerEvents, addBuyerEvent, writeJSON, removeKeys, BUYER_EVENTS_KEY, CONTRACTS_KEY, DEMO_CASE_KEY } from '../../shared/persistence.js';
+import { fmtDay, syncContractDates, seedSnapshots, stampContractLimits, ownContractTerms, responseKey, declineOf, openRequestOf, finalAnswerOf, sellerMessageOf } from '../../b2b/agreements.js';
 import { portalContracts, activitiesOf } from '../../b2b/portalContracts.js';
 import { latestBuyerResponse } from '../../b2b/buyerEvents.js';
 import { normalizeDb, storefrontHeldOrders } from '../../b2b/dbHelpers.js';
@@ -143,7 +143,7 @@ let seedContractsDb = null;
 const contractsSeedDb = () =>
   (seedContractsDb ||= stampContractLimits(syncContractDates(seedSnapshots(ownContractTerms(normalizeDb(dbSeed))))));
 export function contractsForSession(session) {
-  const none = { contract: null, upcoming: null, proposal: null, regular: null };
+  const none = { contract: null, upcoming: null, proposal: null, regular: null, past: [] };
   if (!versionFlags().agreements || !atLocation(session)) return none;
   const published = publishedContracts();
   const cards =
@@ -155,18 +155,45 @@ export function contractsForSession(session) {
   let contract = withAnswers(withoutOff(cards.contract), session);
   let upcoming = withAnswers(cards.upcoming, session);
   let proposal = withAnswers(cards.proposal, session);
-  if (proposal?.approvedOn && (!proposal.startDate || proposal.approvedOn <= proposal.startDate)) {
+  // A new version they declined here (Decline) closes, as the B2B app does it
+  // (agreements.js activateApproved): the contract they approved has nothing waiting any
+  // more, so its Request adjustment comes back.
+  const declinedVersion = new Set([proposal].filter((p) => p?.update && p.declinedHere).map((p) => p.number));
+  const settled = (c) => (c && declinedVersion.has(c.number) ? { ...c, newVersion: null } : c);
+  if (proposal?.update && declinedVersion.has(proposal.number)) proposal = null;
+  contract = settled(contract);
+  upcoming = settled(upcoming);
+  if (approvedHere(proposal)) {
     if (proposal.startDate && proposal.startDate > TODAY) {
-      if (!upcoming || String(proposal.startDate) < String(upcoming.startDate)) upcoming = proposal;
+      // A Scheduled one's new version takes the place of the version they approved before.
+      if (!upcoming || upcoming.number === proposal.number || String(proposal.startDate) < String(upcoming.startDate)) upcoming = proposal;
     } else contract = proposal;
     proposal = null;
   }
-  // What the proposal needs from them (agreements.js buyerActionOf): 'approve' — not
-  // answered yet — 'declined' — the seller declined their request for changes — or
-  // 'rejected' — the seller rejected their request to cancel it.
-  if (proposal) proposal = { ...proposal, action: proposal.declined ? (proposal.response?.kind === 'cancel' ? 'rejected' : 'declined') : proposal.response ? null : 'approve' };
-  return { contract, upcoming, proposal, regular };
+  // Ending approved here: it ends, as the B2B app does it (agreements.js
+  // activateApproved) — its version waiting for them goes with it.
+  // A Scheduled one's cancellation approved here: it's cancelled the same way.
+  // They approved it, so it stays — over (cards.past): Ended, or Cancelled before it started.
+  const endedHere = [contract, upcoming].filter((c) => c?.endApproved);
+  const ended = new Set(endedHere.map((c) => c.number));
+  if (contract && ended.has(contract.number)) contract = null;
+  if (upcoming && ended.has(upcoming.number)) upcoming = null;
+  if (proposal?.update && ended.has(proposal.number)) proposal = null;
+  // Its contracts there that are over but stay (portalContracts.js `past`), read-only.
+  const past = [
+    ...endedHere.map((c) => ({ ...c, status: c.startDate && c.startDate > TODAY ? 'Cancelled' : 'Ended', closedOn: fmtDay(TODAY), endAsked: null, newVersion: null })),
+    ...(cards.past || []).filter((c) => !ended.has(c.number)).map((c) => withAnswers(c, session)),
+  ];
+  // A Contract (or Upcoming contract) card the seller asked to end (or cancel) needs their answer ('end').
+  const withEnd = (c) => (c ? { ...c, action: c.endAsked ? 'end' : null } : c);
+  return { contract: withEnd(contract), upcoming: withEnd(upcoming), proposal: proposal && withAction(proposal), regular, past };
 }
+// Approved here before the B2B app picked it up (on or before its start date): activated
+// as the B2B app does it (agreements.js activateApproved).
+const approvedHere = (card) => !!card?.approvedOn && (!card.startDate || card.approvedOn <= card.startDate);// What a proposal needs from them (agreements.js buyerActionOf): 'approve' — not
+// answered yet — 'declined' — the seller declined their request for changes — or
+// 'cancel-declined' — the seller declined their request to cancel it.
+const withAction = (p) => ({ ...p, action: p.declined ? (p.response?.kind === 'cancel' ? 'cancel-declined' : 'declined') : p.response ? null : 'approve' });
 // The Contract card (or Business account's terms) without the limits turned off since
 // the B2B app published it (a cart Demo case turns CT-301's monthly review off and on).
 function withoutOff(card) {
@@ -186,13 +213,35 @@ function withoutOff(card) {
 // `lastUpdate`, with what they sent since.
 function withAnswers(card, session) {
   if (!card) return null;
-  const known = new Set((card.buyerResponses || []).map(responseKey));
+  const known = new Set([...(card.buyerResponses || []), ...(card.endResponses || [])].map(responseKey));
   const sent = readBuyerEvents()
     .filter((e) => e.type === 'contract-response' && e.data?.number === card.number)
     .map((e) => ({ ...e.data, at: String(e.at).slice(0, 10), time: e.at }))
     .filter((r) => !known.has(responseKey(r)));
-  const ag = { version: card.version, revision: card.revision || 0, buyerResponses: [...(card.buyerResponses || []), ...sent], declines: card.declines || [], sellerUpdates: card.sellerUpdates || [] };
-  const r = latestBuyerResponse(ag);
+  // Their answers to the seller's request to end it are kept apart (agreements.js
+  // endRequestOf).
+  const isEnd = (r) => String(r.kind).startsWith('end-');
+  const endResponses = [...(card.endResponses || []), ...sent.filter(isEnd)];
+  // `newVersion`: the Contract card's version sent to them since (portalContracts.js cardOf).
+  const ag = {
+    version: card.version,
+    revision: card.revision || 0,
+    buyerResponses: [...(card.buyerResponses || []), ...sent.filter((r) => !isEnd(r))],
+    declines: card.declines || [],
+    replies: card.replies || [],
+    sentMessages: card.sentMessages || [],
+    pending: card.pendingSentAt ? { sentAt: card.pendingSentAt } : null,
+    sellerUpdates: card.sellerUpdates || [],
+    endRequests: card.endRequests || [],
+    endResponses,
+    newVersion: card.newVersion || null,
+  };
+  // The seller's latest request to end it (a Contract card): `endAsked` while they
+  // haven't answered it ({ at, message, time }); `endApproved` once they approved it.
+  const endReq = (card.endRequests || []).at(-1);
+  const endAnswer = endReq ? endResponses.find((x) => x.requestAt === endReq.time) : null;
+  // Their request still open first — an approval answers none (agreements.js approvalOf).
+  const r = openRequestOf(ag) || latestBuyerResponse(ag);
   const d = declineOf(ag);
   const view = (x) => ({ kind: x.kind, message: x.message || '', by: x.buyer || x.email || '', at: x.at ? fmtDay(x.at) : null, mine: !!x.email && x.email === session.email });
   return {
@@ -200,16 +249,35 @@ function withAnswers(card, session) {
     response: r ? view(r) : null,
     declined: d ? { message: d.message, at: fmtDay(d.at) } : null,
     activities: activitiesOf(ag).map((a) => ({ ...view(a), version: a.version, status: a.status, note: a.note || '', reply: a.reply ? { message: a.reply.message, at: fmtDay(a.reply.at) } : null })),
-    approvedOn: r?.kind === 'approve' ? r.at : null,
+    // Approved — or a new version declined — by anyone at the company: the first such
+    // answer settles it (agreements.js finalAnswerOf).
+    approvedOn: finalAnswerOf(ag)?.kind === 'approve' ? finalAnswerOf(ag).at : null,
+    declinedHere: finalAnswerOf(ag)?.kind === 'decline',
+    // The seller's latest message to them, while they haven't answered since
+    // (agreements.js sellerMessageOf): opened from the card (Seller's message).
+    sellerMessage: (() => {
+      const m = sellerMessageOf(ag);
+      return m ? { message: m.message, at: fmtDay(m.at), time: m.time, kind: m.kind } : null;
+    })(),
+    // Withdrawn by the seller: nothing asks them any more.
+    // `cancel`: a request to cancel one that hasn't started.
+    endAsked: card.approval && endReq && !endReq.withdrawnAt && !endReq.lapsedAt && !endAnswer ? { at: fmtDay(endReq.at), message: endReq.message || '', time: endReq.time, cancel: !!endReq.cancel } : null,
+    endApproved: endAnswer?.kind === 'end-approve',
     lastUpdate: [card.lastUpdate, ...sent.map((x) => x.time || x.at)].filter(Boolean).sort().pop() || '',
   };
 }
 // Approve, Request changes with what should change, or Request cancellation with why:
 // a buyer event for the contract's version, as the real portal sends it
-// (api/customer/contract-response).
+// (api/customer/contract-response). Or their answer to the seller's request to end it —
+// 'end-approve', or 'end-decline' with why — naming that request (`requestAt`).
 export function answerContract(session, card, kind, message = '') {
   const at = `${TODAY}T${new Date().toISOString().slice(11)}`;
-  addBuyerEvent('contract-response', { number: card.number, version: card.version, revision: card.revision || 0, kind, message: kind === 'approve' ? '' : message, buyer: session.contact || '', email: session.email || '' }, at);
+  const end = kind === 'end-approve' || kind === 'end-decline' ? { requestAt: card.endAsked?.time } : {};
+  addBuyerEvent(
+    'contract-response',
+    { number: card.number, version: card.version, revision: card.revision || 0, kind, message: kind === 'approve' || kind === 'end-approve' ? '' : message, buyer: session.contact || '', email: session.email || '', ...end },
+    at,
+  );
 }
 
 // An account order's date ("Aug 28, 2026") as YYYY-MM-DD.
@@ -326,6 +394,34 @@ export function applyCartCase(c) {
   });
   publishOrderLimits(limits);
   return c.lines.map(([sku, qty]) => cartLine(sku, qty));
+}
+
+// Prototype-only: the storefront opened on a contract demo case (?case=… — one of
+// b2b/data/db.js CONTRACT_CASES: version-waiting, version-declined, seller-message,
+// cancel-request, contract-over, end-request; ABC Construction's CT-307 or CT-301). It
+// starts over each time: what was sent on them from here is dropped, and the B2B Portal
+// shows them as seeded until the B2B app (opened since, it seeds the same case) publishes
+// them again. Signed in as the B2B buyer, on the B2B Portal (store.jsx). Once per load;
+// the URL drops `case`, so a reload keeps going.
+let caseStarted;
+export function startContractCase() {
+  if (caseStarted !== undefined) return caseStarted;
+  caseStarted = false;
+  try {
+    const url = new URL(window.location.href);
+    const name = url.searchParams.get('case');
+    if (!CONTRACT_CASES.includes(name)) return false;
+    localStorage.setItem(DEMO_CASE_KEY, name);
+    writeJSON(BUYER_EVENTS_KEY, readBuyerEvents().filter((e) => e.data?.number !== 'CT-307' && e.data?.number !== 'CT-301'));
+    // The declines they closed (PortalContracts.jsx DeclinedBanner) show again.
+    removeKeys(CONTRACTS_KEY, 'qsDismissedDeclines');
+    url.searchParams.delete('case');
+    window.history.replaceState(null, '', url);
+    caseStarted = true;
+  } catch {
+    /* no window */
+  }
+  return caseStarted;
 }
 
 // ── Demo accounts ────────────────────────────────────────────────────────────
