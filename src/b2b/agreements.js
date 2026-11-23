@@ -1065,11 +1065,12 @@ export function unapplyAgreement(db, ag) {
 // Locations added to a company later (auto-added from Shopify, or added in the
 // app): they join the company's contracts that apply to locations added later; the
 // others keep the locations they had (one on all locations now lists them). With
-// Auto-add locations off they join none, whatever the contracts say. An
-// Active contract they join gives them its terms right away, as a new version
-// ("Added <location>"); a Scheduled one adds a version too and gives them its terms
-// when it starts. They join the Active and Scheduled ones in that order, leaving out
-// one whose dates would overlap a contract they already joined (mutates `db`).
+// Auto-add locations off they join none, whatever the contracts say. A location is
+// in one contract at a time: of the Active ones they join only the one that started
+// last, and its terms apply right away, as a new version ("Added <location>"). They
+// join every Scheduled one too (a version each), and each takes them over when it
+// starts (takeEffect), even while the one before is still running; they don't go
+// back to it when that one ends (mutates `db`).
 export function joinLaterLocations(db, c, locations) {
   if (!versionFlags().agreements) {
     c.locations = [...(c.locations || []), ...locations];
@@ -1082,24 +1083,23 @@ export function joinLaterLocations(db, c, locations) {
   active.forEach((a) => unapplyAgreement(db, a));
   const had = (c.locations || []).map((l) => l.id);
   c.locations = [...(c.locations || []), ...locations];
-  const rank = { Active: 0, Scheduled: 1 };
-  const meet = (a, b) => a.startDate <= (b.endDate || '9999-12-31') && b.startDate <= (a.endDate || '9999-12-31');
-  const joined = [];
-  [...open]
-    .sort((a, b) => rank[a.status] - rank[b.status] || String(a.startDate).localeCompare(String(b.startDate)))
-    .forEach((a) => {
-      const joins = !!c.autoAddLocations && addsLaterLocations(a) && !joined.some((x) => meet(a, x));
-      // A version waiting for its buyers (pendingVersionOf) gets the same locations.
-      const waiting = a.pending?.draft;
-      if (joins) {
-        if (a.locationIds) a.locationIds = [...a.locationIds, ...locations.map((l) => l.id)];
-        if (waiting?.locationIds) waiting.locationIds = [...waiting.locationIds, ...locations.map((l) => l.id)];
-        joined.push(a);
-      } else {
-        if (!a.locationIds) a.locationIds = had;
-        if (waiting && !waiting.locationIds) waiting.locationIds = had;
-      }
-    });
+  const later = c.autoAddLocations ? open.filter(addsLaterLocations) : [];
+  // Same start date: the one saved last (contracts are listed in the order saved).
+  const newest = later
+    .filter((a) => a.status === 'Active')
+    .reduce((m, a) => (!m || String(a.startDate) >= String(m.startDate) ? a : m), null);
+  const joined = later.filter((a) => a.status === 'Scheduled' || a === newest);
+  open.forEach((a) => {
+    // A version waiting for its buyers (pendingVersionOf) gets the same locations.
+    const waiting = a.pending?.draft;
+    if (joined.includes(a)) {
+      if (a.locationIds) a.locationIds = [...a.locationIds, ...locations.map((l) => l.id)];
+      if (waiting?.locationIds) waiting.locationIds = [...waiting.locationIds, ...locations.map((l) => l.id)];
+    } else {
+      if (!a.locationIds) a.locationIds = had;
+      if (waiting && !waiting.locationIds) waiting.locationIds = had;
+    }
+  });
   active.forEach((a) => applyAgreement(db, a));
   joined.filter(isLive).forEach((a) => addVersion(db, a, `Added ${joinAnd(locations.map((l) => l.name))}`));
 }

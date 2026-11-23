@@ -146,7 +146,7 @@ function ContractRow({ ag, company, open, onToggle, onEdit, onEnd, onDelete, onV
                 <TermGroup
                   icon="discount"
                   title="Quantity pricing"
-                  rows={terms.quantity.map((p) => ({ key: p.id, name: p.name, detail: scopeLabel(p) }))}
+                  rows={terms.quantity.map((p) => ({ key: p.id, name: p.name, detail: scopeLabel(p), side: `Priority ${p.priority ?? 0}` }))}
                 />
                 <TermGroup
                   icon="order"
