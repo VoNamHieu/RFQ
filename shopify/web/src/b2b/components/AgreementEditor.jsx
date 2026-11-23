@@ -101,6 +101,11 @@ export function AgreementEditor() {
   // request in the header, with a reply they see): the contract then waits for them
   // again.
   const [noteOpen, setNoteOpen] = useState(false);
+  // "No end date": ticked while it has none. Deleting the date in the field doesn't
+  // clear it (Polaris puts it back on blur), so this does. `wantsEnd`: unticked, its
+  // End date not picked yet.
+  const [wantsEnd, setWantsEnd] = useState(false);
+  const noEnd = !draft.endDate && !wantsEnd;
   // Their message with a decline (of a new version, or of your request to end it),
   // opened from the Status (Buyer's message): the answer it came with.
   const [buyerMessage, setBuyerMessage] = useState(null);
@@ -255,11 +260,15 @@ export function AgreementEditor() {
   else if (!started && draft.startDate < TODAY) errors.startDate = 'Can’t be before today';
   if (draft.endDate && draft.startDate && draft.endDate < draft.startDate) errors.endDate = 'Must be after the start date';
   else if (draft.endDate && draft.endDate < TODAY) errors.endDate = 'This date has passed';
+  // "No end date" unticked: it needs one — nothing saves without it, the save bar's Save too.
+  const endMissing = !noEnd && !draft.endDate;
+  if (endMissing) errors.endDate = 'Choose an end date';
   const valid = !Object.keys(errors).length;
-  // Save on the save bar ('save'): a new one needs its company and name only.
-  const shown = (k) => (tried === 'save' ? (k === 'company' || k === 'name' ? errors[k] : undefined) : tried ? errors[k] : undefined);
+  // Save on the save bar ('save'): a new one needs its company and name only (and its
+  // End date, with "No end date" unticked).
+  const shown = (k) => (tried === 'save' ? (k === 'company' || k === 'name' || k === 'endDate' ? errors[k] : undefined) : tried ? errors[k] : undefined);
   // Save (save bar): what's edited is kept, not applied or sent (SAVE_AGREEMENT_DRAFT).
-  const saveDraft = () => (!saved && (errors.company || errors.name) ? setTried('save') : dispatch({ type: 'SAVE_AGREEMENT_DRAFT' }));
+  const saveDraft = () => ((!saved && (errors.company || errors.name)) || endMissing ? setTried('save') : dispatch({ type: 'SAVE_AGREEMENT_DRAFT' }));
 
   // A location is in one contract at a time (clashesAt): going live over Active or
   // Scheduled contracts there moves those locations to this one (overlapHandover).
@@ -464,13 +473,23 @@ export function AgreementEditor() {
                 <s-date-field
                   label="End date"
                   value={draft.endDate || ''}
-                  disabled={locked}
+                  disabled={locked || noEnd}
                   onChange={(e) => patch({ endDate: e.currentTarget.value })}
-                  error={errors.endDate}
-                  details="Leave empty for no end date."
+                  // "Choose an end date" once a save is tried; a wrong date right away.
+                  error={endMissing ? shown('endDate') : errors.endDate}
                 />
               </s-grid>
             </s-query-container>
+            <s-checkbox
+              label="No end date"
+              checked={noEnd}
+              disabled={locked}
+              onChange={(e) => {
+                const on = e.currentTarget.checked;
+                setWantsEnd(!on);
+                if (on) patch({ endDate: '' });
+              }}
+            />
             <s-paragraph color="subdued" fontSize="small">
               {`It starts and ends on its own. After the end date, ${who} goes back to the pricing and limits outside the contract.`}
             </s-paragraph>
@@ -510,6 +529,7 @@ export function AgreementEditor() {
                 key: p.id,
                 name: p.name,
                 detail: scopeLabel(p),
+                side: `Priority ${p.priority ?? 0}`,
                 onOpen: locked ? undefined : () => editPricing(p),
                 actions: locked ? null : <TermActions name={p.name} onEdit={() => editPricing(p)} onRemove={() => remove('quantity', p.id)} />,
               }))}
@@ -608,6 +628,7 @@ export function AgreementEditor() {
             {laterShown && (
               <s-checkbox
                 label="Automatically apply this contract to locations added later"
+                details="When multiple contracts apply to locations added later, a new location moves to each new contract as soon as it starts, even if the previous one is still active."
                 checked={addsLaterLocations(draft)}
                 disabled={locked}
                 onChange={(e) => patch({ applyLater: e.currentTarget.checked })}
@@ -635,61 +656,84 @@ export function AgreementEditor() {
               </s-stack>
             </div>
           ) : null}
-          {/* Its status stays whatever its buyers asked; the request is beside it and in
-              the sentence below. Each is in Buyer note, below; an approval is in the
-              sentence ("Approved by … on …"). */}
-          <s-paragraph color="subdued" fontSize="small">
-            {cancelRequest
-              ? `${who}’s buyers asked to cancel it. ${
-                  started ? 'End the contract' : 'Cancel the contract'
-                }, or decline the request with a reply they see in their B2B Portal.${
-                  // Not answered by its start date, one that hasn't started expires (syncContractDates).
-                  started ? ' It stays in force until you answer.' : saved.startDate ? ` It expires on ${fmtDay(saved.startDate)} if you don’t answer.` : ''
-                }`
-              : proposed
-              ? !proposalUnchanged
-                ? `Sending gives ${who}’s buyers your changes to approve. It stays version ${saved.version}; the changes go in its Activities log.`
-                : canActivate
-                  ? `Activating gives ${who} these terms ${when}${proposal === 'approved' ? '' : '. Its buyers haven’t approved it'}.`
-                  : proposal === 'changes'
-                    ? `Change it and send it again. Nothing applies until they approve it.`
-                    : `Waiting for ${who}’s buyers to approve it. It’s activated once they do. It expires if they don’t approve it by ${fmtDay(saved.startDate)}. You can change it once they answer.`
-              : keeps && sends
-                ? waiting && (waitingUnchanged || waitingUnanswered)
-                  ? proposal === 'changes'
-                    ? `${who}’s buyers asked for changes to version ${waiting.version}. Change it and send it again, or decline their request. ${
-                        started ? `Version ${saved.version} stays in force.` : `Version ${saved.version} still starts ${startsOn} until they approve version ${waiting.version}.`
-                      }`
-                    : started
-                      ? `Version ${waiting.version} is waiting for ${who}’s buyers to approve it. Version ${saved.version} stays in force until they do. You can change it once they answer.`
-                      : `Version ${waiting.version} is waiting for ${who}’s buyers to approve it. Version ${saved.version} starts ${startsOn} as it is if they haven’t by then; version ${waiting.version} keeps waiting and applies once they approve it. You can change it once they answer.`
-                  : !waiting && unchanged
-                    ? liveRequest
-                      ? `${who}’s buyers asked for changes to version ${saved.version}. Change it and send it to them, or decline their request. ${
-                          started ? `Version ${saved.version} stays in force.` : `It still starts ${startsOn}.`
-                        }`
+          {/* Its status stays whatever its buyers asked; the request is beside it (and in
+              the sentence's ⓘ). Each is in Buyer note, below; an approval is in the
+              sentence ("Approved by … on …"). What to do next, and what changes for the
+              buyers, stay in the sentence; the rest (what stays the same, where things
+              show, what's locked) is in its ⓘ. */}
+          <StatusLine
+            parts={
+              cancelRequest
+                ? started
+                  ? ['End the contract, or decline the request.', `It stays in force until you answer. ${who}’s buyers see your reply in their B2B Portal.`]
+                  : [
+                      // Not answered by its start date, one that hasn't started expires (syncContractDates).
+                      `Cancel the contract, or decline the request.${saved.startDate ? ` It expires on ${fmtDay(saved.startDate)} if you don’t answer.` : ''}`,
+                      `${who}’s buyers see your reply in their B2B Portal.`,
+                    ]
+                : proposed
+                ? !proposalUnchanged
+                  ? [`Sending gives ${who}’s buyers your changes to approve.`, `It stays version ${saved.version}; the changes go in its Activities log.`]
+                  : canActivate
+                    ? [`Activating gives ${who} these terms ${when}${proposal === 'approved' ? '' : '. Its buyers haven’t approved it'}.`]
+                    : proposal === 'changes'
+                      ? ['Change it and send it again. Nothing applies until they approve it.']
+                      : [
+                          `Waiting for ${who}’s buyers to approve it. It expires on ${fmtDay(saved.startDate)} if they don’t.`,
+                          'It’s activated once they approve it. You can change it once they answer.',
+                        ]
+                : keeps && sends
+                  ? waiting && (waitingUnchanged || waitingUnanswered)
+                    ? proposal === 'changes'
+                      ? [
+                          'Change it and send it again, or decline the request.',
+                          `${who}’s buyers asked for changes to version ${waiting.version}. ${
+                            started ? `Version ${saved.version} stays in force.` : `Until they approve version ${waiting.version}, version ${saved.version} starts ${startsOn}.`
+                          }`,
+                        ]
                       : started
-                        ? `${approvedLine}Version ${saved.version} is in force.`
-                        : `${approvedLine}It starts ${startsOn}.`
-                    : started
-                      ? `Sending gives ${who}’s buyers your changes as version ${nextVersion} to approve. Version ${saved.version} stays in force until they do.`
-                      : `Sending gives ${who}’s buyers your changes as version ${nextVersion} to approve. Version ${saved.version} still starts ${startsOn} until they approve it.`
-              : sends
-                ? saved
-                  ? unchanged
-                    ? `${approvedLine}It starts ${fmtDay(saved.startDate)}.`
-                    : `Sending gives ${who}’s buyers your changes as version ${nextVersion} to approve. It won’t start until they approve it.`
-                  : `Nothing is applied yet. ${who}’s buyers approve it first in their B2B Portal, and it’s activated once they do.`
-                : live
-                  ? `Saving gives ${company?.name} your changes ${when}, as version ${nextVersion}.`
-                  : `Nothing is applied yet. Activating gives ${who} these terms${draft.startDate ? ` from ${fmtDay(draft.startDate)}` : ''}.`}
-          </s-paragraph>
+                        ? [`Version ${saved.version} stays in force until they approve version ${waiting.version}.`, 'You can change it once they answer.']
+                        : [
+                            `Version ${saved.version} starts ${startsOn}. Version ${waiting.version} applies once they approve it.`,
+                            `If they haven’t approved it by then, version ${saved.version} starts as it is and version ${waiting.version} keeps waiting. You can change it once they answer.`,
+                          ]
+                    : !waiting && unchanged
+                      ? liveRequest
+                        ? [
+                            'Change it and send it to them, or decline the request.',
+                            `${who}’s buyers asked for changes to version ${saved.version}. ${started ? `Version ${saved.version} stays in force.` : `It still starts ${startsOn}.`}`,
+                          ]
+                        : started
+                          ? [`${approvedLine}Version ${saved.version} is in force.`]
+                          : [`${approvedLine}It starts ${startsOn}.`]
+                      : started
+                        ? [`Sending gives ${who}’s buyers your changes as version ${nextVersion} to approve.`, `Version ${saved.version} stays in force until they approve it.`]
+                        : [`Sending gives ${who}’s buyers your changes as version ${nextVersion} to approve.`, `Until they approve it, version ${saved.version} starts ${startsOn}.`]
+                  : sends
+                    ? saved
+                      ? unchanged
+                        ? [`${approvedLine}It starts ${fmtDay(saved.startDate)}.`]
+                        : [`Sending gives ${who}’s buyers your changes as version ${nextVersion} to approve. It won’t start until they approve it.`]
+                      : [`Nothing is applied yet. It’s activated once ${who}’s buyers approve it.`, 'They approve it in their B2B Portal.']
+                    : live
+                      ? [`Saving gives ${company?.name} your changes ${when}, as version ${nextVersion}.`]
+                      : [`Nothing is applied yet. Activating gives ${who} these terms${draft.startDate ? ` from ${fmtDay(draft.startDate)}` : ''}.`]
+            }
+          />
           {endAsked ? (
-            <s-paragraph color="subdued" fontSize="small">
-              {endAsked.cancel
-                ? `You asked ${who}’s buyers to cancel it on ${fmtDay(endAsked.at)}. It still starts ${startsOn} unless they approve before then. You can’t send changes until they answer or you withdraw it.`
-                : `You asked ${who}’s buyers to end it on ${fmtDay(endAsked.at)}. It stays in force until they approve. You can’t send changes until they answer or you withdraw it.`}
-            </s-paragraph>
+            <StatusLine
+              parts={
+                endAsked.cancel
+                  ? [
+                      `It still starts ${startsOn} unless they approve before then.`,
+                      `You asked ${who}’s buyers to cancel it on ${fmtDay(endAsked.at)}. You can’t send changes until they answer or you withdraw it.`,
+                    ]
+                  : [
+                      'It stays in force until they approve.',
+                      `You asked ${who}’s buyers to end it on ${fmtDay(endAsked.at)}. You can’t send changes until they answer or you withdraw it.`,
+                    ]
+              }
+            />
           ) : versionDeclined ? (
             <s-stack gap="small-300">
               <s-paragraph color="subdued" fontSize="small">
@@ -1098,6 +1142,24 @@ export function AgreementEditor() {
 }
 
 const pickedOf = (ids, list) => ids.map((id) => (list || []).find((x) => x.id === id)).filter(Boolean);
+
+// A line of the Status: `parts` [what to do next and what changes for the buyers,
+// the rest (optional) in an ⓘ tooltip at its end].
+function StatusLine({ parts: [main, more] }) {
+  return (
+    <s-paragraph color="subdued" fontSize="small">
+      {main}
+      {more ? (
+        <>
+          {' '}
+          <Tip content={more}>
+            <s-icon type="info" size="small" color="subdued" />
+          </Tip>
+        </>
+      ) : null}
+    </s-paragraph>
+  );
+}
 
 // A term group's Add: Create new, or Copy existing.
 function AddTerm({ onCreate, onCopy }) {
