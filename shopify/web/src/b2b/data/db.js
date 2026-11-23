@@ -668,6 +668,112 @@ if (demoCase() === 'end-request')
     endRequests: [{ version: 2, revision: 0, at: '2026-07-27', time: '2026-07-27T03:00:00.000Z', message: 'We are moving Hanoi to the national price list from Sep 1.' }],
   });
 
+// Prototype-only: ?case=statuses (the B2B app opened on it) adds Status Demo Co. with a
+// contract for each case of its status: the Contracts list's status, and the Status card
+// on its contract page. One location each, so none takes over another; named after its
+// case. They hold no pricing or limits: only their status is to check.
+if (demoCase() === 'statuses') {
+  const cases = statusCases();
+  // For now, of the other contracts only CT-306 (its buyers asked for changes) has an ⓘ
+  // to check; the rest aren't seeded.
+  agreements.splice(0, agreements.length, ...agreements.filter((a) => a.number === 'CT-306'));
+  companies.push(cases.company);
+  agreements.push(...cases.agreements);
+}
+function statusCases() {
+  const T = () => ({ base: [], quantity: [], limits: [] });
+  const lan = { buyer: 'Pham Lan', email: 'lan@statusdemo.vn' };
+  const time = (at) => `${at}T03:15:00.000Z`;
+  // A buyer's answer to a version; a request's key, as agreements.js responseKey.
+  const say = (number, version, at, kind, message = '') => ({ number, version, revision: 0, kind, message, ...lan, at, time: time(at) });
+  const keyOf = (r) => [r.version, r.at, r.kind, r.message || '', r.email || r.buyer || ''].join('|');
+  // Not started: Sep 1, 2026 to Aug 31, 2027. Started: Mar 1, 2026 to Feb 28, 2027.
+  const later = { startDate: '2026-09-01', endDate: '2027-08-31' };
+  const begun = { startDate: '2026-03-01', endDate: '2027-02-28' };
+  const sentV1 = (date) => ({ version: 1, date, note: 'Sent to buyer', terms: T() });
+  const approvedLater = (n) => ({
+    ...later, status: 'Scheduled', approval: true,
+    buyerResponses: [say(n, 1, '2026-07-20', 'approve')],
+    history: [{ version: 1, date: '2026-07-20', note: 'Approved by buyer, starts Sep 1, 2026' }, sentV1('2026-07-18')],
+  });
+  const approvedBegun = (n) => ({
+    ...begun, status: 'Active', approval: true,
+    buyerResponses: [say(n, 1, '2026-02-20', 'approve')],
+    history: [{ version: 1, date: '2026-03-01', note: 'Started' }, { version: 1, date: '2026-02-20', note: 'Approved by buyer, starts Mar 1, 2026' }, sentV1('2026-02-18')],
+  });
+  // Version 2 sent to its buyers: a later end date.
+  const v2 = (ag, endDate, label) => {
+    const sentAt = '2026-07-24T03:00:00.000Z';
+    return {
+      pending: { draft: { name: ag.name, startDate: ag.startDate, endDate, locationIds: ag.locationIds, terms: T() }, staged: { policies: {}, limits: {} }, version: 2, revision: 0, sentAt },
+      history: [{ version: 2, date: '2026-07-24', note: `Sent to buyer · Now ends ${label}`, unapproved: 'sent', sentAt, terms: T(), fields: { endDate } }, ...ag.history],
+    };
+  };
+  const declinedV2 = (ag, n, endDate, label) => ({
+    buyerResponses: [...ag.buyerResponses, say(n, 2, '2026-07-26', 'decline', 'Please keep the end date as it is.')],
+    history: [{ version: 2, date: '2026-07-26', note: 'Declined by buyer', unapproved: 'declined' }, ...v2(ag, endDate, label).history],
+  });
+  const asked = (n, kind, message) => (ag) => ({ buyerResponses: [...ag.buyerResponses, say(n, 1, '2026-07-25', kind, message)] });
+  const endReq = (cancel) => ({ version: 1, revision: 0, at: '2026-07-25', time: time('2026-07-25'), message: cancel ? 'We won’t need these terms from Sep 1.' : 'We are moving these sites to the national price list.', ...(cancel ? { cancel: true } : {}) });
+
+  // [name, build(number) → the contract's own fields]
+  const list = [
+    ['Draft', () => ({ ...later, status: 'Draft', history: [] })],
+    ['Scheduled · no buyer approval', () => ({ ...later, status: 'Scheduled', history: [{ version: 1, date: '2026-07-20', note: 'Activated, starts Sep 1, 2026', terms: T() }] })],
+    ['Active · no buyer approval', () => ({ ...begun, status: 'Active', history: [{ version: 1, date: '2026-03-01', note: 'Started' }, { version: 1, date: '2026-02-15', note: 'Activated, starts Mar 1, 2026', terms: T() }] })],
+    ['Proposed · awaiting buyer', () => ({ ...later, status: 'Proposed', approval: true, history: [sentV1('2026-07-22')] })],
+    ['Proposed · changes requested', (n) => ({ ...later, status: 'Proposed', approval: true, buyerResponses: [say(n, 1, '2026-07-25', 'changes', 'Can the minimum order go down to 10 units?')], history: [sentV1('2026-07-22')] })],
+    ['Proposed · request declined', (n) => {
+      const r = say(n, 1, '2026-07-24', 'changes', 'Can the minimum order go down to 10 units?');
+      return { ...later, status: 'Proposed', approval: true, buyerResponses: [r], declines: [{ responseKey: keyOf(r), version: 1, at: '2026-07-25', time: time('2026-07-25'), message: 'The minimum stays at 20 units at this price.' }], history: [sentV1('2026-07-22')] };
+    }],
+    ['Proposed · cancellation requested', (n) => ({ ...later, status: 'Proposed', approval: true, buyerResponses: [say(n, 1, '2026-07-25', 'cancel', 'We won’t need these terms this year.')], history: [sentV1('2026-07-22')] })],
+    ['Scheduled · approved', (n) => approvedLater(n)],
+    ['Scheduled · version 2 awaiting buyer', (n, ag) => v2(ag, '2027-12-31', 'Dec 31, 2027'), approvedLater],
+    ['Scheduled · version 2 changes requested', (n, ag) => ({ ...v2(ag, '2027-12-31', 'Dec 31, 2027'), buyerResponses: [...ag.buyerResponses, say(n, 2, '2026-07-26', 'changes', 'Can it end on Sep 30, 2027 instead?')] }), approvedLater],
+    ['Scheduled · version 2 declined', (n, ag) => declinedV2(ag, n, '2027-12-31', 'Dec 31, 2027'), approvedLater],
+    ['Scheduled · changes requested', (n, ag) => asked(n, 'changes', 'Can the minimum order go down to 10 units?')(ag), approvedLater],
+    ['Scheduled · cancellation requested', (n, ag) => asked(n, 'cancel', 'We won’t need these terms from Sep 1.')(ag), approvedLater],
+    ['Scheduled · asked to cancel', () => ({ endRequests: [endReq(true)] }), approvedLater],
+    ['Scheduled · cancel declined', (n) => ({
+      endRequests: [endReq(true)],
+      endResponses: [{ number: n, version: 1, revision: 0, kind: 'end-decline', message: 'We still want these terms from Sep 1.', ...lan, requestAt: time('2026-07-25'), at: '2026-07-26', time: time('2026-07-26') }],
+    }), approvedLater],
+    ['Active · approved', (n) => approvedBegun(n)],
+    ['Active · version 2 awaiting buyer', (n, ag) => v2(ag, '2027-08-31', 'Aug 31, 2027'), approvedBegun],
+    ['Active · version 2 changes requested', (n, ag) => ({ ...v2(ag, '2027-08-31', 'Aug 31, 2027'), buyerResponses: [...ag.buyerResponses, say(n, 2, '2026-07-26', 'changes', 'Can it end on May 31, 2027 instead?')] }), approvedBegun],
+    ['Active · version 2 declined', (n, ag) => declinedV2(ag, n, '2027-08-31', 'Aug 31, 2027'), approvedBegun],
+    ['Active · changes requested', (n, ag) => asked(n, 'changes', 'Can the minimum order go down to 10 units?')(ag), approvedBegun],
+    ['Active · cancellation requested', (n, ag) => asked(n, 'cancel', 'We are moving these sites to the national price list.')(ag), approvedBegun],
+    ['Active · end requested', () => ({ endRequests: [endReq(false)] }), approvedBegun],
+    ['Active · end declined', (n) => ({
+      endRequests: [endReq(false)],
+      endResponses: [{ number: n, version: 1, revision: 0, kind: 'end-decline', message: 'We still need these terms until February.', ...lan, requestAt: time('2026-07-25'), at: '2026-07-26', time: time('2026-07-26') }],
+    }), approvedBegun],
+    ['Expired', () => ({ status: 'Expired', startDate: '2025-07-01', endDate: '2026-06-30', history: [{ version: 1, date: '2026-07-01', note: 'Expired' }, { version: 1, date: '2025-07-01', note: 'Activated', terms: T() }] })],
+    ['Ended', () => ({ ...begun, status: 'Ended', history: [{ version: 1, date: '2026-07-15', note: 'Ended' }, { version: 1, date: '2026-03-01', note: 'Started' }, { version: 1, date: '2026-02-15', note: 'Activated, starts Mar 1, 2026', terms: T() }] })],
+    ['Cancelled', () => ({ ...later, status: 'Cancelled', history: [{ version: 1, date: '2026-07-15', note: 'Cancelled before it started' }, { version: 1, date: '2026-07-10', note: 'Activated, starts Sep 1, 2026', terms: T() }] })],
+  ];
+  const pad = (i) => String(i + 1).padStart(2, '0');
+  // For now, only the ones whose Status has an ⓘ to check; each keeps its number.
+  const HIDDEN = ['Draft', 'Scheduled · no buyer approval', 'Active · no buyer approval', 'Proposed · awaiting buyer', 'Proposed · request declined', 'Scheduled · cancel declined', 'Active · end declined', 'Expired', 'Ended', 'Cancelled'];
+  const shown = list.map((c, i) => [c, i]).filter(([[name]]) => !HIDDEN.includes(name));
+  const company = {
+    id: 'c9', name: 'Status Demo Co.', mainContact: 'Pham Lan', source: 'Merchant created',
+    pricing: { base: null, quantity: null }, revenue: 0,
+    locations: shown.map(([, i]) => ({ id: `l9${pad(i)}`, name: `Site ${pad(i)}`, shipping: { company: 'Status Demo Co.', address1: `${i + 1} Le Loi`, address2: 'District 1', city: 'Ho Chi Minh City', postal: '700000', country: 'VN', phone: '' }, ordering: 'Buys directly', terms: 'Net 30', lastOrder: null, buyers: 1 })),
+    contacts: [{ name: 'Pham Lan', email: 'lan@statusdemo.vn', role: 'Location admin', access: 'Buys directly', locations: 'All locations' }],
+    quotes: [], exceptions: [], activity: [],
+  };
+  const agreements = shown.map(([[name, build, from], i]) => {
+    const number = `CT-9${pad(i)}`;
+    const base = { id: `ag9${pad(i)}`, number, name, companyId: 'c9', locationIds: [`l9${pad(i)}`], version: 1, revision: 0, terms: T(), buyerResponses: [], updatedAt: '2026-07-27T03:00:00.000Z' };
+    const start = from ? { ...base, ...from(number) } : base;
+    return { ...start, ...build(number, start) };
+  });
+  return { company, agreements };
+}
+
 // The contracts use the contract copies (SPLIT), in their versions too.
 if (CONTRACTS) {
   agreements.forEach((a) =>
