@@ -101,11 +101,11 @@ export function AgreementEditor() {
   // request in the header, with a reply they see): the contract then waits for them
   // again.
   const [noteOpen, setNoteOpen] = useState(false);
-  // "No end date": ticked while it has none. Deleting the date in the field doesn't
-  // clear it (Polaris puts it back on blur), so this does. `wantsEnd`: unticked, its
-  // End date not picked yet.
+  // "Set end date", as in pricing: ticked while it has one, and its End date shows.
+  // Deleting the date in the field doesn't clear it (Polaris puts it back on blur), so
+  // unticking does. `wantsEnd`: ticked, its End date not picked yet.
   const [wantsEnd, setWantsEnd] = useState(false);
-  const noEnd = !draft.endDate && !wantsEnd;
+  const hasEnd = !!draft.endDate || wantsEnd;
   // Their message with a decline (of a new version, or of your request to end it),
   // opened from the Status (Buyer's message): the answer it came with.
   const [buyerMessage, setBuyerMessage] = useState(null);
@@ -186,6 +186,8 @@ export function AgreementEditor() {
   const [rejecting, setRejecting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const scopeTipId = useWcId('scope-tip');
+  const datesTipId = useWcId('dates-tip');
+  const laterTipId = useWcId('later-tip');
   const patch = (p) => dispatch({ type: 'AGREEMENT_EDITOR_PATCH', patch: p });
   const setTerms = (p) => patch({ terms: { ...draft.terms, ...p } });
   const close = () => dispatch({ type: 'CLOSE_AGREEMENT_EDITOR' });
@@ -260,8 +262,8 @@ export function AgreementEditor() {
   else if (!started && draft.startDate < TODAY) errors.startDate = 'Can’t be before today';
   if (draft.endDate && draft.startDate && draft.endDate < draft.startDate) errors.endDate = 'Must be after the start date';
   else if (draft.endDate && draft.endDate < TODAY) errors.endDate = 'This date has passed';
-  // "No end date" unticked: it needs one — nothing saves without it, the save bar's Save too.
-  const endMissing = !noEnd && !draft.endDate;
+  // "Set end date" ticked: it needs one — nothing saves without it, the save bar's Save too.
+  const endMissing = hasEnd && !draft.endDate;
   if (endMissing) errors.endDate = 'Choose an end date';
   const valid = !Object.keys(errors).length;
   // Save on the save bar ('save'): a new one needs its company and name only (and its
@@ -449,8 +451,20 @@ export function AgreementEditor() {
           />
         </s-section>
 
-        <s-section heading="Dates">
+        <s-section>
           <s-stack gap="small">
+            {/* What the dates do, in the heading's ⓘ (as Applies to's). */}
+            <s-stack direction="inline" gap="small-400" alignItems="center">
+              <s-heading>Dates</s-heading>
+              <span style={{ display: 'inline-flex', cursor: 'help' }}>
+                <s-icon type="info" color="subdued" interestFor={datesTipId} />
+              </span>
+              <s-tooltip id={datesTipId}>
+                <s-paragraph fontSize="small">
+                  {`It starts and ends on its own. After the end date, ${who} goes back to the pricing and limits outside the contract.`}
+                </s-paragraph>
+              </s-tooltip>
+            </s-stack>
             {/* Timezone: the store's until one is picked. */}
             <s-select label="Timezone" value={draft.timezone || storeTimezone(state.db)} disabled={locked} onChange={(e) => patch({ timezone: e.currentTarget.value })}>
               {TIMEZONES.map((tz) => (
@@ -470,29 +484,33 @@ export function AgreementEditor() {
                   error={shown('startDate')}
                   details={started ? 'It has started, so this can’t change.' : undefined}
                 />
-                <s-date-field
-                  label="End date"
-                  value={draft.endDate || ''}
-                  disabled={locked || noEnd}
-                  onChange={(e) => patch({ endDate: e.currentTarget.value })}
-                  // "Choose an end date" once a save is tried; a wrong date right away.
-                  error={endMissing ? shown('endDate') : errors.endDate}
-                />
               </s-grid>
             </s-query-container>
+            {/* As in pricing's Active dates: the End date shows while this is ticked. */}
             <s-checkbox
-              label="No end date"
-              checked={noEnd}
+              label="Set end date"
+              checked={hasEnd}
               disabled={locked}
               onChange={(e) => {
                 const on = e.currentTarget.checked;
-                setWantsEnd(!on);
-                if (on) patch({ endDate: '' });
+                setWantsEnd(on);
+                if (!on) patch({ endDate: '' });
               }}
             />
-            <s-paragraph color="subdued" fontSize="small">
-              {`It starts and ends on its own. After the end date, ${who} goes back to the pricing and limits outside the contract.`}
-            </s-paragraph>
+            {hasEnd && (
+              <s-query-container>
+                <s-grid gridTemplateColumns="@container (inline-size > 400px) 1fr 1fr, 1fr" gap="small">
+                  <s-date-field
+                    label="End date"
+                    value={draft.endDate || ''}
+                    disabled={locked}
+                    onChange={(e) => patch({ endDate: e.currentTarget.value })}
+                    // "Choose an end date" once a save is tried; a wrong date right away.
+                    error={endMissing ? shown('endDate') : errors.endDate}
+                  />
+                </s-grid>
+              </s-query-container>
+            )}
           </s-stack>
         </s-section>
 
@@ -625,14 +643,24 @@ export function AgreementEditor() {
               </s-stack>
             ) : null}
             {/* Here and in the company modal, while the company auto-adds locations. */}
+            {/* How new locations move between contracts, in its ⓘ. */}
             {laterShown && (
-              <s-checkbox
-                label="Automatically apply this contract to locations added later"
-                details="When multiple contracts apply to locations added later, a new location moves to each new contract as soon as it starts, even if the previous one is still active."
-                checked={addsLaterLocations(draft)}
-                disabled={locked}
-                onChange={(e) => patch({ applyLater: e.currentTarget.checked })}
-              />
+              <s-stack direction="inline" gap="small-300" alignItems="center">
+                <s-checkbox
+                  label="Automatically apply this contract to locations added later"
+                  checked={addsLaterLocations(draft)}
+                  disabled={locked}
+                  onChange={(e) => patch({ applyLater: e.currentTarget.checked })}
+                />
+                <span style={{ display: 'inline-flex', cursor: 'help' }}>
+                  <s-icon type="info" color="subdued" interestFor={laterTipId} />
+                </span>
+                <s-tooltip id={laterTipId}>
+                  <s-paragraph fontSize="small">
+                    When multiple contracts apply to locations added later, a new location moves to each new contract as soon as it starts, even if the previous one is still active.
+                  </s-paragraph>
+                </s-tooltip>
+              </s-stack>
             )}
             {(shown('company') || shown('scope')) && (
               <s-paragraph tone="critical" id="agreement-scope">
