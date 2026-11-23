@@ -307,7 +307,7 @@ const nowOnToday = () => `${TODAY}T${new Date().toISOString().slice(11)}`;
 // one keeps waiting, as an Active one's (syncContractDates). `draft`: the version's own fields (PENDING_FIELDS); `staged`: its
 // pricing and limits as edited, kept out of the lists until then. Sent again, it keeps
 // its version number and gets a new revision, as a proposal does.
-const PENDING_FIELDS = ['name', 'startDate', 'endDate', 'locationIds', 'applyLater', 'timezone', 'terms'];
+const PENDING_FIELDS = ['name', 'startDate', 'startTime', 'endDate', 'endTime', 'locationIds', 'applyLater', 'timezone', 'terms'];
 const pickPending = (x) => Object.fromEntries(PENDING_FIELDS.filter((k) => k in x).map((k) => [k, copyOf(x[k])]));
 // The version waiting for its buyers, read as a proposal (status Proposed, its version
 // and revision) — the buyers' answers, declines and seller updates are the contract's.
@@ -797,6 +797,13 @@ export function newAgreement(db, company) {
 // Do locations added to its company later join it? Contracts saved before the choice
 // existed: those on all locations do.
 export const addsLaterLocations = (ag) => ag.applyLater ?? !ag.locationIds;
+// Its start and end times, as in pricing (contracts saved before times existed have
+// none: they start at the start of their start date and end at the end of their end
+// date). The day it starts and ends still goes by its dates.
+export const DEFAULT_START_TIME = '12:00 AM';
+export const DEFAULT_END_TIME = '11:59 PM';
+export const startTimeOf = (ag) => ag?.startTime || DEFAULT_START_TIME;
+export const endTimeOf = (ag) => ag?.endTime || DEFAULT_END_TIME;
 
 // A new contract with another one's terms and locations — `ag` can be open or over:
 // its own copies of that one's pricing and limits (staged until it's saved), and the
@@ -1213,7 +1220,9 @@ export function snapshotTerms(db, ag) {
   return {
     name: ag.name,
     startDate: ag.startDate,
+    startTime: ag.startTime,
     endDate: ag.endDate,
+    endTime: ag.endTime,
     // Its locations (null: all), for the contract editor going on from it (draftFromEntry).
     locationIds: ag.locationIds ? [...ag.locationIds] : null,
     scope: c ? agreementScopeLabel(c, ag) : '',
@@ -1369,8 +1378,9 @@ export function draftFromEntry(ag, h) {
   const draft = {
     ...pendingDraft(ag),
     name: snap.name,
-    ...(ag.status === 'Active' ? {} : { startDate: snap.startDate }),
+    ...(ag.status === 'Active' ? {} : { startDate: snap.startDate, startTime: snap.startTime }),
     endDate: snap.endDate || '',
+    endTime: snap.endTime || '',
     ...('locationIds' in snap ? { locationIds: copyOf(snap.locationIds) } : {}),
     terms: { base: idsOf(snap.base, staged.policies), quantity: idsOf(snap.quantity, staged.policies), limits: idsOf(snap.limits, staged.limits) },
   };
@@ -1378,7 +1388,7 @@ export function draftFromEntry(ag, h) {
 }
 // What the contract editor has as edited (its fields and staged pricing and limits), to
 // tell whether anything changed since it opened or was last saved (`pristine`).
-const EDITED = ['name', 'companyId', 'locationIds', 'applyLater', 'approval', 'startDate', 'endDate', 'timezone', 'terms'];
+const EDITED = ['name', 'companyId', 'locationIds', 'applyLater', 'approval', 'startDate', 'startTime', 'endDate', 'endTime', 'timezone', 'terms'];
 export const editedOf = (ed) => JSON.stringify({ ...Object.fromEntries(EDITED.map((k) => [k, ed?.draft?.[k] ?? null])), staged: ed?.staged || null });
 // The editor's fields as edited, for its saved changes (`unsent`).
 export const editedFields = (draft) => copyOf(Object.fromEntries(EDITED.map((k) => [k, draft?.[k] ?? null])));
@@ -1652,8 +1662,14 @@ export function agreementChanges(prev, next, db, before = db) {
     parts.push(addsLaterLocations(next) ? 'Enabled auto-apply for new locations' : 'Disabled auto-apply for new locations');
   }
   if (prev.name !== next.name) parts.push(`Renamed to ${next.name}`);
-  if ((prev.startDate || '') !== (next.startDate || '')) parts.push(`Now starts ${fmtDay(next.startDate)}`);
-  if ((prev.endDate || '') !== (next.endDate || '')) parts.push(next.endDate ? `Now ends ${fmtDay(next.endDate)}` : 'No end date now');
+  // With its time when that changed, or isn't the default: "Now starts Dec 1, 2026, 9:00 AM".
+  const at = (date, time, was, def) => `${fmtDay(date)}${time !== was || time !== def ? `, ${time}` : ''}`;
+  if ((prev.startDate || '') !== (next.startDate || '') || startTimeOf(prev) !== startTimeOf(next)) {
+    parts.push(`Now starts ${at(next.startDate, startTimeOf(next), startTimeOf(prev), DEFAULT_START_TIME)}`);
+  }
+  if ((prev.endDate || '') !== (next.endDate || '') || (next.endDate && endTimeOf(prev) !== endTimeOf(next))) {
+    parts.push(next.endDate ? `Now ends ${at(next.endDate, endTimeOf(next), endTimeOf(prev), DEFAULT_END_TIME)}` : 'No end date now');
+  }
   return parts.join(' · ') || 'No changes to terms';
 }
 // Saving would change nothing: same name, dates, locations and terms.

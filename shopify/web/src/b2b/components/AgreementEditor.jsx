@@ -44,6 +44,8 @@ import {
   approvedTakeovers,
   joinAnd,
   pendingNote,
+  DEFAULT_START_TIME,
+  DEFAULT_END_TIME,
 } from '../agreements.js';
 import { TODAY } from '../pricing.js';
 import { PricingCombobox } from './PricingCombobox.jsx';
@@ -484,6 +486,14 @@ export function AgreementEditor() {
                   error={shown('startDate')}
                   details={started ? 'It has started, so this can’t change.' : undefined}
                 />
+                {/* Times as in pricing's Active dates. */}
+                <s-text-field
+                  label="Start time"
+                  value={draft.startTime || DEFAULT_START_TIME}
+                  disabled={started || locked}
+                  onInput={(e) => patch({ startTime: e.currentTarget.value })}
+                  autocomplete="off"
+                />
               </s-grid>
             </s-query-container>
             {/* As in pricing's Active dates: the End date shows while this is ticked. */}
@@ -494,7 +504,7 @@ export function AgreementEditor() {
               onChange={(e) => {
                 const on = e.currentTarget.checked;
                 setWantsEnd(on);
-                if (!on) patch({ endDate: '' });
+                if (!on) patch({ endDate: '', endTime: undefined });
               }}
             />
             {hasEnd && (
@@ -507,6 +517,13 @@ export function AgreementEditor() {
                     onChange={(e) => patch({ endDate: e.currentTarget.value })}
                     // "Choose an end date" once a save is tried; a wrong date right away.
                     error={endMissing ? shown('endDate') : errors.endDate}
+                  />
+                  <s-text-field
+                    label="End time"
+                    value={draft.endTime || DEFAULT_END_TIME}
+                    disabled={locked}
+                    onInput={(e) => patch({ endTime: e.currentTarget.value })}
+                    autocomplete="off"
                   />
                 </s-grid>
               </s-query-container>
