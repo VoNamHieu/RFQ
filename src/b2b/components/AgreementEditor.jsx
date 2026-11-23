@@ -381,27 +381,115 @@ export function AgreementEditor() {
     : sends
       ? { content: 'Send to buyer', onAction: goSend, disabled: unsaved || !!takenLine || !!endAsked || proposalWaits || (proposed ? proposalUnchanged && !approvalChanged : waiting ? waitingUnchanged || waitingUnanswered : unchanged) }
       : { content: proposed || !live ? 'Activate' : `Save as version ${nextVersion}`, onAction: goLive, disabled: unsaved || !!takenLine || unchanged };
+  // End contract — Cancel contract for one that hasn't started (one its buyers approved:
+  // it asks them to cancel it). While their request for changes is open it can't be
+  // used: not shown then.
+  const endAction =
+    !cancelRequest && !withdrawing && (canEndAgreement(saved) || (endWaits && !liveRequest))
+      ? { content: started ? 'End contract' : 'Cancel contract', destructive: true, disabled: endWaits || edited, onAction: () => setEnding(true) }
+      : null;
   // Its buyers' request to cancel it open: Cancel contract only, in place of End
   // contract (no End contract or Delete contract until it's rejected).
   const secondary = (
     cancelRequest
       ? [{ content: started ? 'End contract' : 'Cancel contract', destructive: true, disabled: edited, onAction: () => setCancelling(true) }]
-      : withdrawing
-      ? []
       : [
-          // One that hasn't started: Cancel contract (one its buyers approved: it asks them to
-          // cancel it). While their request for changes is open it can't be used: not shown then.
-          (canEndAgreement(saved) || (endWaits && !liveRequest)) && {
-            content: started ? 'End contract' : 'Cancel contract',
-            destructive: true,
-            disabled: endWaits || edited,
-            onAction: () => setEnding(true),
-          },
-          // Decline request while the buyer's request for changes waits. Delete contract,
-          // when it can be (canDeleteAgreement), is under More actions.
-          changesAsked && { content: 'Decline request', destructive: true, disabled: edited, onAction: () => setDeclining(true) },
+          started && endAction,
+          // Decline request while the buyer's request for changes waits.
+          !withdrawing && changesAsked && { content: 'Decline request', destructive: true, disabled: edited, onAction: () => setDeclining(true) },
         ]
   ).filter(Boolean);
+  // More actions: Cancel contract (one that hasn't started) and Delete contract, when it
+  // can be (canDeleteAgreement).
+  const moreActions = [
+    !started && endAction,
+    (draftRecord || canDeleteAgreement(saved)) && !cancelRequest && { content: 'Delete contract', destructive: true, onAction: () => setDeleting(true) },
+  ].filter(Boolean);
+
+  // Its Status: its badges (its status, and a request beside it: pendingNote) and, in
+  // the heading's ⓘ, only what they can't tell: what stays in force meanwhile, by when
+  // it must be answered, who approved it. A Draft or a new one has no Status card
+  // (nothing applies yet).
+  const stays = started ? 'stays in force' : 'stays scheduled';
+  // A proposal waiting for its buyers: said under its badge, not in the ⓘ.
+  const statusNote =
+    proposed && !cancelRequest && proposalUnchanged && !canActivate && proposal !== 'changes'
+      ? `Awaiting approval from ${who}’s buyers. The contract expires on ${fmtDay(saved.startDate)} if not approved.`
+      : '';
+  const statusBase = cancelRequest
+    ? started
+      ? 'You can end the contract or decline the request. The contract remains in effect until you respond.'
+      : // Not answered by its start date, one that hasn't started expires (syncContractDates).
+        `You can cancel the contract or decline the request.${
+          saved.startDate ? ` If you do not respond before ${fmtDay(saved.startDate)}, the contract expires and does not start.` : ''
+        }`
+    : proposed
+      ? !proposalUnchanged
+        ? `Sending gives ${who}’s buyers your changes to approve. It stays version ${saved.version}; the changes go in its Activities log.`
+        : canActivate
+          ? `Activating gives ${who} these terms ${when}${proposal === 'approved' ? '' : '. Its buyers haven’t approved it'}.`
+          : proposal === 'changes'
+            ? 'You can decline or revise the terms and resend for approval. Nothing applies while you review the changes.'
+            : ''
+      : keeps && sends
+        ? waiting && (waitingUnchanged || waitingUnanswered)
+          ? proposal === 'changes'
+            ? `You can decline or revise the terms and resend for approval. Version ${saved.version} ${started ? 'remains in effect' : 'remains scheduled'}.`
+            : started
+              ? `Version ${saved.version} remains in effect until the buyers approve version ${waiting.version}. Once approved, version ${waiting.version} takes effect immediately.`
+              : `Once approved, version ${waiting.version} replaces version ${saved.version}. If not approved before the start date, version ${saved.version} starts as scheduled.`
+          : !waiting && unchanged
+            ? liveRequest
+              ? `You can decline or revise the terms and resend for approval. Version ${saved.version} ${started ? 'remains in effect' : 'remains scheduled'}.`
+              : started
+                ? `Version ${saved.version} is in effect. Any changes you make are sent to the buyers for approval as version ${nextVersion}.`
+                : ''
+            : `Sending gives ${who}’s buyers your changes as version ${nextVersion} to approve. Version ${saved.version} ${stays} until they approve it.`
+        : sends
+          ? saved
+            ? unchanged
+              ? ''
+              : `Sending gives ${who}’s buyers your changes as version ${nextVersion} to approve. It won’t start until they approve it.`
+            : ''
+          : // One its buyers don't approve: its badge says it all.
+            '';
+  // An open request (yours to end or cancel it, or theirs) first; else their latest
+  // decline, with their message under the badges (Buyer's message).
+  const openAsk = !!endAsked || !!cancelRequest || changesAsked;
+  const statusTip = endAsked
+    ? `If the buyers do not approve the ${endAsked.cancel ? 'cancellation' : 'end'} request, the contract remains ${started ? 'in effect' : 'scheduled'}.`
+    : !openAsk && versionDeclined
+      ? ''
+      : !openAsk && endDeclined
+        ? ''
+        : statusBase;
+  // Their decline of your request to end (or cancel) it: said under its badge, as a
+  // proposal waiting for them is (statusNote).
+  const declinedNote =
+    !openAsk && versionDeclined
+      ? `${who}’s buyers declined version ${versionDeclined.version} on ${fmtDay(versionDeclined.at)}.`
+      : !openAsk && endDeclined
+        ? `${who}’s buyers declined ${endDeclined.req.cancel ? 'cancelling' : 'ending'} it on ${fmtDay(endDeclined.answer.at)}.`
+        : '';
+  // Your request to end (or cancel) it, waiting for them: said under its badge too.
+  const askedNote = endAsked ? `You asked ${who}’s buyers to ${endAsked.cancel ? 'cancel' : 'end'} it on ${fmtDay(endAsked.at)}.` : '';
+  // A request beside its status (pendingNote): who sent it and when, under its badge —
+  // their request to cancel it, or for changes (to the version they approved, to the
+  // new version waiting for them, or to a proposal), or the new version you sent them.
+  // (Your request to end or cancel it: askedNote.)
+  const changesReq = changesAsked ? liveRequest || openRequestOf(waiting || saved) : null;
+  const sentAt = String(saved?.pending?.sentAt || '').slice(0, 10);
+  const requestedNote = cancelRequest
+    ? `${who}’s buyers requested cancellation on ${fmtDay(cancelRequest.at)}.`
+    : changesReq
+      ? `${who}’s buyers requested changes${waiting ? ` to version ${waiting.version}` : ''} on ${fmtDay(changesReq.at)}.`
+      : waiting && sentAt
+        ? `You sent version ${waiting.version} to ${who}’s buyers on ${fmtDay(sentAt)}.`
+        : '';
+  // Who approved it, once nothing else is said (approvedLine).
+  const approvedNote = sends && saved && !proposed && !cancelRequest && !waiting && !liveRequest && unchanged ? approvedLine.trim() : '';
+  const shownNote = statusNote || declinedNote || askedNote || requestedNote || approvedNote;
+  const declineMessage = openAsk ? null : versionDeclined ? (versionDeclined.message ? versionDeclined : null) : endDeclined?.answer.message ? endDeclined.answer : null;
 
   // The company page's look, as the pricing editor's: back (named as the page it returns
   // to) with the actions on top, then the title and the company; the cards below are as
@@ -420,9 +508,11 @@ export function AgreementEditor() {
       actionsOnTop
       actions={
         <>
-          {/* As the company and location pages: More actions, with Delete contract. */}
-          {(draftRecord || canDeleteAgreement(saved)) && !cancelRequest ? (
-            <MenuButton disabled={edited} items={[{ content: 'Delete contract', destructive: true, onAction: () => setDeleting(true) }]}>More actions</MenuButton>
+          {/* As the company and location pages: More actions, with Cancel contract and Delete contract. */}
+          {moreActions.length ? (
+            <MenuButton disabled={edited} items={moreActions}>
+              More actions
+            </MenuButton>
           ) : null}
           {secondary.map((a) => (
             <s-button key={a.content} tone={a.destructive ? 'critical' : undefined} disabled={a.disabled} onClick={a.onAction}>
@@ -689,124 +779,41 @@ export function AgreementEditor() {
       </s-stack>
 
       <s-stack gap="base">
-      <s-section heading="Status">
-        <s-stack gap="small-200">
-          {live || proposed ? (
-            <div>
-              <s-stack direction="inline" gap="small-200">
-                <s-badge tone={started ? 'success' : proposed ? 'attention' : 'info'}>{statusLabel(saved)}</s-badge>
-                {/* A request waiting beside its status, which stays (pendingNote) — as in
-                    the Contracts list and their B2B Portal. */}
-                {pendingNote(saved) ? <s-badge>{pendingNote(saved)}</s-badge> : null}
-              </s-stack>
-            </div>
-          ) : null}
-          {/* Its status stays whatever its buyers asked; the request is beside it (and in
-              the sentence's ⓘ). Each is in Buyer note, below; an approval is in the
-              sentence ("Approved by … on …"). What to do next, and what changes for the
-              buyers, stay in the sentence; the rest (what stays the same, where things
-              show, what's locked) is in its ⓘ. */}
-          <StatusLine
-            parts={
-              cancelRequest
-                ? started
-                  ? ['End the contract, or decline the request.', `It stays in force until you answer. ${who}’s buyers see your reply in their B2B Portal.`]
-                  : [
-                      // Not answered by its start date, one that hasn't started expires (syncContractDates).
-                      `Cancel the contract, or decline the request.${saved.startDate ? ` It expires on ${fmtDay(saved.startDate)} if you don’t answer.` : ''}`,
-                      `${who}’s buyers see your reply in their B2B Portal.`,
-                    ]
-                : proposed
-                ? !proposalUnchanged
-                  ? [`Sending gives ${who}’s buyers your changes to approve.`, `It stays version ${saved.version}; the changes go in its Activities log.`]
-                  : canActivate
-                    ? [`Activating gives ${who} these terms ${when}${proposal === 'approved' ? '' : '. Its buyers haven’t approved it'}.`]
-                    : proposal === 'changes'
-                      ? ['Change it and send it again. Nothing applies until they approve it.']
-                      : [
-                          `Waiting for ${who}’s buyers to approve it. It expires on ${fmtDay(saved.startDate)} if they don’t.`,
-                          'It’s activated once they approve it. You can change it once they answer.',
-                        ]
-                : keeps && sends
-                  ? waiting && (waitingUnchanged || waitingUnanswered)
-                    ? proposal === 'changes'
-                      ? [
-                          'Change it and send it again, or decline the request.',
-                          `${who}’s buyers asked for changes to version ${waiting.version}. ${
-                            started ? `Version ${saved.version} stays in force.` : `Until they approve version ${waiting.version}, version ${saved.version} starts ${startsOn}.`
-                          }`,
-                        ]
-                      : started
-                        ? [`Version ${saved.version} stays in force until they approve version ${waiting.version}.`, 'You can change it once they answer.']
-                        : [
-                            `Version ${saved.version} starts ${startsOn}. Version ${waiting.version} applies once they approve it.`,
-                            `If they haven’t approved it by then, version ${saved.version} starts as it is and version ${waiting.version} keeps waiting. You can change it once they answer.`,
-                          ]
-                    : !waiting && unchanged
-                      ? liveRequest
-                        ? [
-                            'Change it and send it to them, or decline the request.',
-                            `${who}’s buyers asked for changes to version ${saved.version}. ${started ? `Version ${saved.version} stays in force.` : `It still starts ${startsOn}.`}`,
-                          ]
-                        : started
-                          ? [`${approvedLine}Version ${saved.version} is in force.`]
-                          : [`${approvedLine}It starts ${startsOn}.`]
-                      : started
-                        ? [`Sending gives ${who}’s buyers your changes as version ${nextVersion} to approve.`, `Version ${saved.version} stays in force until they approve it.`]
-                        : [`Sending gives ${who}’s buyers your changes as version ${nextVersion} to approve.`, `Until they approve it, version ${saved.version} starts ${startsOn}.`]
-                  : sends
-                    ? saved
-                      ? unchanged
-                        ? [`${approvedLine}It starts ${fmtDay(saved.startDate)}.`]
-                        : [`Sending gives ${who}’s buyers your changes as version ${nextVersion} to approve. It won’t start until they approve it.`]
-                      : [`Nothing is applied yet. It’s activated once ${who}’s buyers approve it.`, 'They approve it in their B2B Portal.']
-                    : live
-                      ? [`Saving gives ${company?.name} your changes ${when}, as version ${nextVersion}.`]
-                      : [`Nothing is applied yet. Activating gives ${who} these terms${draft.startDate ? ` from ${fmtDay(draft.startDate)}` : ''}.`]
-            }
-          />
-          {endAsked ? (
-            <StatusLine
-              parts={
-                endAsked.cancel
-                  ? [
-                      `It still starts ${startsOn} unless they approve before then.`,
-                      `You asked ${who}’s buyers to cancel it on ${fmtDay(endAsked.at)}. You can’t send changes until they answer or you withdraw it.`,
-                    ]
-                  : [
-                      'It stays in force until they approve.',
-                      `You asked ${who}’s buyers to end it on ${fmtDay(endAsked.at)}. You can’t send changes until they answer or you withdraw it.`,
-                    ]
-              }
-            />
-          ) : versionDeclined ? (
-            <s-stack gap="small-300">
-              <s-paragraph color="subdued" fontSize="small">
-                {`${who}’s buyers declined version ${versionDeclined.version} on ${fmtDay(versionDeclined.at)}. Version ${saved.version} ${
-                  started ? 'stays in force' : `still starts ${startsOn}`
-                }.`}
-              </s-paragraph>
-              {/* Their message with it, in its own modal (Buyer's message). */}
-              {versionDeclined.message ? (
+      {live || proposed ? (
+        <s-section>
+          <s-stack gap="small">
+            <s-stack direction="inline" gap="small-300" alignItems="center">
+              <s-heading>Status</s-heading>
+              {statusTip ? (
+                <Tip content={statusTip}>
+                  <s-icon type="info" color="subdued" />
+                </Tip>
+              ) : null}
+            </s-stack>
+            <s-stack gap="small-200">
+              <div>
+                <s-stack direction="inline" gap="small-200">
+                  <s-badge tone={started ? 'success' : proposed ? 'attention' : 'info'}>{statusLabel(saved)}</s-badge>
+                  {/* A request waiting beside its status, which stays (pendingNote) — as in
+                      the Contracts list and their B2B Portal. Its note is in Buyer note, below. */}
+                  {pendingNote(saved) ? <s-badge>{pendingNote(saved)}</s-badge> : null}
+                </s-stack>
+              </div>
+              {shownNote ? (
+                <s-paragraph color="subdued" fontSize="small">
+                  {shownNote}
+                </s-paragraph>
+              ) : null}
+              {/* What they wrote with a decline, in its own modal. */}
+              {declineMessage ? (
                 <div>
-                  <s-link onClick={() => setBuyerMessage(versionDeclined)}>Buyer’s message</s-link>
+                  <s-link onClick={() => setBuyerMessage(declineMessage)}>Buyer’s message</s-link>
                 </div>
               ) : null}
             </s-stack>
-          ) : endDeclined ? (
-            <s-stack gap="small-300">
-              <s-paragraph color="subdued" fontSize="small">
-                {`${who}’s buyers declined ${endDeclined.req.cancel ? 'cancelling' : 'ending'} it on ${fmtDay(endDeclined.answer.at)}.`}
-              </s-paragraph>
-              {endDeclined.answer.message ? (
-                <div>
-                  <s-link onClick={() => setBuyerMessage(endDeclined.answer)}>Buyer’s message</s-link>
-                </div>
-              ) : null}
-            </s-stack>
-          ) : null}
-        </s-stack>
-      </s-section>
+          </s-stack>
+        </s-section>
+      ) : null}
       {/* What the buyer wrote with Request changes or Request cancellation: who and
           when, and the note itself in a modal (View note). */}
       {buyerResponse?.message ? (
@@ -1187,24 +1194,6 @@ export function AgreementEditor() {
 }
 
 const pickedOf = (ids, list) => ids.map((id) => (list || []).find((x) => x.id === id)).filter(Boolean);
-
-// A line of the Status: `parts` [what to do next and what changes for the buyers,
-// the rest (optional) in an ⓘ tooltip at its end].
-function StatusLine({ parts: [main, more] }) {
-  return (
-    <s-paragraph color="subdued" fontSize="small">
-      {main}
-      {more ? (
-        <>
-          {' '}
-          <Tip content={more}>
-            <s-icon type="info" size="small" color="subdued" />
-          </Tip>
-        </>
-      ) : null}
-    </s-paragraph>
-  );
-}
 
 // A term group's Add: Create new, or Copy existing.
 function AddTerm({ onCreate, onCopy }) {
